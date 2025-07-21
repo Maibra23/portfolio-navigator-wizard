@@ -5,6 +5,8 @@ import { Progress } from '@/components/ui/progress';
 import { ArrowRight, TrendingUp, Shield, DollarSign } from 'lucide-react';
 import { WelcomeStep } from './wizard/WelcomeStep';
 import { RiskProfiler } from './wizard/RiskProfiler';
+import { CapitalInput } from './wizard/CapitalInput';
+import { StockSelection } from './wizard/StockSelection';
 
 export type RiskProfile = 'conservative' | 'moderate' | 'aggressive' | null;
 
@@ -60,6 +62,24 @@ export const PortfolioWizard = () => {
             onPrev={prevStep}
             onProfileUpdate={(profile) => updateWizardData({ riskProfile: profile })}
             currentProfile={wizardData.riskProfile}
+          />
+        );
+      case 'capital':
+        return (
+          <CapitalInput
+            onNext={nextStep}
+            onPrev={prevStep}
+            onCapitalUpdate={(capital) => updateWizardData({ capital })}
+            currentCapital={wizardData.capital}
+          />
+        );
+      case 'stocks':
+        return (
+          <StockSelection
+            onNext={nextStep}
+            onPrev={prevStep}
+            onStocksUpdate={(selectedStocks) => updateWizardData({ selectedStocks })}
+            selectedStocks={wizardData.selectedStocks}
           />
         );
       default:
