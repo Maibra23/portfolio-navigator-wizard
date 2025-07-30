@@ -1,73 +1,373 @@
-# Welcome to your Lovable project
+# Portfolio Navigator Wizard 🚀
 
-## Project info
+A modern web application that helps users create and optimize their investment portfolios through an interactive wizard interface.
 
-**URL**: https://lovable.dev/projects/4fcd5b45-2896-4272-9364-4ab6d5ddbca0
+## 📋 Table of Contents
 
-## How can I edit this code?
+- [Quick Start](#quick-start)
+- [What This App Does](#what-this-app-does)
+- [How to Run the App](#how-to-run-the-app)
+- [Project Structure](#project-structure)
+- [Adding New Features](#adding-new-features)
+- [Troubleshooting](#troubleshooting)
+- [Deployment](#deployment)
 
-There are several ways of editing your application.
+## 🚀 Quick Start
 
-**Use Lovable**
+### Prerequisites
+Before running the app, make sure you have:
+- **Node.js** (version 18 or higher)
+- **Python** (version 3.8 or higher)
+- **Git** (for cloning the repository)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4fcd5b45-2896-4272-9364-4ab6d5ddbca0) and start prompting.
+### One-Command Setup
+```bash
+# Clone the repository
+git clone <YOUR_REPOSITORY_URL>
+cd portfolio-navigator-wizard
 
-Changes made via Lovable will be committed automatically to this repo.
+# Install dependencies and start the app
+make dev
+```
 
-**Use your preferred IDE**
+That's it! Your app will be running at **http://localhost:8080**
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🎯 What This App Does
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+The Portfolio Navigator Wizard is a step-by-step tool that helps users:
 
-Follow these steps:
+1. **Welcome & Introduction** - Learn about the portfolio creation process
+2. **Risk Profiling** - Determine your investment risk tolerance (Conservative, Moderate, Aggressive)
+3. **Capital Input** - Specify how much money you want to invest
+4. **Stock Selection** - Choose which stocks to include in your portfolio
+5. **Portfolio Optimization** - Get optimized allocation recommendations
+6. **Stress Testing** - Test how your portfolio performs under different market conditions
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Current Features
+- ✅ Interactive wizard interface with progress tracking
+- ✅ Risk profile assessment
+- ✅ Capital amount input
+- ✅ Stock selection interface
+- ✅ Portfolio allocation calculation
+- ✅ Real-time data updates
+- ✅ Responsive design for all devices
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Planned Features
+- 🔄 Portfolio optimization algorithms
+- 🔄 Stress testing scenarios
+- 🔄 Historical performance analysis
+- 🔄 Export portfolio reports
 
-# Step 3: Install the necessary dependencies.
-npm i
+## 🖥️ How to Run the App
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+### Method 1: Easy Setup (Recommended)
+```bash
+make dev
+```
+This single command:
+- Starts the backend server (FastAPI) on port 8000
+- Starts the frontend server (React) on port 8080
+- Sets up automatic reloading when you make changes
+
+### Method 2: Manual Setup
+
+#### Step 1: Start the Backend
+```bash
+# Navigate to backend directory
+cd backend
+
+# Activate Python virtual environment
+source venv/bin/activate
+
+# Start the server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+#### Step 2: Start the Frontend (in a new terminal)
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start the development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Access Your App
+- **Frontend (Main App)**: http://localhost:8080
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 📁 Project Structure
 
-**Use GitHub Codespaces**
+```
+portfolio-navigator-wizard/
+├── frontend/                 # React frontend application
+│   ├── src/
+│   │   ├── components/       # Reusable UI components
+│   │   │   ├── ui/          # Basic UI components (buttons, cards, etc.)
+│   │   │   ├── wizard/      # Wizard-specific components
+│   │   │   └── PortfolioWizard.tsx  # Main wizard component
+│   │   ├── pages/           # Page components
+│   │   ├── hooks/           # Custom React hooks
+│   │   └── lib/             # Utility functions
+│   ├── package.json         # Frontend dependencies
+│   └── vite.config.ts       # Frontend build configuration
+├── backend/                  # FastAPI backend application
+│   ├── routers/             # API route definitions
+│   │   ├── portfolio.py     # Portfolio-related API endpoints
+│   │   └── cookie_demo.py   # Example API endpoints
+│   ├── models/              # Data models and schemas
+│   ├── main.py              # Main backend application
+│   └── requirements.txt     # Python dependencies
+├── Makefile                 # Build and run commands
+└── README.md               # This file
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 🛠️ Adding New Features
 
-## What technologies are used for this project?
+### Frontend Changes (React/TypeScript)
 
-This project is built with:
+#### Adding a New Wizard Step
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+1. **Create the step component** in `frontend/src/components/wizard/`:
+```typescript
+// frontend/src/components/wizard/NewStep.tsx
+import { Button } from '@/components/ui/button';
 
-## How can I deploy this project?
+interface NewStepProps {
+  onNext: () => void;
+  onPrev: () => void;
+  onDataUpdate: (data: any) => void;
+  currentData: any;
+}
 
-Simply open [Lovable](https://lovable.dev/projects/4fcd5b45-2896-4272-9364-4ab6d5ddbca0) and click on Share -> Publish.
+export const NewStep = ({ onNext, onPrev, onDataUpdate, currentData }: NewStepProps) => {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Your New Step</h2>
+      {/* Add your form elements here */}
+      
+      <div className="flex gap-4">
+        <Button variant="outline" onClick={onPrev}>Previous</Button>
+        <Button onClick={onNext}>Next</Button>
+      </div>
+    </div>
+  );
+};
+```
 
-## Can I connect a custom domain to my Lovable project?
+2. **Add the step to the wizard** in `frontend/src/components/PortfolioWizard.tsx`:
+```typescript
+// Add to STEPS array
+const STEPS = [
+  // ... existing steps
+  { id: 'new-step', title: 'New Step', icon: YourIcon },
+];
 
-Yes, you can!
+// Add to renderStep function
+case 'new-step':
+  return (
+    <NewStep
+      onNext={nextStep}
+      onPrev={prevStep}
+      onDataUpdate={(data) => updateWizardData(data)}
+      currentData={wizardData}
+    />
+  );
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+3. **Update the data interface**:
+```typescript
+export interface WizardData {
+  // ... existing fields
+  newField: string; // Add your new data field
+}
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+#### Adding a New Page
+
+1. **Create the page component** in `frontend/src/pages/`:
+```typescript
+// frontend/src/pages/NewPage.tsx
+const NewPage = () => {
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold">New Page</h1>
+      {/* Your page content */}
+    </div>
+  );
+};
+
+export default NewPage;
+```
+
+2. **Add the route** in `frontend/src/App.tsx`:
+```typescript
+import NewPage from "./pages/NewPage";
+
+// Add inside Routes
+<Route path="/new-page" element={<NewPage />} />
+```
+
+### Backend Changes (FastAPI/Python)
+
+#### Adding a New API Endpoint
+
+1. **Create a new router** in `backend/routers/`:
+```python
+# backend/routers/new_feature.py
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+router = APIRouter(prefix="/api/new-feature", tags=["new-feature"])
+
+class NewFeatureRequest(BaseModel):
+    data: str
+
+class NewFeatureResponse(BaseModel):
+    result: str
+
+@router.post("", response_model=NewFeatureResponse)
+def new_feature_endpoint(request: NewFeatureRequest):
+    # Your logic here
+    return NewFeatureResponse(result=f"Processed: {request.data}")
+```
+
+2. **Register the router** in `backend/main.py`:
+```python
+from routers import new_feature
+
+# Add this line with other router includes
+app.include_router(new_feature.router)
+```
+
+#### Adding a New Data Model
+
+1. **Create the model** in `backend/models/`:
+```python
+# backend/models/new_model.py
+from pydantic import BaseModel
+from typing import List, Optional
+
+class NewModel(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    tags: List[str] = []
+```
+
+### Styling Changes (Tailwind CSS)
+
+The app uses Tailwind CSS for styling. You can:
+
+1. **Add custom styles** in `frontend/src/index.css`
+2. **Use Tailwind classes** directly in components
+3. **Create custom components** in `frontend/src/components/ui/`
+
+### Database Changes
+
+Currently, the app uses in-memory storage. To add a database:
+
+1. **Install database dependencies** in `backend/requirements.txt`
+2. **Create database models** in `backend/models/`
+3. **Add database connection** in `backend/main.py`
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### "npm: command not found"
+```bash
+# Install Node.js using nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm install node
+```
+
+#### "uvicorn: command not found"
+```bash
+# Activate virtual environment and install dependencies
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### Port already in use
+```bash
+# Find and kill processes using the ports
+lsof -ti:8000 | xargs kill -9
+lsof -ti:8080 | xargs kill -9
+```
+
+#### Frontend not connecting to backend
+- Check that both servers are running
+- Verify the proxy configuration in `frontend/vite.config.ts`
+- Check browser console for CORS errors
+
+### Getting Help
+
+1. **Check the logs** - Both frontend and backend show detailed error messages
+2. **Restart the servers** - Stop and restart with `make dev`
+3. **Clear browser cache** - Hard refresh (Ctrl+F5 or Cmd+Shift+R)
+4. **Check file permissions** - Ensure you have read/write access to the project
+
+## 🚀 Deployment
+
+### Development Deployment
+```bash
+# Build the frontend
+cd frontend
+npm run build
+
+# Copy to backend static directory
+cp -r dist ../backend/static
+
+# Start production server
+cd ../backend
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+### Production Deployment
+1. **Set up a production server** (AWS, DigitalOcean, Heroku, etc.)
+2. **Install dependencies** on the server
+3. **Build the frontend** and copy to backend static directory
+4. **Configure environment variables**
+5. **Set up a reverse proxy** (nginx) if needed
+6. **Use a process manager** (PM2, systemd) for the backend
+
+## 📚 Learning Resources
+
+### Frontend (React/TypeScript)
+- [React Documentation](https://react.dev/)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+
+### Backend (FastAPI/Python)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Python Documentation](https://docs.python.org/)
+
+### General
+- [Git Documentation](https://git-scm.com/doc)
+- [Node.js Documentation](https://nodejs.org/docs/)
+
+## 🤝 Contributing
+
+1. **Fork the repository**
+2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
+3. **Make your changes**
+4. **Test your changes** (`make test`)
+5. **Commit your changes** (`git commit -m 'Add amazing feature'`)
+6. **Push to the branch** (`git push origin feature/amazing-feature`)
+7. **Open a Pull Request**
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**Need help?** Check the troubleshooting section above or create an issue in the repository.
