@@ -14,7 +14,7 @@ interface CapitalInputProps {
 }
 
 export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }: CapitalInputProps) => {
-  const [capital, setCapital] = useState(currentCapital.toString());
+  const [capital, setCapital] = useState(currentCapital > 0 ? currentCapital.toString() : '');
   const [error, setError] = useState('');
 
   const handleCapitalChange = (value: string) => {
@@ -26,7 +26,7 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
     const numCapital = parseFloat(capital);
     
     if (isNaN(numCapital) || numCapital < 1000) {
-      setError('Please enter a minimum investment of 1,000 kr');
+      setError('Please enter a minimum investment of 1,000 SEK');
       return;
     }
 
@@ -39,6 +39,7 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
   };
 
   const capitalValue = parseFloat(capital) || 0;
+  const isValid = capitalValue >= 1000;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -73,9 +74,12 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
                 kr
               </span>
             </div>
-            {capitalValue >= 1000 && (
-              <p className="text-sm text-muted-foreground">
+            {capitalValue > 0 && (
+              <p className={`text-sm ${isValid ? 'text-green-600' : 'text-orange-600'}`}>
                 Investment amount: {formatNumber(capitalValue)} SEK
+                {!isValid && capitalValue > 0 && (
+                  <span className="ml-2">(Minimum 1,000 SEK required)</span>
+                )}
               </p>
             )}
           </div>
@@ -105,11 +109,16 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
             <Button 
               onClick={handleNext} 
               className="flex-1"
-              disabled={!capital || parseFloat(capital) < 1000}
+              disabled={!isValid}
             >
               Continue
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
+          </div>
+          
+          {/* Debug info - remove in production */}
+          <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
+            Debug: Capital value = {capitalValue}, Valid = {isValid.toString()}
           </div>
         </CardContent>
       </Card>

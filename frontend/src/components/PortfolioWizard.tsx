@@ -8,12 +8,19 @@ import { RiskProfiler } from './wizard/RiskProfiler';
 import { CapitalInput } from './wizard/CapitalInput';
 import { StockSelection } from './wizard/StockSelection';
 
-export type RiskProfile = 'conservative' | 'moderate' | 'aggressive' | null;
+export type RiskProfile = 'very-conservative' | 'conservative' | 'moderate' | 'aggressive' | 'very-aggressive' | null;
+
+export interface PortfolioAllocation {
+  symbol: string;
+  allocation: number;
+  name?: string;
+  assetType?: 'stock' | 'bond' | 'etf';
+}
 
 export interface WizardData {
   riskProfile: RiskProfile;
   capital: number;
-  selectedStocks: string[];
+  selectedStocks: PortfolioAllocation[];
 }
 
 const STEPS = [
@@ -52,6 +59,8 @@ export const PortfolioWizard = () => {
   };
 
   const renderStep = () => {
+    console.log('Current step:', currentStep, 'Step ID:', STEPS[currentStep].id);
+    
     switch (STEPS[currentStep].id) {
       case 'welcome':
         return <WelcomeStep onNext={nextStep} />;
@@ -74,15 +83,19 @@ export const PortfolioWizard = () => {
           />
         );
       case 'stocks':
+        console.log('Rendering StockSelection component');
         return (
           <StockSelection
             onNext={nextStep}
             onPrev={prevStep}
             onStocksUpdate={(selectedStocks) => updateWizardData({ selectedStocks })}
             selectedStocks={wizardData.selectedStocks}
+            riskProfile={wizardData.riskProfile || 'moderate'}
+            capital={wizardData.capital}
           />
         );
       default:
+        console.log('Rendering default step for:', STEPS[currentStep].id);
         return (
           <div className="text-center py-12">
             <h3 className="text-xl font-semibold mb-4">Step {currentStep + 1} - Coming Soon</h3>
@@ -157,6 +170,20 @@ export const PortfolioWizard = () => {
         {/* Step Content */}
         <div className="animate-fade-in">
           {renderStep()}
+        </div>
+        
+        {/* Debug Panel - Remove in production */}
+        <div className="mt-8 p-4 bg-muted/30 rounded-lg">
+          <h4 className="font-medium mb-2">Debug Information</h4>
+          <div className="text-sm space-y-1">
+            <p>Current Step Index: {currentStep}</p>
+            <p>Current Step ID: {STEPS[currentStep].id}</p>
+            <p>Current Step Title: {STEPS[currentStep].title}</p>
+            <p>Total Steps: {STEPS.length}</p>
+            <p>Risk Profile: {wizardData.riskProfile || 'null'}</p>
+            <p>Capital: {wizardData.capital}</p>
+            <p>Selected Stocks: {wizardData.selectedStocks.length}</p>
+          </div>
         </div>
       </div>
     </div>

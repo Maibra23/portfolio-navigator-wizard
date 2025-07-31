@@ -47,7 +47,13 @@ The Portfolio Navigator Wizard is a step-by-step tool that helps users:
 - ✅ Interactive wizard interface with progress tracking
 - ✅ Risk profile assessment
 - ✅ Capital amount input
-- ✅ Stock selection interface
+- ✅ **Enhanced Portfolio Construction** with:
+  - Professional portfolio recommendations based on risk profile
+  - Custom portfolio builder with allocation sliders
+  - Real-time portfolio analytics (Risk, Return, Diversification Score, Sharpe Ratio)
+  - Efficient Frontier visualization chart
+  - Sector diversification suggestions
+  - Live allocation tracking with dollar amounts
 - ✅ Portfolio allocation calculation
 - ✅ Real-time data updates
 - ✅ Responsive design for all devices
@@ -109,6 +115,9 @@ portfolio-navigator-wizard/
 │   │   ├── components/       # Reusable UI components
 │   │   │   ├── ui/          # Basic UI components (buttons, cards, etc.)
 │   │   │   ├── wizard/      # Wizard-specific components
+│   │   │   │   ├── StockSelection.tsx      # Enhanced portfolio construction
+│   │   │   │   ├── EfficientFrontierChart.tsx  # Risk/Return visualization
+│   │   │   │   └── ...      # Other wizard steps
 │   │   │   └── PortfolioWizard.tsx  # Main wizard component
 │   │   ├── pages/           # Page components
 │   │   ├── hooks/           # Custom React hooks
