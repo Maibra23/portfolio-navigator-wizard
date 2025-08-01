@@ -32,6 +32,7 @@ import {
   Settings,
   Database
 } from 'lucide-react';
+import { TwoAssetChart } from './TwoAssetChart';
 
 interface StockSelectionProps {
   onNext: () => void;
@@ -128,7 +129,7 @@ export const StockSelection = ({
   riskProfile, 
   capital 
 }: StockSelectionProps) => {
-  const [activeTab, setActiveTab] = useState<'mini-lesson' | 'recommendations' | 'custom' | 'full-customization'>('mini-lesson');
+  const [activeTab, setActiveTab] = useState<'mini-lesson' | 'recommendations' | 'full-customization'>('mini-lesson');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -152,17 +153,20 @@ export const StockSelection = ({
   } | null>(null);
   const [isLoadingFullCustom, setIsLoadingFullCustom] = useState(false);
 
+  // Track if user has selected a portfolio recommendation
+  const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
+
   // Generate recommendations based on risk profile
   const generateRecommendations = (): PortfolioRecommendation[] => {
-    // Define portfolio templates for each risk category
+    // Define portfolio templates for each risk category (max 4 stocks each)
     const portfolioTemplates = {
       'very-conservative': {
         name: 'Very Conservative Portfolio',
         description: 'Maximum capital preservation with minimal risk exposure',
         allocations: [
-          { symbol: 'JNJ', allocation: 35, name: 'Johnson & Johnson', assetType: 'stock' as const },
+          { symbol: 'JNJ', allocation: 40, name: 'Johnson & Johnson', assetType: 'stock' as const },
           { symbol: 'PG', allocation: 30, name: 'Procter & Gamble', assetType: 'stock' as const },
-          { symbol: 'KO', allocation: 25, name: 'Coca-Cola', assetType: 'stock' as const },
+          { symbol: 'KO', allocation: 20, name: 'Coca-Cola', assetType: 'stock' as const },
           { symbol: 'VZ', allocation: 10, name: 'Verizon', assetType: 'stock' as const }
         ],
         expectedReturn: 0.06,
@@ -173,11 +177,10 @@ export const StockSelection = ({
         name: 'Conservative Portfolio',
         description: 'Low-risk portfolio focused on stable, dividend-paying stocks',
         allocations: [
-          { symbol: 'JNJ', allocation: 30, name: 'Johnson & Johnson', assetType: 'stock' as const },
-          { symbol: 'PG', allocation: 25, name: 'Procter & Gamble', assetType: 'stock' as const },
-          { symbol: 'KO', allocation: 20, name: 'Coca-Cola', assetType: 'stock' as const },
-          { symbol: 'VZ', allocation: 15, name: 'Verizon', assetType: 'stock' as const },
-          { symbol: 'T', allocation: 10, name: 'AT&T', assetType: 'stock' as const }
+          { symbol: 'JNJ', allocation: 35, name: 'Johnson & Johnson', assetType: 'stock' as const },
+          { symbol: 'PG', allocation: 30, name: 'Procter & Gamble', assetType: 'stock' as const },
+          { symbol: 'KO', allocation: 25, name: 'Coca-Cola', assetType: 'stock' as const },
+          { symbol: 'VZ', allocation: 10, name: 'Verizon', assetType: 'stock' as const }
         ],
         expectedReturn: 0.08,
         risk: 0.12,
@@ -187,12 +190,10 @@ export const StockSelection = ({
         name: 'Balanced Portfolio',
         description: 'Moderate risk with a mix of growth and value stocks',
         allocations: [
-          { symbol: 'AAPL', allocation: 25, name: 'Apple Inc.', assetType: 'stock' as const },
-          { symbol: 'MSFT', allocation: 20, name: 'Microsoft', assetType: 'stock' as const },
-          { symbol: 'GOOGL', allocation: 15, name: 'Alphabet Inc.', assetType: 'stock' as const },
-          { symbol: 'AMZN', allocation: 15, name: 'Amazon.com', assetType: 'stock' as const },
-          { symbol: 'TSLA', allocation: 10, name: 'Tesla Inc.', assetType: 'stock' as const },
-          { symbol: 'NVDA', allocation: 15, name: 'NVIDIA', assetType: 'stock' as const }
+          { symbol: 'AAPL', allocation: 30, name: 'Apple Inc.', assetType: 'stock' as const },
+          { symbol: 'MSFT', allocation: 25, name: 'Microsoft', assetType: 'stock' as const },
+          { symbol: 'GOOGL', allocation: 25, name: 'Alphabet Inc.', assetType: 'stock' as const },
+          { symbol: 'AMZN', allocation: 20, name: 'Amazon.com', assetType: 'stock' as const }
         ],
         expectedReturn: 0.12,
         risk: 0.18,
@@ -202,11 +203,10 @@ export const StockSelection = ({
         name: 'Growth Portfolio',
         description: 'Higher risk portfolio targeting aggressive growth',
         allocations: [
-          { symbol: 'NVDA', allocation: 30, name: 'NVIDIA', assetType: 'stock' as const },
-          { symbol: 'TSLA', allocation: 25, name: 'Tesla Inc.', assetType: 'stock' as const },
+          { symbol: 'NVDA', allocation: 35, name: 'NVIDIA', assetType: 'stock' as const },
+          { symbol: 'TSLA', allocation: 30, name: 'Tesla Inc.', assetType: 'stock' as const },
           { symbol: 'AMD', allocation: 20, name: 'Advanced Micro Devices', assetType: 'stock' as const },
-          { symbol: 'META', allocation: 15, name: 'Meta Platforms', assetType: 'stock' as const },
-          { symbol: 'NFLX', allocation: 10, name: 'Netflix', assetType: 'stock' as const }
+          { symbol: 'META', allocation: 15, name: 'Meta Platforms', assetType: 'stock' as const }
         ],
         expectedReturn: 0.18,
         risk: 0.28,
@@ -216,10 +216,10 @@ export const StockSelection = ({
         name: 'Very Aggressive Portfolio',
         description: 'Maximum growth potential with highest risk tolerance',
         allocations: [
-          { symbol: 'NVDA', allocation: 35, name: 'NVIDIA', assetType: 'stock' as const },
-          { symbol: 'TSLA', allocation: 30, name: 'Tesla Inc.', assetType: 'stock' as const },
-          { symbol: 'AMD', allocation: 20, name: 'Advanced Micro Devices', assetType: 'stock' as const },
-          { symbol: 'META', allocation: 15, name: 'Meta Platforms', assetType: 'stock' as const }
+          { symbol: 'NVDA', allocation: 40, name: 'NVIDIA', assetType: 'stock' as const },
+          { symbol: 'TSLA', allocation: 35, name: 'Tesla Inc.', assetType: 'stock' as const },
+          { symbol: 'AMD', allocation: 15, name: 'Advanced Micro Devices', assetType: 'stock' as const },
+          { symbol: 'META', allocation: 10, name: 'Meta Platforms', assetType: 'stock' as const }
         ],
         expectedReturn: 0.25,
         risk: 0.35,
@@ -253,58 +253,49 @@ export const StockSelection = ({
 
   const recommendations = generateRecommendations();
 
-  // Load mini-lesson data from backend
+  // Load mini-lesson data
   useEffect(() => {
     const loadMiniLesson = async () => {
       setIsLoadingMiniLesson(true);
       try {
-        // Try to fetch real data from backend
+        console.log('Loading mini-lesson data...');
         const response = await fetch('http://localhost:8000/api/portfolio/two-asset-analysis?ticker1=NVDA&ticker2=AMZN');
+        console.log('Mini-lesson response status:', response.status);
         
         if (response.ok) {
-          const realData: TwoAssetAnalysis = await response.json();
-          setTwoAssetAnalysis(realData);
-          setCustomPortfolio(realData.portfolios[2]); // 50/50 portfolio
+          const data = await response.json();
+          console.log('Mini-lesson data received:', data);
+          setTwoAssetAnalysis(data);
+          
+          // Calculate initial portfolio
+          const nvdaAllocation = nvdaWeight / 100;
+          const amznAllocation = (100 - nvdaWeight) / 100;
+          
+          const portfolioReturn = nvdaAllocation * data.asset1_stats.annualized_return + 
+                                 amznAllocation * data.asset2_stats.annualized_return;
+          
+          const portfolioRisk = Math.sqrt(
+            Math.pow(nvdaAllocation * data.asset1_stats.annualized_volatility, 2) +
+            Math.pow(amznAllocation * data.asset2_stats.annualized_volatility, 2) +
+            2 * nvdaAllocation * amznAllocation * data.asset1_stats.annualized_volatility * 
+            data.asset2_stats.annualized_volatility * data.correlation
+          );
+          
+          const riskFreeRate = 0.04; // 4% risk-free rate
+          const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioRisk;
+          
+          setCustomPortfolio({
+            weights: [nvdaAllocation, amznAllocation],
+            return: portfolioReturn,
+            risk: portfolioRisk,
+            sharpe_ratio: sharpeRatio
+          });
         } else {
-          // Fallback to mock data if backend fails
-          const mockData: TwoAssetAnalysis = {
-            ticker1: 'NVDA',
-            ticker2: 'AMZN',
-            asset1_stats: {
-              ticker: 'NVDA',
-              annualized_return: 0.25,
-              annualized_volatility: 0.35,
-              price_history: [],
-              last_price: 500,
-              start_date: '2020-01-01',
-              end_date: '2024-01-01',
-              data_source: 'yahoo_finance'
-            },
-            asset2_stats: {
-              ticker: 'AMZN',
-              annualized_return: 0.15,
-              annualized_volatility: 0.25,
-              price_history: [],
-              last_price: 150,
-              start_date: '2020-01-01',
-              end_date: '2024-01-01',
-              data_source: 'yahoo_finance'
-            },
-            correlation: 0.3,
-            portfolios: [
-              { weights: [1, 0], return: 0.25, risk: 0.35, sharpe_ratio: 0.6 },
-              { weights: [0.75, 0.25], return: 0.225, risk: 0.31, sharpe_ratio: 0.6 },
-              { weights: [0.5, 0.5], return: 0.2, risk: 0.28, sharpe_ratio: 0.57 },
-              { weights: [0.25, 0.75], return: 0.175, risk: 0.26, sharpe_ratio: 0.52 },
-              { weights: [0, 1], return: 0.15, risk: 0.25, sharpe_ratio: 0.44 }
-            ]
-          };
-
-          setTwoAssetAnalysis(mockData);
-          setCustomPortfolio(mockData.portfolios[2]); // 50/50 portfolio
+          const errorText = await response.text();
+          console.error('Mini-lesson API error:', response.status, errorText);
         }
-      } catch (err) {
-        setError('Failed to load mini-lesson data');
+      } catch (error) {
+        console.error('Error loading mini-lesson data:', error);
       } finally {
         setIsLoadingMiniLesson(false);
       }
@@ -313,38 +304,27 @@ export const StockSelection = ({
     loadMiniLesson();
   }, []);
 
-  // Update custom portfolio when NVDA weight changes
+  // Update portfolio when weights change
   useEffect(() => {
-    if (twoAssetAnalysis && nvdaWeight >= 0 && nvdaWeight <= 100) {
-      const amznWeight = 100 - nvdaWeight;
-      const nvdaWeightDecimal = nvdaWeight / 100;
-      const amznWeightDecimal = amznWeight / 100;
+    if (twoAssetAnalysis) {
+      const nvdaAllocation = nvdaWeight / 100;
+      const amznAllocation = (100 - nvdaWeight) / 100;
       
-      // Calculate custom portfolio metrics
-      const asset1 = twoAssetAnalysis.asset1_stats;
-      const asset2 = twoAssetAnalysis.asset2_stats;
-      const correlation = twoAssetAnalysis.correlation;
-      
-      // Portfolio return: Σwi·ri
-      const portfolioReturn = (nvdaWeightDecimal * asset1.annualized_return + 
-                              amznWeightDecimal * asset2.annualized_return);
-      
-      // Portfolio risk: √(Σwi²·σi² + 2·w1·w2·σ1·σ2·ρ12)
-      const sigma1 = asset1.annualized_volatility;
-      const sigma2 = asset2.annualized_volatility;
+      const portfolioReturn = nvdaAllocation * twoAssetAnalysis.asset1_stats.annualized_return + 
+                             amznAllocation * twoAssetAnalysis.asset2_stats.annualized_return;
       
       const portfolioRisk = Math.sqrt(
-        nvdaWeightDecimal**2 * sigma1**2 + 
-        amznWeightDecimal**2 * sigma2**2 + 
-        2 * nvdaWeightDecimal * amznWeightDecimal * sigma1 * sigma2 * correlation
+        Math.pow(nvdaAllocation * twoAssetAnalysis.asset1_stats.annualized_volatility, 2) +
+        Math.pow(amznAllocation * twoAssetAnalysis.asset2_stats.annualized_volatility, 2) +
+        2 * nvdaAllocation * amznAllocation * twoAssetAnalysis.asset1_stats.annualized_volatility * 
+        twoAssetAnalysis.asset2_stats.annualized_volatility * twoAssetAnalysis.correlation
       );
       
-      // Sharpe ratio: (return - risk_free_rate) / risk
-      const riskFreeRate = 0.04;
+      const riskFreeRate = 0.04; // 4% risk-free rate
       const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioRisk;
       
       setCustomPortfolio({
-        weights: [nvdaWeightDecimal, amznWeightDecimal],
+        weights: [nvdaAllocation, amznAllocation],
         return: portfolioReturn,
         risk: portfolioRisk,
         sharpe_ratio: sharpeRatio
@@ -362,39 +342,47 @@ export const StockSelection = ({
     setError(null);
 
     try {
-      // Use our enhanced backend API
-      const response = await fetch(`http://localhost:8000/api/portfolio/asset-search?q=${encodeURIComponent(query)}`);
+      console.log(`Searching for: "${query}"`);
+      
+      // Use our enhanced backend API with the correct endpoint
+      const response = await fetch(`http://localhost:8000/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
 
+      console.log(`Response status: ${response.status}`);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch stock data');
+        const errorText = await response.text();
+        console.error(`API Error: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch stock data: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      const stocks = data.results || [];
+      console.log('API Response:', data);
       
-      setSearchResults(stocks.map((stock: {
-        symbol: string;
-        name: string;
-        exchange: string;
-        data_quality: {
-          is_sufficient: boolean;
-          years_covered: number;
-          data_points: number;
-          data_source: string;
-          issues?: string[];
-        };
+      const tickers = data.results || [];
+      console.log(`Found ${tickers.length} tickers`);
+      
+      setSearchResults(tickers.map((ticker: {
+        ticker: string;
+        cached: number;
       }) => ({
-        symbol: stock.symbol,
-        shortname: stock.name || stock.symbol,
-        longname: stock.name || stock.symbol,
-        typeDisp: stock.exchange || '',
-        exchange: stock.exchange || '',
-        quoteType: stock.data_quality?.data_source === 'yahoo_finance' ? 'EQUITY' : 'ETF',
-        assetType: stock.data_quality?.data_source === 'yahoo_finance' ? 'stock' : 'etf',
-        dataQuality: stock.data_quality
+        symbol: ticker.ticker,
+        shortname: ticker.ticker,
+        longname: ticker.ticker,
+        typeDisp: 'Stock',
+        exchange: 'NASDAQ/NYSE',
+        quoteType: 'EQUITY',
+        assetType: 'stock' as const,
+        dataQuality: {
+          is_sufficient: true,
+          years_covered: 15,
+          data_points: 180,
+          data_source: 'yahoo_finance',
+          issues: ticker.cached ? [] : ['Data may need to be fetched']
+        }
       })));
     } catch (err) {
-      setError('Unable to fetch stock data. Please try entering symbols manually.');
+      console.error('Search error:', err);
+              setError(`Unable to fetch stock data: ${err instanceof Error ? err.message : 'Unknown error'}. Please check if the backend server is running on localhost:8000.`);
       setSearchResults([]);
     } finally {
       setIsLoading(false);
@@ -427,8 +415,8 @@ export const StockSelection = ({
   }, [selectedStocks]);
 
   const addStock = (stock: StockResult) => {
-    if (selectedStocks.length >= 10) {
-      setError('Maximum 10 stocks allowed');
+    if (selectedStocks.length >= 5) {
+      setError('Maximum 5 assets allowed for optimal portfolio analysis');
       return;
     }
     
@@ -452,10 +440,8 @@ export const StockSelection = ({
   const removeStock = (symbol: string) => {
     const updatedStocks = selectedStocks.filter(s => s.symbol !== symbol);
     if (updatedStocks.length > 0) {
-      const rebalancedStocks = updatedStocks.map(s => ({
-        ...s,
-        allocation: 100 / updatedStocks.length
-      }));
+      const equalAllocation = 100 / updatedStocks.length;
+      const rebalancedStocks = updatedStocks.map(s => ({ ...s, allocation: equalAllocation }));
       onStocksUpdate(rebalancedStocks);
     } else {
       onStocksUpdate([]);
@@ -471,24 +457,22 @@ export const StockSelection = ({
 
   const acceptRecommendation = (recommendation: PortfolioRecommendation) => {
     onStocksUpdate(recommendation.allocations);
-    setActiveTab('custom');
+    setHasSelectedPortfolio(true);
   };
 
   const handleNext = () => {
-    if (selectedStocks.length >= 3) {
       onNext();
-    }
   };
 
   const getRiskProfileDisplay = () => {
-    const profiles = {
+    const profileMap: { [key: string]: string } = {
       'very-conservative': 'Very Conservative',
       'conservative': 'Conservative', 
       'moderate': 'Moderate',
       'aggressive': 'Aggressive',
       'very-aggressive': 'Very Aggressive'
     };
-    return profiles[riskProfile as keyof typeof profiles] || 'Moderate';
+    return profileMap[riskProfile] || 'Moderate';
   };
 
   const setPresetWeight = (nvdaPercent: number) => {
@@ -496,8 +480,8 @@ export const StockSelection = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <Card className="shadow-card">
+    <div className="max-w-6xl mx-auto p-6">
+      <Card>
         <CardHeader className="text-center">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-primary flex items-center justify-center">
             <TrendingUp className="h-8 w-8 text-white" />
@@ -515,8 +499,8 @@ export const StockSelection = ({
         </CardHeader>
         
         <CardContent className="space-y-6">
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "mini-lesson" | "recommendations" | "custom" | "full-customization")}>
-            <TabsList className="grid w-full grid-cols-4">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "mini-lesson" | "recommendations" | "full-customization")}>
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="mini-lesson" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
                 Mini-Lesson
@@ -525,17 +509,13 @@ export const StockSelection = ({
                 <Star className="h-4 w-4" />
                 Recommendations
               </TabsTrigger>
-              <TabsTrigger value="custom" className="flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                Custom Portfolio
-              </TabsTrigger>
               <TabsTrigger value="full-customization" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Full Customization
               </TabsTrigger>
             </TabsList>
 
-            {/* Mini-Lesson Tab */}
+            {/* Mini-Lesson Tab - Restored to match documentation exactly */}
             <TabsContent value="mini-lesson" className="space-y-6">
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
                 <div className="flex items-center gap-3 mb-4">
@@ -544,7 +524,8 @@ export const StockSelection = ({
                 </div>
                 <p className="text-blue-800 mb-4">
                   Learn how combining different assets can reduce risk while maintaining returns. 
-                  We'll use NVIDIA (NVDA) and Amazon (AMZN) to demonstrate portfolio theory.
+                  We'll use NVIDIA (NVDA) and Amazon (AMZN) to demonstrate portfolio theory. 
+                  <strong>Note:</strong> All calculations shown are hypothetical and for educational demonstration purposes only.
                 </p>
                 
                 {isLoadingMiniLesson ? (
@@ -554,7 +535,7 @@ export const StockSelection = ({
                   </div>
                 ) : twoAssetAnalysis && customPortfolio ? (
                   <div className="space-y-6">
-                    {/* Asset Information */}
+                    {/* Asset Information Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <Card>
                         <CardHeader className="pb-3">
@@ -603,7 +584,7 @@ export const StockSelection = ({
                       </Card>
                     </div>
 
-                    {/* Interactive Slider */}
+                    {/* Interactive Two-Asset Chart */}
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-lg">Interactive Portfolio Builder</CardTitle>
@@ -654,6 +635,15 @@ export const StockSelection = ({
                       </CardContent>
                     </Card>
 
+                    {/* Two-Asset Chart Component */}
+                    {twoAssetAnalysis && customPortfolio && (
+                      <TwoAssetChart
+                        analysis={twoAssetAnalysis}
+                        customPortfolio={customPortfolio}
+                        nvdaWeight={nvdaWeight}
+                      />
+                    )}
+
                     {/* Portfolio Metrics */}
                     <Card>
                       <CardHeader>
@@ -688,22 +678,22 @@ export const StockSelection = ({
                       <Alert>
                         <Info className="h-4 w-4" />
                         <AlertDescription>
-                          <strong>Annualized Return:</strong> The average yearly growth rate of your investment 
-                          over the past 5 years.
+                          <strong>Expected Return:</strong> The average yearly growth rate of your investment 
+                          based on historical data from Yahoo Finance (monthly returns, annualized).
                         </AlertDescription>
                       </Alert>
                       <Alert>
                         <Info className="h-4 w-4" />
                         <AlertDescription>
-                          <strong>Standard Deviation:</strong> Measures how much returns vary from the average. 
-                          Higher values mean more uncertainty.
+                          <strong>Risk (Volatility):</strong> Measures how much returns vary from the average. 
+                          Higher values mean more uncertainty and potential for larger price swings.
                         </AlertDescription>
                       </Alert>
                       <Alert>
                         <Info className="h-4 w-4" />
                         <AlertDescription>
                           <strong>Sharpe Ratio:</strong> Risk-adjusted return measure. Higher values indicate 
-                          better risk-adjusted performance.
+                          better risk-adjusted performance relative to risk taken.
                         </AlertDescription>
                       </Alert>
                     </div>
@@ -712,8 +702,8 @@ export const StockSelection = ({
                     <Alert className="mt-4">
                       <Database className="h-4 w-4" />
                       <AlertDescription>
-                        <strong>Data Source:</strong> {twoAssetAnalysis?.asset1_stats?.data_source === 'yahoo_finance' ? 
-                          'Real market data from Yahoo Finance' : 'Simulated data for educational purposes'}
+                        <strong>Data Source:</strong> Real market data from Yahoo Finance (monthly returns, annualized). 
+                        <strong>Note:</strong> All calculations in this mini-lesson are hypothetical and for demonstration purposes only.
                       </AlertDescription>
                     </Alert>
                   </div>
@@ -733,7 +723,7 @@ export const StockSelection = ({
               <div className="text-center mb-6">
                 <h3 className="text-xl font-semibold mb-2">Portfolio Recommendations Dashboard</h3>
                 <p className="text-muted-foreground">
-                  AI-powered recommendations based on your {getRiskProfileDisplay().toLowerCase()} risk profile
+                  AI-powered recommendations ranked by suitability for your {getRiskProfileDisplay().toLowerCase()} risk profile
                 </p>
               </div>
 
@@ -744,7 +734,7 @@ export const StockSelection = ({
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">{recommendation.name}</CardTitle>
                         <Badge variant={index === 0 ? "default" : "secondary"}>
-                          {index === 0 ? "Top Pick" : "Option " + (index + 1)}
+                          {index === 0 ? "Top Pick" : "Alternative " + (index + 1)}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{recommendation.description}</p>
@@ -799,73 +789,61 @@ export const StockSelection = ({
                   </Card>
                 ))}
               </div>
-            </TabsContent>
 
-            {/* Custom Portfolio Tab */}
-            <TabsContent value="custom" className="space-y-6">
-              <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold mb-2">Custom Portfolio Builder</h3>
-                <p className="text-muted-foreground">
-                  Search and select individual stocks to build your own portfolio
-                </p>
-              </div>
-
-              {/* Stock Search */}
+              {/* Portfolio Customization Section - Only show after selection */}
+              {hasSelectedPortfolio && selectedStocks.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Search Stocks</CardTitle>
+                    <CardTitle className="text-lg">Customize Your Portfolio</CardTitle>
+                    <p className="text-muted-foreground">
+                      Modify the selected portfolio by adding or removing stocks
+                    </p>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Search for stocks (e.g., AAPL, MSFT, GOOGL)"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="flex-1"
-                      />
-                      {isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>}
+                  <CardContent className="space-y-6">
+                    {/* Stock Search */}
+                    <div className="space-y-4">
+                      <div className="flex gap-2">
+                    <Input
+                      placeholder="Search for stocks and ETFs (e.g., AAPL, MSFT, VOO, QQQ)"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                          className="flex-1"
+                    />
+                        {isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>}
+                  </div>
+
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {searchResults.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Search Results</h4>
+                      {searchResults.map((stock) => (
+                        <div
+                          key={stock.symbol}
+                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
+                          onClick={() => addStock(stock)}
+                        >
+                          <div>
+                            <div className="font-medium">{stock.symbol}</div>
+                            <div className="text-sm text-muted-foreground">{stock.shortname}</div>
+                          </div>
+                              <Button size="sm" variant="outline">
+                                Add
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                     </div>
 
-                    {error && (
-                      <Alert variant="destructive">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>{error}</AlertDescription>
-                      </Alert>
-                    )}
-
-                    {searchResults.length > 0 && (
-                      <div className="space-y-2">
-                        <h4 className="font-medium">Search Results</h4>
-                        {searchResults.map((stock) => (
-                          <div
-                            key={stock.symbol}
-                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                            onClick={() => addStock(stock)}
-                          >
-                            <div>
-                              <div className="font-medium">{stock.symbol}</div>
-                              <div className="text-sm text-muted-foreground">{stock.shortname}</div>
-                            </div>
-                            <Button size="sm" variant="outline">
-                              Add
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Selected Stocks */}
-              {selectedStocks.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Selected Stocks ({selectedStocks.length}/5)</CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                                  {/* Selected Stocks */}
                     <div className="space-y-4">
+                      <h4 className="font-medium">Selected Assets ({selectedStocks.length}/5) - Minimum 3 recommended</h4>
                       {selectedStocks.map((stock) => (
                         <div key={stock.symbol} className="flex items-center gap-4 p-4 border rounded-lg">
                           <div className="flex-1">
@@ -903,17 +881,9 @@ export const StockSelection = ({
                         </div>
                       ))}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* Portfolio Analytics */}
               {portfolioMetrics && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Portfolio Analytics</CardTitle>
-                  </CardHeader>
-                  <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-4 bg-green-50 rounded-lg">
                         <div className="text-2xl font-bold text-green-600">
@@ -940,18 +910,9 @@ export const StockSelection = ({
                         <div className="text-sm text-purple-700">Diversification</div>
                       </div>
                     </div>
+                    )}
                   </CardContent>
                 </Card>
-              )}
-
-              {/* Error message only for custom tab */}
-              {selectedStocks.length < 3 && (
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    Please select at least 3 stocks to continue. You currently have {selectedStocks.length} stocks selected.
-                  </AlertDescription>
-                </Alert>
               )}
             </TabsContent>
 
@@ -964,23 +925,103 @@ export const StockSelection = ({
                 </p>
               </div>
 
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  This feature allows you to select 3-5 US stock tickers and analyze the efficient frontier 
-                  to find optimal portfolio weights. Coming soon!
-                </AlertDescription>
-              </Alert>
-
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Efficient Frontier Analysis</CardTitle>
+                  <CardTitle className="text-lg">Search and Select Assets</CardTitle>
+                  <p className="text-muted-foreground">
+                    Search for stocks and ETFs to build your custom portfolio for efficient frontier analysis (3-5 assets recommended)
+                  </p>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-6">
+                  {/* Stock Search */}
+                  <div className="space-y-4">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Search for stocks and ETFs (e.g., AAPL, MSFT, VOO, QQQ)"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="flex-1"
+                      />
+                      {isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>}
+                    </div>
+
+                    {error && (
+                      <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    {searchResults.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Search Results</h4>
+                        {searchResults.map((stock) => (
+                          <div
+                            key={stock.symbol}
+                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
+                            onClick={() => addStock(stock)}
+                          >
+                            <div>
+                              <div className="font-medium">{stock.symbol}</div>
+                              <div className="text-sm text-muted-foreground">{stock.shortname}</div>
+                            </div>
+                            <Button size="sm" variant="outline">
+                              Add
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected Assets for Full Customization */}
+                  {selectedStocks.length > 0 && (
+                    <div className="space-y-4">
+                      <h4 className="font-medium">Selected Assets ({selectedStocks.length}/5) - Minimum 3 recommended</h4>
+                      {selectedStocks.map((stock) => (
+                        <div key={stock.symbol} className="flex items-center gap-4 p-4 border rounded-lg">
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <span className="font-medium">{stock.symbol}</span>
+                                {stock.name && (
+                                  <span className="text-sm text-muted-foreground ml-2">
+                                    {stock.name}
+                                  </span>
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeStock(stock.symbol)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Slider
+                                value={[stock.allocation]}
+                                onValueChange={(value) => updateAllocation(stock.symbol, value[0])}
+                                max={100}
+                                min={0}
+                                step={1}
+                                className="flex-1"
+                              />
+                              <span className="text-sm font-medium w-12 text-right">
+                                {stock.allocation.toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Efficient Frontier Placeholder */}
                   <div className="text-center py-8 text-muted-foreground">
                     <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Advanced portfolio optimization features will be available here.</p>
-                    <p className="text-sm mt-2">This will include efficient frontier calculations, covariance analysis, and optimal weight recommendations.</p>
+                    <p>Efficient Frontier analysis will be computed once you select 3-5 assets.</p>
+                    <p className="text-sm mt-2">This will include covariance analysis, optimal weight recommendations, and interactive frontier visualization.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -995,7 +1036,7 @@ export const StockSelection = ({
             </Button>
             <Button 
               onClick={handleNext}
-              disabled={activeTab === 'custom' && selectedStocks.length < 3}
+              disabled={selectedStocks.length < 3}
             >
               Continue
               <ArrowRight className="ml-2 h-4 w-4" />

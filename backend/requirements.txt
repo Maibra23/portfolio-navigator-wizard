@@ -10,3 +10,4 @@ python-dateutil==2.8.2
 alpha-vantage==3.0.0
 redis==5.0.1
 pathlib2==2.3.7
+beautifulsoup4==4.12.2

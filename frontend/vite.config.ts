@@ -10,7 +10,11 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     // Proxy API requests to FastAPI backend during development
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   plugins: [

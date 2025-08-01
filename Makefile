@@ -1,6 +1,6 @@
 # Makefile for Portfolio Navigator Wizard
 
-.PHONY: dev backend frontend prod-build prod-copy test-backend test-frontend
+.PHONY: dev backend frontend prod-build prod-copy test-backend test-frontend full-dev
 
 # Development: run both backend and frontend
 
@@ -8,8 +8,18 @@ dev:
 	cd backend && source venv/bin/activate && uvicorn main:app --reload & \
 	cd frontend && npm run dev
 
+# Full development: run with all tickers (no fast startup)
+full-dev:
+	cd backend && FAST_STARTUP=false source venv/bin/activate && uvicorn main:app --reload & \
+	cd frontend && npm run dev
+
 # Backend only
+backend:
 	cd backend && source venv/bin/activate && uvicorn main:app --reload
+
+# Backend with full ticker list
+backend-full:
+	cd backend && FAST_STARTUP=false source venv/bin/activate && uvicorn main:app --reload
 
 # Frontend only
 frontend:

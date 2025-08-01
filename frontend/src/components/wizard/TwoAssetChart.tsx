@@ -1,7 +1,18 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Line, LineChart } from 'recharts';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+
+interface AssetStats {
+  ticker: string;
+  annualized_return: number;
+  annualized_volatility: number;
+  price_history: number[];
+  last_price: number;
+  start_date: string;
+  end_date: string;
+  data_source?: string;
+}
 
 interface TwoAssetPortfolio {
   weights: [number, number];
@@ -10,129 +21,138 @@ interface TwoAssetPortfolio {
   sharpe_ratio: number;
 }
 
-interface TwoAssetChartProps {
+interface TwoAssetAnalysis {
+  ticker1: string;
+  ticker2: string;
+  asset1_stats: AssetStats;
+  asset2_stats: AssetStats;
+  correlation: number;
   portfolios: TwoAssetPortfolio[];
-  customPortfolio: TwoAssetPortfolio | null;
-  nvdaWeight: number;
-  className?: string;
 }
 
-export const TwoAssetChart = ({ 
-  portfolios, 
+interface TwoAssetChartProps {
+  analysis: TwoAssetAnalysis;
+  customPortfolio: TwoAssetPortfolio;
+  nvdaWeight: number;
+}
+
+export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
+  analysis,
   customPortfolio, 
-  nvdaWeight, 
-  className 
-}: TwoAssetChartProps) => {
-  // Prepare data for the chart
-  const chartData = portfolios.map((portfolio, index) => ({
-    risk: portfolio.risk * 100, // Convert to percentage
-    return: portfolio.return * 100, // Convert to percentage
-    name: `${(portfolio.weights[0] * 100).toFixed(0)}/${(portfolio.weights[1] * 100).toFixed(0)}`,
+  nvdaWeight
+}) => {
+  // Create portfolio comparison data
+  const portfolioData = [
+    {
+      name: '100% NVDA',
+      weights: [100, 0],
+      return: analysis.portfolios[0]?.return || 0,
+      risk: analysis.portfolios[0]?.risk || 0,
+      sharpe: analysis.portfolios[0]?.sharpe_ratio || 0,
+      type: 'static'
+    },
+    {
+      name: '75% NVDA, 25% AMZN',
+      weights: [75, 25],
+      return: analysis.portfolios[1]?.return || 0,
+      risk: analysis.portfolios[1]?.risk || 0,
+      sharpe: analysis.portfolios[1]?.sharpe_ratio || 0,
+      type: 'static'
+    },
+    {
+      name: '50% NVDA, 50% AMZN',
+      weights: [50, 50],
+      return: analysis.portfolios[2]?.return || 0,
+      risk: analysis.portfolios[2]?.risk || 0,
+      sharpe: analysis.portfolios[2]?.sharpe_ratio || 0,
+      type: 'static'
+    },
+    {
+      name: '25% NVDA, 75% AMZN',
+      weights: [25, 75],
+      return: analysis.portfolios[3]?.return || 0,
+      risk: analysis.portfolios[3]?.risk || 0,
+      sharpe: analysis.portfolios[3]?.sharpe_ratio || 0,
     type: 'static'
-  }));
-
-  // Add custom portfolio point
-  if (customPortfolio) {
-    chartData.push({
-      risk: customPortfolio.risk * 100,
-      return: customPortfolio.return * 100,
-      name: `Custom (${nvdaWeight}/${100 - nvdaWeight})`,
+    },
+    {
+      name: '100% AMZN',
+      weights: [0, 100],
+      return: analysis.portfolios[4]?.return || 0,
+      risk: analysis.portfolios[4]?.risk || 0,
+      sharpe: analysis.portfolios[4]?.sharpe_ratio || 0,
+      type: 'static'
+    },
+    {
+      name: 'Custom Portfolio',
+      weights: [nvdaWeight, 100 - nvdaWeight],
+      return: customPortfolio.return,
+      risk: customPortfolio.risk,
+      sharpe: customPortfolio.sharpe_ratio,
       type: 'custom'
-    });
-  }
-
-  const chartConfig = {
-    static: {
-      label: "Static Portfolios",
-      color: "#3b82f6",
-    },
-    custom: {
-      label: "Your Portfolio",
-      color: "#ef4444",
-    },
-  };
+    }
+  ];
 
   return (
-    <Card className={className}>
+    <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Risk vs Return Analysis</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          X-axis: Risk (Standard Deviation %), Y-axis: Expected Return (%)
+        <CardTitle className="text-lg">Portfolio Comparison</CardTitle>
+        <p className="text-muted-foreground">
+          Compare different portfolio allocations and their risk-return characteristics
         </p>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig}>
-          <ResponsiveContainer width="100%" height={300}>
-            <ScatterChart
-              data={chartData}
-              margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="risk" 
-                name="Risk" 
-                unit="%" 
-                label={{ value: 'Risk (Standard Deviation %)', position: 'bottom' }}
-              />
-              <YAxis 
-                dataKey="return" 
-                name="Return" 
-                unit="%" 
-                label={{ value: 'Expected Return (%)', angle: -90, position: 'left' }}
-              />
-              <ChartTooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div className="bg-background border rounded-lg p-2 shadow-lg">
-                        <p className="font-medium">{data.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Risk: {data.risk.toFixed(1)}% | Return: {data.return.toFixed(1)}%
-                        </p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Portfolio</TableHead>
+              <TableHead>NVDA Weight</TableHead>
+              <TableHead>AMZN Weight</TableHead>
+              <TableHead>Expected Return</TableHead>
+              <TableHead>Risk (Volatility)</TableHead>
+              <TableHead>Sharpe Ratio</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {portfolioData.map((portfolio, index) => (
+              <TableRow 
+                key={index}
+                className={portfolio.type === 'custom' ? 'bg-blue-50 font-medium' : ''}
+              >
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <span>{portfolio.name}</span>
+                    {portfolio.type === 'custom' && (
+                      <Badge variant="default" className="text-xs">
+                        Current
+                      </Badge>
+                    )}
                       </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              
-              {/* Static portfolio points */}
-              <Scatter
-                data={chartData.filter(d => d.type === 'static')}
-                fill="#3b82f6"
-                stroke="#1d4ed8"
-                strokeWidth={2}
-                dataKey="return"
-                name="Static Portfolios"
-              />
-              
-              {/* Custom portfolio point */}
-              {customPortfolio && (
-                <Scatter
-                  data={chartData.filter(d => d.type === 'custom')}
-                  fill="#ef4444"
-                  stroke="#dc2626"
-                  strokeWidth={3}
-                  dataKey="return"
-                  name="Your Portfolio"
-                />
-              )}
-            </ScatterChart>
-          </ResponsiveContainer>
-        </ChartContainer>
+                </TableCell>
+                <TableCell>{portfolio.weights[0]}%</TableCell>
+                <TableCell>{portfolio.weights[1]}%</TableCell>
+                <TableCell className="text-green-600 font-medium">
+                  {(portfolio.return * 100).toFixed(1)}%
+                </TableCell>
+                <TableCell className="text-orange-600 font-medium">
+                  {(portfolio.risk * 100).toFixed(1)}%
+                </TableCell>
+                <TableCell className="text-blue-600 font-medium">
+                  {portfolio.sharpe.toFixed(2)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
         
-        <div className="mt-4 flex flex-wrap gap-4 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            <span>Static Portfolios</span>
-          </div>
-          {customPortfolio && (
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500"></div>
-              <span>Your Portfolio</span>
-            </div>
-          )}
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <h4 className="font-medium mb-2">Key Insights:</h4>
+          <ul className="text-sm text-gray-700 space-y-1">
+            <li>• <strong>Diversification Benefit:</strong> Notice how combining NVDA and AMZN reduces overall portfolio risk</li>
+            <li>• <strong>Risk-Return Trade-off:</strong> Higher NVDA allocation increases both potential return and risk</li>
+            <li>• <strong>Sharpe Ratio:</strong> Measures risk-adjusted returns - higher values indicate better performance per unit of risk</li>
+            <li>• <strong>Correlation:</strong> These stocks have a correlation of {(analysis.correlation * 100).toFixed(0)}%, providing diversification benefits</li>
+          </ul>
         </div>
       </CardContent>
     </Card>
