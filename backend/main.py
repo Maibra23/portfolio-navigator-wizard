@@ -78,7 +78,7 @@ async def health_check():
     return {
         "status": "healthy",
         "ticker_count": ticker_count,
-        "cached_tickers": cache_status['cached_tickers_count']
+        "cached_tickers": cache_status['cached_count']
     }
 
 @app.exception_handler(Exception)

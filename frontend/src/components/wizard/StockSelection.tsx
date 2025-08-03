@@ -259,7 +259,7 @@ export const StockSelection = ({
       setIsLoadingMiniLesson(true);
       try {
         console.log('Loading mini-lesson data...');
-        const response = await fetch('http://localhost:8000/api/portfolio/two-asset-analysis?ticker1=NVDA&ticker2=AMZN');
+        const response = await fetch('/api/portfolio/two-asset-analysis?ticker1=NVDA&ticker2=AMZN');
         console.log('Mini-lesson response status:', response.status);
         
         if (response.ok) {
@@ -345,7 +345,7 @@ export const StockSelection = ({
       console.log(`Searching for: "${query}"`);
       
       // Use our enhanced backend API with the correct endpoint
-      const response = await fetch(`http://localhost:8000/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
+      const response = await fetch(`/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
 
       console.log(`Response status: ${response.status}`);
       
@@ -382,7 +382,7 @@ export const StockSelection = ({
       })));
     } catch (err) {
       console.error('Search error:', err);
-              setError(`Unable to fetch stock data: ${err instanceof Error ? err.message : 'Unknown error'}. Please check if the backend server is running on localhost:8000.`);
+              setError(`Unable to fetch stock data: ${err instanceof Error ? err.message : 'Unknown error'}. Please check if the backend server is running.`);
       setSearchResults([]);
     } finally {
       setIsLoading(false);
