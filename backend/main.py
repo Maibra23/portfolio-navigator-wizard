@@ -2,9 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
-from routers import portfolio, cookie_demo
-from utils.enhanced_data_fetcher import enhanced_data_fetcher
-from utils.ticker_store import ticker_store
+from backend.routers import portfolio, cookie_demo
+from backend.utils.enhanced_data_fetcher import enhanced_data_fetcher
+from backend.utils.ticker_store import ticker_store
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,7 +19,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,6 +32,8 @@ app.include_router(cookie_demo.router)
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup"""
+    import os
+    
     logger.info("Starting Portfolio Navigator Wizard API...")
     
     # Initialize ticker store
@@ -39,8 +41,16 @@ async def startup_event():
     logger.info(f"   S&P 500: {len(ticker_store.sp500_tickers)} tickers")
     logger.info(f"   Nasdaq 100: {len(ticker_store.nasdaq100_tickers)} tickers")
     
-    # Note: Cache warming is now optional and can be triggered via API
-    logger.info("🚀 Application ready! Use /api/portfolio/cache/warm to preload data")
+    # Check if we should do a full startup
+    fast_startup = os.environ.get('FAST_STARTUP', 'true').lower() == 'true'
+    
+    if not fast_startup:
+        logger.info("🔄 Full startup mode: Warming cache...")
+        enhanced_data_fetcher.warm_required_cache()
+        status = enhanced_data_fetcher.get_health_metrics()
+        logger.info(f"✅ Cache Status: {status['data'].get('cache_coverage', 0):.1f}% coverage")
+    else:
+        logger.info("🚀 Fast startup mode: Use /api/portfolio/cache/warm to preload data")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -73,12 +83,17 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     ticker_count = ticker_store.get_ticker_count()
-    cache_status = enhanced_data_fetcher.get_cache_status()
+    
+    try:
+        cache_status = enhanced_data_fetcher.get_cache_status()
+        cached_count = cache_status.get('cached_count', 0)
+    except:
+        cached_count = 0
     
     return {
         "status": "healthy",
         "ticker_count": ticker_count,
-        "cached_tickers": cache_status['cached_count']
+        "cached_tickers": cached_count
     }
 
 @app.exception_handler(Exception)

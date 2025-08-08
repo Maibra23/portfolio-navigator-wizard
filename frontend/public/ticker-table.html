@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticker Database</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "Inter", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 250px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .filter-group select {
+            padding: 10px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .refresh-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .export-btn {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .export-btn:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+
+        .table-container {
+            overflow-x: auto;
+            max-height: 70vh;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        thead {
+            background: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 16px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            user-select: none;
+        }
+
+        th:hover {
+            background: #e9ecef;
+        }
+
+        th.sortable::after {
+            content: '↕';
+            margin-left: 5px;
+            opacity: 0.5;
+        }
+
+        th.sort-asc::after {
+            content: '↑';
+            opacity: 1;
+        }
+
+        th.sort-desc::after {
+            content: '↓';
+            opacity: 1;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #f1f3f4;
+            vertical-align: middle;
+        }
+
+        tbody tr {
+            transition: background-color 0.3s ease;
+        }
+
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .ticker {
+            font-weight: 600;
+            color: #2c3e50;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+
+        .company-name {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .sector {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .industry {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .exchange {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .country {
+            color: #6c757d;
+        }
+
+        .data-points {
+            text-align: center;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .date {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .price {
+            font-weight: 600;
+            color: #28a745;
+            text-align: right;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #dc3545;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status.new {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.removed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .search-box {
+                min-width: auto;
+            }
+            
+            .filter-group {
+                justify-content: space-between;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Ticker Database</h1>
+            <p>Comprehensive financial data for S&P 500, NASDAQ 100, and major ETFs</p>
+        </div>
+
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search tickers, companies, sectors...">
+            </div>
+            
+            <div class="filter-group">
+                <select id="sectorFilter">
+                    <option value="">All Sectors</option>
+                </select>
+                <select id="exchangeFilter">
+                    <option value="">All Exchanges</option>
+                </select>
+                <select id="countryFilter">
+                    <option value="">All Countries</option>
+                </select>
+            </div>
+            
+            <button class="refresh-btn" id="refreshBtn">
+                <span>🔄</span>
+                Refresh
+            </button>
+            
+            <button class="export-btn" id="exportBtn">
+                📊 Export CSV
+            </button>
+        </div>
+
+        <div class="table-container">
+            <table id="tickerTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-sort="ticker">Ticker</th>
+                        <th class="sortable" data-sort="company">Company Name</th>
+                        <th class="sortable" data-sort="sector">Sector</th>
+                        <th class="sortable" data-sort="industry">Industry</th>
+                        <th class="sortable" data-sort="exchange">Exchange</th>
+                        <th class="sortable" data-sort="country">Country</th>
+                        <th class="sortable" data-sort="dataPoints">Data Points</th>
+                        <th class="sortable" data-sort="firstDate">First Date</th>
+                        <th class="sortable" data-sort="lastDate">Last Date</th>
+                        <th class="sortable" data-sort="lastPrice">Last Price</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="10" class="loading">Loading ticker data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let tickerData = [];
+        let filteredData = [];
+        let currentSort = { column: null, direction: 'asc' };
+        let refreshInterval;
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTickerData();
+            setupEventListeners();
+            startAutoRefresh();
+        });
+
+        async function loadTickerData() {
+            try {
+                console.log('Attempting to fetch data...');
+                
+                const response = await fetch('/api/portfolio/ticker-table/data?t=' + Date.now(), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                tickerData = data.tickers || [];
+                filteredData = [...tickerData];
+                
+                console.log(`Loaded ${tickerData.length} tickers`);
+                
+                populateFilters();
+                renderTable();
+                updateTableInfo();
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showError(`Connection Error: ${error.message}`);
+            }
+        }
+
+        function populateFilters() {
+            const sectors = [...new Set(tickerData.map(t => t.sector).filter(Boolean))].sort();
+            const exchanges = [...new Set(tickerData.map(t => t.exchange).filter(Boolean))].sort();
+            const countries = [...new Set(tickerData.map(t => t.country).filter(Boolean))].sort();
+
+            populateSelect('sectorFilter', sectors);
+            populateSelect('exchangeFilter', exchanges);
+            populateSelect('countryFilter', countries);
+        }
+
+        function populateSelect(selectId, options) {
+            const select = document.getElementById(selectId);
+            const currentValue = select.value;
+            
+            // Clear existing options except the first one
+            select.innerHTML = '<option value="">All ' + selectId.replace('Filter', 's') + '</option>';
+            
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                select.appendChild(optionElement);
+            });
+            
+            select.value = currentValue;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="loading">No tickers found matching your criteria</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filteredData.map(ticker => `
+                <tr>
+                    <td class="ticker">${ticker.ticker}</td>
+                    <td class="company-name">${ticker.companyName || 'N/A'}</td>
+                    <td class="sector">${ticker.sector || 'N/A'}</td>
+                    <td class="industry">${ticker.industry || 'N/A'}</td>
+                    <td class="exchange">${ticker.exchange || 'N/A'}</td>
+                    <td class="country">${ticker.country || 'N/A'}</td>
+                    <td class="data-points">${ticker.dataPoints || 0}</td>
+                    <td class="date">${formatDate(ticker.firstDate)}</td>
+                    <td class="date">${formatDate(ticker.lastDate)}</td>
+                    <td class="price">$${formatPrice(ticker.lastPrice)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            try {
+                return new Date(dateString).toLocaleDateString();
+            } catch {
+                return dateString;
+            }
+        }
+
+        function formatPrice(price) {
+            if (!price || isNaN(price)) return 'N/A';
+            return parseFloat(price).toFixed(2);
+        }
+
+        function showError(message) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="error">
+                        <h3>Connection Error</h3>
+                        <p>Unable to load ticker data: ${message}</p>
+                        <p>Please ensure the backend server is running</p>
+                    </td>
+                </tr>
+            `;
+        }
+
+        function setupEventListeners() {
+            // Search functionality
+            document.getElementById('searchInput').addEventListener('input', filterData);
+            
+            // Filter functionality
+            document.getElementById('sectorFilter').addEventListener('change', filterData);
+            document.getElementById('exchangeFilter').addEventListener('change', filterData);
+            document.getElementById('countryFilter').addEventListener('change', filterData);
+            
+            // Sort functionality
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.addEventListener('click', () => sortTable(th.dataset.sort));
+            });
+            
+            // Refresh button
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            
+            // Export button
+            document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+        }
+
+        function filterData() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const sectorFilter = document.getElementById('sectorFilter').value;
+            const exchangeFilter = document.getElementById('exchangeFilter').value;
+            const countryFilter = document.getElementById('countryFilter').value;
+
+            filteredData = tickerData.filter(ticker => {
+                const matchesSearch = !searchTerm || 
+                    ticker.ticker.toLowerCase().includes(searchTerm) ||
+                    (ticker.companyName && ticker.companyName.toLowerCase().includes(searchTerm)) ||
+                    (ticker.sector && ticker.sector.toLowerCase().includes(searchTerm)) ||
+                    (ticker.industry && ticker.industry.toLowerCase().includes(searchTerm));
+
+                const matchesSector = !sectorFilter || ticker.sector === sectorFilter;
+                const matchesExchange = !exchangeFilter || ticker.exchange === exchangeFilter;
+                const matchesCountry = !countryFilter || ticker.country === countryFilter;
+
+                return matchesSearch && matchesSector && matchesExchange && matchesCountry;
+            });
+
+            renderTable();
+            updateTableInfo();
+        }
+
+        function sortTable(column) {
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            // Update sort indicators
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+
+            const currentTh = document.querySelector(`th[data-sort="${column}"]`);
+            currentTh.classList.add(`sort-${currentSort.direction}`);
+
+            // Sort the data
+            filteredData.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+
+                // Handle numeric values
+                if (column === 'lastPrice' || column === 'dataPoints') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
+                } else {
+                    aVal = (aVal || '').toString().toLowerCase();
+                    bVal = (bVal || '').toString().toLowerCase();
+                }
+
+                if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderTable();
+        }
+
+        async function refreshData() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<span>⏳</span> Refreshing...';
+            
+            try {
+                await fetch('/api/portfolio/ticker-table/refresh?t=' + Date.now(), { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                await loadTickerData();
+                
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+                showError(`Refresh failed: ${error.message}`);
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '<span>🔄</span> Refresh';
+            }
+        }
+
+        function exportToCSV() {
+            if (filteredData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            const headers = ['Ticker', 'Company Name', 'Sector', 'Industry', 'Exchange', 'Country', 'Data Points', 'First Date', 'Last Date', 'Last Price'];
+            const csvContent = [
+                headers.join(','),
+                ...filteredData.map(ticker => [
+                    ticker.ticker,
+                                         `"${ticker.companyName || ''}"`,
+                    `"${ticker.sector || ''}"`,
+                    `"${ticker.industry || ''}"`,
+                    ticker.exchange || '',
+                    ticker.country || '',
+                                         ticker.dataPoints || 0,
+                                         ticker.firstDate || '',
+                     ticker.lastDate || '',
+                                         ticker.lastPrice || ''
+                ].join(','))
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ticker_data_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function updateTableInfo() {
+            // This function can be used to update any table statistics if needed
+            console.log(`Displaying ${filteredData.length} of ${tickerData.length} tickers`);
+        }
+
+        function startAutoRefresh() {
+            // Auto-refresh every 30 seconds
+            refreshInterval = setInterval(() => {
+                loadTickerData();
+            }, 30000);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>

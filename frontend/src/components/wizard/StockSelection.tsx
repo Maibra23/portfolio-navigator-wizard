@@ -103,6 +103,9 @@ interface AssetStats {
   start_date: string;
   end_date: string;
   data_source?: string;
+  company_name?: string;
+  sector?: string;
+  industry?: string;
 }
 
 interface TwoAssetPortfolio {
@@ -143,6 +146,17 @@ export const StockSelection = ({
   const [nvdaWeight, setNvdaWeight] = useState(50);
   const [customPortfolio, setCustomPortfolio] = useState<TwoAssetPortfolio | null>(null);
   const [isLoadingMiniLesson, setIsLoadingMiniLesson] = useState(false);
+  const [availableAssetPairs, setAvailableAssetPairs] = useState<Array<{
+    pair_id: string;
+    ticker1: string;
+    ticker2: string;
+    name1: string;
+    name2: string;
+    description: string;
+    educational_focus: string;
+  }>>([]);
+  const [selectedPairId, setSelectedPairId] = useState('nvda_amzn');
+  const [currentPair, setCurrentPair] = useState({ ticker1: 'NVDA', ticker2: 'AMZN' });
   
   // Full customization state
   const [fullCustomTickers, setFullCustomTickers] = useState<string[]>([]);
@@ -155,6 +169,8 @@ export const StockSelection = ({
 
   // Track if user has selected a portfolio recommendation
   const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
+  const [dynamicRecommendations, setDynamicRecommendations] = useState<PortfolioRecommendation[]>([]);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
 
   // Generate recommendations based on risk profile
   const generateRecommendations = (): PortfolioRecommendation[] => {
@@ -253,13 +269,104 @@ export const StockSelection = ({
 
   const recommendations = generateRecommendations();
 
-  // Load mini-lesson data
+  // Load dynamic recommendations from backend
+  useEffect(() => {
+    const loadDynamicRecommendations = async () => {
+      setIsLoadingRecommendations(true);
+      try {
+        console.log('Loading dynamic recommendations for risk profile:', riskProfile);
+        const response = await fetch(`http://127.0.0.1:8000/api/portfolio/recommendations/${riskProfile}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Dynamic recommendations received:', data);
+          
+          // Transform backend data to match frontend interface
+          const transformedRecommendations = data.map((item: {
+            portfolio: Array<{symbol: string; allocation: number; name?: string; assetType?: string}>;
+            expectedReturn: number;
+            risk: number;
+            diversificationScore: number;
+            sharpeRatio: number;
+          }, index: number) => ({
+            name: `AI Portfolio Option ${index + 1}${index === 0 ? ' (Recommended)' : ''}`,
+            description: `Optimized ${riskProfile} portfolio with real market data`,
+            allocations: item.portfolio.map((allocation) => ({
+              symbol: allocation.symbol,
+              allocation: allocation.allocation,
+              name: allocation.name || allocation.symbol,
+              assetType: allocation.assetType || 'stock'
+            })),
+            expectedReturn: item.expectedReturn,
+            risk: item.risk,
+            diversificationScore: item.diversificationScore,
+            sharpeRatio: item.sharpeRatio
+          }));
+          
+          setDynamicRecommendations(transformedRecommendations);
+        } else {
+          console.error('Failed to load dynamic recommendations, using fallback');
+          setDynamicRecommendations(recommendations); // Fallback to static
+        }
+      } catch (error) {
+        console.error('Error loading dynamic recommendations:', error);
+        setDynamicRecommendations(recommendations); // Fallback to static
+      } finally {
+        setIsLoadingRecommendations(false);
+      }
+    };
+
+    loadDynamicRecommendations();
+  }, [riskProfile, recommendations]);
+
+  // Load available asset pairs for mini-lesson
+  useEffect(() => {
+    const loadAssetPairs = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/assets');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableAssetPairs([...data.educational_pairs, { 
+            pair_id: 'random', 
+            ticker1: 'Random', 
+            ticker2: 'Random',
+            name1: 'Random Asset 1',
+            name2: 'Random Asset 2',
+            description: 'Random Asset Pair',
+            educational_focus: 'Dynamic Selection'
+          }]);
+        }
+      } catch (error) {
+        console.error('Error loading asset pairs:', error);
+      }
+    };
+
+    loadAssetPairs();
+  }, []);
+
+  // Load mini-lesson data when pair changes
   useEffect(() => {
     const loadMiniLesson = async () => {
       setIsLoadingMiniLesson(true);
       try {
-        console.log('Loading mini-lesson data...');
-        const response = await fetch('/api/portfolio/two-asset-analysis?ticker1=NVDA&ticker2=AMZN');
+        console.log('Loading mini-lesson data for:', currentPair);
+        
+        let apiUrl;
+        if (selectedPairId === 'random') {
+          // Get random pair first
+          const randomResponse = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/random-pair');
+          if (randomResponse.ok) {
+            const randomPair = await randomResponse.json();
+            setCurrentPair({ ticker1: randomPair.ticker1, ticker2: randomPair.ticker2 });
+            apiUrl = `http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=${randomPair.ticker1}&ticker2=${randomPair.ticker2}`;
+          } else {
+            apiUrl = 'http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=NVDA&ticker2=AMZN';
+          }
+        } else {
+          apiUrl = `http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=${currentPair.ticker1}&ticker2=${currentPair.ticker2}`;
+        }
+        
+        const response = await fetch(apiUrl);
         console.log('Mini-lesson response status:', response.status);
         
         if (response.ok) {
@@ -268,16 +375,16 @@ export const StockSelection = ({
           setTwoAssetAnalysis(data);
           
           // Calculate initial portfolio
-          const nvdaAllocation = nvdaWeight / 100;
-          const amznAllocation = (100 - nvdaWeight) / 100;
+          const asset1Allocation = nvdaWeight / 100;
+          const asset2Allocation = (100 - nvdaWeight) / 100;
           
-          const portfolioReturn = nvdaAllocation * data.asset1_stats.annualized_return + 
-                                 amznAllocation * data.asset2_stats.annualized_return;
+          const portfolioReturn = asset1Allocation * data.asset1_stats.annualized_return + 
+                                 asset2Allocation * data.asset2_stats.annualized_return;
           
           const portfolioRisk = Math.sqrt(
-            Math.pow(nvdaAllocation * data.asset1_stats.annualized_volatility, 2) +
-            Math.pow(amznAllocation * data.asset2_stats.annualized_volatility, 2) +
-            2 * nvdaAllocation * amznAllocation * data.asset1_stats.annualized_volatility * 
+            Math.pow(asset1Allocation * data.asset1_stats.annualized_volatility, 2) +
+            Math.pow(asset2Allocation * data.asset2_stats.annualized_volatility, 2) +
+            2 * asset1Allocation * asset2Allocation * data.asset1_stats.annualized_volatility * 
             data.asset2_stats.annualized_volatility * data.correlation
           );
           
@@ -285,7 +392,7 @@ export const StockSelection = ({
           const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioRisk;
           
           setCustomPortfolio({
-            weights: [nvdaAllocation, amznAllocation],
+            weights: [asset1Allocation, asset2Allocation],
             return: portfolioReturn,
             risk: portfolioRisk,
             sharpe_ratio: sharpeRatio
@@ -302,7 +409,7 @@ export const StockSelection = ({
     };
 
     loadMiniLesson();
-  }, []);
+  }, [selectedPairId, currentPair.ticker1, currentPair.ticker2, nvdaWeight]);
 
   // Update portfolio when weights change
   useEffect(() => {
@@ -345,7 +452,7 @@ export const StockSelection = ({
       console.log(`Searching for: "${query}"`);
       
       // Use our enhanced backend API with the correct endpoint
-      const response = await fetch(`/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
+      const response = await fetch(`http://127.0.0.1:8000/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
 
       console.log(`Response status: ${response.status}`);
       
@@ -515,7 +622,7 @@ export const StockSelection = ({
               </TabsTrigger>
             </TabsList>
 
-            {/* Mini-Lesson Tab - Restored to match documentation exactly */}
+            {/* Mini-Lesson Tab - Enhanced with Asset Selection */}
             <TabsContent value="mini-lesson" className="space-y-6">
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
                 <div className="flex items-center gap-3 mb-4">
@@ -524,9 +631,36 @@ export const StockSelection = ({
                 </div>
                 <p className="text-blue-800 mb-4">
                   Learn how combining different assets can reduce risk while maintaining returns. 
-                  We'll use NVIDIA (NVDA) and Amazon (AMZN) to demonstrate portfolio theory. 
-                  <strong>Note:</strong> All calculations shown are hypothetical and for educational demonstration purposes only.
+                  Choose from educational asset pairs or get a random comparison to explore portfolio theory.
+                  <strong>Note:</strong> All calculations shown are based on real market data and are for educational demonstration purposes only.
                 </p>
+                
+                {/* Asset Pair Selection */}
+                {availableAssetPairs.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-lg font-medium text-blue-900 mb-3">Select Asset Pair for Analysis</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {availableAssetPairs.map((pair) => (
+                        <Button
+                          key={pair.pair_id}
+                          variant={selectedPairId === pair.pair_id ? "default" : "outline"}
+                          className={`p-4 h-auto text-left ${selectedPairId === pair.pair_id ? 'bg-blue-600 text-white' : 'bg-white text-blue-900 border-blue-200'}`}
+                          onClick={() => {
+                            setSelectedPairId(pair.pair_id);
+                            if (pair.pair_id !== 'random') {
+                              setCurrentPair({ ticker1: pair.ticker1, ticker2: pair.ticker2 });
+                            }
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <div className="font-medium">{pair.description}</div>
+                            <div className="text-sm opacity-80">{pair.educational_focus}</div>
+                          </div>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 {isLoadingMiniLesson ? (
                   <div className="text-center py-8">
@@ -541,8 +675,11 @@ export const StockSelection = ({
                         <CardHeader className="pb-3">
                           <CardTitle className="text-lg flex items-center gap-2">
                             <TrendingUp className="h-5 w-5" />
-                            {twoAssetAnalysis.ticker1} (NVIDIA)
+                            {twoAssetAnalysis.ticker1}
                           </CardTitle>
+                          <p className="text-sm text-muted-foreground">
+                            {twoAssetAnalysis.asset1_stats.company_name || twoAssetAnalysis.ticker1}
+                          </p>
                         </CardHeader>
                         <CardContent className="space-y-2">
                           <div className="flex justify-between">
@@ -557,6 +694,14 @@ export const StockSelection = ({
                               {(twoAssetAnalysis.asset1_stats.annualized_volatility * 100).toFixed(1)}%
                             </span>
                           </div>
+                          {twoAssetAnalysis.asset1_stats.sector && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Sector:</span>
+                              <span className="font-medium text-blue-600">
+                                {twoAssetAnalysis.asset1_stats.sector}
+                              </span>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                       
@@ -564,8 +709,11 @@ export const StockSelection = ({
                         <CardHeader className="pb-3">
                           <CardTitle className="text-lg flex items-center gap-2">
                             <TrendingUp className="h-5 w-5" />
-                            {twoAssetAnalysis.ticker2} (Amazon)
+                            {twoAssetAnalysis.ticker2}
                           </CardTitle>
+                          <p className="text-sm text-muted-foreground">
+                            {twoAssetAnalysis.asset2_stats.company_name || twoAssetAnalysis.ticker2}
+                          </p>
                         </CardHeader>
                         <CardContent className="space-y-2">
                           <div className="flex justify-between">
@@ -580,6 +728,14 @@ export const StockSelection = ({
                               {(twoAssetAnalysis.asset2_stats.annualized_volatility * 100).toFixed(1)}%
                             </span>
                           </div>
+                          {twoAssetAnalysis.asset2_stats.sector && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Sector:</span>
+                              <span className="font-medium text-blue-600">
+                                {twoAssetAnalysis.asset2_stats.sector}
+                              </span>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     </div>
@@ -589,14 +745,14 @@ export const StockSelection = ({
                       <CardHeader>
                         <CardTitle className="text-lg">Interactive Portfolio Builder</CardTitle>
                         <p className="text-muted-foreground">
-                          Adjust the allocation between NVDA and AMZN to see how it affects your portfolio's risk and return.
+                          Adjust the allocation between {twoAssetAnalysis.ticker1} and {twoAssetAnalysis.ticker2} to see how it affects your portfolio's risk and return.
                         </p>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
-                            <span>NVDA Weight: {nvdaWeight}%</span>
-                            <span>AMZN Weight: {100 - nvdaWeight}%</span>
+                            <span>{twoAssetAnalysis.ticker1} Weight: {nvdaWeight}%</span>
+                            <span>{twoAssetAnalysis.ticker2} Weight: {100 - nvdaWeight}%</span>
                           </div>
                           <Slider
                             value={[nvdaWeight]}
@@ -615,21 +771,21 @@ export const StockSelection = ({
                             size="sm"
                             onClick={() => setPresetWeight(25)}
                           >
-                            25% NVDA
+                            25% {twoAssetAnalysis.ticker1}
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm"
                             onClick={() => setPresetWeight(50)}
                           >
-                            50% NVDA
+                            50% {twoAssetAnalysis.ticker1}
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm"
                             onClick={() => setPresetWeight(75)}
                           >
-                            75% NVDA
+                            75% {twoAssetAnalysis.ticker1}
                           </Button>
                         </div>
                       </CardContent>
@@ -721,14 +877,20 @@ export const StockSelection = ({
             {/* Recommendations Tab */}
             <TabsContent value="recommendations" className="space-y-6">
               <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold mb-2">Portfolio Recommendations Dashboard</h3>
+                <h3 className="text-xl font-semibold mb-2">AI-Powered Portfolio Recommendations</h3>
                 <p className="text-muted-foreground">
-                  AI-powered recommendations ranked by suitability for your {getRiskProfileDisplay().toLowerCase()} risk profile
+                  Real-time recommendations optimized for your {getRiskProfileDisplay().toLowerCase()} risk profile using live market data
                 </p>
               </div>
 
+              {isLoadingRecommendations ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-2 text-muted-foreground">Generating personalized recommendations...</p>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {recommendations.map((recommendation, index) => (
+                  {(dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations).map((recommendation, index) => (
                   <Card key={index} className="relative overflow-hidden">
                     <CardHeader className="pb-4">
                       <div className="flex items-center justify-between">
@@ -789,6 +951,7 @@ export const StockSelection = ({
                   </Card>
                 ))}
               </div>
+              )}
 
               {/* Portfolio Customization Section - Only show after selection */}
               {hasSelectedPortfolio && selectedStocks.length > 0 && (

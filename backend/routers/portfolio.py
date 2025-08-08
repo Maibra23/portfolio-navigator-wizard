@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
+from backend.models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from typing import List, Dict, Optional
 import logging
 import numpy as np
@@ -8,13 +8,17 @@ import pandas as pd
 import redis
 import json
 import gzip
-from utils.enhanced_data_fetcher import enhanced_data_fetcher
-from utils.ticker_store import ticker_store
+from backend.utils.enhanced_data_fetcher import enhanced_data_fetcher
+from backend.utils.ticker_store import ticker_store
+from backend.utils.port_analytics import PortfolioAnalytics
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
+
+# Initialize portfolio analytics
+portfolio_analytics = PortfolioAnalytics()
 
 @router.get("/ticker/search")
 def search_tickers(q: str, limit: int = 10):
@@ -161,27 +165,133 @@ def refresh_tickers():
 
 @router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
 def get_portfolio_recommendations(risk_profile: str):
-    """Generate portfolio recommendations based on risk profile"""
+    """Generate portfolio recommendations based on risk profile using cached data only"""
     
+    try:
+        # First, ensure cache is warmed
+        cache_status = enhanced_data_fetcher.warm_required_cache()
+        logger.info(f"Cache status: {cache_status}")
+        
+        # Define asset pools based on risk characteristics
+        asset_pools = {
+            'conservative': [
+                ('JNJ', 'Healthcare - Stable'),
+                ('PG', 'Consumer Staples'),
+                ('KO', 'Consumer Staples'),
+                ('WMT', 'Consumer Staples'),
+                ('VZ', 'Telecom - Stable'),
+                ('UNH', 'Healthcare - Stable')
+            ],
+            'moderate': [
+                ('AAPL', 'Tech - Blue Chip'),
+                ('MSFT', 'Tech - Blue Chip'),
+                ('GOOGL', 'Tech - Blue Chip'),
+                ('V', 'Fintech - Stable'),
+                ('MA', 'Fintech - Stable'),
+                ('HD', 'Retail - Stable')
+            ],
+            'aggressive': [
+                ('NVDA', 'Tech - Growth'),
+                ('TSLA', 'EV - Growth'),
+                ('AMD', 'Tech - Growth'),
+                ('ADBE', 'Tech - Growth'),
+                ('CRM', 'Tech - Growth'),
+                ('META', 'Tech - Growth')
+            ]
+        }
+        
+        # Get cached data for all assets
+        cached_assets = {}
+        for pool in asset_pools.values():
+            for ticker, _ in pool:
+                data = enhanced_data_fetcher.get_monthly_data(ticker)
+                if data and data['prices'] and len(data['prices']) >= 12:  # Minimum 1 year of data
+                    cached_assets[ticker] = {
+                        'prices': data['prices'],
+                        'name': data.get('company_name', ticker),
+                        'sector': data.get('sector', 'Unknown'),
+                        'data_points': len(data['prices'])
+                    }
+                    logger.info(f"Using {ticker} with {cached_assets[ticker]['data_points']} months of data")
+        
+        if not cached_assets:
+            raise HTTPException(status_code=500, detail="No cached data available")
+        
+        # Risk-based weights
+        risk_weights = {
+            'very-conservative': {'conservative': 0.8, 'moderate': 0.2, 'aggressive': 0.0},
+            'conservative': {'conservative': 0.6, 'moderate': 0.3, 'aggressive': 0.1},
+            'moderate': {'conservative': 0.3, 'moderate': 0.5, 'aggressive': 0.2},
+            'aggressive': {'conservative': 0.1, 'moderate': 0.4, 'aggressive': 0.5},
+            'very-aggressive': {'conservative': 0.0, 'moderate': 0.3, 'aggressive': 0.7}
+        }
+        
+        weights = risk_weights.get(risk_profile, risk_weights['moderate'])
+        responses = []
+        
+        # Generate 3 different portfolio options
+        for option in range(3):
+            allocations = []
+            total_weight = 0
+            
+            # Select assets from each pool based on risk weights
+            for pool_type, pool_weight in weights.items():
+                if pool_weight > 0:
+                    pool = asset_pools[pool_type]
+                    available_tickers = [(t, d) for t, d in pool if t in cached_assets]
+                    
+                    if available_tickers:
+                        # Select 1-2 assets based on pool weight
+                        import random
+                        num_assets = min(2, max(1, int(pool_weight * 4)))
+                        selected = random.sample(available_tickers, min(num_assets, len(available_tickers)))
+                        
+                        for ticker, description in selected:
+                            weight = (pool_weight / len(selected)) * 100
+                            allocations.append(PortfolioAllocation(
+                                symbol=ticker,
+                                allocation=weight,
+                                name=cached_assets[ticker]['name'],
+                                assetType='stock'
+                            ))
+                            total_weight += weight
+            
+            # Normalize weights to 100%
+            for alloc in allocations:
+                alloc.allocation = (alloc.allocation / total_weight) * 100
+            
+            # Calculate portfolio metrics using cached data only
+            portfolio_data = {
+                'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
+            }
+            
+            metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+            
+            responses.append(PortfolioResponse(
+                portfolio=allocations,
+                expectedReturn=metrics['expected_return'],
+                risk=metrics['risk'],  # Using risk instead of volatility
+                diversificationScore=metrics['diversification_score']
+            ))
+        
+        return responses
+        
+    except Exception as e:
+        logger.error(f"Error generating portfolio recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioResponse]:
+    """Fallback static portfolio recommendations"""
     # Define portfolio templates for each risk profile
     templates = {
         'very-conservative': [
             {
                 'name': 'Conservative Growth Seeker',
                 'allocations': [
-                    {'symbol': 'VTI', 'allocation': 15, 'name': 'Vanguard Total Stock Market ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 70, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 5, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'},
-                    {'symbol': 'BNDX', 'allocation': 10, 'name': 'Vanguard Total International Bond ETF', 'assetType': 'etf'}
-                ]
-            },
-            {
-                'name': 'Income Focus',
-                'allocations': [
-                    {'symbol': 'VYM', 'allocation': 20, 'name': 'Vanguard High Dividend Yield ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 60, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'SCHD', 'allocation': 15, 'name': 'Schwab U.S. Dividend Equity ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 5, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
+                    {'symbol': 'JNJ', 'allocation': 40, 'name': 'Johnson & Johnson', 'assetType': 'stock'},
+                    {'symbol': 'PG', 'allocation': 30, 'name': 'Procter & Gamble', 'assetType': 'stock'},
+                    {'symbol': 'KO', 'allocation': 20, 'name': 'Coca-Cola', 'assetType': 'stock'},
+                    {'symbol': 'VZ', 'allocation': 10, 'name': 'Verizon', 'assetType': 'stock'}
                 ]
             }
         ],
@@ -189,18 +299,10 @@ def get_portfolio_recommendations(risk_profile: str):
             {
                 'name': 'Balanced Conservative',
                 'allocations': [
-                    {'symbol': 'VTI', 'allocation': 40, 'name': 'Vanguard Total Stock Market ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 50, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
-                ]
-            },
-            {
-                'name': 'Dividend Growth',
-                'allocations': [
-                    {'symbol': 'VYM', 'allocation': 30, 'name': 'Vanguard High Dividend Yield ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 45, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'SCHD', 'allocation': 20, 'name': 'Schwab U.S. Dividend Equity ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 5, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
+                    {'symbol': 'JNJ', 'allocation': 35, 'name': 'Johnson & Johnson', 'assetType': 'stock'},
+                    {'symbol': 'PG', 'allocation': 30, 'name': 'Procter & Gamble', 'assetType': 'stock'},
+                    {'symbol': 'KO', 'allocation': 25, 'name': 'Coca-Cola', 'assetType': 'stock'},
+                    {'symbol': 'VZ', 'allocation': 10, 'name': 'Verizon', 'assetType': 'stock'}
                 ]
             }
         ],
@@ -208,19 +310,10 @@ def get_portfolio_recommendations(risk_profile: str):
             {
                 'name': 'Moderate Growth',
                 'allocations': [
-                    {'symbol': 'VTI', 'allocation': 60, 'name': 'Vanguard Total Stock Market ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 30, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
-                ]
-            },
-            {
-                'name': 'Growth & Value',
-                'allocations': [
-                    {'symbol': 'VUG', 'allocation': 25, 'name': 'Vanguard Growth ETF', 'assetType': 'etf'},
-                    {'symbol': 'VTV', 'allocation': 25, 'name': 'Vanguard Value ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 30, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'},
-                    {'symbol': 'VXUS', 'allocation': 10, 'name': 'Vanguard Total International Stock ETF', 'assetType': 'etf'}
+                    {'symbol': 'AAPL', 'allocation': 30, 'name': 'Apple Inc.', 'assetType': 'stock'},
+                    {'symbol': 'MSFT', 'allocation': 25, 'name': 'Microsoft', 'assetType': 'stock'},
+                    {'symbol': 'GOOGL', 'allocation': 25, 'name': 'Alphabet Inc.', 'assetType': 'stock'},
+                    {'symbol': 'AMZN', 'allocation': 20, 'name': 'Amazon.com', 'assetType': 'stock'}
                 ]
             }
         ],
@@ -228,20 +321,10 @@ def get_portfolio_recommendations(risk_profile: str):
             {
                 'name': 'Growth Focused',
                 'allocations': [
-                    {'symbol': 'VTI', 'allocation': 75, 'name': 'Vanguard Total Stock Market ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 15, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
-                ]
-            },
-            {
-                'name': 'Sector Rotation',
-                'allocations': [
-                    {'symbol': 'XLK', 'allocation': 25, 'name': 'Technology Select Sector SPDR Fund', 'assetType': 'etf'},
-                    {'symbol': 'XLF', 'allocation': 20, 'name': 'Financial Select Sector SPDR Fund', 'assetType': 'etf'},
-                    {'symbol': 'XLV', 'allocation': 20, 'name': 'Health Care Select Sector SPDR Fund', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 15, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'},
-                    {'symbol': 'VXUS', 'allocation': 10, 'name': 'Vanguard Total International Stock ETF', 'assetType': 'etf'}
+                    {'symbol': 'NVDA', 'allocation': 35, 'name': 'NVIDIA', 'assetType': 'stock'},
+                    {'symbol': 'TSLA', 'allocation': 30, 'name': 'Tesla Inc.', 'assetType': 'stock'},
+                    {'symbol': 'AMD', 'allocation': 20, 'name': 'Advanced Micro Devices', 'assetType': 'stock'},
+                    {'symbol': 'META', 'allocation': 15, 'name': 'Meta Platforms', 'assetType': 'stock'}
                 ]
             }
         ],
@@ -249,19 +332,10 @@ def get_portfolio_recommendations(risk_profile: str):
             {
                 'name': 'Maximum Growth',
                 'allocations': [
-                    {'symbol': 'VTI', 'allocation': 85, 'name': 'Vanguard Total Stock Market ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 5, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
-                ]
-            },
-            {
-                'name': 'Tech & Growth',
-                'allocations': [
-                    {'symbol': 'XLK', 'allocation': 35, 'name': 'Technology Select Sector SPDR Fund', 'assetType': 'etf'},
-                    {'symbol': 'VUG', 'allocation': 30, 'name': 'Vanguard Growth ETF', 'assetType': 'etf'},
-                    {'symbol': 'VXUS', 'allocation': 20, 'name': 'Vanguard Total International Stock ETF', 'assetType': 'etf'},
-                    {'symbol': 'AGG', 'allocation': 5, 'name': 'iShares Core U.S. Aggregate Bond ETF', 'assetType': 'etf'},
-                    {'symbol': 'VNQ', 'allocation': 10, 'name': 'Vanguard Real Estate ETF', 'assetType': 'etf'}
+                    {'symbol': 'NVDA', 'allocation': 40, 'name': 'NVIDIA', 'assetType': 'stock'},
+                    {'symbol': 'TSLA', 'allocation': 35, 'name': 'Tesla Inc.', 'assetType': 'stock'},
+                    {'symbol': 'AMD', 'allocation': 15, 'name': 'Advanced Micro Devices', 'assetType': 'stock'},
+                    {'symbol': 'META', 'allocation': 10, 'name': 'Meta Platforms', 'assetType': 'stock'}
                 ]
             }
         ]
@@ -270,66 +344,27 @@ def get_portfolio_recommendations(risk_profile: str):
     # Get templates for the risk profile, default to moderate if not found
     profile_templates = templates.get(risk_profile, templates['moderate'])
     
-    recommendations = []
+    responses = []
     for template in profile_templates:
-        # Convert template to PortfolioAllocation objects
-        allocations = [
-            PortfolioAllocation(
-                symbol=alloc['symbol'],
-                allocation=alloc['allocation'],
-                name=alloc['name'],
-                assetType=alloc['assetType']
-            ) for alloc in template['allocations']
-        ]
+        allocations = []
+        for allocation in template['allocations']:
+            allocations.append(PortfolioAllocation(
+                symbol=allocation['symbol'],
+                allocation=allocation['allocation'],
+                name=allocation['name'],
+                assetType=allocation['assetType']
+            ))
         
-        # Calculate metrics for this portfolio
-        weighted_return = 0.0
-        weighted_risk = 0.0
-        
-        for stock in allocations:
-            # Assign expected returns based on asset type and risk profile
-            if stock.assetType == 'bond':
-                base_return = 0.03
-            elif stock.assetType == 'etf':
-                base_return = 0.08
-            else:
-                base_return = 0.10
-            
-            # Adjust based on risk profile
-            risk_multiplier = {
-                'very-conservative': 0.6,
-                'conservative': 0.8,
-                'moderate': 1.0,
-                'aggressive': 1.2,
-                'very-aggressive': 1.4
-            }.get(risk_profile, 1.0)
-            
-            stock_return = base_return * risk_multiplier
-            stock_risk = base_return * 1.5 * risk_multiplier
-            
-            weighted_return += (stock.allocation / 100) * stock_return
-            weighted_risk += (stock.allocation / 100) * stock_risk
-        
-        # Calculate diversification score
-        num_assets = len(allocations)
-        max_allocation = max(stock.allocation for stock in allocations)
-        asset_diversity = min(100, num_assets * 20)
-        allocation_diversity = max(0, 100 - (max_allocation - 100/num_assets) * 2)
-        diversification_score = (asset_diversity + allocation_diversity) / 2
-        
-        # Calculate Sharpe ratio
-        risk_free_rate = 0.02
-        sharpe_ratio = (weighted_return - risk_free_rate) / weighted_risk if weighted_risk > 0 else 0
-        
-        recommendations.append(PortfolioResponse(
+        # Use fallback metrics
+        responses.append(PortfolioResponse(
             portfolio=allocations,
-            expectedReturn=weighted_return * 100,
-            risk=weighted_risk * 100,
-            diversificationScore=diversification_score,
-            sharpeRatio=sharpe_ratio
+            expectedReturn=0.10,  # 10% fallback
+            risk=0.15,  # 15% fallback
+            diversificationScore=75.0,  # 75% fallback
+            sharpeRatio=0.4  # 0.4 fallback
         ))
     
-    return recommendations
+    return responses
 
 @router.post("", response_model=PortfolioResponse)
 def create_portfolio(data: PortfolioRequest):
@@ -442,110 +477,38 @@ def two_asset_analysis(ticker1: str, ticker2: str):
         if not ticker_store.validate_ticker(ticker2):
             raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker2}")
         
-        # Get monthly data for both tickers
+        # Get monthly data for both tickers using enhanced method
         data1 = enhanced_data_fetcher.get_monthly_data(ticker1)
         data2 = enhanced_data_fetcher.get_monthly_data(ticker2)
         
         if not data1 or not data2:
             raise HTTPException(status_code=404, detail="Data not available for one or both tickers")
         
-        # Calculate basic statistics (simplified for demo)
-        prices1 = data1['prices']
-        prices2 = data2['prices']
+        # Use portfolio analytics for comprehensive analysis
+        analysis = portfolio_analytics.two_asset_analysis(
+            ticker1, data1['prices'], ticker2, data2['prices']
+        )
         
-        # Calculate returns
-        returns1 = []
-        returns2 = []
-        for i in range(1, len(prices1)):
-            if prices1[i-1] > 0:
-                returns1.append((prices1[i] - prices1[i-1]) / prices1[i-1])
-        for i in range(1, len(prices2)):
-            if prices2[i-1] > 0:
-                returns2.append((prices2[i] - prices2[i-1]) / prices2[i-1])
+        # Add additional metadata from enhanced data fetcher
+        analysis['asset1_stats'].update({
+            'sector': data1.get('sector', 'Unknown'),
+            'industry': data1.get('industry', 'Unknown'),
+            'company_name': data1.get('company_name', ticker1.upper()),
+            'start_date': data1['dates'][0] if data1['dates'] else "2020-01-01",
+            'end_date': data1['dates'][-1] if data1['dates'] else "2024-01-01",
+            'data_source': "yahoo_finance"
+        })
         
-        # Calculate annualized statistics
-        if len(returns1) > 0 and len(returns2) > 0:
-            
-            # Annualized return (assuming monthly data)
-            annualized_return1 = (np.mean(returns1) * 12) if len(returns1) > 0 else 0.15
-            annualized_return2 = (np.mean(returns2) * 12) if len(returns2) > 0 else 0.12
-            
-            # Annualized volatility
-            annualized_volatility1 = (np.std(returns1) * np.sqrt(12)) if len(returns1) > 0 else 0.25
-            annualized_volatility2 = (np.std(returns2) * np.sqrt(12)) if len(returns2) > 0 else 0.20
-            
-            # Correlation
-            min_len = min(len(returns1), len(returns2))
-            if min_len > 1:
-                correlation = np.corrcoef(returns1[:min_len], returns2[:min_len])[0, 1]
-                if np.isnan(correlation):
-                    correlation = 0.3
-            else:
-                correlation = 0.3
-        else:
-            # Fallback values
-            annualized_return1, annualized_return2 = 0.25, 0.15
-            annualized_volatility1, annualized_volatility2 = 0.35, 0.25
-            correlation = 0.3
+        analysis['asset2_stats'].update({
+            'sector': data2.get('sector', 'Unknown'),
+            'industry': data2.get('industry', 'Unknown'),
+            'company_name': data2.get('company_name', ticker2.upper()),
+            'start_date': data2['dates'][0] if data2['dates'] else "2020-01-01",
+            'end_date': data2['dates'][-1] if data2['dates'] else "2024-01-01",
+            'data_source': "yahoo_finance"
+        })
         
-        # Create portfolio combinations
-        portfolios = []
-        weights_combinations = [
-            [1.0, 0.0],    # 100% ticker1
-            [0.75, 0.25],  # 75% ticker1, 25% ticker2
-            [0.5, 0.5],    # 50% each
-            [0.25, 0.75],  # 25% ticker1, 75% ticker2
-            [0.0, 1.0]     # 100% ticker2
-        ]
-        
-        for w1, w2 in weights_combinations:
-            # Portfolio return
-            portfolio_return = w1 * annualized_return1 + w2 * annualized_return2
-            
-            # Portfolio risk
-            portfolio_risk = np.sqrt(
-                w1**2 * annualized_volatility1**2 + 
-                w2**2 * annualized_volatility2**2 + 
-                2 * w1 * w2 * annualized_volatility1 * annualized_volatility2 * correlation
-            )
-            
-            # Sharpe ratio (assuming 4% risk-free rate)
-            risk_free_rate = 0.04
-            sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
-            
-            portfolios.append({
-                "weights": [w1, w2],
-                "return": portfolio_return,
-                "risk": portfolio_risk,
-                "sharpe_ratio": sharpe_ratio
-            })
-        
-        return {
-            "ticker1": ticker1.upper(),
-            "ticker2": ticker2.upper(),
-            "asset1_stats": {
-                "ticker": ticker1.upper(),
-                "annualized_return": annualized_return1,
-                "annualized_volatility": annualized_volatility1,
-                "price_history": prices1,
-                "last_price": prices1[-1] if prices1 else 0,
-                "start_date": data1['dates'][0] if data1['dates'] else "2020-01-01",
-                "end_date": data1['dates'][-1] if data1['dates'] else "2024-01-01",
-                "data_source": "yahoo_finance"
-            },
-            "asset2_stats": {
-                "ticker": ticker2.upper(),
-                "annualized_return": annualized_return2,
-                "annualized_volatility": annualized_volatility2,
-                "price_history": prices2,
-                "last_price": prices2[-1] if prices2 else 0,
-                "start_date": data2['dates'][0] if data2['dates'] else "2020-01-01",
-                "end_date": data2['dates'][-1] if data2['dates'] else "2024-01-01",
-                "data_source": "yahoo_finance"
-            },
-            "correlation": correlation,
-            "portfolios": portfolios
-        }
+        return analysis
         
     except HTTPException:
         raise
@@ -884,4 +847,325 @@ def get_risk_rating(risk: float) -> str:
     elif risk <= 0.35:
         return "High"
     else:
-        return "Very High" 
+        return "Very High"
+
+@router.get("/ticker-table/data")
+async def get_ticker_table_data():
+    """
+    Get comprehensive ticker table data from Redis with all required fields
+    Returns: Complete ticker information for web table display
+    """
+    try:
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        import json
+        from datetime import datetime
+        
+        # Get all tickers from the enhanced data fetcher
+        all_tickers = enhanced_data_fetcher.all_tickers
+        
+        ticker_data = []
+        
+        for ticker in all_tickers:
+            try:
+                # Get price data using enhanced_data_fetcher's Redis connection
+                price_key = f"ticker_data:prices:{ticker}"
+                price_raw = enhanced_data_fetcher.r.get(price_key)
+                
+                # Get sector/company data
+                sector_key = f"ticker_data:sector:{ticker}"
+                sector_raw = enhanced_data_fetcher.r.get(sector_key)
+                
+                if price_raw and sector_raw:
+                    # Parse price data
+                    price_dict = json.loads(gzip.decompress(price_raw).decode())
+                    prices = list(price_dict.values())
+                    dates = list(price_dict.keys())
+                    
+                    # Parse sector data
+                    sector_info = json.loads(sector_raw.decode())
+                    
+                    # Calculate data points and date range
+                    data_points = len(prices)
+                    first_date = dates[0] if dates else "N/A"
+                    last_date = dates[-1] if dates else "N/A"
+                    last_price = prices[-1] if prices else 0
+                    
+                    ticker_info = {
+                        "ticker": ticker,
+                        "companyName": sector_info.get("companyName", ticker),
+                        "sector": sector_info.get("sector", "Unknown"),
+                        "industry": sector_info.get("industry", "Unknown"),
+                        "exchange": sector_info.get("exchange", "Unknown"),
+                        "country": sector_info.get("country", "Unknown"),
+                        "dataPoints": data_points,
+                        "firstDate": first_date,
+                        "lastDate": last_date,
+                        "lastPrice": round(last_price, 2) if last_price else 0,
+                        "status": "active",
+                        "lastUpdated": datetime.now().isoformat()
+                    }
+                    
+                    ticker_data.append(ticker_info)
+                else:
+                    # Missing data
+                    ticker_info = {
+                        "ticker": ticker,
+                        "companyName": ticker,
+                        "sector": "Unknown",
+                        "industry": "Unknown",
+                        "exchange": "Unknown",
+                        "country": "Unknown",
+                        "dataPoints": 0,
+                        "firstDate": "N/A",
+                        "lastDate": "N/A",
+                        "lastPrice": 0,
+                        "status": "missing_data",
+                        "lastUpdated": datetime.now().isoformat()
+                    }
+                    ticker_data.append(ticker_info)
+                    
+            except Exception as e:
+                logger.error(f"Error processing ticker {ticker}: {e}")
+                # Add error entry
+                ticker_info = {
+                    "ticker": ticker,
+                    "companyName": ticker,
+                    "sector": "Error",
+                    "industry": "Error",
+                    "exchange": "Error",
+                    "country": "Error",
+                    "dataPoints": 0,
+                    "firstDate": "N/A",
+                    "lastDate": "N/A",
+                    "lastPrice": 0,
+                    "status": "error",
+                    "lastUpdated": datetime.now().isoformat()
+                }
+                ticker_data.append(ticker_info)
+        
+        # Sort by ticker
+        ticker_data.sort(key=lambda x: x["ticker"])
+        
+        return {
+            "tickers": ticker_data,
+            "total": len(ticker_data),
+            "lastUpdated": datetime.now().isoformat(),
+            "cacheStatus": enhanced_data_fetcher.get_cache_status()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting ticker table data: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
+
+@router.post("/ticker-table/refresh")
+async def refresh_ticker_table():
+    """
+    Force refresh of all ticker data in Redis
+    """
+    try:
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        
+        # Force refresh expired data
+        enhanced_data_fetcher.force_refresh_expired_data()
+        
+        return {
+            "status": "success",
+            "message": "Ticker table refresh initiated",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing ticker table: {e}")
+        raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}") 
+
+@router.get("/mini-lesson/assets")
+def get_mini_lesson_assets():
+    """
+    Get available assets for mini-lesson with educational pairs and dynamic options
+    Returns: Fixed educational pairs and dynamic asset options
+    """
+    try:
+        # Fixed educational pairs for consistent learning
+        educational_pairs = [
+            {
+                'pair_id': 'nvda_amzn',
+                'ticker1': 'NVDA',
+                'ticker2': 'AMZN',
+                'name1': 'NVIDIA Corporation',
+                'name2': 'Amazon.com Inc.',
+                'description': 'Tech Growth vs E-commerce Giant',
+                'educational_focus': 'Growth vs Diversified Business Model'
+            },
+            {
+                'pair_id': 'jnj_tsla',
+                'ticker1': 'JNJ',
+                'ticker2': 'TSLA',
+                'name1': 'Johnson & Johnson',
+                'name2': 'Tesla Inc.',
+                'description': 'Healthcare Value vs High Volatility',
+                'educational_focus': 'Stability vs Innovation Risk'
+            }
+        ]
+        
+        # Get available assets for dynamic selection
+        available_assets = enhanced_data_fetcher.search_tickers('', limit=50)
+        
+        # Filter for popular/well-known stocks
+        popular_assets = [
+            'AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX',
+            'JPM', 'JNJ', 'PG', 'KO', 'WMT', 'UNH', 'HD', 'DIS', 'V', 'MA',
+            'PYPL', 'ADBE', 'CRM', 'ORCL', 'INTC', 'CSCO', 'PFE', 'ABT'
+        ]
+        
+        dynamic_assets = []
+        for asset in popular_assets:
+            # Check if asset is available in cache
+            if enhanced_data_fetcher._is_cached(asset, 'prices'):
+                asset_data = enhanced_data_fetcher.get_monthly_data(asset)
+                if asset_data:
+                    dynamic_assets.append({
+                        'ticker': asset,
+                        'name': asset_data.get('company_name', asset),
+                        'sector': asset_data.get('sector', 'Unknown'),
+                        'industry': asset_data.get('industry', 'Unknown')
+                    })
+        
+        return {
+            'educational_pairs': educational_pairs,
+            'dynamic_assets': dynamic_assets[:20],  # Limit to top 20
+            'total_available': len(dynamic_assets)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting mini-lesson assets: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting mini-lesson assets: {str(e)}")
+
+@router.get("/mini-lesson/random-pair")
+def get_random_asset_pair():
+    """
+    Generate a random educational asset pair from available assets
+    Returns: Random pair with different sectors for educational value
+    """
+    try:
+        # Get available assets
+        popular_assets = [
+            'AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX',
+            'JPM', 'JNJ', 'PG', 'KO', 'WMT', 'UNH', 'HD', 'DIS', 'V', 'MA'
+        ]
+        
+        available_assets = []
+        for asset in popular_assets:
+            if enhanced_data_fetcher._is_cached(asset, 'prices'):
+                asset_data = enhanced_data_fetcher.get_monthly_data(asset)
+                if asset_data:
+                    available_assets.append({
+                        'ticker': asset,
+                        'name': asset_data.get('company_name', asset),
+                        'sector': asset_data.get('sector', 'Unknown'),
+                        'industry': asset_data.get('industry', 'Unknown')
+                    })
+        
+        if len(available_assets) < 2:
+            raise HTTPException(status_code=404, detail="Insufficient assets available")
+        
+        # Try to select assets from different sectors for educational value
+        import random
+        random.shuffle(available_assets)
+        
+        asset1 = available_assets[0]
+        asset2 = None
+        
+        # Try to find an asset from a different sector
+        for asset in available_assets[1:]:
+            if asset['sector'] != asset1['sector']:
+                asset2 = asset
+                break
+        
+        # If no different sector found, just use the second asset
+        if not asset2:
+            asset2 = available_assets[1]
+        
+        return {
+            'pair_id': f"{asset1['ticker'].lower()}_{asset2['ticker'].lower()}",
+            'ticker1': asset1['ticker'],
+            'ticker2': asset2['ticker'],
+            'name1': asset1['name'],
+            'name2': asset2['name'],
+            'sector1': asset1['sector'],
+            'sector2': asset2['sector'],
+            'description': f"{asset1['sector']} vs {asset2['sector']}",
+            'educational_focus': 'Sector Diversification Analysis'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating random pair: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating random pair: {str(e)}")
+
+@router.post("/mini-lesson/custom-portfolio")
+def calculate_custom_portfolio(request: dict):
+    """
+    Calculate custom portfolio metrics for interactive slider
+    Returns: Real-time portfolio metrics for given weights
+    """
+    try:
+        ticker1 = request.get('ticker1')
+        ticker2 = request.get('ticker2')
+        weight1 = request.get('weight1', 0.5)  # Default to 50/50
+        
+        if not ticker1 or not ticker2:
+            raise HTTPException(status_code=400, detail="Both tickers required")
+        
+        # Validate weight
+        if not 0 <= weight1 <= 1:
+            raise HTTPException(status_code=400, detail="Weight must be between 0 and 1")
+        
+        # Get data for both assets
+        data1 = enhanced_data_fetcher.get_monthly_data(ticker1)
+        data2 = enhanced_data_fetcher.get_monthly_data(ticker2)
+        
+        if not data1 or not data2:
+            raise HTTPException(status_code=404, detail="Data not available for one or both tickers")
+        
+        # Calculate individual asset metrics
+        asset1_metrics = portfolio_analytics.calculate_asset_metrics(data1['prices'])
+        asset2_metrics = portfolio_analytics.calculate_asset_metrics(data2['prices'])
+        
+        # Calculate correlation
+        returns1 = pd.Series(data1['prices']).pct_change().dropna()
+        returns2 = pd.Series(data2['prices']).pct_change().dropna()
+        
+        min_length = min(len(returns1), len(returns2))
+        returns1_aligned = returns1.iloc[-min_length:]
+        returns2_aligned = returns2.iloc[-min_length:]
+        
+        correlation = returns1_aligned.corr(returns2_aligned)
+        if pd.isna(correlation):
+            correlation = 0.0
+        
+        # Calculate custom portfolio metrics
+        custom_portfolio = portfolio_analytics.calculate_custom_portfolio(
+            weight1, asset1_metrics, asset2_metrics, correlation
+        )
+        
+        return {
+            'portfolio_metrics': custom_portfolio,
+            'asset1_metrics': {
+                'ticker': ticker1.upper(),
+                'return': asset1_metrics['annualized_return'],
+                'risk': asset1_metrics['annualized_volatility'],
+                'sharpe': asset1_metrics['sharpe_ratio']
+            },
+            'asset2_metrics': {
+                'ticker': ticker2.upper(),
+                'return': asset2_metrics['annualized_return'],
+                'risk': asset2_metrics['annualized_volatility'],
+                'sharpe': asset2_metrics['sharpe_ratio']
+            },
+            'correlation': correlation
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating custom portfolio: {e}")
+        raise HTTPException(status_code=500, detail=f"Error calculating custom portfolio: {str(e)}") 

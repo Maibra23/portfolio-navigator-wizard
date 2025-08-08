@@ -16,5 +16,4 @@ class PortfolioResponse(BaseModel):
     portfolio: List[PortfolioAllocation]
     expectedReturn: float
     risk: float
-    diversificationScore: float
-    sharpeRatio: float 
+    diversificationScore: float 
