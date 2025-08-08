@@ -1,11 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from typing import List, Dict, Optional
 import logging
 import numpy as np
+import pandas as pd
+import redis
+import json
+import gzip
 from utils.enhanced_data_fetcher import enhanced_data_fetcher
 from utils.ticker_store import ticker_store
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -546,4 +551,337 @@ def two_asset_analysis(ticker1: str, ticker2: str):
         raise
     except Exception as e:
         logger.error(f"Error in two-asset analysis: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in two-asset analysis: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error in two-asset analysis: {str(e)}")
+
+# Redis connection for enhanced analytics
+redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+# Pydantic models for new endpoints
+class RiskProfile(BaseModel):
+    risk_tolerance: str
+    investment_horizon: str
+    capital: float
+
+class PortfolioAnalyticsRequest(BaseModel):
+    selected_stocks: List[PortfolioAllocation]
+    risk_profile: RiskProfile
+    capital: float
+
+# Helper function to get price data from Redis
+def get_price_data_from_redis(tickers: List[str]) -> Dict[str, pd.Series]:
+    price_data = {}
+    for ticker in tickers:
+        try:
+            # Try to get compressed data first
+            compressed_data = redis_client.get(f"price_data:{ticker}")
+            if compressed_data:
+                decompressed_data = gzip.decompress(compressed_data.encode('latin1'))
+                data = json.loads(decompressed_data.decode('utf-8'))
+                price_data[ticker] = pd.Series(data)
+            else:
+                # Fallback to uncompressed data
+                data = redis_client.get(f"price_data:{ticker}")
+                if data:
+                    price_data[ticker] = pd.Series(json.loads(data))
+        except Exception as e:
+            print(f"Error getting data for {ticker}: {e}")
+            continue
+    return price_data
+
+# Helper function to calculate annualized metrics
+def calculate_annualized_metrics(returns: pd.Series) -> Dict[str, float]:
+    if len(returns) < 2:
+        return {"return": 0.0, "risk": 0.0, "sharpe_ratio": 0.0}
+    
+    # Calculate annualized return (assuming monthly data)
+    annualized_return = (1 + returns.mean()) ** 12 - 1
+    
+    # Calculate annualized volatility
+    annualized_volatility = returns.std() * np.sqrt(12)
+    
+    # Calculate Sharpe ratio (assuming risk-free rate of 2%)
+    risk_free_rate = 0.02
+    sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility if annualized_volatility > 0 else 0
+    
+    return {
+        "return": annualized_return,
+        "risk": annualized_volatility,
+        "sharpe_ratio": sharpe_ratio
+    }
+
+# Helper function to generate efficient frontier points
+def generate_efficient_frontier_points(returns_data: Dict[str, pd.Series], selected_stocks: List[PortfolioAllocation], num_points: int = 50):
+    if len(selected_stocks) < 2:
+        return []
+    
+    tickers = [stock.symbol for stock in selected_stocks]
+    returns_df = pd.DataFrame({ticker: returns_data[ticker] for ticker in tickers if ticker in returns_data})
+    
+    if returns_df.empty or len(returns_df.columns) < 2:
+        return []
+    
+    # Calculate correlation matrix
+    correlation_matrix = returns_df.corr()
+    
+    # Monte Carlo simulation for efficient frontier
+    frontier_points = []
+    np.random.seed(42)  # For reproducibility
+    
+    for _ in range(num_points):
+        # Generate random weights
+        weights = np.random.random(len(returns_df.columns))
+        weights = weights / weights.sum()
+        
+        # Calculate portfolio return and risk
+        portfolio_return = (returns_df.mean() * weights).sum() * 12  # Annualized
+        portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 12, weights)))
+        
+        # Calculate Sharpe ratio
+        risk_free_rate = 0.02
+        sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
+        
+        frontier_points.append({
+            "return": portfolio_return,
+            "risk": portfolio_risk,
+            "sharpe_ratio": sharpe_ratio,
+            "weights": weights.tolist()
+        })
+    
+    # Sort by risk
+    frontier_points.sort(key=lambda x: x["risk"])
+    return frontier_points
+
+# Helper function to calculate diversification score
+def calculate_diversification_score(correlation_matrix: pd.DataFrame, selected_stocks: List[PortfolioAllocation]) -> float:
+    if len(selected_stocks) < 2:
+        return 0.0
+    
+    # Calculate average correlation (excluding diagonal)
+    correlations = []
+    for i in range(len(correlation_matrix)):
+        for j in range(i+1, len(correlation_matrix)):
+            correlations.append(abs(correlation_matrix.iloc[i, j]))
+    
+    avg_correlation = np.mean(correlations) if correlations else 0
+    
+    # Calculate concentration (Herfindahl index)
+    total_allocation = sum(stock.allocation for stock in selected_stocks)
+    if total_allocation == 0:
+        return 0.0
+    
+    concentration = sum((stock.allocation / total_allocation) ** 2 for stock in selected_stocks)
+    
+    # Diversification score: lower correlation and lower concentration = higher score
+    diversification_score = (1 - avg_correlation) * (1 - concentration) * len(selected_stocks) / 10
+    
+    return min(diversification_score, 1.0)  # Cap at 1.0
+
+@router.post("/analytics/risk-return-analysis")
+async def risk_return_analysis(request: PortfolioAnalyticsRequest):
+    try:
+        selected_stocks = request.selected_stocks
+        capital = request.capital
+        
+        if len(selected_stocks) < 1:
+            raise HTTPException(status_code=400, detail="At least one stock must be selected")
+        
+        # Get price data from Redis
+        tickers = [stock.symbol for stock in selected_stocks]
+        price_data = get_price_data_from_redis(tickers)
+        
+        if not price_data:
+            raise HTTPException(status_code=404, detail="No price data found for selected stocks")
+        
+        # Calculate returns for each asset
+        returns_data = {}
+        asset_metrics = {}
+        
+        for ticker in tickers:
+            if ticker in price_data:
+                prices = price_data[ticker]
+                returns = prices.pct_change().dropna()
+                returns_data[ticker] = returns
+                
+                # Calculate individual asset metrics
+                metrics = calculate_annualized_metrics(returns)
+                asset_metrics[ticker] = metrics
+        
+        # Calculate portfolio metrics
+        if len(selected_stocks) > 1:
+            # Calculate correlation matrix
+            returns_df = pd.DataFrame(returns_data)
+            correlation_matrix = returns_df.corr().fillna(0)
+            
+            # Calculate portfolio weights
+            total_allocation = sum(stock.allocation for stock in selected_stocks)
+            weights = np.array([stock.allocation / total_allocation for stock in selected_stocks])
+            
+            # Calculate portfolio return and risk
+            asset_returns = np.array([asset_metrics[ticker]["return"] for ticker in tickers])
+            portfolio_return = np.dot(weights, asset_returns)
+            
+            # Calculate portfolio risk using correlation matrix
+            asset_risks = np.array([asset_metrics[ticker]["risk"] for ticker in tickers])
+            portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(correlation_matrix * np.outer(asset_risks, asset_risks), weights)))
+            
+            # Calculate portfolio Sharpe ratio
+            risk_free_rate = 0.02
+            portfolio_sharpe = (portfolio_return - risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
+            
+            # Calculate diversification score
+            diversification_score = calculate_diversification_score(correlation_matrix, selected_stocks)
+            
+            # Generate efficient frontier
+            efficient_frontier = generate_efficient_frontier_points(returns_data, selected_stocks)
+            
+        else:
+            # Single asset portfolio
+            ticker = tickers[0]
+            portfolio_return = asset_metrics[ticker]["return"]
+            portfolio_risk = asset_metrics[ticker]["risk"]
+            portfolio_sharpe = asset_metrics[ticker]["sharpe_ratio"]
+            diversification_score = 0.0
+            correlation_matrix = pd.DataFrame()
+            efficient_frontier = []
+        
+        # Prepare response
+        response = {
+            "portfolio_metrics": {
+                "expected_return": portfolio_return,
+                "risk": portfolio_risk,
+                "sharpe_ratio": portfolio_sharpe,
+                "diversification_score": diversification_score
+            },
+            "asset_metrics": asset_metrics,
+            "correlation_matrix": correlation_matrix.to_dict() if not correlation_matrix.empty else {},
+            "efficient_frontier": efficient_frontier,
+            "selected_stocks": [{"ticker": stock.symbol, "allocation": stock.allocation} for stock in selected_stocks],
+            "capital": capital
+        }
+        
+        return response
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating risk-return analysis: {str(e)}")
+
+@router.get("/sector-distribution/enhanced")
+async def enhanced_sector_distribution():
+    try:
+        # Get all tickers from Redis
+        all_keys = redis_client.keys("sector_data:*")
+        tickers = [key.split(":")[1] for key in all_keys]
+        
+        if not tickers:
+            raise HTTPException(status_code=404, detail="No sector data found")
+        
+        # Get sector data for all tickers
+        sector_data = {}
+        for ticker in tickers:
+            try:
+                sector_info = redis_client.get(f"sector_data:{ticker}")
+                if sector_info:
+                    sector_data[ticker] = json.loads(sector_info)
+            except Exception as e:
+                print(f"Error getting sector data for {ticker}: {e}")
+                continue
+        
+        # Group by sector
+        sectors = {}
+        for ticker, data in sector_data.items():
+            sector = data.get("sector", "Unknown")
+            if sector not in sectors:
+                sectors[sector] = {
+                    "tickers": [],
+                    "industries": set(),
+                    "exchanges": set(),
+                    "countries": set(),
+                    "returns": [],
+                    "risks": [],
+                    "sharpe_ratios": []
+                }
+            
+            sectors[sector]["tickers"].append(ticker)
+            sectors[sector]["industries"].add(data.get("industry", "Unknown"))
+            sectors[sector]["exchanges"].add(data.get("exchange", "Unknown"))
+            sectors[sector]["countries"].add(data.get("country", "Unknown"))
+            
+            # Get performance metrics
+            try:
+                price_data = get_price_data_from_redis([ticker])
+                if ticker in price_data:
+                    prices = price_data[ticker]
+                    returns = prices.pct_change().dropna()
+                    metrics = calculate_annualized_metrics(returns)
+                    sectors[sector]["returns"].append(metrics["return"])
+                    sectors[sector]["risks"].append(metrics["risk"])
+                    sectors[sector]["sharpe_ratios"].append(metrics["sharpe_ratio"])
+            except Exception as e:
+                print(f"Error calculating metrics for {ticker}: {e}")
+        
+        # Calculate sector-level metrics
+        sector_analysis = []
+        for sector, data in sectors.items():
+            avg_return = np.mean(data["returns"]) if data["returns"] else 0
+            avg_risk = np.mean(data["risks"]) if data["risks"] else 0
+            avg_sharpe = np.mean(data["sharpe_ratios"]) if data["sharpe_ratios"] else 0
+            
+            sector_analysis.append({
+                "sector": sector,
+                "ticker_count": len(data["tickers"]),
+                "tickers": data["tickers"],
+                "industries": list(data["industries"]),
+                "exchanges": list(data["exchanges"]),
+                "countries": list(data["countries"]),
+                "average_return": avg_return,
+                "average_risk": avg_risk,
+                "average_sharpe_ratio": avg_sharpe,
+                "performance_rating": get_performance_rating(avg_sharpe),
+                "risk_rating": get_risk_rating(avg_risk)
+            })
+        
+        # Sort by average Sharpe ratio
+        sector_analysis.sort(key=lambda x: x["average_sharpe_ratio"], reverse=True)
+        
+        # Calculate market overview
+        all_returns = [s["average_return"] for s in sector_analysis if s["average_return"] > 0]
+        all_risks = [s["average_risk"] for s in sector_analysis if s["average_risk"] > 0]
+        all_sharpes = [s["average_sharpe_ratio"] for s in sector_analysis if s["average_sharpe_ratio"] > 0]
+        
+        market_overview = {
+            "best_performing_sector": sector_analysis[0]["sector"] if sector_analysis else None,
+            "highest_risk_sector": max(sector_analysis, key=lambda x: x["average_risk"])["sector"] if sector_analysis else None,
+            "most_diversified_sector": max(sector_analysis, key=lambda x: len(x["industries"]))["sector"] if sector_analysis else None,
+            "total_sectors": len(sector_analysis),
+            "total_tickers": sum(s["ticker_count"] for s in sector_analysis),
+            "market_average_return": np.mean(all_returns) if all_returns else 0,
+            "market_average_risk": np.mean(all_risks) if all_risks else 0,
+            "market_average_sharpe": np.mean(all_sharpes) if all_sharpes else 0
+        }
+        
+        return {
+            "sectors": sector_analysis,
+            "market_overview": market_overview
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating sector distribution: {str(e)}")
+
+def get_performance_rating(sharpe_ratio: float) -> str:
+    if sharpe_ratio >= 1.0:
+        return "Excellent"
+    elif sharpe_ratio >= 0.5:
+        return "Good"
+    elif sharpe_ratio >= 0.0:
+        return "Fair"
+    else:
+        return "Poor"
+
+def get_risk_rating(risk: float) -> str:
+    if risk <= 0.15:
+        return "Low"
+    elif risk <= 0.25:
+        return "Medium"
+    elif risk <= 0.35:
+        return "High"
+    else:
+        return "Very High" 
