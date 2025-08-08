@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ticker Database - Portfolio Navigator Wizard</title>
+    <title>Enhanced Ticker Database - Portfolio Navigator Wizard</title>
     <style>
         * {
             margin: 0;
@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             background: white;
             border-radius: 16px;
@@ -45,7 +45,67 @@
             font-size: 1.1rem;
             opacity: 0.9;
             font-weight: 300;
+            margin-bottom: 15px;
         }
+
+        .system-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .system-info h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .features-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .feature-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: white;
+        }
+
+        .stats-bar {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            border-bottom: 1px solid #e9ecef;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .stat-cached { color: #28a745; }
+        .stat-not-cached { color: #ffc107; }
+        .stat-errors { color: #dc3545; }
+        .stat-eligible { color: #17a2b8; }
 
         .controls {
             padding: 20px 30px;
@@ -60,6 +120,7 @@
         .search-box {
             flex: 1;
             min-width: 250px;
+            position: relative;
         }
 
         .search-box input {
@@ -90,6 +151,12 @@
             font-size: 14px;
             background: white;
             cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: #667eea;
         }
 
         .refresh-btn {
@@ -102,11 +169,36 @@
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .refresh-btn:hover:not(:disabled) {
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .export-btn {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .export-btn:hover {
+            background: #218838;
+            transform: translateY(-1px);
         }
 
         .table-container {
@@ -224,23 +316,81 @@
             text-align: right;
         }
 
-        .return {
-            font-weight: 600;
-            text-align: right;
+        .cache-status {
+            font-size: 12px;
+            font-weight: 500;
+            text-align: center;
         }
 
-        .return.positive {
+        .cache-status.cached {
             color: #28a745;
         }
 
-        .return.negative {
+        .cache-status.not-cached {
+            color: #ffc107;
+        }
+
+        .cache-status.error {
             color: #dc3545;
         }
 
-        .risk {
+        .data-quality {
+            font-size: 12px;
+            font-weight: 500;
+            text-align: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+
+        .data-quality.excellent {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .data-quality.good {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .data-quality.fair {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .data-quality.poor {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .years-covered {
+            text-align: center;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .ttl-hours {
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .source {
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+        }
+
+        .recommendation-eligible {
+            text-align: center;
+        }
+
+        .eligible-yes {
+            color: #28a745;
             font-weight: 600;
-            text-align: right;
-            color: #fd7e14;
+        }
+
+        .eligible-no {
+            color: #6c757d;
         }
 
         .loading {
@@ -253,6 +403,29 @@
             text-align: center;
             padding: 40px;
             color: #dc3545;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status.new {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.removed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
         }
 
         @media (max-width: 768px) {
@@ -272,14 +445,56 @@
             .header h1 {
                 font-size: 2rem;
             }
+
+            .stats-bar {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Ticker Database</h1>
-            <p>Portfolio Navigator Wizard - Simple and functional ticker data</p>
+            <h1>Enhanced Ticker Database</h1>
+            <p>Portfolio Navigator Wizard - Redis-powered financial data with portfolio recommendations</p>
+            <div class="system-info">
+                <h3>🚀 Enhanced Data System Features</h3>
+                <div class="features-list">
+                    <span class="feature-badge">Portfolio Recommendations</span>
+                    <span class="feature-badge">Diversification Scoring</span>
+                    <span class="feature-badge">Real-time Search</span>
+                    <span class="feature-badge">Weight Editor</span>
+                    <span class="feature-badge">Cache Warming</span>
+                    <span class="feature-badge">Redis Integration</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-item">
+                <div class="stat-number" id="totalTickers">-</div>
+                <div class="stat-label">Total Tickers</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number stat-cached" id="cachedTickers">-</div>
+                <div class="stat-label">Cached</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number stat-not-cached" id="notCachedTickers">-</div>
+                <div class="stat-label">Not Cached</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number stat-errors" id="errorTickers">-</div>
+                <div class="stat-label">Errors</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number stat-eligible" id="eligibleTickers">-</div>
+                <div class="stat-label">Recommendation Eligible</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="cacheCoverage">-</div>
+                <div class="stat-label">Cache Coverage %</div>
+            </div>
         </div>
 
         <div class="controls">
@@ -294,10 +509,29 @@
                 <select id="exchangeFilter">
                     <option value="">All Exchanges</option>
                 </select>
+                <select id="cacheStatusFilter">
+                    <option value="">All Cache Status</option>
+                    <option value="cached">✅ Cached</option>
+                    <option value="not_cached">❌ Not Cached</option>
+                    <option value="missing_data">⚠️ Incomplete</option>
+                    <option value="error">❌ Error</option>
+                </select>
+                <select id="dataQualityFilter">
+                    <option value="">All Data Quality</option>
+                    <option value="Excellent">Excellent</option>
+                    <option value="Good">Good</option>
+                    <option value="Fair">Fair</option>
+                    <option value="Poor">Poor</option>
+                </select>
             </div>
             
             <button class="refresh-btn" id="refreshBtn">
-                �� Refresh
+                <span>🔄</span>
+                Refresh
+            </button>
+            
+            <button class="export-btn" id="exportBtn">
+                📊 Export CSV
             </button>
         </div>
 
@@ -312,16 +546,20 @@
                         <th class="sortable" data-sort="exchange">Exchange</th>
                         <th class="sortable" data-sort="country">Country</th>
                         <th class="sortable" data-sort="dataPoints">Data Points</th>
+                        <th class="sortable" data-sort="yearsCovered">Years</th>
+                        <th class="sortable" data-sort="dataQuality">Quality</th>
+                        <th class="sortable" data-sort="cacheStatus">Cache Status</th>
+                        <th class="sortable" data-sort="ttlHours">TTL (hrs)</th>
                         <th class="sortable" data-sort="firstDate">First Date</th>
                         <th class="sortable" data-sort="lastDate">Last Date</th>
                         <th class="sortable" data-sort="lastPrice">Last Price</th>
-                        <th class="sortable" data-sort="annualizedReturn">Return %</th>
-                        <th class="sortable" data-sort="annualizedRisk">Risk %</th>
+                        <th class="sortable" data-sort="source">Source</th>
+                        <th class="sortable" data-sort="recommendationEligible">Portfolio Ready</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
                     <tr>
-                        <td colspan="12" class="loading">Loading ticker data...</td>
+                        <td colspan="16" class="loading">Loading enhanced ticker data...</td>
                     </tr>
                 </tbody>
             </table>
@@ -332,16 +570,18 @@
         let tickerData = [];
         let filteredData = [];
         let currentSort = { column: null, direction: 'asc' };
+        let refreshInterval;
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
             loadTickerData();
             setupEventListeners();
+            startAutoRefresh();
         });
 
         async function loadTickerData() {
             try {
-                console.log('Loading ticker data...');
+                console.log('Loading enhanced ticker data...');
                 
                 const response = await fetch('/api/portfolio/ticker-table/data?t=' + Date.now(), {
                     method: 'GET',
@@ -358,10 +598,13 @@
                 tickerData = data.tickers || [];
                 filteredData = [...tickerData];
                 
-                console.log(`Loaded ${tickerData.length} tickers`);
+                console.log(`Loaded ${tickerData.length} tickers with enhanced data`);
+                console.log('System info:', data.systemInfo);
                 
+                updateStats(data.summary);
                 populateFilters();
                 renderTable();
+                updateTableInfo();
                 
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -369,12 +612,25 @@
             }
         }
 
+        function updateStats(summary) {
+            document.getElementById('totalTickers').textContent = summary.total || 0;
+            document.getElementById('cachedTickers').textContent = summary.cached || 0;
+            document.getElementById('notCachedTickers').textContent = summary.notCached || 0;
+            document.getElementById('errorTickers').textContent = summary.errors || 0;
+            document.getElementById('eligibleTickers').textContent = summary.recommendationEligible || 0;
+            document.getElementById('cacheCoverage').textContent = (summary.cacheCoverage || 0) + '%';
+        }
+
         function populateFilters() {
             const sectors = [...new Set(tickerData.map(t => t.sector).filter(Boolean))].sort();
             const exchanges = [...new Set(tickerData.map(t => t.exchange).filter(Boolean))].sort();
+            const cacheStatuses = [...new Set(tickerData.map(t => t.status).filter(Boolean))].sort();
+            const dataQualities = [...new Set(tickerData.map(t => t.dataQuality).filter(Boolean))].sort();
 
             populateSelect('sectorFilter', sectors);
             populateSelect('exchangeFilter', exchanges);
+            populateSelect('cacheStatusFilter', cacheStatuses);
+            populateSelect('dataQualityFilter', dataQualities);
         }
 
         function populateSelect(selectId, options) {
@@ -400,7 +656,7 @@
             const tbody = document.getElementById('tableBody');
             
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" class="loading">No tickers found matching your criteria</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="16" class="loading">No tickers found matching your criteria</td></tr>';
                 return;
             }
 
@@ -413,11 +669,19 @@
                     <td class="exchange">${ticker.exchange || 'N/A'}</td>
                     <td class="country">${ticker.country || 'N/A'}</td>
                     <td class="data-points">${ticker.dataPoints || 0}</td>
+                    <td class="years-covered">${ticker.yearsCovered || 0}</td>
+                    <td class="data-quality ${(ticker.dataQuality || '').toLowerCase()}">${ticker.dataQuality || 'N/A'}</td>
+                    <td class="cache-status ${ticker.status}">${ticker.cacheStatus || 'N/A'}</td>
+                    <td class="ttl-hours">${ticker.ttlHours || 0}</td>
                     <td class="date">${formatDate(ticker.firstDate)}</td>
                     <td class="date">${formatDate(ticker.lastDate)}</td>
                     <td class="price">$${formatPrice(ticker.lastPrice)}</td>
-                    <td class="return ${(ticker.annualizedReturn || 0) >= 0 ? 'positive' : 'negative'}">${formatPercentage(ticker.annualizedReturn)}</td>
-                    <td class="risk">${formatPercentage(ticker.annualizedRisk)}</td>
+                    <td class="source">${ticker.source || 'N/A'}</td>
+                    <td class="recommendation-eligible">
+                        <span class="${ticker.recommendationEligible ? 'eligible-yes' : 'eligible-no'}">
+                            ${ticker.recommendationEligible ? '✅ Yes' : '❌ No'}
+                        </span>
+                    </td>
                 </tr>
             `).join('');
         }
@@ -436,18 +700,13 @@
             return parseFloat(price).toFixed(2);
         }
 
-        function formatPercentage(value) {
-            if (!value || isNaN(value)) return 'N/A';
-            return parseFloat(value).toFixed(2) + '%';
-        }
-
         function showError(message) {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="12" class="error">
+                    <td colspan="16" class="error">
                         <h3>Connection Error</h3>
-                        <p>Unable to load ticker data: ${message}</p>
+                        <p>Unable to load enhanced ticker data: ${message}</p>
                         <p>Please ensure the backend server is running</p>
                     </td>
                 </tr>
@@ -461,6 +720,8 @@
             // Filter functionality
             document.getElementById('sectorFilter').addEventListener('change', filterData);
             document.getElementById('exchangeFilter').addEventListener('change', filterData);
+            document.getElementById('cacheStatusFilter').addEventListener('change', filterData);
+            document.getElementById('dataQualityFilter').addEventListener('change', filterData);
             
             // Sort functionality
             document.querySelectorAll('th.sortable').forEach(th => {
@@ -469,12 +730,17 @@
             
             // Refresh button
             document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            
+            // Export button
+            document.getElementById('exportBtn').addEventListener('click', exportToCSV);
         }
 
         function filterData() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const sectorFilter = document.getElementById('sectorFilter').value;
             const exchangeFilter = document.getElementById('exchangeFilter').value;
+            const cacheStatusFilter = document.getElementById('cacheStatusFilter').value;
+            const dataQualityFilter = document.getElementById('dataQualityFilter').value;
 
             filteredData = tickerData.filter(ticker => {
                 const matchesSearch = !searchTerm || 
@@ -485,11 +751,14 @@
 
                 const matchesSector = !sectorFilter || ticker.sector === sectorFilter;
                 const matchesExchange = !exchangeFilter || ticker.exchange === exchangeFilter;
+                const matchesCacheStatus = !cacheStatusFilter || ticker.status === cacheStatusFilter;
+                const matchesDataQuality = !dataQualityFilter || ticker.dataQuality === dataQualityFilter;
 
-                return matchesSearch && matchesSector && matchesExchange;
+                return matchesSearch && matchesSector && matchesExchange && matchesCacheStatus && matchesDataQuality;
             });
 
             renderTable();
+            updateTableInfo();
         }
 
         function sortTable(column) {
@@ -514,7 +783,7 @@
                 let bVal = b[column];
 
                 // Handle numeric values
-                if (column === 'lastPrice' || column === 'dataPoints' || column === 'annualizedReturn' || column === 'annualizedRisk') {
+                if (column === 'lastPrice' || column === 'dataPoints' || column === 'yearsCovered' || column === 'ttlHours') {
                     aVal = parseFloat(aVal) || 0;
                     bVal = parseFloat(bVal) || 0;
                 } else {
@@ -533,18 +802,89 @@
         async function refreshData() {
             const refreshBtn = document.getElementById('refreshBtn');
             refreshBtn.disabled = true;
-            refreshBtn.innerHTML = '⏳ Refreshing...';
+            refreshBtn.innerHTML = '<span>⏳</span> Refreshing...';
             
             try {
+                await fetch('/api/portfolio/ticker-table/refresh?t=' + Date.now(), { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
                 await loadTickerData();
+                
             } catch (error) {
                 console.error('Error refreshing data:', error);
                 showError(`Refresh failed: ${error.message}`);
             } finally {
                 refreshBtn.disabled = false;
-                refreshBtn.innerHTML = '🔄 Refresh';
+                refreshBtn.innerHTML = '<span>🔄</span> Refresh';
             }
         }
+
+        function exportToCSV() {
+            if (filteredData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            const headers = [
+                'Ticker', 'Company Name', 'Sector', 'Industry', 'Exchange', 'Country', 
+                'Data Points', 'Years Covered', 'Data Quality', 'Cache Status', 'TTL Hours',
+                'First Date', 'Last Date', 'Last Price', 'Source', 'Portfolio Ready'
+            ];
+            
+            const csvContent = [
+                headers.join(','),
+                ...filteredData.map(ticker => [
+                    ticker.ticker,
+                    `"${ticker.companyName || ''}"`,
+                    `"${ticker.sector || ''}"`,
+                    `"${ticker.industry || ''}"`,
+                    ticker.exchange || '',
+                    ticker.country || '',
+                    ticker.dataPoints || 0,
+                    ticker.yearsCovered || 0,
+                    ticker.dataQuality || '',
+                    ticker.cacheStatus || '',
+                    ticker.ttlHours || 0,
+                    ticker.firstDate || '',
+                    ticker.lastDate || '',
+                    ticker.lastPrice || '',
+                    ticker.source || '',
+                    ticker.recommendationEligible ? 'Yes' : 'No'
+                ].join(','))
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `enhanced_ticker_data_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function updateTableInfo() {
+            console.log(`Displaying ${filteredData.length} of ${tickerData.length} tickers`);
+        }
+
+        function startAutoRefresh() {
+            // Auto-refresh every 30 seconds
+            refreshInterval = setInterval(() => {
+                loadTickerData();
+            }, 30000);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
     </script>
 </body>
 </html>

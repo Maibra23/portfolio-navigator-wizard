@@ -110,8 +110,7 @@ class PortfolioAnalytics:
                 'asset1_stats': {
                     'ticker': ticker1.upper(),
                     'annualized_return': asset1_metrics['annualized_return'],
-                    'annualized_volatility': asset1_metrics['annualized_volatility'],
-                    'sharpe_ratio': asset1_metrics['sharpe_ratio'],
+                    'annualized_volatility': asset1_metrics['risk'],
                     'price_history': prices1,
                     'last_price': prices1[-1] if prices1 else 0,
                     'data_points': asset1_metrics['data_points'],
@@ -120,8 +119,7 @@ class PortfolioAnalytics:
                 'asset2_stats': {
                     'ticker': ticker2.upper(),
                     'annualized_return': asset2_metrics['annualized_return'],
-                    'annualized_volatility': asset2_metrics['annualized_volatility'],
-                    'sharpe_ratio': asset2_metrics['sharpe_ratio'],
+                    'annualized_volatility': asset2_metrics['risk'],
                     'price_history': prices2,
                     'last_price': prices2[-1] if prices2 else 0,
                     'data_points': asset2_metrics['data_points'],
@@ -408,10 +406,10 @@ class PortfolioAnalytics:
             
             # Portfolio risk
             portfolio_risk = np.sqrt(
-                w1**2 * asset1_metrics['annualized_volatility']**2 + 
-                w2**2 * asset2_metrics['annualized_volatility']**2 + 
-                2 * w1 * w2 * asset1_metrics['annualized_volatility'] * 
-                asset2_metrics['annualized_volatility'] * correlation
+                w1**2 * asset1_metrics['risk']**2 + 
+                w2**2 * asset2_metrics['risk']**2 + 
+                2 * w1 * w2 * asset1_metrics['risk'] * 
+                asset2_metrics['risk'] * correlation
             )
             
             # Sharpe ratio
@@ -455,20 +453,17 @@ class PortfolioAnalytics:
             
             # Portfolio risk
             portfolio_risk = np.sqrt(
-                w1**2 * asset1_metrics['annualized_volatility']**2 + 
-                w2**2 * asset2_metrics['annualized_volatility']**2 + 
-                2 * w1 * w2 * asset1_metrics['annualized_volatility'] * 
-                asset2_metrics['annualized_volatility'] * correlation
+                w1**2 * asset1_metrics['risk']**2 + 
+                w2**2 * asset2_metrics['risk']**2 + 
+                2 * w1 * w2 * asset1_metrics['risk'] * 
+                asset2_metrics['risk'] * correlation
             )
-            
-            # Sharpe ratio
-            sharpe_ratio = (portfolio_return - self.risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
             
             return {
                 "weights": [w1, w2],
                 "return": portfolio_return,
                 "risk": portfolio_risk,
-                "sharpe_ratio": sharpe_ratio,
+                "sharpe_ratio": 0, # Removed Sharpe ratio calculation
                 "weight_asset1_pct": w1 * 100,
                 "weight_asset2_pct": w2 * 100,
                 "diversification_benefit": self._calculate_diversification_benefit(
@@ -494,14 +489,14 @@ class PortfolioAnalytics:
         try:
             # Portfolio risk
             portfolio_risk = np.sqrt(
-                w1**2 * asset1_metrics['annualized_volatility']**2 + 
-                w2**2 * asset2_metrics['annualized_volatility']**2 + 
-                2 * w1 * w2 * asset1_metrics['annualized_volatility'] * 
-                asset2_metrics['annualized_volatility'] * correlation
+                w1**2 * asset1_metrics['risk']**2 + 
+                w2**2 * asset2_metrics['risk']**2 + 
+                2 * w1 * w2 * asset1_metrics['risk'] * 
+                asset2_metrics['risk'] * correlation
             )
             
             # Weighted average of individual risks
-            weighted_avg_risk = w1 * asset1_metrics['annualized_volatility'] + w2 * asset2_metrics['annualized_volatility']
+            weighted_avg_risk = w1 * asset1_metrics['risk'] + w2 * asset2_metrics['risk']
             
             # Diversification benefit (risk reduction)
             benefit = (weighted_avg_risk - portfolio_risk) / weighted_avg_risk if weighted_avg_risk > 0 else 0
@@ -523,7 +518,7 @@ class PortfolioAnalytics:
         }
         
         # Risk comparison
-        if asset1_metrics['annualized_volatility'] > asset2_metrics['annualized_volatility']:
+        if asset1_metrics['risk'] > asset2_metrics['risk']:
             insights['risk_comparison'] = f"{asset1_metrics.get('ticker', 'Asset 1')} is more volatile than {asset2_metrics.get('ticker', 'Asset 2')}"
         else:
             insights['risk_comparison'] = f"{asset2_metrics.get('ticker', 'Asset 2')} is more volatile than {asset1_metrics.get('ticker', 'Asset 1')}"
@@ -547,7 +542,7 @@ class PortfolioAnalytics:
     def _select_assets_by_risk(self, rule: Dict, conservative: List[str], 
                               moderate: List[str], aggressive: List[str]) -> List[Dict]:
         """Select assets based on risk allocation rules with real data"""
-        from backend.utils.enhanced_data_fetcher import enhanced_data_fetcher
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
         
         selected_assets = []
         
@@ -626,34 +621,50 @@ class PortfolioAnalytics:
         
         return selected_assets
     
-    def calculate_real_portfolio_metrics(self, selected_assets: List[Dict]) -> Dict:
-        """Calculate portfolio metrics using real data from selected assets"""
-        from backend.utils.enhanced_data_fetcher import enhanced_data_fetcher
+    def calculate_real_portfolio_metrics(self, portfolio_data: Dict) -> Dict:
+        """Calculate portfolio metrics using real data from portfolio allocations"""
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
         
         try:
-            if not selected_assets:
+            allocations = portfolio_data.get('allocations', [])
+            if not allocations:
                 return self._get_fallback_portfolio_metrics()
             
             # Get real data for each asset
             asset_returns = []
             weights = []
             
-            for asset in selected_assets:
-                ticker = asset['symbol']
-                weight = asset['allocation'] / 100  # Convert percentage to decimal
+            for allocation in allocations:
+                ticker = allocation['symbol']
+                weight = allocation['allocation'] / 100  # Convert percentage to decimal
                 
-                # Get monthly data
-                data = enhanced_data_fetcher.get_monthly_data(ticker)
-                if data and data['prices']:
-                    # Convert list to numpy array first
-                    prices = np.array(data['prices'], dtype=float)
-                    returns = pd.Series(prices).pct_change().dropna()
+                # Get pre-calculated metrics from cache first
+                cached_metrics = enhanced_data_fetcher.get_cached_metrics(ticker)
+                if cached_metrics:
+                    # Use cached metrics for faster calculation
+                    annual_return = cached_metrics['annualized_return']
+                    annual_risk = cached_metrics['risk']
+                    
+                    # Create synthetic returns for portfolio calculation
+                    # This is a simplified approach using the metrics
+                    monthly_return = (1 + annual_return) ** (1/12) - 1
+                    monthly_risk = annual_risk / (12 ** 0.5)
+                    
+                    # Create a simple return series for portfolio calculation
+                    returns = pd.Series([monthly_return] * 60)  # 5 years of monthly data
                     asset_returns.append(returns)
                     weights.append(weight)
                 else:
-                    # Fallback for missing data
-                    logger.warning(f"Missing data for {ticker}, using fallback")
-                    return self._get_fallback_portfolio_metrics()
+                    # Fallback: get monthly data and calculate
+                    data = enhanced_data_fetcher.get_monthly_data(ticker)
+                    if data and data['prices']:
+                        prices = np.array(data['prices'], dtype=float)
+                        returns = pd.Series(prices).pct_change().dropna()
+                        asset_returns.append(returns)
+                        weights.append(weight)
+                    else:
+                        logger.warning(f"Missing data for {ticker}, using fallback")
+                        return self._get_fallback_portfolio_metrics()
             
             if not asset_returns:
                 return self._get_fallback_portfolio_metrics()
@@ -667,20 +678,27 @@ class PortfolioAnalytics:
             for i, (weight, returns) in enumerate(zip(weights, aligned_returns)):
                 portfolio_returns += weight * returns
             
-            # Ensure portfolio returns has datetime index
-            if not isinstance(portfolio_returns.index, pd.DatetimeIndex):
-                start_date = pd.Timestamp('2020-01-01')
-                date_index = pd.date_range(start=start_date, periods=len(portfolio_returns), freq='M')
-                portfolio_returns.index = date_index
+            # Calculate metrics using numpy/pandas (more reliable than QuantStats)
+            annual_factor = np.sqrt(12)  # For monthly data
             
-            # Calculate metrics using QuantStats
+            # Calculate basic statistics
+            monthly_return = portfolio_returns.mean()
+            monthly_risk = portfolio_returns.std()
+            
+            # Annualize metrics
+            ann_return = (1 + monthly_return) ** 12 - 1  # Compound annual return
+            ann_risk = monthly_risk * annual_factor      # Annualized risk
+            
+            # Calculate max drawdown manually
+            cumulative = (1 + portfolio_returns).cumprod()
+            rolling_max = cumulative.expanding().max()
+            drawdowns = (cumulative - rolling_max) / rolling_max
+            max_drawdown = drawdowns.min()
+            
             metrics = {
-                'expected_return': qs.stats.cagr(portfolio_returns),
-                'volatility': qs.stats.volatility(portfolio_returns),
-                'sharpe_ratio': qs.stats.sharpe(portfolio_returns, rf=self.risk_free_rate),
-                'sortino_ratio': qs.stats.sortino(portfolio_returns, rf=self.risk_free_rate),
-                'max_drawdown': qs.stats.max_drawdown(portfolio_returns),
-                'var_95': qs.stats.var(portfolio_returns, 0.95),
+                'expected_return': ann_return,
+                'risk': ann_risk,  # Consistent naming: 'risk' not 'volatility'
+                'max_drawdown': max_drawdown,
                 'diversification_score': self._calculate_portfolio_diversification_score(aligned_returns, weights)
             }
             
@@ -791,15 +809,8 @@ class PortfolioAnalytics:
         """Fallback metrics when calculation fails"""
         return {
             'annualized_return': 0.10,
-            'annualized_volatility': 0.15,
-            'sharpe_ratio': 0.4,
-            'sortino_ratio': 0.5,
+            'risk': 0.15,
             'max_drawdown': -0.10,
-            'calmar_ratio': 1.0,
-            'var_95': -0.05,
-            'cvar_95': -0.08,
-            'skewness': 0.0,
-            'kurtosis': 3.0,
             'data_points': 0,
             'data_quality': 'limited'
         }

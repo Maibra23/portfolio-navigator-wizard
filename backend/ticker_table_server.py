@@ -104,13 +104,13 @@ if __name__ == "__main__":
     print("🚀 Starting Ticker Table Server...")
     print(f"📁 HTML file path: {html_file_path}")
     print(f"✅ HTML file exists: {html_file_path.exists()}")
-    print("🌐 Server will be available at: http://localhost:8080")
-    print("📊 API endpoints available at: http://localhost:8080/api/portfolio/")
+    print("🌐 Server will be available at: http://localhost:8081")
+    print("📊 API endpoints available at: http://localhost:8081/api/portfolio/")
     
     uvicorn.run(
         "ticker_table_server:app",
         host="0.0.0.0",
-        port=8080,
+        port=8081,
         reload=True,
         log_level="info"
     )

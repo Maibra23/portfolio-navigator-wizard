@@ -2,9 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
-from backend.routers import portfolio, cookie_demo
-from backend.utils.enhanced_data_fetcher import enhanced_data_fetcher
-from backend.utils.ticker_store import ticker_store
+from routers import portfolio, cookie_demo
+from utils.enhanced_data_fetcher import enhanced_data_fetcher
+from utils.ticker_store import ticker_store
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -41,16 +41,9 @@ async def startup_event():
     logger.info(f"   S&P 500: {len(ticker_store.sp500_tickers)} tickers")
     logger.info(f"   Nasdaq 100: {len(ticker_store.nasdaq100_tickers)} tickers")
     
-    # Check if we should do a full startup
-    fast_startup = os.environ.get('FAST_STARTUP', 'true').lower() == 'true'
-    
-    if not fast_startup:
-        logger.info("🔄 Full startup mode: Warming cache...")
-        enhanced_data_fetcher.warm_required_cache()
-        status = enhanced_data_fetcher.get_health_metrics()
-        logger.info(f"✅ Cache Status: {status['data'].get('cache_coverage', 0):.1f}% coverage")
-    else:
-        logger.info("🚀 Fast startup mode: Use /api/portfolio/cache/warm to preload data")
+    # Cache warming is now handled by Makefile before startup
+    # No need to warm cache here as it's done during make warm-cache
+    logger.info("🚀 Cache warming completed via Makefile - ready to serve requests")
 
 @app.on_event("shutdown")
 async def shutdown_event():

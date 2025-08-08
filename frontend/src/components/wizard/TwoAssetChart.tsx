@@ -18,7 +18,7 @@ interface TwoAssetPortfolio {
   weights: [number, number];
   return: number;
   risk: number;
-  sharpe_ratio: number;
+  sharpe_ratio: number; // Keep for compatibility but will be set to 0
 }
 
 interface TwoAssetAnalysis {
@@ -44,43 +44,38 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
   // Create portfolio comparison data
   const portfolioData = [
     {
-      name: '100% NVDA',
+      name: 'A',
       weights: [100, 0],
       return: analysis.portfolios[0]?.return || 0,
       risk: analysis.portfolios[0]?.risk || 0,
-      sharpe: analysis.portfolios[0]?.sharpe_ratio || 0,
       type: 'static'
     },
     {
-      name: '75% NVDA, 25% AMZN',
+      name: 'B',
       weights: [75, 25],
       return: analysis.portfolios[1]?.return || 0,
       risk: analysis.portfolios[1]?.risk || 0,
-      sharpe: analysis.portfolios[1]?.sharpe_ratio || 0,
       type: 'static'
     },
     {
-      name: '50% NVDA, 50% AMZN',
+      name: 'C',
       weights: [50, 50],
       return: analysis.portfolios[2]?.return || 0,
       risk: analysis.portfolios[2]?.risk || 0,
-      sharpe: analysis.portfolios[2]?.sharpe_ratio || 0,
       type: 'static'
     },
     {
-      name: '25% NVDA, 75% AMZN',
+      name: 'D',
       weights: [25, 75],
       return: analysis.portfolios[3]?.return || 0,
       risk: analysis.portfolios[3]?.risk || 0,
-      sharpe: analysis.portfolios[3]?.sharpe_ratio || 0,
-    type: 'static'
+      type: 'static'
     },
     {
-      name: '100% AMZN',
+      name: 'E',
       weights: [0, 100],
       return: analysis.portfolios[4]?.return || 0,
       risk: analysis.portfolios[4]?.risk || 0,
-      sharpe: analysis.portfolios[4]?.sharpe_ratio || 0,
       type: 'static'
     },
     {
@@ -88,7 +83,6 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
       weights: [nvdaWeight, 100 - nvdaWeight],
       return: customPortfolio.return,
       risk: customPortfolio.risk,
-      sharpe: customPortfolio.sharpe_ratio,
       type: 'custom'
     }
   ];
@@ -106,11 +100,10 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
           <TableHeader>
             <TableRow>
               <TableHead>Portfolio</TableHead>
-              <TableHead>NVDA Weight</TableHead>
-              <TableHead>AMZN Weight</TableHead>
+              <TableHead>{analysis.ticker1} Weight</TableHead>
+              <TableHead>{analysis.ticker2} Weight</TableHead>
               <TableHead>Expected Return</TableHead>
               <TableHead>Risk (Volatility)</TableHead>
-              <TableHead>Sharpe Ratio</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -137,9 +130,6 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
                 <TableCell className="text-orange-600 font-medium">
                   {(portfolio.risk * 100).toFixed(1)}%
                 </TableCell>
-                <TableCell className="text-blue-600 font-medium">
-                  {portfolio.sharpe.toFixed(2)}
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -148,9 +138,8 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
         <div className="mt-4 p-4 bg-gray-50 rounded-lg">
           <h4 className="font-medium mb-2">Key Insights:</h4>
           <ul className="text-sm text-gray-700 space-y-1">
-            <li>• <strong>Diversification Benefit:</strong> Notice how combining NVDA and AMZN reduces overall portfolio risk</li>
-            <li>• <strong>Risk-Return Trade-off:</strong> Higher NVDA allocation increases both potential return and risk</li>
-            <li>• <strong>Sharpe Ratio:</strong> Measures risk-adjusted returns - higher values indicate better performance per unit of risk</li>
+            <li>• <strong>Diversification Benefit:</strong> Notice how combining {analysis.ticker1} and {analysis.ticker2} reduces overall portfolio risk</li>
+            <li>• <strong>Risk-Return Trade-off:</strong> Higher {analysis.ticker1} allocation increases both potential return and risk</li>
             <li>• <strong>Correlation:</strong> These stocks have a correlation of {(analysis.correlation * 100).toFixed(0)}%, providing diversification benefits</li>
           </ul>
         </div>

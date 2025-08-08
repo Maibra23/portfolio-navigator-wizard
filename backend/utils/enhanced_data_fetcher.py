@@ -289,16 +289,23 @@ class EnhancedDataFetcher:
         return True
 
     def _save_to_cache(self, ticker: str, data: Dict[str, Any]) -> bool:
-        """Save ticker data to cache with compression"""
+        """Save ticker data to cache with compression and auto-calculate metrics"""
         if not self.r:
             return False
         try:
             # Save prices
             if 'prices' in data:
                 key = self._get_cache_key(ticker, 'prices')
-                prices_dict = {str(date): float(price) for date, price in data['prices'].items()}
+                # Convert timezone-aware dates to timezone-naive for storage
+                prices_series = data['prices']
+                if hasattr(prices_series.index, 'tz_localize'):
+                    prices_series.index = prices_series.index.tz_localize(None)
+                prices_dict = {str(date): float(price) for date, price in prices_series.items()}
                 compressed = gzip.compress(json.dumps(prices_dict).encode())
                 self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), compressed)
+                
+                # Auto-calculate and save metrics
+                self._calculate_and_save_metrics(ticker, prices_series)
             
             # Save sector info
             if 'sector' in data:
@@ -324,13 +331,87 @@ class EnhancedDataFetcher:
                     data_dict = json.loads(gzip.decompress(raw).decode())
                     # Convert back to Series
                     data = pd.Series(data_dict)
-                    data.index = pd.to_datetime(data.index)
+                    data.index = pd.to_datetime(data.index, utc=True)
                     return data
-                else:  # sector or other metadata
+                else:  # sector, metrics, or other metadata
                     return json.loads(raw.decode())
         except Exception as e:
             logger.error(f"❌ Failed to load {ticker} {data_type} from cache: {e}")
         return None
+
+    def _calculate_and_save_metrics(self, ticker: str, prices: pd.Series) -> bool:
+        """Calculate and save risk/return metrics for a ticker"""
+        try:
+            if len(prices) < 12:  # Need at least 12 months
+                logger.warning(f"⚠️ {ticker}: Insufficient data for metrics calculation ({len(prices)} < 12)")
+                return False
+            
+            # Calculate returns
+            returns = prices.pct_change().dropna()
+            
+            # Calculate metrics (using consistent naming: 'risk' not 'volatility')
+            monthly_return = returns.mean()
+            monthly_risk = returns.std()
+            
+            # Annualize metrics
+            annual_return = (1 + monthly_return) ** 12 - 1  # Compound annual return
+            annual_risk = monthly_risk * (12 ** 0.5)  # Annualized risk
+            
+            # Calculate max drawdown
+            cumulative = (1 + returns).cumprod()
+            rolling_max = cumulative.expanding().max()
+            drawdowns = (cumulative - rolling_max) / rolling_max
+            max_drawdown = drawdowns.min()
+            
+            # Create metrics dictionary
+            metrics = {
+                'annualized_return': float(annual_return),
+                'risk': float(annual_risk),  # Consistent naming: 'risk' not 'volatility'
+                'max_drawdown': float(max_drawdown),
+                'data_points': len(prices),
+                'last_price': float(prices.iloc[-1]),
+                'calculation_date': datetime.now().isoformat(),
+                'data_quality': 'good' if len(prices) >= 180 else 'limited'  # 15 years of monthly data
+            }
+            
+            # Save metrics to cache
+            key = self._get_cache_key(ticker, 'metrics')
+            metrics_data = json.dumps(metrics).encode()
+            self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), metrics_data)
+            
+            logger.debug(f"✅ {ticker}: Metrics calculated and cached")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate metrics for {ticker}: {e}")
+            return False
+
+    def get_cached_metrics(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Get pre-calculated metrics for a ticker"""
+        return self._load_from_cache(ticker, 'metrics')
+
+    def get_all_cached_metrics(self) -> Dict[str, Dict[str, Any]]:
+        """Get metrics for all cached tickers"""
+        if not self.r:
+            return {}
+        
+        try:
+            all_metrics = {}
+            # Get all metrics keys
+            pattern = self._get_cache_key('*', 'metrics')
+            keys = self.r.keys(pattern.replace('*', '*'))
+            
+            for key in keys:
+                ticker = key.decode().split(':')[-1]  # Extract ticker from key
+                metrics = self.get_cached_metrics(ticker)
+                if metrics:
+                    all_metrics[ticker] = metrics
+            
+            return all_metrics
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get all cached metrics: {e}")
+            return {}
 
     def _fetch_single_ticker_with_retry(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Fetch data for a single ticker with retry logic and rate limiting"""
@@ -346,6 +427,9 @@ class EnhancedDataFetcher:
                 cached_sector = self._load_from_cache(ticker, 'sector')
                 
                 if cached_prices is not None and cached_sector is not None:
+                    # Handle timezone-aware datetime index
+                    if hasattr(cached_prices.index, 'tz_localize'):
+                        cached_prices.index = cached_prices.index.tz_localize(None)
                     self.stats['cached'] += 1
                     return {'prices': cached_prices, 'sector': cached_sector}
 
@@ -825,6 +909,9 @@ class EnhancedDataFetcher:
                     # Validate data freshness
                     if isinstance(cached_prices, pd.Series) and not cached_prices.empty:
                         last_date = cached_prices.index[-1]
+                        # Convert to timezone-naive datetime for comparison
+                        if hasattr(last_date, 'tz_localize'):
+                            last_date = last_date.tz_localize(None)
                         if last_date < self.END_DATE - timedelta(days=30):  # More than a month old
                             logger.info(f"🔄 {ticker}: Refreshing stale data...")
                             data = self._fetch_single_ticker_with_retry(ticker)

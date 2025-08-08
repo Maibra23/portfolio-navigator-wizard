@@ -30,7 +30,8 @@ import {
   PieChart,
   LineChart,
   Settings,
-  Database
+  Database,
+  XCircle
 } from 'lucide-react';
 import { TwoAssetChart } from './TwoAssetChart';
 
@@ -65,6 +66,7 @@ interface PortfolioAllocation {
   allocation: number;
   name?: string;
   assetType?: 'stock' | 'bond' | 'etf';
+  sector?: string;
 }
 
 interface PortfolioRecommendation {
@@ -80,7 +82,7 @@ interface PortfolioMetrics {
   expectedReturn: number;
   risk: number;
   diversificationScore: number;
-  sharpeRatio: number;
+  sharpeRatio: number; // Keep for compatibility but will be set to 0
 }
 
 interface SectorRecommendation {
@@ -112,7 +114,7 @@ interface TwoAssetPortfolio {
   weights: [number, number];
   return: number;
   risk: number;
-  sharpe_ratio: number;
+  sharpe_ratio: number; // Keep for compatibility but will be set to 0
 }
 
 interface TwoAssetAnalysis {
@@ -155,8 +157,8 @@ export const StockSelection = ({
     description: string;
     educational_focus: string;
   }>>([]);
-  const [selectedPairId, setSelectedPairId] = useState('nvda_amzn');
-  const [currentPair, setCurrentPair] = useState({ ticker1: 'NVDA', ticker2: 'AMZN' });
+  const [selectedPairId, setSelectedPairId] = useState('random');
+  const [currentPair, setCurrentPair] = useState({ ticker1: '', ticker2: '' });
   
   // Full customization state
   const [fullCustomTickers, setFullCustomTickers] = useState<string[]>([]);
@@ -171,14 +173,23 @@ export const StockSelection = ({
   const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
   const [dynamicRecommendations, setDynamicRecommendations] = useState<PortfolioRecommendation[]>([]);
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  
+  // NEW: Portfolio selection state
+  const [selectedPortfolioIndex, setSelectedPortfolioIndex] = useState<number | null>(null);
+  const [originalRecommendation, setOriginalRecommendation] = useState<PortfolioRecommendation | null>(null);
+  
+  // NEW: Weight editor state
+  const [showWeightEditor, setShowWeightEditor] = useState(false);
+  const [totalAllocation, setTotalAllocation] = useState(100);
+  const [isValidAllocation, setIsValidAllocation] = useState(true);
 
-  // Generate recommendations based on risk profile
+  // Generate recommendations based on risk profile with updated names and descriptions
   const generateRecommendations = (): PortfolioRecommendation[] => {
-    // Define portfolio templates for each risk category (max 4 stocks each)
+    // Define portfolio templates for each risk category with improved names and descriptions
     const portfolioTemplates = {
       'very-conservative': {
-        name: 'Very Conservative Portfolio',
-        description: 'Maximum capital preservation with minimal risk exposure',
+        name: 'Capital Preservation Portfolio',
+        description: 'Defensive strategy focused on stable dividend stocks and capital preservation. Ideal for investors who prioritize safety over growth.',
         allocations: [
           { symbol: 'JNJ', allocation: 40, name: 'Johnson & Johnson', assetType: 'stock' as const },
           { symbol: 'PG', allocation: 30, name: 'Procter & Gamble', assetType: 'stock' as const },
@@ -190,8 +201,8 @@ export const StockSelection = ({
         diversificationScore: 90
       },
       'conservative': {
-        name: 'Conservative Portfolio',
-        description: 'Low-risk portfolio focused on stable, dividend-paying stocks',
+        name: 'Income & Stability Portfolio',
+        description: 'Balanced approach combining steady income generation with moderate growth potential. Suitable for conservative investors seeking reliable returns.',
         allocations: [
           { symbol: 'JNJ', allocation: 35, name: 'Johnson & Johnson', assetType: 'stock' as const },
           { symbol: 'PG', allocation: 30, name: 'Procter & Gamble', assetType: 'stock' as const },
@@ -203,8 +214,8 @@ export const StockSelection = ({
         diversificationScore: 85
       },
       'moderate': {
-        name: 'Balanced Portfolio',
-        description: 'Moderate risk with a mix of growth and value stocks',
+        name: 'Balanced Growth Portfolio',
+        description: 'Diversified mix of growth and value stocks offering balanced risk-return profile. Perfect for investors comfortable with moderate market volatility.',
         allocations: [
           { symbol: 'AAPL', allocation: 30, name: 'Apple Inc.', assetType: 'stock' as const },
           { symbol: 'MSFT', allocation: 25, name: 'Microsoft', assetType: 'stock' as const },
@@ -216,8 +227,8 @@ export const StockSelection = ({
         diversificationScore: 78
       },
       'aggressive': {
-        name: 'Growth Portfolio',
-        description: 'Higher risk portfolio targeting aggressive growth',
+        name: 'Growth Momentum Portfolio',
+        description: 'High-growth strategy targeting companies with strong momentum and innovation potential. Designed for investors seeking above-market returns.',
         allocations: [
           { symbol: 'NVDA', allocation: 35, name: 'NVIDIA', assetType: 'stock' as const },
           { symbol: 'TSLA', allocation: 30, name: 'Tesla Inc.', assetType: 'stock' as const },
@@ -229,8 +240,8 @@ export const StockSelection = ({
         diversificationScore: 65
       },
       'very-aggressive': {
-        name: 'Very Aggressive Portfolio',
-        description: 'Maximum growth potential with highest risk tolerance',
+        name: 'Maximum Growth Portfolio',
+        description: 'High-conviction growth strategy focusing on disruptive technologies and emerging trends. For investors with high risk tolerance seeking maximum growth potential.',
         allocations: [
           { symbol: 'NVDA', allocation: 40, name: 'NVIDIA', assetType: 'stock' as const },
           { symbol: 'TSLA', allocation: 35, name: 'Tesla Inc.', assetType: 'stock' as const },
@@ -275,49 +286,44 @@ export const StockSelection = ({
       setIsLoadingRecommendations(true);
       try {
         console.log('Loading dynamic recommendations for risk profile:', riskProfile);
-        const response = await fetch(`http://127.0.0.1:8000/api/portfolio/recommendations/${riskProfile}`);
+        const response = await fetch(`/api/portfolio/recommendations/${riskProfile}`);
         
         if (response.ok) {
           const data = await response.json();
           console.log('Dynamic recommendations received:', data);
           
-          // Transform backend data to match frontend interface
-          const transformedRecommendations = data.map((item: {
-            portfolio: Array<{symbol: string; allocation: number; name?: string; assetType?: string}>;
-            expectedReturn: number;
-            risk: number;
-            diversificationScore: number;
-            sharpeRatio: number;
+          // Transform backend data to frontend format
+          const transformedRecommendations = data.map((rec: {
+            name?: string;
+            description?: string;
+            portfolio?: PortfolioAllocation[];
+            expectedReturn?: number;
+            risk?: number;
+            diversificationScore?: number;
           }, index: number) => ({
-            name: `AI Portfolio Option ${index + 1}${index === 0 ? ' (Recommended)' : ''}`,
-            description: `Optimized ${riskProfile} portfolio with real market data`,
-            allocations: item.portfolio.map((allocation) => ({
-              symbol: allocation.symbol,
-              allocation: allocation.allocation,
-              name: allocation.name || allocation.symbol,
-              assetType: allocation.assetType || 'stock'
-            })),
-            expectedReturn: item.expectedReturn,
-            risk: item.risk,
-            diversificationScore: item.diversificationScore,
-            sharpeRatio: item.sharpeRatio
+            name: rec.name || `Portfolio ${index + 1}`,
+            description: rec.description || 'Diversified portfolio based on your risk profile',
+            allocations: rec.portfolio || [],
+            expectedReturn: rec.expectedReturn || 0.1,
+            risk: rec.risk || 0.15,
+            diversificationScore: rec.diversificationScore || 75
           }));
           
           setDynamicRecommendations(transformedRecommendations);
         } else {
-          console.error('Failed to load dynamic recommendations, using fallback');
-          setDynamicRecommendations(recommendations); // Fallback to static
+          console.warn('Failed to load dynamic recommendations, using static ones');
+          setDynamicRecommendations([]);
         }
       } catch (error) {
         console.error('Error loading dynamic recommendations:', error);
-        setDynamicRecommendations(recommendations); // Fallback to static
+        setDynamicRecommendations([]);
       } finally {
         setIsLoadingRecommendations(false);
       }
     };
 
     loadDynamicRecommendations();
-  }, [riskProfile, recommendations]);
+  }, [riskProfile]);
 
   // Load available asset pairs for mini-lesson
   useEffect(() => {
@@ -326,15 +332,76 @@ export const StockSelection = ({
         const response = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/assets');
         if (response.ok) {
           const data = await response.json();
-          setAvailableAssetPairs([...data.educational_pairs, { 
-            pair_id: 'random', 
-            ticker1: 'Random', 
-            ticker2: 'Random',
-            name1: 'Random Asset 1',
-            name2: 'Random Asset 2',
-            description: 'Random Asset Pair',
-            educational_focus: 'Dynamic Selection'
-          }]);
+          
+          // Create 3 fixed educational pairs from sector lists
+          const pairs = [];
+          
+          // Get random assets from different sector lists
+          if (data.sector_lists && data.sector_lists.length >= 3) {
+            // Pair 1: Tech vs Healthcare
+            const techList = data.sector_lists.find(list => list.list_id === 'tech_growth');
+            const healthList = data.sector_lists.find(list => list.list_id === 'healthcare_pharma');
+            
+            if (techList && healthList && techList.assets.length > 0 && healthList.assets.length > 0) {
+              const techAsset = techList.assets[Math.floor(Math.random() * techList.assets.length)];
+              const healthAsset = healthList.assets[Math.floor(Math.random() * healthList.assets.length)];
+              
+              pairs.push({
+                pair_id: 'tech_health',
+                ticker1: techAsset.ticker,
+                ticker2: healthAsset.ticker,
+                name1: techAsset.name,
+                name2: healthAsset.name,
+                description: 'Technology vs Healthcare',
+                educational_focus: 'Innovation vs Stability'
+              });
+            }
+            
+            // Pair 2: Consumer vs Energy
+            const consumerList = data.sector_lists.find(list => list.list_id === 'consumer_discretionary');
+            const energyList = data.sector_lists.find(list => list.list_id === 'energy_utilities');
+            
+            if (consumerList && energyList && consumerList.assets.length > 0 && energyList.assets.length > 0) {
+              const consumerAsset = consumerList.assets[Math.floor(Math.random() * consumerList.assets.length)];
+              const energyAsset = energyList.assets[Math.floor(Math.random() * energyList.assets.length)];
+              
+              pairs.push({
+                pair_id: 'consumer_energy',
+                ticker1: consumerAsset.ticker,
+                ticker2: energyAsset.ticker,
+                name1: consumerAsset.name,
+                name2: energyAsset.name,
+                description: 'Consumer vs Energy',
+                educational_focus: 'Consumer Spending vs Energy Infrastructure'
+              });
+            }
+            
+            // Pair 3: Financial vs Stable Blue Chips
+            const financialList = data.sector_lists.find(list => list.list_id === 'financial_services');
+            const stableList = data.sector_lists.find(list => list.list_id === 'stable_blue_chips');
+            
+            if (financialList && stableList && financialList.assets.length > 0 && stableList.assets.length > 0) {
+              const financialAsset = financialList.assets[Math.floor(Math.random() * financialList.assets.length)];
+              const stableAsset = stableList.assets[Math.floor(Math.random() * stableList.assets.length)];
+              
+              pairs.push({
+                pair_id: 'financial_stable',
+                ticker1: financialAsset.ticker,
+                ticker2: stableAsset.ticker,
+                name1: financialAsset.name,
+                name2: stableAsset.name,
+                description: 'Financial vs Stable Blue Chips',
+                educational_focus: 'Financial Services vs Stability'
+              });
+            }
+          }
+          
+          setAvailableAssetPairs(pairs);
+          
+          // Set current pair to the first available pair
+          if (pairs.length > 0) {
+            setCurrentPair({ ticker1: pairs[0].ticker1, ticker2: pairs[0].ticker2 });
+          }
         }
       } catch (error) {
         console.error('Error loading asset pairs:', error);
@@ -351,20 +418,10 @@ export const StockSelection = ({
       try {
         console.log('Loading mini-lesson data for:', currentPair);
         
-        let apiUrl;
-        if (selectedPairId === 'random') {
-          // Get random pair first
-          const randomResponse = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/random-pair');
-          if (randomResponse.ok) {
-            const randomPair = await randomResponse.json();
-            setCurrentPair({ ticker1: randomPair.ticker1, ticker2: randomPair.ticker2 });
-            apiUrl = `http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=${randomPair.ticker1}&ticker2=${randomPair.ticker2}`;
-          } else {
-            apiUrl = 'http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=NVDA&ticker2=AMZN';
-          }
-        } else {
-          apiUrl = `http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=${currentPair.ticker1}&ticker2=${currentPair.ticker2}`;
-        }
+        const ticker1 = currentPair.ticker1;
+        const ticker2 = currentPair.ticker2;
+        
+        const apiUrl = `http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=${ticker1}&ticker2=${ticker2}`;
         
         const response = await fetch(apiUrl);
         console.log('Mini-lesson response status:', response.status);
@@ -372,11 +429,12 @@ export const StockSelection = ({
         if (response.ok) {
           const data = await response.json();
           console.log('Mini-lesson data received:', data);
+          
           setTwoAssetAnalysis(data);
           
-          // Calculate initial portfolio
-          const asset1Allocation = nvdaWeight / 100;
-          const asset2Allocation = (100 - nvdaWeight) / 100;
+          // Calculate initial custom portfolio (50/50 split)
+          const asset1Allocation = 50 / 100;
+          const asset2Allocation = 50 / 100;
           
           const portfolioReturn = asset1Allocation * data.asset1_stats.annualized_return + 
                                  asset2Allocation * data.asset2_stats.annualized_return;
@@ -388,14 +446,11 @@ export const StockSelection = ({
             data.asset2_stats.annualized_volatility * data.correlation
           );
           
-          const riskFreeRate = 0.04; // 4% risk-free rate
-          const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioRisk;
-          
           setCustomPortfolio({
             weights: [asset1Allocation, asset2Allocation],
             return: portfolioReturn,
             risk: portfolioRisk,
-            sharpe_ratio: sharpeRatio
+            sharpe_ratio: 0 // Removed Sharpe ratio calculation
           });
         } else {
           const errorText = await response.text();
@@ -409,32 +464,29 @@ export const StockSelection = ({
     };
 
     loadMiniLesson();
-  }, [selectedPairId, currentPair.ticker1, currentPair.ticker2, nvdaWeight]);
+  }, [currentPair.ticker1, currentPair.ticker2, selectedPairId]);
 
-  // Update portfolio when weights change
+  // Update portfolio when weights change - instant calculation
   useEffect(() => {
     if (twoAssetAnalysis) {
-      const nvdaAllocation = nvdaWeight / 100;
-      const amznAllocation = (100 - nvdaWeight) / 100;
+      const asset1Allocation = nvdaWeight / 100;
+      const asset2Allocation = (100 - nvdaWeight) / 100;
       
-      const portfolioReturn = nvdaAllocation * twoAssetAnalysis.asset1_stats.annualized_return + 
-                             amznAllocation * twoAssetAnalysis.asset2_stats.annualized_return;
+      const portfolioReturn = asset1Allocation * twoAssetAnalysis.asset1_stats.annualized_return + 
+                             asset2Allocation * twoAssetAnalysis.asset2_stats.annualized_return;
       
       const portfolioRisk = Math.sqrt(
-        Math.pow(nvdaAllocation * twoAssetAnalysis.asset1_stats.annualized_volatility, 2) +
-        Math.pow(amznAllocation * twoAssetAnalysis.asset2_stats.annualized_volatility, 2) +
-        2 * nvdaAllocation * amznAllocation * twoAssetAnalysis.asset1_stats.annualized_volatility * 
+        Math.pow(asset1Allocation * twoAssetAnalysis.asset1_stats.annualized_volatility, 2) +
+        Math.pow(asset2Allocation * twoAssetAnalysis.asset2_stats.annualized_volatility, 2) +
+        2 * asset1Allocation * asset2Allocation * twoAssetAnalysis.asset1_stats.annualized_volatility * 
         twoAssetAnalysis.asset2_stats.annualized_volatility * twoAssetAnalysis.correlation
       );
       
-      const riskFreeRate = 0.04; // 4% risk-free rate
-      const sharpeRatio = (portfolioReturn - riskFreeRate) / portfolioRisk;
-      
       setCustomPortfolio({
-        weights: [nvdaAllocation, amznAllocation],
+        weights: [asset1Allocation, asset2Allocation],
         return: portfolioReturn,
         risk: portfolioRisk,
-        sharpe_ratio: sharpeRatio
+        sharpe_ratio: 0 // Removed Sharpe ratio calculation
       });
     }
   }, [nvdaWeight, twoAssetAnalysis]);
@@ -451,8 +503,8 @@ export const StockSelection = ({
     try {
       console.log(`Searching for: "${query}"`);
       
-      // Use our enhanced backend API with the correct endpoint
-      const response = await fetch(`http://127.0.0.1:8000/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
+      // FIXED: Use relative URL to work with Vite proxy
+      const response = await fetch(`/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
 
       console.log(`Response status: ${response.status}`);
       
@@ -470,26 +522,30 @@ export const StockSelection = ({
       
       setSearchResults(tickers.map((ticker: {
         ticker: string;
-        cached: number;
+        name?: string;
+        longname?: string;
+        typeDisp?: string;
+        exchange?: string;
+        quoteType?: string;
+        assetType?: string;
       }) => ({
         symbol: ticker.ticker,
-        shortname: ticker.ticker,
-        longname: ticker.ticker,
-        typeDisp: 'Stock',
-        exchange: 'NASDAQ/NYSE',
-        quoteType: 'EQUITY',
-        assetType: 'stock' as const,
+        shortname: ticker.name || ticker.ticker,
+        longname: ticker.longname,
+        typeDisp: ticker.typeDisp,
+        exchange: ticker.exchange,
+        quoteType: ticker.quoteType,
+        assetType: ticker.assetType || 'stock',
         dataQuality: {
           is_sufficient: true,
-          years_covered: 15,
-          data_points: 180,
-          data_source: 'yahoo_finance',
-          issues: ticker.cached ? [] : ['Data may need to be fetched']
+          years_covered: 5,
+          data_points: 60,
+          data_source: 'Yahoo Finance',
         }
       })));
-    } catch (err) {
-      console.error('Search error:', err);
-              setError(`Unable to fetch stock data: ${err instanceof Error ? err.message : 'Unknown error'}. Please check if the backend server is running.`);
+    } catch (error) {
+      console.error('Search error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to search stocks');
       setSearchResults([]);
     } finally {
       setIsLoading(false);
@@ -516,7 +572,7 @@ export const StockSelection = ({
         expectedReturn: avgReturn,
         risk: avgRisk,
         diversificationScore: Math.min(100, selectedStocks.length * 20),
-        sharpeRatio: (avgReturn - 0.04) / avgRisk
+        sharpeRatio: 0 // Removed Sharpe ratio calculation
       });
     }
   }, [selectedStocks]);
@@ -555,16 +611,58 @@ export const StockSelection = ({
     }
   };
 
+  const acceptRecommendation = (recommendation: PortfolioRecommendation, index: number) => {
+    setSelectedPortfolioIndex(index);
+    setOriginalRecommendation(recommendation);
+    onStocksUpdate(recommendation.allocations);
+    setHasSelectedPortfolio(true);
+    
+    // Initialize allocation tracking
+    const total = recommendation.allocations.reduce((sum, stock) => sum + stock.allocation, 0);
+    setTotalAllocation(total);
+    setIsValidAllocation(Math.abs(total - 100) < 0.1);
+  };
+
+  // Enhanced allocation update with validation
   const updateAllocation = (symbol: string, newAllocation: number) => {
-    const updatedStocks = selectedStocks.map(s => 
-      s.symbol === symbol ? { ...s, allocation: newAllocation } : s
+    const updatedStocks = selectedStocks.map(stock => 
+      stock.symbol === symbol ? { ...stock, allocation: newAllocation } : stock
     );
+    
+    const total = updatedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
+    setTotalAllocation(total);
+    setIsValidAllocation(Math.abs(total - 100) < 0.1);
+    
     onStocksUpdate(updatedStocks);
   };
 
-  const acceptRecommendation = (recommendation: PortfolioRecommendation) => {
-    onStocksUpdate(recommendation.allocations);
-    setHasSelectedPortfolio(true);
+  // NEW: Auto-normalization feature
+  const normalizeWeights = () => {
+    const total = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
+    const normalizedStocks = selectedStocks.map(stock => ({
+      ...stock,
+      allocation: (stock.allocation / total) * 100
+    }));
+    
+    onStocksUpdate(normalizedStocks);
+    setTotalAllocation(100);
+    setIsValidAllocation(true);
+  };
+
+  // NEW: Reset to original function
+  const resetToOriginal = () => {
+    if (originalRecommendation) {
+      onStocksUpdate(originalRecommendation.allocations);
+      setTotalAllocation(100);
+      setIsValidAllocation(true);
+    }
+  };
+
+  // NEW: Get primary sectors for portfolio
+  const getPrimarySectors = (allocations: PortfolioAllocation[]) => {
+    const sectors = allocations.map(stock => stock.sector || 'Unknown');
+    const uniqueSectors = [...new Set(sectors)];
+    return uniqueSectors.slice(0, 3).join(', ');
   };
 
   const handleNext = () => {
@@ -627,12 +725,12 @@ export const StockSelection = ({
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
                 <div className="flex items-center gap-3 mb-4">
                   <Lightbulb className="h-6 w-6 text-blue-600" />
-                  <h3 className="text-xl font-semibold text-blue-900">How Risk and Return Trade Off: The Efficient Frontier</h3>
+                  <h3 className="text-xl font-semibold text-blue-900">How Risk and Return Trade Off</h3>
                 </div>
                 <p className="text-blue-800 mb-4">
                   Learn how combining different assets can reduce risk while maintaining returns. 
-                  Choose from educational asset pairs or get a random comparison to explore portfolio theory.
-                  <strong>Note:</strong> All calculations shown are based on real market data and are for educational demonstration purposes only.
+                  Choose from educational asset pairs to explore portfolio theory and diversification benefits.
+                  Each pair represents different sectors and investment themes for comprehensive learning.
                 </p>
                 
                 {/* Asset Pair Selection */}
@@ -806,7 +904,7 @@ export const StockSelection = ({
                         <CardTitle className="text-lg">Your Portfolio Metrics</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="text-center p-4 bg-green-50 rounded-lg">
                             <div className="text-2xl font-bold text-green-600">
                               {(customPortfolio.return * 100).toFixed(1)}%
@@ -819,23 +917,17 @@ export const StockSelection = ({
                             </div>
                             <div className="text-sm text-orange-700">Risk (Volatility)</div>
                           </div>
-                          <div className="text-center p-4 bg-blue-50 rounded-lg">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {customPortfolio.sharpe_ratio.toFixed(2)}
-                            </div>
-                            <div className="text-sm text-blue-700">Sharpe Ratio</div>
-                          </div>
                         </div>
                       </CardContent>
                     </Card>
 
                     {/* Educational Callouts */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <Alert>
                         <Info className="h-4 w-4" />
                         <AlertDescription>
                           <strong>Expected Return:</strong> The average yearly growth rate of your investment 
-                          based on historical data from Yahoo Finance (monthly returns, annualized).
+                          based on historical performance data.
                         </AlertDescription>
                       </Alert>
                       <Alert>
@@ -845,21 +937,13 @@ export const StockSelection = ({
                           Higher values mean more uncertainty and potential for larger price swings.
                         </AlertDescription>
                       </Alert>
-                      <Alert>
-                        <Info className="h-4 w-4" />
-                        <AlertDescription>
-                          <strong>Sharpe Ratio:</strong> Risk-adjusted return measure. Higher values indicate 
-                          better risk-adjusted performance relative to risk taken.
-                        </AlertDescription>
-                      </Alert>
                     </div>
 
                     {/* Data Source Indicator */}
                     <Alert className="mt-4">
                       <Database className="h-4 w-4" />
                       <AlertDescription>
-                        <strong>Data Source:</strong> Real market data from Yahoo Finance (monthly returns, annualized). 
-                        <strong>Note:</strong> All calculations in this mini-lesson are hypothetical and for demonstration purposes only.
+                        <strong>Data Source:</strong> Real market data from Yahoo Finance (monthly returns, annualized). All calculations are based on historical performance and are for educational demonstration purposes only.
                       </AlertDescription>
                     </Alert>
                   </div>
@@ -877,9 +961,9 @@ export const StockSelection = ({
             {/* Recommendations Tab */}
             <TabsContent value="recommendations" className="space-y-6">
               <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold mb-2">AI-Powered Portfolio Recommendations</h3>
+                <h3 className="text-xl font-semibold mb-2">Portfolio Recommendations</h3>
                 <p className="text-muted-foreground">
-                  Real-time recommendations optimized for your {getRiskProfileDisplay().toLowerCase()} risk profile using live market data
+                  Personalized recommendations optimized for your {getRiskProfileDisplay().toLowerCase()} risk profile using live market data
                 </p>
               </div>
 
@@ -891,7 +975,25 @@ export const StockSelection = ({
               ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {(dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations).map((recommendation, index) => (
-                  <Card key={index} className="relative overflow-hidden">
+                  <Card 
+                    key={index} 
+                    className={`relative overflow-hidden transition-all duration-200 cursor-pointer ${
+                      selectedPortfolioIndex === index 
+                        ? 'ring-2 ring-primary shadow-lg scale-105' 
+                        : 'hover:shadow-md'
+                    }`}
+                    onClick={() => acceptRecommendation(recommendation, index)}
+                  >
+                    {/* Selection indicator */}
+                    {selectedPortfolioIndex === index && (
+                      <div className="absolute top-2 right-2 z-10">
+                        <Badge variant="default" className="bg-green-600">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Selected
+                        </Badge>
+                      </div>
+                    )}
+                    
                     <CardHeader className="pb-4">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">{recommendation.name}</CardTitle>
@@ -923,6 +1025,30 @@ export const StockSelection = ({
                           <span>{recommendation.diversificationScore}%</span>
                         </div>
                         <Progress value={recommendation.diversificationScore} className="h-2" />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Based on correlation analysis between assets
+                        </p>
+                        <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
+                          <strong>How it works:</strong> The diversification score measures how uncorrelated your assets are. 
+                          Lower correlation = higher diversification = better risk reduction. 
+                          Formula: 100% - (Average Correlation × 100%)
+                        </div>
+                      </div>
+
+                      {/* Enhanced portfolio information */}
+                      <div className="mt-4 space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span>Total Allocation:</span>
+                          <span className="font-medium">100%</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Number of Assets:</span>
+                          <span className="font-medium">{recommendation.allocations.length}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Primary Sectors:</span>
+                          <span className="font-medium">{getPrimarySectors(recommendation.allocations)}</span>
+                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -941,11 +1067,24 @@ export const StockSelection = ({
                       </div>
 
                       <Button 
-                        onClick={() => acceptRecommendation(recommendation)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          acceptRecommendation(recommendation, index);
+                        }}
                         className="w-full"
+                        variant={selectedPortfolioIndex === index ? "default" : "outline"}
                       >
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Use This Portfolio
+                        {selectedPortfolioIndex === index ? (
+                          <>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Portfolio Selected
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Use This Portfolio
+                          </>
+                        )}
                       </Button>
                     </CardContent>
                   </Card>
@@ -1004,6 +1143,62 @@ export const StockSelection = ({
                   )}
                     </div>
 
+                    {/* Weight Editor Toggle */}
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium">Portfolio Allocations</h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowWeightEditor(!showWeightEditor)}
+                      >
+                        {showWeightEditor ? 'Hide' : 'Show'} Weight Editor
+                      </Button>
+                    </div>
+
+                    {/* Allocation Validation */}
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className={`flex items-center gap-2 ${isValidAllocation ? 'text-green-600' : 'text-red-600'}`}>
+                        {isValidAllocation ? (
+                          <CheckCircle className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                        <span className="font-medium">
+                          Total Allocation: {totalAllocation.toFixed(1)}%
+                        </span>
+                      </div>
+                      
+                      {!isValidAllocation && (
+                        <Alert variant="destructive" className="flex-1">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>
+                            Allocation must equal 100%. Current total: {totalAllocation.toFixed(1)}%
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
+
+                    {/* Weight Editor Controls */}
+                    {showWeightEditor && (
+                      <div className="flex gap-2 mb-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={normalizeWeights}
+                          disabled={isValidAllocation}
+                        >
+                          Auto-Normalize to 100%
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={resetToOriginal}
+                        >
+                          Reset to Original
+                        </Button>
+                      </div>
+                    )}
+
                                   {/* Selected Stocks */}
                     <div className="space-y-4">
                       <h4 className="font-medium">Selected Assets ({selectedStocks.length}/5) - Minimum 3 recommended</h4>
@@ -1027,19 +1222,21 @@ export const StockSelection = ({
                                 <X className="h-4 w-4" />
                               </Button>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Slider
-                                value={[stock.allocation]}
-                                onValueChange={(value) => updateAllocation(stock.symbol, value[0])}
-                                max={100}
-                                min={0}
-                                step={1}
-                                className="flex-1"
-                              />
-                              <span className="text-sm font-medium w-12 text-right">
-                                {stock.allocation.toFixed(1)}%
-                              </span>
-                            </div>
+                            {showWeightEditor && (
+                              <div className="flex items-center gap-2">
+                                <Slider
+                                  value={[stock.allocation]}
+                                  onValueChange={(value) => updateAllocation(stock.symbol, value[0])}
+                                  max={100}
+                                  min={0}
+                                  step={1}
+                                  className="flex-1"
+                                />
+                                <span className="text-sm font-medium w-12 text-right">
+                                  {stock.allocation.toFixed(1)}%
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

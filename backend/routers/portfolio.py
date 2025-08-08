@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from backend.models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
+from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from typing import List, Dict, Optional
 import logging
 import numpy as np
@@ -8,9 +8,9 @@ import pandas as pd
 import redis
 import json
 import gzip
-from backend.utils.enhanced_data_fetcher import enhanced_data_fetcher
-from backend.utils.ticker_store import ticker_store
-from backend.utils.port_analytics import PortfolioAnalytics
+from utils.enhanced_data_fetcher import enhanced_data_fetcher
+from utils.ticker_store import ticker_store
+from utils.port_analytics import PortfolioAnalytics
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -168,9 +168,9 @@ def get_portfolio_recommendations(risk_profile: str):
     """Generate portfolio recommendations based on risk profile using cached data only"""
     
     try:
-        # First, ensure cache is warmed
-        cache_status = enhanced_data_fetcher.warm_required_cache()
-        logger.info(f"Cache status: {cache_status}")
+        # Cache should be warmed at startup, not on every request
+        # cache_status = enhanced_data_fetcher.warm_required_cache()
+        # logger.info(f"Cache status: {cache_status}")
         
         # Define asset pools based on risk characteristics
         asset_pools = {
@@ -212,10 +212,13 @@ def get_portfolio_recommendations(risk_profile: str):
                         'sector': data.get('sector', 'Unknown'),
                         'data_points': len(data['prices'])
                     }
-                    logger.info(f"Using {ticker} with {cached_assets[ticker]['data_points']} months of data")
+                    # Reduced logging verbosity
+                    # logger.info(f"Using {ticker} with {cached_assets[ticker]['data_points']} months of data")
         
         if not cached_assets:
-            raise HTTPException(status_code=500, detail="No cached data available")
+            # Use fallback instead of warming cache
+            logger.warning("No cached data available, using fallback recommendations")
+            return _get_static_portfolio_recommendations(risk_profile)
         
         # Risk-based weights
         risk_weights = {
@@ -848,113 +851,6 @@ def get_risk_rating(risk: float) -> str:
         return "High"
     else:
         return "Very High"
-
-@router.get("/ticker-table/data")
-async def get_ticker_table_data():
-    """
-    Get comprehensive ticker table data from Redis with all required fields
-    Returns: Complete ticker information for web table display
-    """
-    try:
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
-        import json
-        from datetime import datetime
-        
-        # Get all tickers from the enhanced data fetcher
-        all_tickers = enhanced_data_fetcher.all_tickers
-        
-        ticker_data = []
-        
-        for ticker in all_tickers:
-            try:
-                # Get price data using enhanced_data_fetcher's Redis connection
-                price_key = f"ticker_data:prices:{ticker}"
-                price_raw = enhanced_data_fetcher.r.get(price_key)
-                
-                # Get sector/company data
-                sector_key = f"ticker_data:sector:{ticker}"
-                sector_raw = enhanced_data_fetcher.r.get(sector_key)
-                
-                if price_raw and sector_raw:
-                    # Parse price data
-                    price_dict = json.loads(gzip.decompress(price_raw).decode())
-                    prices = list(price_dict.values())
-                    dates = list(price_dict.keys())
-                    
-                    # Parse sector data
-                    sector_info = json.loads(sector_raw.decode())
-                    
-                    # Calculate data points and date range
-                    data_points = len(prices)
-                    first_date = dates[0] if dates else "N/A"
-                    last_date = dates[-1] if dates else "N/A"
-                    last_price = prices[-1] if prices else 0
-                    
-                    ticker_info = {
-                        "ticker": ticker,
-                        "companyName": sector_info.get("companyName", ticker),
-                        "sector": sector_info.get("sector", "Unknown"),
-                        "industry": sector_info.get("industry", "Unknown"),
-                        "exchange": sector_info.get("exchange", "Unknown"),
-                        "country": sector_info.get("country", "Unknown"),
-                        "dataPoints": data_points,
-                        "firstDate": first_date,
-                        "lastDate": last_date,
-                        "lastPrice": round(last_price, 2) if last_price else 0,
-                        "status": "active",
-                        "lastUpdated": datetime.now().isoformat()
-                    }
-                    
-                    ticker_data.append(ticker_info)
-                else:
-                    # Missing data
-                    ticker_info = {
-                        "ticker": ticker,
-                        "companyName": ticker,
-                        "sector": "Unknown",
-                        "industry": "Unknown",
-                        "exchange": "Unknown",
-                        "country": "Unknown",
-                        "dataPoints": 0,
-                        "firstDate": "N/A",
-                        "lastDate": "N/A",
-                        "lastPrice": 0,
-                        "status": "missing_data",
-                        "lastUpdated": datetime.now().isoformat()
-                    }
-                    ticker_data.append(ticker_info)
-                    
-            except Exception as e:
-                logger.error(f"Error processing ticker {ticker}: {e}")
-                # Add error entry
-                ticker_info = {
-                    "ticker": ticker,
-                    "companyName": ticker,
-                    "sector": "Error",
-                    "industry": "Error",
-                    "exchange": "Error",
-                    "country": "Error",
-                    "dataPoints": 0,
-                    "firstDate": "N/A",
-                    "lastDate": "N/A",
-                    "lastPrice": 0,
-                    "status": "error",
-                    "lastUpdated": datetime.now().isoformat()
-                }
-                ticker_data.append(ticker_info)
-        
-        # Sort by ticker
-        ticker_data.sort(key=lambda x: x["ticker"])
-        
-        return {
-            "tickers": ticker_data,
-            "total": len(ticker_data),
-            "lastUpdated": datetime.now().isoformat(),
-            "cacheStatus": enhanced_data_fetcher.get_cache_status()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting ticker table data: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
 
 @router.post("/ticker-table/refresh")
@@ -981,59 +877,317 @@ async def refresh_ticker_table():
 @router.get("/mini-lesson/assets")
 def get_mini_lesson_assets():
     """
-    Get available assets for mini-lesson with educational pairs and dynamic options
-    Returns: Fixed educational pairs and dynamic asset options
+    Get available assets for mini-lesson with predefined sector-based asset lists
+    Returns: Sector-based asset lists for educational analysis with pre-calculated metrics
     """
     try:
-        # Fixed educational pairs for consistent learning
-        educational_pairs = [
+        # Predefined sector-based asset lists (5 assets each from different sectors)
+        sector_asset_lists = [
             {
-                'pair_id': 'nvda_amzn',
-                'ticker1': 'NVDA',
-                'ticker2': 'AMZN',
-                'name1': 'NVIDIA Corporation',
-                'name2': 'Amazon.com Inc.',
-                'description': 'Tech Growth vs E-commerce Giant',
-                'educational_focus': 'Growth vs Diversified Business Model'
+                'list_id': 'tech_growth',
+                'name': 'Technology Growth',
+                'description': 'High-growth technology companies',
+                'sector': 'Technology',
+                'assets': [
+                    {
+                        'ticker': 'NVDA',
+                        'name': 'NVIDIA Corporation',
+                        'sector': 'Technology',
+                        'industry': 'Semiconductors',
+                        'focus': 'AI & Gaming Chips'
+                    },
+                    {
+                        'ticker': 'TSLA',
+                        'name': 'Tesla Inc.',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Automobiles',
+                        'focus': 'Electric Vehicles'
+                    },
+                    {
+                        'ticker': 'META',
+                        'name': 'Meta Platforms Inc.',
+                        'sector': 'Technology',
+                        'industry': 'Internet Content',
+                        'focus': 'Social Media'
+                    },
+                    {
+                        'ticker': 'AMD',
+                        'name': 'Advanced Micro Devices',
+                        'sector': 'Technology',
+                        'industry': 'Semiconductors',
+                        'focus': 'Computer Processors'
+                    },
+                    {
+                        'ticker': 'ADBE',
+                        'name': 'Adobe Inc.',
+                        'sector': 'Technology',
+                        'industry': 'Software',
+                        'focus': 'Creative Software'
+                    }
+                ]
             },
             {
-                'pair_id': 'jnj_tsla',
-                'ticker1': 'JNJ',
-                'ticker2': 'TSLA',
-                'name1': 'Johnson & Johnson',
-                'name2': 'Tesla Inc.',
-                'description': 'Healthcare Value vs High Volatility',
-                'educational_focus': 'Stability vs Innovation Risk'
+                'list_id': 'stable_blue_chips',
+                'name': 'Stable Blue Chips',
+                'description': 'Established companies with stable returns',
+                'sector': 'Mixed',
+                'assets': [
+                    {
+                        'ticker': 'JNJ',
+                        'name': 'Johnson & Johnson',
+                        'sector': 'Healthcare',
+                        'industry': 'Pharmaceuticals',
+                        'focus': 'Healthcare Products'
+                    },
+                    {
+                        'ticker': 'PG',
+                        'name': 'Procter & Gamble Co.',
+                        'sector': 'Consumer Staples',
+                        'industry': 'Household Products',
+                        'focus': 'Consumer Goods'
+                    },
+                    {
+                        'ticker': 'KO',
+                        'name': 'Coca-Cola Company',
+                        'sector': 'Consumer Staples',
+                        'industry': 'Beverages',
+                        'focus': 'Beverages'
+                    },
+                    {
+                        'ticker': 'WMT',
+                        'name': 'Walmart Inc.',
+                        'sector': 'Consumer Staples',
+                        'industry': 'Discount Stores',
+                        'focus': 'Retail'
+                    },
+                    {
+                        'ticker': 'UNH',
+                        'name': 'UnitedHealth Group',
+                        'sector': 'Healthcare',
+                        'industry': 'Health Insurance',
+                        'focus': 'Health Insurance'
+                    }
+                ]
+            },
+            {
+                'list_id': 'financial_services',
+                'name': 'Financial Services',
+                'description': 'Banking and financial services companies',
+                'sector': 'Financial Services',
+                'assets': [
+                    {
+                        'ticker': 'JPM',
+                        'name': 'JPMorgan Chase & Co.',
+                        'sector': 'Financial Services',
+                        'industry': 'Banks',
+                        'focus': 'Investment Banking'
+                    },
+                    {
+                        'ticker': 'V',
+                        'name': 'Visa Inc.',
+                        'sector': 'Financial Services',
+                        'industry': 'Credit Services',
+                        'focus': 'Payment Processing'
+                    },
+                    {
+                        'ticker': 'MA',
+                        'name': 'Mastercard Inc.',
+                        'sector': 'Financial Services',
+                        'industry': 'Credit Services',
+                        'focus': 'Payment Processing'
+                    },
+                    {
+                        'ticker': 'HD',
+                        'name': 'Home Depot Inc.',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Home Improvement Retail',
+                        'focus': 'Home Improvement'
+                    },
+                    {
+                        'ticker': 'DIS',
+                        'name': 'Walt Disney Company',
+                        'sector': 'Communication Services',
+                        'industry': 'Entertainment',
+                        'focus': 'Media & Entertainment'
+                    }
+                ]
+            },
+            {
+                'list_id': 'healthcare_pharma',
+                'name': 'Healthcare & Pharma',
+                'description': 'Healthcare and pharmaceutical companies',
+                'sector': 'Healthcare',
+                'assets': [
+                    {
+                        'ticker': 'PFE',
+                        'name': 'Pfizer Inc.',
+                        'sector': 'Healthcare',
+                        'industry': 'Pharmaceuticals',
+                        'focus': 'Vaccines & Medicines'
+                    },
+                    {
+                        'ticker': 'ABBV',
+                        'name': 'AbbVie Inc.',
+                        'sector': 'Healthcare',
+                        'industry': 'Pharmaceuticals',
+                        'focus': 'Biopharmaceuticals'
+                    },
+                    {
+                        'ticker': 'TMO',
+                        'name': 'Thermo Fisher Scientific',
+                        'sector': 'Healthcare',
+                        'industry': 'Medical Devices',
+                        'focus': 'Scientific Instruments'
+                    },
+                    {
+                        'ticker': 'DHR',
+                        'name': 'Danaher Corporation',
+                        'sector': 'Healthcare',
+                        'industry': 'Medical Devices',
+                        'focus': 'Life Sciences'
+                    },
+                    {
+                        'ticker': 'BMY',
+                        'name': 'Bristol-Myers Squibb',
+                        'sector': 'Healthcare',
+                        'industry': 'Pharmaceuticals',
+                        'focus': 'Biopharmaceuticals'
+                    }
+                ]
+            },
+            {
+                'list_id': 'consumer_discretionary',
+                'name': 'Consumer Discretionary',
+                'description': 'Consumer discretionary and retail companies',
+                'sector': 'Consumer Discretionary',
+                'assets': [
+                    {
+                        'ticker': 'AMZN',
+                        'name': 'Amazon.com Inc.',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Internet Retail',
+                        'focus': 'E-commerce & Cloud'
+                    },
+                    {
+                        'ticker': 'NKE',
+                        'name': 'Nike Inc.',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Textiles & Apparel',
+                        'focus': 'Athletic Footwear'
+                    },
+                    {
+                        'ticker': 'SBUX',
+                        'name': 'Starbucks Corporation',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Restaurants',
+                        'focus': 'Coffee & Beverages'
+                    },
+                    {
+                        'ticker': 'MCD',
+                        'name': 'McDonald\'s Corporation',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Restaurants',
+                        'focus': 'Fast Food'
+                    },
+                    {
+                        'ticker': 'TJX',
+                        'name': 'TJX Companies Inc.',
+                        'sector': 'Consumer Discretionary',
+                        'industry': 'Apparel Retail',
+                        'focus': 'Off-Price Retail'
+                    }
+                ]
+            },
+            {
+                'list_id': 'energy_utilities',
+                'name': 'Energy & Utilities',
+                'description': 'Energy and utility companies',
+                'sector': 'Energy',
+                'assets': [
+                    {
+                        'ticker': 'XOM',
+                        'name': 'Exxon Mobil Corporation',
+                        'sector': 'Energy',
+                        'industry': 'Oil & Gas',
+                        'focus': 'Integrated Oil'
+                    },
+                    {
+                        'ticker': 'CVX',
+                        'name': 'Chevron Corporation',
+                        'sector': 'Energy',
+                        'industry': 'Oil & Gas',
+                        'focus': 'Integrated Oil'
+                    },
+                    {
+                        'ticker': 'DUK',
+                        'name': 'Duke Energy Corporation',
+                        'sector': 'Utilities',
+                        'industry': 'Electric Utilities',
+                        'focus': 'Electric Power'
+                    },
+                    {
+                        'ticker': 'NEE',
+                        'name': 'NextEra Energy Inc.',
+                        'sector': 'Utilities',
+                        'industry': 'Electric Utilities',
+                        'focus': 'Renewable Energy'
+                    },
+                    {
+                        'ticker': 'SO',
+                        'name': 'Southern Company',
+                        'sector': 'Utilities',
+                        'industry': 'Electric Utilities',
+                        'focus': 'Electric Power'
+                    }
+                ]
             }
         ]
         
-        # Get available assets for dynamic selection
-        available_assets = enhanced_data_fetcher.search_tickers('', limit=50)
-        
-        # Filter for popular/well-known stocks
-        popular_assets = [
-            'AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX',
-            'JPM', 'JNJ', 'PG', 'KO', 'WMT', 'UNH', 'HD', 'DIS', 'V', 'MA',
-            'PYPL', 'ADBE', 'CRM', 'ORCL', 'INTC', 'CSCO', 'PFE', 'ABT'
-        ]
-        
-        dynamic_assets = []
-        for asset in popular_assets:
-            # Check if asset is available in cache
-            if enhanced_data_fetcher._is_cached(asset, 'prices'):
-                asset_data = enhanced_data_fetcher.get_monthly_data(asset)
-                if asset_data:
-                    dynamic_assets.append({
-                        'ticker': asset,
-                        'name': asset_data.get('company_name', asset),
-                        'sector': asset_data.get('sector', 'Unknown'),
-                        'industry': asset_data.get('industry', 'Unknown')
-                    })
+        # Check which assets are available in cache and add pre-calculated metrics
+        available_lists = []
+        for asset_list in sector_asset_lists:
+            available_assets = []
+            for asset in asset_list['assets']:
+                ticker = asset['ticker']
+                if enhanced_data_fetcher._is_cached(ticker, 'prices'):
+                    # Get pre-calculated metrics from cache
+                    cached_metrics = enhanced_data_fetcher.get_cached_metrics(ticker)
+                    if cached_metrics:
+                        available_assets.append({
+                            **asset,
+                            'annualized_return': cached_metrics['annualized_return'],
+                            'risk': cached_metrics['risk'],  # Consistent naming: 'risk' not 'volatility'
+                            'data_points': cached_metrics['data_points'],
+                            'last_price': cached_metrics['last_price']
+                        })
+                    else:
+                        # Fallback: calculate metrics on-the-fly
+                        asset_data = enhanced_data_fetcher.get_monthly_data(ticker)
+                        if asset_data and len(asset_data['prices']) >= 12:
+                            prices = asset_data['prices']
+                            returns = pd.Series(prices).pct_change().dropna()
+                            annual_return = (1 + returns.mean()) ** 12 - 1
+                            annual_risk = returns.std() * np.sqrt(12)
+                            
+                            available_assets.append({
+                                **asset,
+                                'annualized_return': annual_return,
+                                'risk': annual_risk,  # Consistent naming: 'risk' not 'volatility'
+                                'data_points': len(prices),
+                                'last_price': prices[-1] if prices else 0
+                            })
+            
+            if len(available_assets) >= 3:  # Only include lists with at least 3 available assets
+                available_lists.append({
+                    **asset_list,
+                    'assets': available_assets,
+                    'available_count': len(available_assets)
+                })
         
         return {
-            'educational_pairs': educational_pairs,
-            'dynamic_assets': dynamic_assets[:20],  # Limit to top 20
-            'total_available': len(dynamic_assets)
+            'sector_lists': available_lists,
+            'total_lists': len(available_lists),
+            'message': 'Sector-based asset lists with pre-calculated metrics'
         }
         
     except Exception as e:
@@ -1043,63 +1197,86 @@ def get_mini_lesson_assets():
 @router.get("/mini-lesson/random-pair")
 def get_random_asset_pair():
     """
-    Generate a random educational asset pair from available assets
+    Generate a truly random educational asset pair from all available assets
     Returns: Random pair with different sectors for educational value
     """
     try:
-        # Get available assets
-        popular_assets = [
-            'AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX',
-            'JPM', 'JNJ', 'PG', 'KO', 'WMT', 'UNH', 'HD', 'DIS', 'V', 'MA'
-        ]
+        # Get sector lists
+        sector_lists_response = get_mini_lesson_assets()
+        sector_lists = sector_lists_response.get('sector_lists', [])
         
-        available_assets = []
-        for asset in popular_assets:
-            if enhanced_data_fetcher._is_cached(asset, 'prices'):
-                asset_data = enhanced_data_fetcher.get_monthly_data(asset)
-                if asset_data:
-                    available_assets.append({
-                        'ticker': asset,
-                        'name': asset_data.get('company_name', asset),
-                        'sector': asset_data.get('sector', 'Unknown'),
-                        'industry': asset_data.get('industry', 'Unknown')
-                    })
+        if len(sector_lists) < 2:
+            raise HTTPException(status_code=404, detail="Insufficient sector lists available")
         
-        if len(available_assets) < 2:
+        # Collect ALL available assets from ALL lists
+        all_assets = []
+        for sector_list in sector_lists:
+            for asset in sector_list['assets']:
+                all_assets.append({
+                    **asset,
+                    'source_list': sector_list['name']  # Track which list it came from
+                })
+        
+        if len(all_assets) < 2:
             raise HTTPException(status_code=404, detail="Insufficient assets available")
         
-        # Try to select assets from different sectors for educational value
+        # Select two random assets from ALL available assets
         import random
-        random.shuffle(available_assets)
+        selected_assets = random.sample(all_assets, 2)
+        asset1, asset2 = selected_assets
         
-        asset1 = available_assets[0]
-        asset2 = None
+        # Ensure we have different assets (in case of duplicates)
+        attempts = 0
+        while asset1['ticker'] == asset2['ticker'] and attempts < 10:
+            asset2 = random.choice(all_assets)
+            attempts += 1
         
-        # Try to find an asset from a different sector
-        for asset in available_assets[1:]:
-            if asset['sector'] != asset1['sector']:
-                asset2 = asset
-                break
+        # Create educational theme based on sectors
+        themes = {
+            ('Technology', 'Healthcare'): 'Innovation vs Stability',
+            ('Technology', 'Consumer Discretionary'): 'Growth vs Consumer Demand',
+            ('Technology', 'Energy'): 'Innovation vs Traditional Energy',
+            ('Healthcare', 'Consumer Discretionary'): 'Health vs Lifestyle',
+            ('Healthcare', 'Energy'): 'Health vs Energy Infrastructure',
+            ('Consumer Discretionary', 'Energy'): 'Consumer Spending vs Energy Demand',
+            ('Financial Services', 'Technology'): 'Financial Infrastructure vs Innovation',
+            ('Financial Services', 'Healthcare'): 'Financial Services vs Healthcare',
+            ('Financial Services', 'Consumer Discretionary'): 'Financial Services vs Consumer Spending',
+            ('Financial Services', 'Energy'): 'Financial Services vs Energy'
+        }
         
-        # If no different sector found, just use the second asset
-        if not asset2:
-            asset2 = available_assets[1]
+        theme_key = (asset1['sector'], asset2['sector'])
+        educational_theme = themes.get(theme_key, f"{asset1['sector']} vs {asset2['sector']}")
         
         return {
-            'pair_id': f"{asset1['ticker'].lower()}_{asset2['ticker'].lower()}",
             'ticker1': asset1['ticker'],
             'ticker2': asset2['ticker'],
             'name1': asset1['name'],
             'name2': asset2['name'],
             'sector1': asset1['sector'],
             'sector2': asset2['sector'],
+            'industry1': asset1['industry'],
+            'industry2': asset2['industry'],
+            'focus1': asset1['focus'],
+            'focus2': asset2['focus'],
             'description': f"{asset1['sector']} vs {asset2['sector']}",
-            'educational_focus': 'Sector Diversification Analysis'
+            'educational_focus': educational_theme,
+            'asset1_metrics': {
+                'annualized_return': asset1['annualized_return'],
+                'risk': asset1['risk']
+            },
+            'asset2_metrics': {
+                'annualized_return': asset2['annualized_return'],
+                'risk': asset2['risk']
+            }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating random pair: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating random pair: {str(e)}")
+        logger.error(f"Error generating random asset pair: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating random asset pair: {str(e)}")
+
 
 @router.post("/mini-lesson/custom-portfolio")
 def calculate_custom_portfolio(request: dict):
@@ -1152,14 +1329,12 @@ def calculate_custom_portfolio(request: dict):
             'asset1_metrics': {
                 'ticker': ticker1.upper(),
                 'return': asset1_metrics['annualized_return'],
-                'risk': asset1_metrics['annualized_volatility'],
-                'sharpe': asset1_metrics['sharpe_ratio']
+                'risk': asset1_metrics['annualized_volatility']
             },
             'asset2_metrics': {
                 'ticker': ticker2.upper(),
                 'return': asset2_metrics['annualized_return'],
-                'risk': asset2_metrics['annualized_volatility'],
-                'sharpe': asset2_metrics['sharpe_ratio']
+                'risk': asset2_metrics['annualized_volatility']
             },
             'correlation': correlation
         }
@@ -1169,3 +1344,141 @@ def calculate_custom_portfolio(request: dict):
     except Exception as e:
         logger.error(f"Error calculating custom portfolio: {e}")
         raise HTTPException(status_code=500, detail=f"Error calculating custom portfolio: {str(e)}") 
+@router.get("/ticker-table/data")
+async def get_ticker_table_data():
+    """
+    Get simple ticker table data with return and risk metrics
+    Returns: Basic ticker information with essential metrics
+    """
+    try:
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        import json
+        from datetime import datetime
+        
+        # Get all tickers from the enhanced data fetcher
+        all_tickers = enhanced_data_fetcher.all_tickers
+        
+        ticker_data = []
+        
+        for ticker in all_tickers:
+            try:
+                # Get price data using enhanced_data_fetcher's Redis connection
+                price_key = f"ticker_data:prices:{ticker}"
+                price_raw = enhanced_data_fetcher.r.get(price_key)
+                
+                # Get sector/company data
+                sector_key = f"ticker_data:sector:{ticker}"
+                sector_raw = enhanced_data_fetcher.r.get(sector_key)
+                
+                if price_raw and sector_raw:
+                    # Parse price data
+                    price_dict = json.loads(gzip.decompress(price_raw).decode())
+                    prices = list(price_dict.values())
+                    dates = list(price_dict.keys())
+                    
+                    # Parse sector data
+                    sector_info = json.loads(sector_raw.decode())
+                    
+                    # Calculate data points and date range
+                    data_points = len(prices)
+                    first_date = dates[0] if dates else "N/A"
+                    last_date = dates[-1] if dates else "N/A"
+                    last_price = prices[-1] if prices else 0
+                    
+                    # Calculate return and risk metrics
+                    annualized_return = 0
+                    annualized_risk = 0
+                    
+                    if len(prices) > 1:
+                        try:
+                            # Calculate returns
+                            returns = []
+                            for i in range(1, len(prices)):
+                                if prices[i-1] > 0:
+                                    ret = (prices[i] - prices[i-1]) / prices[i-1]
+                                    returns.append(ret)
+                            
+                            if returns:
+                                # Annualized return (assuming monthly data)
+                                avg_monthly_return = sum(returns) / len(returns)
+                                annualized_return = avg_monthly_return * 12 * 100  # Convert to percentage
+                                
+                                # Annualized volatility (risk)
+                                if len(returns) > 1:
+                                    monthly_volatility = pd.Series(returns).std()
+                                    annualized_risk = monthly_volatility * (12 ** 0.5) * 100  # Convert to percentage
+                        except Exception as e:
+                            logger.warning(f"Error calculating metrics for {ticker}: {e}")
+                    
+                    ticker_info = {
+                        "ticker": ticker,
+                        "companyName": sector_info.get("companyName", ticker),
+                        "sector": sector_info.get("sector", "Unknown"),
+                        "industry": sector_info.get("industry", "Unknown"),
+                        "exchange": sector_info.get("exchange", "Unknown"),
+                        "country": sector_info.get("country", "Unknown"),
+                        "dataPoints": data_points,
+                        "firstDate": first_date,
+                        "lastDate": last_date,
+                        "lastPrice": round(last_price, 2) if last_price else 0,
+                        "annualizedReturn": round(annualized_return, 2),
+                        "annualizedRisk": round(annualized_risk, 2),
+                        "status": "active",
+                        "lastUpdated": datetime.now().isoformat()
+                    }
+                    
+                    ticker_data.append(ticker_info)
+                else:
+                    # Missing data
+                    ticker_info = {
+                        "ticker": ticker,
+                        "companyName": ticker,
+                        "sector": "Unknown",
+                        "industry": "Unknown",
+                        "exchange": "Unknown",
+                        "country": "Unknown",
+                        "dataPoints": 0,
+                        "firstDate": "N/A",
+                        "lastDate": "N/A",
+                        "lastPrice": 0,
+                        "annualizedReturn": 0,
+                        "annualizedRisk": 0,
+                        "status": "missing_data",
+                        "lastUpdated": datetime.now().isoformat()
+                    }
+                    ticker_data.append(ticker_info)
+                    
+            except Exception as e:
+                logger.error(f"Error processing ticker {ticker}: {e}")
+                # Add error entry
+                ticker_info = {
+                    "ticker": ticker,
+                    "companyName": ticker,
+                    "sector": "Error",
+                    "industry": "Error",
+                    "exchange": "Error",
+                    "country": "Error",
+                    "dataPoints": 0,
+                    "firstDate": "N/A",
+                    "lastDate": "N/A",
+                    "lastPrice": 0,
+                    "annualizedReturn": 0,
+                    "annualizedRisk": 0,
+                    "status": "error",
+                    "lastUpdated": datetime.now().isoformat()
+                }
+                ticker_data.append(ticker_info)
+        
+        # Sort by ticker
+        ticker_data.sort(key=lambda x: x["ticker"])
+        
+        return {
+            "tickers": ticker_data,
+            "total": len(ticker_data),
+            "lastUpdated": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting ticker table data: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
+
