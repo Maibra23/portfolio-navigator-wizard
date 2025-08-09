@@ -66,7 +66,6 @@ interface PortfolioAllocation {
   allocation: number;
   name?: string;
   assetType?: 'stock' | 'bond' | 'etf';
-  sector?: string;
 }
 
 interface PortfolioRecommendation {
@@ -520,6 +519,13 @@ export const StockSelection = ({
       const tickers = data.results || [];
       console.log(`Found ${tickers.length} tickers`);
       
+      // NEW: Add warning if no results found
+      if (tickers.length === 0) {
+        setError(`No stocks found for "${query}". The stock may not be in our database. Try a different search term.`);
+        setSearchResults([]);
+        return;
+      }
+      
       setSearchResults(tickers.map((ticker: {
         ticker: string;
         name?: string;
@@ -560,10 +566,18 @@ export const StockSelection = ({
     return () => clearTimeout(timeoutId);
   }, [searchTerm, searchStocks]);
 
-  // Calculate portfolio metrics
+  // Calculate portfolio metrics based on SELECTED portfolio, not individual stocks
   useEffect(() => {
-    if (selectedStocks.length > 0) {
-      // Simulate portfolio metrics calculation
+    if (selectedPortfolioIndex !== null && originalRecommendation) {
+      // Use the selected portfolio's actual metrics, not calculated from individual stocks
+      setPortfolioMetrics({
+        expectedReturn: originalRecommendation.expectedReturn,
+        risk: originalRecommendation.risk,
+        diversificationScore: originalRecommendation.diversificationScore,
+        sharpeRatio: 0 // Always 0 as requested
+      });
+    } else if (selectedStocks.length > 0) {
+      // Fallback for custom portfolios (not from recommendations)
       const totalAllocation = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
       const avgReturn = selectedStocks.reduce((sum, stock) => sum + (stock.allocation / 100) * 0.12, 0);
       const avgRisk = selectedStocks.reduce((sum, stock) => sum + (stock.allocation / 100) * 0.2, 0);
@@ -572,10 +586,10 @@ export const StockSelection = ({
         expectedReturn: avgReturn,
         risk: avgRisk,
         diversificationScore: Math.min(100, selectedStocks.length * 20),
-        sharpeRatio: 0 // Removed Sharpe ratio calculation
+        sharpeRatio: 0 // Always 0 as requested
       });
     }
-  }, [selectedStocks]);
+  }, [selectedStocks, selectedPortfolioIndex, originalRecommendation]);
 
   const addStock = (stock: StockResult) => {
     if (selectedStocks.length >= 5) {
@@ -658,12 +672,7 @@ export const StockSelection = ({
     }
   };
 
-  // NEW: Get primary sectors for portfolio
-  const getPrimarySectors = (allocations: PortfolioAllocation[]) => {
-    const sectors = allocations.map(stock => stock.sector || 'Unknown');
-    const uniqueSectors = [...new Set(sectors)];
-    return uniqueSectors.slice(0, 3).join(', ');
-  };
+  // REMOVED: getPrimarySectors function - no longer needed since we removed primary sectors display
 
   const handleNext = () => {
       onNext();
@@ -1045,10 +1054,6 @@ export const StockSelection = ({
                           <span>Number of Assets:</span>
                           <span className="font-medium">{recommendation.allocations.length}</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span>Primary Sectors:</span>
-                          <span className="font-medium">{getPrimarySectors(recommendation.allocations)}</span>
-                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -1242,9 +1247,9 @@ export const StockSelection = ({
                       ))}
                     </div>
 
-              {/* Portfolio Analytics */}
+              {/* Portfolio Analytics - UPDATED: Shows selected portfolio metrics, not calculated ones */}
               {portfolioMetrics && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="text-center p-4 bg-green-50 rounded-lg">
                         <div className="text-2xl font-bold text-green-600">
                           {(portfolioMetrics.expectedReturn * 100).toFixed(1)}%
@@ -1256,12 +1261,6 @@ export const StockSelection = ({
                           {(portfolioMetrics.risk * 100).toFixed(1)}%
                         </div>
                         <div className="text-sm text-orange-700">Risk Level</div>
-                      </div>
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {portfolioMetrics.sharpeRatio.toFixed(2)}
-                        </div>
-                        <div className="text-sm text-blue-700">Sharpe Ratio</div>
                       </div>
                       <div className="text-center p-4 bg-purple-50 rounded-lg">
                         <div className="text-2xl font-bold text-purple-600">
