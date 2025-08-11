@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, TrendingUp, Shield, DollarSign } from 'lucide-react';
+import { ArrowRight, TrendingUp, Shield, DollarSign, Info, BarChart3 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { WelcomeStep } from './wizard/WelcomeStep';
 import { RiskProfiler } from './wizard/RiskProfiler';
 import { CapitalInput } from './wizard/CapitalInput';
 import { StockSelection } from './wizard/StockSelection';
+import { PortfolioOptimization } from './wizard/PortfolioOptimization';
 
 export type RiskProfile = 'very-conservative' | 'conservative' | 'moderate' | 'aggressive' | 'very-aggressive' | null;
 
@@ -28,7 +30,7 @@ const STEPS = [
   { id: 'risk', title: 'Risk Profile', icon: Shield },
   { id: 'capital', title: 'Capital Input', icon: DollarSign },
   { id: 'stocks', title: 'Stock Selection', icon: TrendingUp },
-  { id: 'optimization', title: 'Optimization', icon: TrendingUp },
+  { id: 'optimization', title: 'Optimization', icon: BarChart3 },
   { id: 'stress-test', title: 'Stress Test', icon: Shield },
 ];
 
@@ -43,14 +45,24 @@ export const PortfolioWizard = () => {
   const progress = ((currentStep + 1) / STEPS.length) * 100;
 
   const nextStep = () => {
+    console.log('🔄 nextStep called. Current step:', currentStep, 'Max step:', STEPS.length - 1);
     if (currentStep < STEPS.length - 1) {
-      setCurrentStep(currentStep + 1);
+      const newStep = currentStep + 1;
+      console.log('✅ Moving to step:', newStep, 'Step ID:', STEPS[newStep].id);
+      setCurrentStep(newStep);
+    } else {
+      console.log('⚠️ Already at last step');
     }
   };
 
   const prevStep = () => {
+    console.log('🔄 prevStep called. Current step:', currentStep);
     if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
+      const newStep = currentStep - 1;
+      console.log('✅ Moving to step:', newStep, 'Step ID:', STEPS[newStep].id);
+      setCurrentStep(newStep);
+    } else {
+      console.log('⚠️ Already at first step');
     }
   };
 
@@ -59,12 +71,14 @@ export const PortfolioWizard = () => {
   };
 
   const renderStep = () => {
-    console.log('Current step:', currentStep, 'Step ID:', STEPS[currentStep].id);
+    console.log('🔄 renderStep called. Current step:', currentStep, 'Step ID:', STEPS[currentStep].id, 'Step title:', STEPS[currentStep].title);
     
     switch (STEPS[currentStep].id) {
       case 'welcome':
+        console.log('📱 Rendering WelcomeStep');
         return <WelcomeStep onNext={nextStep} />;
       case 'risk':
+        console.log('📱 Rendering RiskProfiler');
         return (
           <RiskProfiler
             onNext={nextStep}
@@ -74,6 +88,7 @@ export const PortfolioWizard = () => {
           />
         );
       case 'capital':
+        console.log('📱 Rendering CapitalInput');
         return (
           <CapitalInput
             onNext={nextStep}
@@ -83,7 +98,11 @@ export const PortfolioWizard = () => {
           />
         );
       case 'stocks':
-        console.log('Rendering StockSelection component');
+        console.log('📱 Rendering StockSelection component with data:', {
+          riskProfile: wizardData.riskProfile,
+          capital: wizardData.capital,
+          selectedStocks: wizardData.selectedStocks.length
+        });
         return (
           <StockSelection
             onNext={nextStep}
@@ -94,8 +113,19 @@ export const PortfolioWizard = () => {
             capital={wizardData.capital}
           />
         );
+      case 'optimization':
+        console.log('📱 Rendering PortfolioOptimization component');
+        return (
+          <PortfolioOptimization
+            onNext={nextStep}
+            onPrev={prevStep}
+            selectedStocks={wizardData.selectedStocks}
+            riskProfile={wizardData.riskProfile || 'moderate'}
+            capital={wizardData.capital}
+          />
+        );
       default:
-        console.log('Rendering default step for:', STEPS[currentStep].id);
+        console.log('📱 Rendering default step for:', STEPS[currentStep].id);
         return (
           <div className="text-center py-12">
             <h3 className="text-xl font-semibold mb-4">Step {currentStep + 1} - Coming Soon</h3>
@@ -117,74 +147,47 @@ export const PortfolioWizard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-bg">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-4">
-            Portfolio Wizard
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Build and test your custom investment portfolio step by step
-          </p>
-        </div>
-
-        {/* Progress Bar */}
-        <Card className="shadow-card mb-8">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">
-                Step {currentStep + 1} of {STEPS.length}: {STEPS[currentStep].title}
-              </h2>
-              <span className="text-sm text-muted-foreground">{Math.round(progress)}% Complete</span>
-            </div>
-            <Progress value={progress} className="h-3" />
-            
-            {/* Step indicators */}
-            <div className="flex justify-between mt-4">
-              {STEPS.map((step, index) => {
-                const StepIcon = step.icon;
-                const isCompleted = index < currentStep;
-                const isCurrent = index === currentStep;
-                
-                return (
-                  <div key={step.id} className="flex flex-col items-center">
-                    <div
-                      className={`
-                        w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-colors
-                        ${isCompleted ? 'bg-accent text-accent-foreground' : 
-                          isCurrent ? 'bg-primary text-primary-foreground' : 
-                          'bg-muted text-muted-foreground'}
-                      `}
-                    >
-                      <StepIcon className="h-4 w-4" />
-                    </div>
-                    <span className="text-xs text-center">{step.title}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Step Content */}
-        <div className="animate-fade-in">
-          {renderStep()}
-        </div>
-        
-        {/* Debug Panel - Remove in production */}
-        <div className="mt-8 p-4 bg-muted/30 rounded-lg">
-          <h4 className="font-medium mb-2">Debug Information</h4>
-          <div className="text-sm space-y-1">
-            <p>Current Step Index: {currentStep}</p>
-            <p>Current Step ID: {STEPS[currentStep].id}</p>
-            <p>Current Step Title: {STEPS[currentStep].title}</p>
-            <p>Total Steps: {STEPS.length}</p>
-            <p>Risk Profile: {wizardData.riskProfile || 'null'}</p>
-            <p>Capital: {wizardData.capital}</p>
-            <p>Selected Stocks: {wizardData.selectedStocks.length}</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Navigation Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-8 w-8 text-blue-600" />
+            <h1 className="text-2xl font-bold text-gray-900">Portfolio Navigator Wizard</h1>
           </div>
+          <nav className="flex items-center gap-4">
+            <Link
+              to="/"
+              className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              Portfolio Wizard
+            </Link>
+            <Link
+              to="/ticker-info"
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <Info className="h-4 w-4" />
+              Ticker Info
+            </Link>
+          </nav>
         </div>
+      </div>
+
+      {/* Main Wizard Content */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Step {currentStep + 1} of {STEPS.length}: {STEPS[currentStep].title}
+            </h2>
+            <div className="text-sm text-gray-500">
+              {Math.round(progress)}% Complete
+            </div>
+          </div>
+          <Progress value={progress} className="h-2" />
+        </div>
+
+        {renderStep()}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict
 
 class PortfolioAllocation(BaseModel):
     symbol: str
@@ -16,4 +16,23 @@ class PortfolioResponse(BaseModel):
     portfolio: List[PortfolioAllocation]
     expectedReturn: float
     risk: float
-    diversificationScore: float 
+    diversificationScore: float
+
+# New models for enhanced portfolio system
+class PortfolioValidation(BaseModel):
+    isValid: bool
+    canProceed: bool
+    warnings: List[str]
+
+class PortfolioMetricsRequest(BaseModel):
+    allocations: List[PortfolioAllocation]
+    riskProfile: str
+
+class PortfolioMetricsResponse(BaseModel):
+    expectedReturn: float
+    risk: float
+    diversificationScore: float
+    sharpeRatio: float
+    totalAllocation: float
+    stockCount: int
+    validation: PortfolioValidation 

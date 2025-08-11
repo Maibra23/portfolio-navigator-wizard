@@ -592,6 +592,67 @@ class EnhancedDataFetcher:
         logger.info(f"📥 {ticker} not in cache, fetching from Yahoo Finance...")
         return self._fetch_single_ticker_with_retry(ticker)
 
+    def get_ticker_info(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive ticker information including prices, metrics, and company details
+        Returns: Dict with comprehensive ticker information for frontend display
+        """
+        ticker = ticker.upper()
+        if ticker not in self.all_tickers:
+            logger.warning(f"⚠️  Ticker {ticker} not in master list")
+            return None
+
+        # Get basic ticker data
+        ticker_data = self.get_ticker_data(ticker)
+        if not ticker_data:
+            return None
+
+        # Get cached metrics if available
+        cached_metrics = self.get_cached_metrics(ticker)
+        
+        prices = ticker_data.get('prices', pd.Series())
+        sector_info = ticker_data.get('sector', {})
+        
+        if prices.empty:
+            return None
+
+        # Calculate basic price metrics
+        current_price = prices.iloc[-1] if not prices.empty else 0
+        price_change = prices.iloc[-1] - prices.iloc[-2] if len(prices) > 1 else 0
+        price_change_pct = (price_change / prices.iloc[-2] * 100) if len(prices) > 1 and prices.iloc[-2] != 0 else 0
+        
+        # Prepare response
+        ticker_info = {
+            'ticker': ticker,
+            'company_name': sector_info.get('companyName', ticker),
+            'sector': sector_info.get('sector', 'Unknown'),
+            'industry': sector_info.get('industry', 'Unknown'),
+            'country': sector_info.get('country', 'Unknown'),
+            'exchange': sector_info.get('exchange', 'Unknown'),
+            'current_price': round(current_price, 2),
+            'price_change': round(price_change, 2),
+            'price_change_pct': round(price_change_pct, 2),
+            'last_updated': prices.index[-1].strftime('%Y-%m-%d') if not prices.empty else None,
+            'data_points': len(prices),
+            'cached': True,  # Since we're using cache-first approach
+            'prices': prices.tolist()[-30:],  # Last 30 data points for charts
+            'dates': [d.strftime('%Y-%m-%d') for d in prices.index[-30:]]  # Last 30 dates
+        }
+
+        # Add cached metrics if available
+        if cached_metrics:
+            ticker_info.update({
+                'annualized_return': cached_metrics.get('annualized_return'),
+                'risk': cached_metrics.get('annualized_volatility'),  # Using 'risk' as preferred naming
+                'sharpe_ratio': cached_metrics.get('sharpe_ratio'),
+                'max_drawdown': cached_metrics.get('max_drawdown'),
+                'var_95': cached_metrics.get('var_95'),
+                'skewness': cached_metrics.get('skewness'),
+                'kurtosis': cached_metrics.get('kurtosis')
+            })
+
+        return ticker_info
+
     def get_monthly_data(self, ticker: str) -> Optional[Dict[str, Any]]:
         """
         Get monthly data for a ticker - returns prices, dates, and company info

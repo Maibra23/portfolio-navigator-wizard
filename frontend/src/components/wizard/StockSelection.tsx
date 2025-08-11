@@ -31,8 +31,10 @@ import {
   LineChart,
   Settings,
   Database,
-  XCircle
+  XCircle,
+  Loader2
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { TwoAssetChart } from './TwoAssetChart';
 
 interface StockSelectionProps {
@@ -84,6 +86,31 @@ interface PortfolioMetrics {
   sharpeRatio: number; // Keep for compatibility but will be set to 0
 }
 
+// NEW: Portfolio Validation Interface
+interface PortfolioValidation {
+  isValid: boolean;
+  totalAllocation: number;
+  stockCount: number;
+  warnings: string[];
+  canProceed: boolean;
+  optimalityScore?: number;
+  ranking?: number;
+}
+
+// NEW: Dynamic Portfolio State Interface
+interface DynamicPortfolioState {
+  selectedStocks: PortfolioAllocation[];
+  portfolioMetrics: PortfolioMetrics | null;
+  portfolioValidation: PortfolioValidation;
+  showWeightEditor: boolean;
+  hasSelectedPortfolio: boolean;
+  selectedPortfolioIndex: number | null;
+  originalRecommendation: PortfolioRecommendation | null;
+  isLoadingMetrics: boolean;
+  error: string | null;
+  successMessage: string | null;
+}
+
 interface SectorRecommendation {
   sector: string;
   reason: string;
@@ -133,7 +160,7 @@ export const StockSelection = ({
   riskProfile, 
   capital 
 }: StockSelectionProps) => {
-  const [activeTab, setActiveTab] = useState<'mini-lesson' | 'recommendations' | 'full-customization'>('mini-lesson');
+  const [activeTab, setActiveTab] = useState<'mini-lesson' | 'recommendations' | 'full-customization' | 'dynamic-generation'>('mini-lesson');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -141,6 +168,29 @@ export const StockSelection = ({
   const [portfolioMetrics, setPortfolioMetrics] = useState<PortfolioMetrics | null>(null);
   const [sectorRecommendations, setSectorRecommendations] = useState<SectorRecommendation[]>([]);
   const [showDiversification, setShowDiversification] = useState(false);
+  
+  // NEW: Dynamic Portfolio Generation State
+  const [dynamicPortfolios, setDynamicPortfolios] = useState<PortfolioRecommendation[]>([]);
+  const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
+  const [optimizationParams, setOptimizationParams] = useState({
+    targetReturn: 0.15,
+    maxRisk: 0.25
+  });
+  const [selectedOptimizationStrategy, setSelectedOptimizationStrategy] = useState<string>('all');
+  
+  // NEW: Dynamic Portfolio State Management
+  const [portfolioValidation, setPortfolioValidation] = useState<PortfolioValidation>({
+    isValid: false,
+    totalAllocation: 0,
+    stockCount: 0,
+    warnings: [],
+    canProceed: false
+  });
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
+  const [selectedPortfolioIndex, setSelectedPortfolioIndex] = useState<number | null>(null);
+  const [originalRecommendation, setOriginalRecommendation] = useState<PortfolioRecommendation | null>(null);
   
   // Mini-lesson state
   const [twoAssetAnalysis, setTwoAssetAnalysis] = useState<TwoAssetAnalysis | null>(null);
@@ -169,13 +219,8 @@ export const StockSelection = ({
   const [isLoadingFullCustom, setIsLoadingFullCustom] = useState(false);
 
   // Track if user has selected a portfolio recommendation
-  const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
   const [dynamicRecommendations, setDynamicRecommendations] = useState<PortfolioRecommendation[]>([]);
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
-  
-  // NEW: Portfolio selection state
-  const [selectedPortfolioIndex, setSelectedPortfolioIndex] = useState<number | null>(null);
-  const [originalRecommendation, setOriginalRecommendation] = useState<PortfolioRecommendation | null>(null);
   
   // NEW: Weight editor state
   const [showWeightEditor, setShowWeightEditor] = useState(false);
@@ -591,35 +636,70 @@ export const StockSelection = ({
     }
   }, [selectedStocks, selectedPortfolioIndex, originalRecommendation]);
 
+  // NEW: Real-time portfolio metrics calculation and validation
+  useEffect(() => {
+    if (selectedStocks.length > 0) {
+      // Trigger real-time metrics calculation
+      setTimeout(() => {
+        calculateRealTimeMetrics();
+        validatePortfolio();
+      }, 100);
+    } else {
+      // Reset metrics and validation when no stocks selected
+      setPortfolioMetrics(null);
+      setPortfolioValidation({
+        isValid: false,
+        totalAllocation: 0,
+        stockCount: 0,
+        warnings: [],
+        canProceed: false
+      });
+    }
+  }, [selectedStocks]);
+
   const addStock = (stock: StockResult) => {
-    if (selectedStocks.length >= 5) {
-      setError('Maximum 5 assets allowed for optimal portfolio analysis');
+    // Validation checks
+    if (selectedStocks.some(s => s.symbol === stock.symbol)) {
+      setError(`${stock.symbol} is already in your portfolio`);
       return;
     }
     
+    if (selectedStocks.length >= 10) {
+      setError('Maximum 10 stocks allowed in portfolio');
+      return;
+    }
+    
+    // Add stock with smart weight distribution
     const newStock: PortfolioAllocation = {
       symbol: stock.symbol,
       allocation: 100 / (selectedStocks.length + 1),
-      name: stock.shortname,
-      assetType: stock.assetType
+      name: stock.longname || stock.shortname,
+      assetType: stock.assetType || 'stock'
     };
     
-    const updatedStocks = [...selectedStocks, newStock].map(s => ({
+    // Update portfolio and normalize weights
+    const updatedStocks = [...selectedStocks, newStock];
+    const normalizedStocks = updatedStocks.map(s => ({
       ...s,
-      allocation: 100 / (selectedStocks.length + 1)
+      allocation: 100 / updatedStocks.length
     }));
     
-    onStocksUpdate(updatedStocks);
+    onStocksUpdate(normalizedStocks);
     setSearchTerm('');
     setSearchResults([]);
+    
+    // Portfolio metrics update automatically via useEffect
   };
 
   const removeStock = (symbol: string) => {
     const updatedStocks = selectedStocks.filter(s => s.symbol !== symbol);
     if (updatedStocks.length > 0) {
+      // Rebalance weights after removal
       const equalAllocation = 100 / updatedStocks.length;
       const rebalancedStocks = updatedStocks.map(s => ({ ...s, allocation: equalAllocation }));
       onStocksUpdate(rebalancedStocks);
+      
+      // Portfolio metrics update automatically via useEffect
     } else {
       onStocksUpdate([]);
     }
@@ -637,7 +717,7 @@ export const StockSelection = ({
     setIsValidAllocation(Math.abs(total - 100) < 0.1);
   };
 
-  // Enhanced allocation update with validation
+  // Enhanced allocation update with validation and real-time updates
   const updateAllocation = (symbol: string, newAllocation: number) => {
     const updatedStocks = selectedStocks.map(stock => 
       stock.symbol === symbol ? { ...stock, allocation: newAllocation } : stock
@@ -648,9 +728,11 @@ export const StockSelection = ({
     setIsValidAllocation(Math.abs(total - 100) < 0.1);
     
     onStocksUpdate(updatedStocks);
+    
+    // Portfolio metrics update automatically via useEffect
   };
 
-  // NEW: Auto-normalization feature
+  // NEW: Auto-normalization feature with real-time updates
   const normalizeWeights = () => {
     const total = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
     const normalizedStocks = selectedStocks.map(stock => ({
@@ -661,6 +743,12 @@ export const StockSelection = ({
     onStocksUpdate(normalizedStocks);
     setTotalAllocation(100);
     setIsValidAllocation(true);
+    
+    // Trigger real-time metrics update
+    setTimeout(() => {
+      calculateRealTimeMetrics();
+      validatePortfolio();
+    }, 100);
   };
 
   // NEW: Reset to original function
@@ -675,7 +763,16 @@ export const StockSelection = ({
   // REMOVED: getPrimarySectors function - no longer needed since we removed primary sectors display
 
   const handleNext = () => {
+    if (activeTab === 'mini-lesson') {
+      // From mini-lesson, go to recommendations
+      setActiveTab('recommendations');
+    } else if (activeTab === 'recommendations') {
+      // From recommendations, go to visual charts
+      setActiveTab('full-customization');
+    } else {
+      // From other tabs, call the parent onNext
       onNext();
+    }
   };
 
   const getRiskProfileDisplay = () => {
@@ -691,6 +788,245 @@ export const StockSelection = ({
 
   const setPresetWeight = (nvdaPercent: number) => {
     setNvdaWeight(nvdaPercent);
+  };
+
+  // NEW: Real-time portfolio metrics calculation
+  const calculateRealTimeMetrics = useCallback(async () => {
+    if (selectedStocks.length === 0) return;
+    
+    setIsLoadingMetrics(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/portfolio/calculate-metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allocations: selectedStocks,
+          riskProfile: riskProfile
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPortfolioMetrics({
+          expectedReturn: data.expectedReturn,
+          risk: data.risk,
+          diversificationScore: data.diversificationScore,
+          sharpeRatio: 0
+        });
+        
+        // Update validation state
+        setPortfolioValidation({
+          isValid: data.validation.isValid,
+          totalAllocation: data.totalAllocation,
+          stockCount: data.stockCount,
+          warnings: data.validation.warnings,
+          canProceed: data.validation.canProceed
+        });
+      } else {
+        throw new Error('Failed to calculate metrics');
+      }
+    } catch (error) {
+      console.error('Real-time calculation failed:', error);
+      setError('Failed to calculate portfolio metrics. Using fallback calculations.');
+      
+      // Fallback to calculated metrics
+      calculateFallbackMetrics();
+    } finally {
+      setIsLoadingMetrics(false);
+    }
+  }, [selectedStocks, riskProfile]);
+
+  // NEW: Fallback calculation when API fails
+  const calculateFallbackMetrics = useCallback(() => {
+    if (selectedStocks.length === 0) return;
+    
+    const totalAllocation = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
+    
+    // Use historical averages for individual stocks
+    const avgReturn = selectedStocks.reduce((sum, stock) => {
+      const stockReturn = getStockHistoricalReturn(stock.symbol) || 0.12;
+      return sum + (stock.allocation / 100) * stockReturn;
+    }, 0);
+    
+    const avgRisk = selectedStocks.reduce((sum, stock) => {
+      const stockRisk = getStockHistoricalRisk(stock.symbol) || 0.20;
+      return sum + (stock.allocation / 100) * stockRisk;
+    }, 0);
+    
+    const diversificationScore = Math.min(100, selectedStocks.length * 20);
+    
+    setPortfolioMetrics({
+      expectedReturn: avgReturn,
+      risk: avgRisk,
+      diversificationScore: diversificationScore,
+      sharpeRatio: 0
+    });
+  }, [selectedStocks]);
+
+  // NEW: Helper functions for fallback calculations
+  const getStockHistoricalReturn = (symbol: string): number => {
+    // Simplified historical returns for fallback
+    const returns: Record<string, number> = {
+      'AAPL': 0.15, 'MSFT': 0.18, 'GOOGL': 0.16, 'AMZN': 0.20,
+      'NVDA': 0.35, 'TSLA': 0.25, 'JNJ': 0.08, 'PG': 0.09,
+      'KO': 0.07, 'VZ': 0.06, 'AMD': 0.30, 'META': 0.22
+    };
+    return returns[symbol] || 0.12;
+  };
+
+  const getStockHistoricalRisk = (symbol: string): number => {
+    // Simplified historical risk for fallback
+    const risks: Record<string, number> = {
+      'AAPL': 0.25, 'MSFT': 0.22, 'GOOGL': 0.24, 'AMZN': 0.30,
+      'NVDA': 0.35, 'TSLA': 0.40, 'JNJ': 0.15, 'PG': 0.18,
+      'KO': 0.16, 'VZ': 0.20, 'AMD': 0.42, 'META': 0.28
+    };
+    return risks[symbol] || 0.20;
+  };
+
+  // NEW: Real-time portfolio validation
+  const validatePortfolio = useCallback(() => {
+    const totalAllocation = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
+    const stockCount = selectedStocks.length;
+    
+    const warnings: string[] = [];
+    
+    // Check allocation
+    if (Math.abs(totalAllocation - 100) > 0.01) {
+      warnings.push(`Total allocation is ${totalAllocation.toFixed(1)}%. Must equal 100%.`);
+    }
+    
+    // Check minimum stock count
+    if (stockCount < 3) {
+      warnings.push(`Portfolio must have at least 3 stocks. Currently: ${stockCount}`);
+    }
+    
+    // Check individual allocations
+    selectedStocks.forEach(stock => {
+      if (stock.allocation < 5) {
+        warnings.push(`${stock.symbol} allocation (${stock.allocation.toFixed(1)}%) is very low`);
+      }
+      if (stock.allocation > 50) {
+        warnings.push(`${stock.symbol} allocation (${stock.allocation.toFixed(1)}%) is very high`);
+      }
+    });
+    
+    const isValid = totalAllocation === 100 && stockCount >= 3 && warnings.length === 0;
+    const canProceed = stockCount >= 3; // Can proceed with 3+ stocks even if allocation isn't perfect
+    
+    setPortfolioValidation({
+      isValid,
+      totalAllocation,
+      stockCount,
+      warnings,
+      canProceed
+    });
+  }, [selectedStocks]);
+
+  // NEW: Apply changes function
+  const applyChanges = () => {
+    if (portfolioValidation.isValid) {
+      setSuccessMessage('Portfolio changes applied successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
+
+  // NEW: Generate dynamic portfolios using advanced optimization
+  const generateDynamicPortfolios = async () => {
+    setIsLoadingDynamic(true);
+    setError(null);
+    
+    try {
+      // Prepare optimization parameters
+      const params = new URLSearchParams({
+        risk_profile: riskProfile,
+        target_return: optimizationParams.targetReturn.toString(),
+        max_risk: optimizationParams.maxRisk.toString(),
+        num_portfolios: '5'
+      });
+      
+      const response = await fetch(`/api/portfolio/recommendations/dynamic?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Transform backend data to frontend format
+        const transformedPortfolios = data.map((portfolio: {
+          portfolio?: PortfolioAllocation[];
+          expectedReturn?: number;
+          risk?: number;
+          diversificationScore?: number;
+          strategy?: string;
+          rank?: number;
+          score?: number;
+        }, index: number) => ({
+          name: `Dynamic Portfolio ${index + 1}`,
+          description: `AI-optimized portfolio using ${portfolio.strategy || 'advanced algorithms'}`,
+          allocations: portfolio.portfolio || [],
+          expectedReturn: portfolio.expectedReturn || 0.15,
+          risk: portfolio.risk || 0.20,
+          diversificationScore: portfolio.diversificationScore || 75,
+          strategy: portfolio.strategy || 'Optimization',
+          rank: portfolio.rank || index + 1,
+          score: portfolio.score || 0
+        }));
+        
+        setDynamicPortfolios(transformedPortfolios);
+        setSuccessMessage(`Generated ${transformedPortfolios.length} dynamic portfolios!`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        throw new Error('Failed to generate dynamic portfolios');
+      }
+    } catch (error) {
+      console.error('Error generating dynamic portfolios:', error);
+      setError('Failed to generate dynamic portfolios. Using fallback recommendations.');
+      
+      // Fallback to static recommendations
+      const fallbackPortfolios = generateRecommendations();
+      setDynamicPortfolios(fallbackPortfolios);
+    } finally {
+      setIsLoadingDynamic(false);
+    }
+  };
+
+  // NEW: Portfolio optimization analysis
+  const analyzePortfolioOptimization = async () => {
+    if (selectedStocks.length === 0) {
+      setError('Please select a portfolio first to analyze optimization');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/portfolio/optimize/analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_portfolio: selectedStocks,
+          risk_profile: riskProfile,
+          target_return: optimizationParams.targetReturn,
+          max_risk: optimizationParams.maxRisk
+        })
+      });
+      
+      if (response.ok) {
+        const analysis = await response.json();
+        console.log('Portfolio optimization analysis:', analysis);
+        
+        // You can display this analysis in the UI
+        setSuccessMessage('Portfolio optimization analysis completed!');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        throw new Error('Failed to analyze portfolio optimization');
+      }
+    } catch (error) {
+      console.error('Error analyzing portfolio optimization:', error);
+      setError('Failed to analyze portfolio optimization');
+    }
   };
 
   return (
@@ -713,7 +1049,7 @@ export const StockSelection = ({
         </CardHeader>
         
         <CardContent className="space-y-6">
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "mini-lesson" | "recommendations" | "full-customization")}>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "mini-lesson" | "recommendations" | "full-customization" | "dynamic-generation")}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="mini-lesson" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
@@ -724,8 +1060,8 @@ export const StockSelection = ({
                 Recommendations
               </TabsTrigger>
               <TabsTrigger value="full-customization" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Full Customization
+                <BarChart3 className="h-4 w-4" />
+                Visual Charts
               </TabsTrigger>
             </TabsList>
 
@@ -1034,14 +1370,6 @@ export const StockSelection = ({
                           <span>{recommendation.diversificationScore}%</span>
                         </div>
                         <Progress value={recommendation.diversificationScore} className="h-2" />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Based on correlation analysis between assets
-                        </p>
-                        <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
-                          <strong>How it works:</strong> The diversification score measures how uncorrelated your assets are. 
-                          Lower correlation = higher diversification = better risk reduction. 
-                          Formula: 100% - (Average Correlation × 100%)
-                        </div>
                       </div>
 
                       {/* Enhanced portfolio information */}
@@ -1097,190 +1425,298 @@ export const StockSelection = ({
               </div>
               )}
 
+              {/* Advanced Options Button - Small and at the bottom */}
+              {!hasSelectedPortfolio && (
+                <div className="text-center mt-6">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab('dynamic-generation')}
+                    className="flex items-center gap-2 mx-auto"
+                  >
+                    <Zap className="h-4 w-4" />
+                    Advanced Options
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Generate custom portfolios using AI optimization algorithms
+                  </p>
+                </div>
+              )}
+
               {/* Portfolio Customization Section - Only show after selection */}
               {hasSelectedPortfolio && selectedStocks.length > 0 && (
               <Card>
                 <CardHeader>
                     <CardTitle className="text-lg">Customize Your Portfolio</CardTitle>
                     <p className="text-muted-foreground">
-                      Modify the selected portfolio by adding or removing stocks
+                      Modify the selected portfolio by adding or removing stocks and adjusting allocations
                     </p>
                 </CardHeader>
                   <CardContent className="space-y-6">
                     {/* Stock Search */}
                     <div className="space-y-4">
-                      <div className="flex gap-2">
-                    <Input
-                      placeholder="Search for stocks and ETFs (e.g., AAPL, MSFT, VOO, QQQ)"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                          className="flex-1"
-                    />
-                        {isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>}
-                  </div>
-
-                  {error && (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  {searchResults.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="font-medium">Search Results</h4>
-                      {searchResults.map((stock) => (
-                        <div
-                          key={stock.symbol}
-                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                          onClick={() => addStock(stock)}
-                        >
-                          <div>
-                            <div className="font-medium">{stock.symbol}</div>
-                            <div className="text-sm text-muted-foreground">{stock.shortname}</div>
-                          </div>
-                              <Button size="sm" variant="outline">
-                                Add
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Add More Stocks
+                        </label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            placeholder="Search for stocks (e.g., AAPL, MSFT)"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button
+                            onClick={() => searchStocks(searchTerm)}
+                            disabled={!searchTerm.trim() || isLoading}
+                            size="sm"
+                          >
+                            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
                           </Button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                    </div>
-
-                    {/* Weight Editor Toggle */}
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Portfolio Allocations</h4>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowWeightEditor(!showWeightEditor)}
-                      >
-                        {showWeightEditor ? 'Hide' : 'Show'} Weight Editor
-                      </Button>
-                    </div>
-
-                    {/* Allocation Validation */}
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className={`flex items-center gap-2 ${isValidAllocation ? 'text-green-600' : 'text-red-600'}`}>
-                        {isValidAllocation ? (
-                          <CheckCircle className="h-4 w-4" />
-                        ) : (
-                          <XCircle className="h-4 w-4" />
-                        )}
-                        <span className="font-medium">
-                          Total Allocation: {totalAllocation.toFixed(1)}%
-                        </span>
                       </div>
-                      
-                      {!isValidAllocation && (
-                        <Alert variant="destructive" className="flex-1">
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertDescription>
-                            Allocation must equal 100%. Current total: {totalAllocation.toFixed(1)}%
-                          </AlertDescription>
-                        </Alert>
+
+                      {/* Search Results */}
+                      {searchResults.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium">Search Results:</h4>
+                          {searchResults.map((stock) => (
+                            <div
+                              key={stock.symbol}
+                              className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                            >
+                              <div>
+                                <div className="font-medium">{stock.symbol}</div>
+                                <div className="text-sm text-gray-600">{stock.shortname}</div>
+                              </div>
+                              <Button
+                                onClick={() => addStock(stock)}
+                                size="sm"
+                                variant="outline"
+                                disabled={selectedStocks.some(s => s.symbol === stock.symbol)}
+                              >
+                                {selectedStocks.some(s => s.symbol === stock.symbol) ? 'Added' : 'Add'}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
 
-                    {/* Weight Editor Controls */}
-                    {showWeightEditor && (
-                      <div className="flex gap-2 mb-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={normalizeWeights}
-                          disabled={isValidAllocation}
-                        >
-                          Auto-Normalize to 100%
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={resetToOriginal}
-                        >
-                          Reset to Original
-                        </Button>
-                      </div>
-                    )}
-
-                                  {/* Selected Stocks */}
+                    {/* Selected Assets Section */}
                     <div className="space-y-4">
-                      <h4 className="font-medium">Selected Assets ({selectedStocks.length}/5) - Minimum 3 recommended</h4>
-                      {selectedStocks.map((stock) => (
-                        <div key={stock.symbol} className="flex items-center gap-4 p-4 border rounded-lg">
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <div>
-                                <span className="font-medium">{stock.symbol}</span>
-                                {stock.name && (
-                                  <span className="text-sm text-muted-foreground ml-2">
-                                    {stock.name}
-                                  </span>
-                                )}
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => removeStock(stock.symbol)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-lg font-medium">Selected Assets ({selectedStocks.length}/5)</h4>
+                        <div className="text-sm text-muted-foreground">
+                          Minimum 3 recommended
+                        </div>
+                      </div>
+
+                      {/* Portfolio Overview - Moved here, below Selected Assets */}
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <div className="text-2xl font-bold text-primary">{selectedStocks.length}</div>
+                            <div className="text-sm text-muted-foreground">Stocks</div>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold text-green-600">
+                              {totalAllocation.toFixed(1)}%
                             </div>
-                            {showWeightEditor && (
-                              <div className="flex items-center gap-2">
-                                <Slider
-                                  value={[stock.allocation]}
-                                  onValueChange={(value) => updateAllocation(stock.symbol, value[0])}
-                                  max={100}
-                                  min={0}
-                                  step={1}
-                                  className="flex-1"
-                                />
-                                <span className="text-sm font-medium w-12 text-right">
-                                  {stock.allocation.toFixed(1)}%
-                                </span>
-                              </div>
-                            )}
+                            <div className="text-sm text-muted-foreground">Total Allocation</div>
+                          </div>
+                          <div>
+                            <div className="text-2xl font-bold text-green-600">✓</div>
+                            <div className="text-sm text-muted-foreground">Status</div>
                           </div>
                         </div>
-                      ))}
+                        <div className="mt-3 text-center text-sm text-muted-foreground">
+                          Total Allocation: {totalAllocation.toFixed(1)}%
+                        </div>
+                      </div>
+
+                      {/* Weight Editor Toggle */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h5 className="font-medium">Weight Editor</h5>
+                          <p className="text-sm text-muted-foreground">
+                            Manually adjust stock weights or use auto-normalization
+                          </p>
+                        </div>
+                        <Switch
+                          checked={showWeightEditor}
+                          onCheckedChange={setShowWeightEditor}
+                        />
+                      </div>
+
+                      {/* Weight Editor */}
+                      {showWeightEditor && (
+                        <div className="space-y-3">
+                          {selectedStocks.map((stock, index) => (
+                            <div key={stock.symbol} className="flex items-center gap-3">
+                              <div className="flex-1">
+                                <div className="font-medium">{stock.symbol}</div>
+                                <div className="text-sm text-muted-foreground">{stock.name || stock.symbol}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  value={stock.allocation}
+                                  onChange={(e) => updateAllocation(stock.symbol, parseFloat(e.target.value) || 0)}
+                                  className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 bg-red-50' : ''}`}
+                                  min="0"
+                                  max="100"
+                                  step="0.1"
+                                />
+                                <span className="text-sm text-muted-foreground">%</span>
+                              </div>
+                              <Button
+                                onClick={() => removeStock(stock.symbol)}
+                                size="sm"
+                                variant="destructive"
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                          
+                          {/* Allocation Warning */}
+                          {selectedStocks.some(stock => stock.allocation > 100) && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-red-800">
+                                <AlertTriangle className="h-4 w-4" />
+                                <span className="text-sm font-medium">Allocation Warning</span>
+                              </div>
+                              <p className="text-sm text-red-700 mt-1">
+                                Some stocks have allocations exceeding 100%. Please adjust weights to ensure total allocation equals 100%.
+                              </p>
+                            </div>
+                          )}
+                          
+                          <div className="flex justify-end">
+                            <Button
+                              onClick={normalizeWeights}
+                              variant="outline"
+                              size="sm"
+                            >
+                              Auto-Normalize Weights
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Portfolio Validation */}
+                      <div className="space-y-3">
+                        <h5 className="font-medium">Portfolio Validation</h5>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Minimum 3 stocks</span>
+                            <span className={selectedStocks.length >= 3 ? 'text-green-600' : 'text-red-600'}>
+                              {selectedStocks.length >= 3 ? '✓' : '✗'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Total allocation = 100%</span>
+                            <span className={Math.abs(totalAllocation - 100) < 0.1 ? 'text-green-600' : 'text-red-600'}>
+                              {Math.abs(totalAllocation - 100) < 0.1 ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Portfolio Metrics Section - Enhanced UX Design */}
+              {hasSelectedPortfolio && selectedStocks.length > 0 && portfolioMetrics && (
+                <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border-0 shadow-lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl flex items-center gap-3 text-slate-800">
+                      <BarChart3 className="h-6 w-6 text-blue-600" />
+                      Your Portfolio Performance
+                    </CardTitle>
+                    <p className="text-slate-600">
+                      Real-time metrics based on your current allocation and market data
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Expected Return */}
+                      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 border border-emerald-200">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            <TrendingUp className="h-5 w-5 text-emerald-600" />
+                            <span className="text-sm font-medium text-emerald-700">Expected Return</span>
+                          </div>
+                          <div className="text-3xl font-bold text-emerald-800 mb-1">
+                            {(portfolioMetrics.expectedReturn * 100).toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-emerald-600">
+                            Annualized projection
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Risk Level */}
+                      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 p-6 border border-amber-200">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Shield className="h-5 w-5 text-amber-600" />
+                            <span className="text-sm font-medium text-amber-700">Risk Level</span>
+                          </div>
+                          <div className="text-3xl font-bold text-amber-800 mb-1">
+                            {(portfolioMetrics.risk * 100).toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-amber-600">
+                            Volatility measure
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Diversification Score */}
+                      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 p-6 border border-violet-200">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            <PieChart className="h-5 w-5 text-violet-600" />
+                            <span className="text-sm font-medium text-violet-700">Diversification</span>
+                          </div>
+                          <div className="text-3xl font-bold text-violet-800 mb-1">
+                            {portfolioMetrics.diversificationScore}%
+                          </div>
+                          <div className="text-xs text-violet-600">
+                            Portfolio balance
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-              {/* Portfolio Analytics - UPDATED: Shows selected portfolio metrics, not calculated ones */}
-              {portfolioMetrics && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <div className="text-2xl font-bold text-green-600">
-                          {(portfolioMetrics.expectedReturn * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-sm text-green-700">Expected Return</div>
-                      </div>
-                      <div className="text-center p-4 bg-orange-50 rounded-lg">
-                        <div className="text-2xl font-bold text-orange-600">
-                          {(portfolioMetrics.risk * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-sm text-orange-700">Risk Level</div>
-                      </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg">
-                        <div className="text-2xl font-bold text-purple-600">
-                          {portfolioMetrics.diversificationScore}%
-                        </div>
-                        <div className="text-sm text-purple-700">Diversification</div>
-                      </div>
+                    {/* Continue Button */}
+                    <div className="mt-6 text-center">
+                      <Button 
+                        onClick={handleNext}
+                        size="lg"
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                      >
+                        Continue to Visual Charts
+                        <ArrowRight className="ml-2 h-5 w-5" />
+                      </Button>
                     </div>
-                    )}
                   </CardContent>
                 </Card>
               )}
             </TabsContent>
 
-            {/* Full Customization Tab */}
+            {/* Visual Charts Tab */}
             <TabsContent value="full-customization" className="space-y-6">
               <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold mb-2">Full Customization</h3>
+                <h3 className="text-xl font-semibold mb-2">Visual Charts & Analysis</h3>
                 <p className="text-muted-foreground">
-                  Advanced portfolio construction with efficient frontier analysis
+                  Advanced portfolio visualization with efficient frontier analysis and interactive charts
                 </p>
               </div>
 
@@ -1385,7 +1821,235 @@ export const StockSelection = ({
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {/* Dynamic Generation Tab - Hidden by default, accessible via Advanced Options */}
+            {activeTab === 'dynamic-generation' && (
+              <TabsContent value="dynamic-generation" className="space-y-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-semibold mb-2">Dynamic Portfolio Generation</h3>
+                  <p className="text-muted-foreground">
+                    Generate custom portfolios based on your risk profile and desired return/risk trade-offs using advanced optimization algorithms.
+                  </p>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Optimization Parameters</CardTitle>
+                    <p className="text-muted-foreground">
+                      Adjust these parameters to generate portfolios that meet your investment goals.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="targetReturn" className="block text-sm font-medium text-gray-700 mb-1">Target Expected Return (%)</label>
+                        <Slider
+                          id="targetReturn"
+                          value={[optimizationParams.targetReturn * 100]}
+                          onValueChange={(value) => setOptimizationParams(prev => ({ ...prev, targetReturn: value[0] / 100 }))}
+                          min={0}
+                          max={30}
+                          step={0.1}
+                          className="w-full"
+                        />
+                        <span className="text-sm text-gray-600 mt-1">
+                          {optimizationParams.targetReturn * 100}%
+                        </span>
+                      </div>
+                      <div>
+                        <label htmlFor="maxRisk" className="block text-sm font-medium text-gray-700 mb-1">Maximum Risk (%)</label>
+                        <Slider
+                          id="maxRisk"
+                          value={[optimizationParams.maxRisk * 100]}
+                          onValueChange={(value) => setOptimizationParams(prev => ({ ...prev, maxRisk: value[0] / 100 }))}
+                          min={0}
+                          max={40}
+                          step={0.1}
+                          className="w-full"
+                        />
+                        <span className="text-sm text-gray-600 mt-1">
+                          {optimizationParams.maxRisk * 100}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Optimization Strategy</label>
+                      <select
+                        value={selectedOptimizationStrategy}
+                        onChange={(e) => setSelectedOptimizationStrategy(e.target.value)}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
+                      >
+                        <option value="all">Maximize Diversification (All Assets)</option>
+                        <option value="risk">Minimize Risk (All Assets)</option>
+                        <option value="return">Maximize Return (All Assets)</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Button
+                        onClick={() => generateDynamicPortfolios()}
+                        disabled={isLoadingDynamic}
+                        className="w-full"
+                      >
+                        {isLoadingDynamic ? (
+                          <>
+                            <svg className="animate-spin h-5 w-5 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Generating Portfolios...
+                          </>
+                        ) : (
+                          <>
+                            Generate Dynamic Portfolios
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </>
+                        )}
+                      </Button>
+                      
+                      <Button
+                        onClick={() => analyzePortfolioOptimization()}
+                        disabled={selectedStocks.length === 0}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        Analyze Optimization
+                      </Button>
+                    </div>
+
+                    {/* Dynamic Portfolios Display */}
+                    {isLoadingDynamic ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                        <p className="mt-2 text-muted-foreground">Generating dynamic portfolios...</p>
+                      </div>
+                    ) : dynamicPortfolios.length > 0 ? (
+                      <div className="mt-6">
+                        <h4 className="text-lg font-medium mb-4">Generated Dynamic Portfolios</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          {dynamicPortfolios.map((portfolio, index) => (
+                            <Card
+                              key={index}
+                              className={`relative overflow-hidden transition-all duration-200 cursor-pointer ${
+                                selectedPortfolioIndex === index
+                                  ? 'ring-2 ring-primary shadow-lg scale-105'
+                                  : 'hover:shadow-md'
+                              }`}
+                              onClick={() => acceptRecommendation(portfolio, index)}
+                            >
+                              {/* Selection indicator */}
+                              {selectedPortfolioIndex === index && (
+                                <div className="absolute top-2 right-2 z-10">
+                                  <Badge variant="default" className="bg-green-600">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Selected
+                                  </Badge>
+                                </div>
+                              )}
+                              
+                              <CardHeader className="pb-4">
+                                <div className="flex items-center justify-between">
+                                  <CardTitle className="text-lg">{portfolio.name}</CardTitle>
+                                  <Badge variant={index === 0 ? "default" : "secondary"}>
+                                    {index === 0 ? "Top Pick" : "Alternative " + (index + 1)}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{portfolio.description}</p>
+                              </CardHeader>
+                              <CardContent className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <div className="text-muted-foreground">Expected Return</div>
+                                    <div className="font-semibold text-green-600">
+                                      {(portfolio.expectedReturn * 100).toFixed(1)}%
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-muted-foreground">Risk Level</div>
+                                    <div className="font-semibold text-orange-600">
+                                      {(portfolio.risk * 100).toFixed(1)}%
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <div className="flex justify-between text-sm mb-1">
+                                    <span>Diversification Score</span>
+                                    <span>{portfolio.diversificationScore}%</span>
+                                  </div>
+                                  <Progress value={portfolio.diversificationScore} className="h-2" />
+                                </div>
+
+                                {/* Enhanced portfolio information */}
+                                <div className="mt-4 space-y-3">
+                                  <div className="flex justify-between text-sm">
+                                    <span>Total Allocation:</span>
+                                    <span className="font-medium">100%</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                    <span>Number of Assets:</span>
+                                    <span className="font-medium">{portfolio.allocations.length}</span>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div className="text-sm font-medium">Allocations:</div>
+                                  {portfolio.allocations.slice(0, 3).map((allocation, idx) => (
+                                    <div key={idx} className="flex justify-between text-xs">
+                                      <span>{allocation.symbol}</span>
+                                      <span>{allocation.allocation}%</span>
+                                    </div>
+                                  ))}
+                                  {portfolio.allocations.length > 3 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      +{portfolio.allocations.length - 3} more stocks
+                                    </div>
+                                  )}
+                                </div>
+
+                                <Button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    acceptRecommendation(portfolio, index);
+                                  }}
+                                  className="w-full"
+                                  variant={selectedPortfolioIndex === index ? "default" : "outline"}
+                                >
+                                  {selectedPortfolioIndex === index ? (
+                                    <>
+                                      <CheckCircle className="mr-2 h-4 w-4" />
+                                      Portfolio Selected
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="mr-2 h-4 w-4" />
+                                      Use This Portfolio
+                                    </>
+                                  )}
+                                </Button>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </Tabs>
+
+          {/* Success Message Display */}
+          {successMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 text-green-800">
+                <CheckCircle className="h-5 w-5" />
+                <span className="font-medium">{successMessage}</span>
+              </div>
+            </div>
+          )}
 
           {/* Navigation */}
           <div className="flex justify-between pt-6">
@@ -1395,10 +2059,20 @@ export const StockSelection = ({
             </Button>
             <Button 
               onClick={handleNext}
-              disabled={selectedStocks.length < 3}
+              disabled={!portfolioValidation.canProceed}
+              className={portfolioValidation.canProceed ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}
             >
-              Continue
-              <ArrowRight className="ml-2 h-4 w-4" />
+              {portfolioValidation.canProceed ? (
+                <>
+                  Continue
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              ) : (
+                <>
+                  Need 3+ Stocks
+                  <AlertTriangle className="ml-2 h-4 w-4" />
+                </>
+              )}
             </Button>
           </div>
 

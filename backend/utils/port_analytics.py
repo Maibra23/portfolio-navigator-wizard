@@ -36,7 +36,7 @@ class PortfolioAnalytics:
             
             # Create datetime index for QuantStats (monthly data)
             start_date = pd.Timestamp('2020-01-01')
-            date_index = pd.date_range(start=start_date, periods=len(returns), freq='M')
+            date_index = pd.date_range(start=start_date, periods=len(returns), freq='ME')
             returns.index = date_index
             
             # Calculate metrics using numpy/pandas (more reliable than QuantStats for monthly data)
@@ -213,7 +213,7 @@ class PortfolioAnalytics:
             for returns in asset_returns:
                 if not isinstance(returns.index, pd.DatetimeIndex):
                     start_date = pd.Timestamp('2020-01-01')
-                    date_index = pd.date_range(start=start_date, periods=len(returns), freq='M')
+                    date_index = pd.date_range(start=start_date, periods=len(returns), freq='ME')
                     returns.index = date_index
                 aligned_returns.append(returns)
             
@@ -877,6 +877,391 @@ class PortfolioAnalytics:
         return {
             'expected_return': 0.10,
             'risk': 0.15,
+            'diversification_score': 50.0,
+            'sharpe_ratio': 0.0,
             'max_drawdown': -0.10,
-            'diversification_score': 50.0
+            'data_quality': 'fallback'
         }
+
+    # NEW: Dynamic Portfolio Generation Methods
+    def generate_dynamic_portfolios(self, risk_profile: str, available_assets: List[str], 
+                                  target_return: Optional[float] = None, 
+                                  max_risk: Optional[float] = None,
+                                  num_portfolios: int = 5) -> List[Dict]:
+        """
+        Generate dynamic portfolios based on risk profile and available assets
+        Uses advanced optimization techniques for personalized recommendations
+        
+        Args:
+            risk_profile: User's risk tolerance level
+            available_assets: List of available ticker symbols
+            target_return: Optional target return constraint
+            max_risk: Optional maximum risk constraint
+            num_portfolios: Number of portfolios to generate
+            
+        Returns:
+            List of optimized portfolio configurations
+        """
+        try:
+            # Get asset metrics for all available assets
+            asset_metrics = self._get_asset_metrics_batch(available_assets)
+            if not asset_metrics:
+                logger.warning("No asset metrics available for dynamic portfolio generation")
+                return self._get_fallback_portfolios(risk_profile)
+            
+            # Apply risk profile constraints
+            filtered_assets = self._filter_assets_by_risk_profile(asset_metrics, risk_profile)
+            
+            # Generate optimized portfolios using different strategies
+            portfolios = []
+            
+            # Strategy 1: Risk-Adjusted Return Optimization (Sharpe Ratio)
+            sharpe_portfolio = self._optimize_sharpe_ratio(filtered_assets, target_return, max_risk)
+            if sharpe_portfolio:
+                portfolios.append(sharpe_portfolio)
+            
+            # Strategy 2: Risk Parity Optimization
+            risk_parity_portfolio = self._optimize_risk_parity(filtered_assets, target_return, max_risk)
+            if risk_parity_portfolio:
+                portfolios.append(risk_parity_portfolio)
+            
+            # Strategy 3: Maximum Diversification
+            max_div_portfolio = self._optimize_diversification(filtered_assets, target_return, max_risk)
+            if max_div_portfolio:
+                portfolios.append(max_div_portfolio)
+            
+            # Strategy 4: Target Return Optimization
+            if target_return:
+                target_portfolio = self._optimize_target_return(filtered_assets, target_return, max_risk)
+                if target_portfolio:
+                    portfolios.append(target_portfolio)
+            
+            # Strategy 5: Minimum Risk (for conservative profiles)
+            if risk_profile in ['very-conservative', 'conservative']:
+                min_risk_portfolio = self._optimize_minimum_risk(filtered_assets)
+                if min_risk_portfolio:
+                    portfolios.append(min_risk_portfolio)
+            
+            # Fill remaining slots with random combinations if needed
+            while len(portfolios) < num_portfolios:
+                random_portfolio = self._generate_random_portfolio(filtered_assets, risk_profile)
+                if random_portfolio:
+                    portfolios.append(random_portfolio)
+            
+            # Rank portfolios by risk-adjusted performance
+            ranked_portfolios = self._rank_portfolios_by_performance(portfolios, risk_profile)
+            
+            return ranked_portfolios[:num_portfolios]
+            
+        except Exception as e:
+            logger.error(f"Error generating dynamic portfolios: {e}")
+            return self._get_fallback_portfolios(risk_profile)
+
+    def _get_asset_metrics_batch(self, tickers: List[str]) -> Dict[str, Dict]:
+        """Get metrics for multiple assets efficiently"""
+        # This would integrate with your enhanced data fetcher
+        # For now, return mock data structure
+        asset_metrics = {}
+        for ticker in tickers:
+            asset_metrics[ticker] = {
+                'expected_return': np.random.uniform(0.08, 0.35),
+                'risk': np.random.uniform(0.15, 0.45),
+                'sector': 'Technology',  # Mock sector
+                'correlation_data': np.random.uniform(-0.3, 0.8, 100)  # Mock correlation
+            }
+        return asset_metrics
+
+    def _filter_assets_by_risk_profile(self, asset_metrics: Dict[str, Dict], risk_profile: str) -> Dict[str, Dict]:
+        """Filter assets based on risk profile constraints"""
+        risk_constraints = {
+            'very-conservative': {'max_risk': 0.15, 'min_return': 0.05, 'max_return': 0.12},
+            'conservative': {'max_risk': 0.20, 'min_return': 0.08, 'max_return': 0.15},
+            'moderate': {'max_risk': 0.25, 'min_return': 0.10, 'max_return': 0.20},
+            'aggressive': {'max_risk': 0.35, 'min_return': 0.15, 'max_return': 0.30},
+            'very-aggressive': {'max_risk': 0.50, 'min_return': 0.20, 'max_return': 0.40}
+        }
+        
+        constraints = risk_constraints.get(risk_profile, risk_constraints['moderate'])
+        
+        filtered = {}
+        for ticker, metrics in asset_metrics.items():
+            if (constraints['min_return'] <= metrics['expected_return'] <= constraints['max_return'] and
+                metrics['risk'] <= constraints['max_risk']):
+                filtered[ticker] = metrics
+        
+        return filtered
+
+    def _optimize_sharpe_ratio(self, assets: Dict[str, Dict], target_return: Optional[float] = None, 
+                              max_risk: Optional[float] = None) -> Optional[Dict]:
+        """Optimize portfolio for maximum Sharpe ratio"""
+        try:
+            # Create returns matrix (mock data for now)
+            returns_matrix = self._create_returns_matrix(assets)
+            
+            # Use PyPortfolioOpt for optimization
+            ef = EfficientFrontier.from_returns(returns_matrix)
+            
+            if target_return:
+                ef.efficient_return(target_return)
+            elif max_risk:
+                ef.efficient_risk(max_risk)
+            else:
+                ef.max_sharpe()
+            
+            weights = ef.clean_weights()
+            
+            # Calculate portfolio metrics
+            portfolio_return = ef.portfolio_return()
+            portfolio_risk = ef.portfolio_risk()
+            sharpe_ratio = ef.portfolio_sharpe()
+            
+            return {
+                'strategy': 'Sharpe Ratio Optimization',
+                'weights': weights,
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': sharpe_ratio,
+                'diversification_score': self._calculate_diversification_from_weights(weights, returns_matrix)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in Sharpe ratio optimization: {e}")
+            return None
+
+    def _optimize_risk_parity(self, assets: Dict[str, Dict], target_return: Optional[float] = None, 
+                             max_risk: Optional[float] = None) -> Optional[Dict]:
+        """Optimize portfolio for risk parity (equal risk contribution)"""
+        try:
+            returns_matrix = self._create_returns_matrix(assets)
+            
+            # Risk parity optimization
+            ef = EfficientFrontier.from_returns(returns_matrix)
+            ef.risk_parity()
+            
+            weights = ef.clean_weights()
+            
+            # Calculate metrics
+            portfolio_return = ef.portfolio_return()
+            portfolio_risk = ef.portfolio_risk()
+            
+            return {
+                'strategy': 'Risk Parity Optimization',
+                'weights': weights,
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - self.risk_free_rate) / portfolio_risk,
+                'diversification_score': self._calculate_diversification_from_weights(weights, returns_matrix)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in risk parity optimization: {e}")
+            return None
+
+    def _optimize_diversification(self, assets: Dict[str, Dict], target_return: Optional[float] = None, 
+                                max_risk: Optional[float] = None) -> Optional[Dict]:
+        """Optimize portfolio for maximum diversification"""
+        try:
+            # Simple diversification optimization: minimize correlation
+            tickers = list(assets.keys())
+            n_assets = len(tickers)
+            
+            # Generate correlation matrix (mock for now)
+            correlation_matrix = np.random.uniform(-0.3, 0.8, (n_assets, n_assets))
+            np.fill_diagonal(correlation_matrix, 1.0)
+            
+            # Find assets with lowest average correlation
+            avg_correlations = np.mean(np.abs(correlation_matrix), axis=1)
+            best_indices = np.argsort(avg_correlations)[:min(5, n_assets)]
+            
+            # Equal weight allocation
+            weights = {tickers[i]: 1.0/len(best_indices) for i in best_indices}
+            
+            # Calculate portfolio metrics
+            portfolio_return = sum(assets[tickers[i]]['expected_return'] * weights[tickers[i]] for i in best_indices)
+            portfolio_risk = sum(assets[tickers[i]]['risk'] * weights[tickers[i]] for i in best_indices)
+            
+            return {
+                'strategy': 'Maximum Diversification',
+                'weights': weights,
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - self.risk_free_rate) / portfolio_risk,
+                'diversification_score': 95.0  # High diversification score
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in diversification optimization: {e}")
+            return None
+
+    def _optimize_target_return(self, assets: Dict[str, Dict], target_return: float, 
+                               max_risk: Optional[float] = None) -> Optional[Dict]:
+        """Optimize portfolio for target return with minimum risk"""
+        try:
+            returns_matrix = self._create_returns_matrix(assets)
+            
+            ef = EfficientFrontier.from_returns(returns_matrix)
+            ef.efficient_return(target_return)
+            
+            weights = ef.clean_weights()
+            
+            portfolio_return = ef.portfolio_return()
+            portfolio_risk = ef.portfolio_risk()
+            
+            return {
+                'strategy': f'Target Return ({target_return:.1%})',
+                'weights': weights,
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - self.risk_free_rate) / portfolio_risk,
+                'diversification_score': self._calculate_diversification_from_weights(weights, returns_matrix)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in target return optimization: {e}")
+            return None
+
+    def _optimize_minimum_risk(self, assets: Dict[str, Dict]) -> Optional[Dict]:
+        """Optimize portfolio for minimum risk"""
+        try:
+            returns_matrix = self._create_returns_matrix(assets)
+            
+            ef = EfficientFrontier.from_returns(returns_matrix)
+            ef.min_volatility()
+            
+            weights = ef.clean_weights()
+            
+            portfolio_return = ef.portfolio_return()
+            portfolio_risk = ef.portfolio_risk()
+            
+            return {
+                'strategy': 'Minimum Risk',
+                'weights': weights,
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - self.risk_free_rate) / portfolio_risk,
+                'diversification_score': self._calculate_diversification_from_weights(weights, returns_matrix)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in minimum risk optimization: {e}")
+            return None
+
+    def _generate_random_portfolio(self, assets: Dict[str, Dict], risk_profile: str) -> Optional[Dict]:
+        """Generate a random portfolio for diversity"""
+        try:
+            tickers = list(assets.keys())
+            if len(tickers) < 3:
+                return None
+            
+            # Random selection of 3-5 assets
+            n_assets = min(5, max(3, len(tickers)))
+            selected_tickers = np.random.choice(tickers, n_assets, replace=False)
+            
+            # Random weights (will be normalized)
+            weights_array = np.random.uniform(0.1, 1.0, n_assets)
+            weights_array = weights_array / weights_array.sum()
+            
+            weights = {ticker: weight for ticker, weight in zip(selected_tickers, weights_array)}
+            
+            # Calculate metrics
+            portfolio_return = sum(assets[ticker]['expected_return'] * weights[ticker] for ticker in selected_tickers)
+            portfolio_risk = sum(assets[ticker]['risk'] * weights[ticker] for ticker in selected_tickers)
+            
+            return {
+                'strategy': 'Random Diversification',
+                'weights': weights,
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - self.risk_free_rate) / portfolio_risk,
+                'diversification_score': np.random.uniform(60, 85)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating random portfolio: {e}")
+            return None
+
+    def _rank_portfolios_by_performance(self, portfolios: List[Dict], risk_profile: str) -> List[Dict]:
+        """Rank portfolios by performance based on risk profile preferences"""
+        def scoring_function(portfolio):
+            # Base score from Sharpe ratio
+            sharpe_score = portfolio.get('sharpe_ratio', 0) * 10
+            
+            # Risk profile adjustment
+            risk_adjustments = {
+                'very-conservative': {'risk_penalty': 2.0, 'return_bonus': 0.5},
+                'conservative': {'risk_penalty': 1.5, 'return_bonus': 0.8},
+                'moderate': {'risk_penalty': 1.0, 'return_bonus': 1.0},
+                'aggressive': {'risk_penalty': 0.5, 'return_bonus': 1.5},
+                'very-aggressive': {'risk_penalty': 0.2, 'return_bonus': 2.0}
+            }
+            
+            adjustment = risk_adjustments.get(risk_profile, risk_adjustments['moderate'])
+            
+            # Risk penalty (higher risk = lower score for conservative profiles)
+            risk_penalty = portfolio.get('risk', 0) * adjustment['risk_penalty']
+            
+            # Return bonus (higher returns = higher score for aggressive profiles)
+            return_bonus = portfolio.get('expected_return', 0) * adjustment['return_bonus']
+            
+            # Diversification bonus
+            div_bonus = portfolio.get('diversification_score', 50) / 100
+            
+            return sharpe_score - risk_penalty + return_bonus + div_bonus
+        
+        # Sort portfolios by score
+        ranked_portfolios = sorted(portfolios, key=scoring_function, reverse=True)
+        
+        # Add ranking information
+        for i, portfolio in enumerate(ranked_portfolios):
+            portfolio['rank'] = i + 1
+            portfolio['score'] = scoring_function(portfolio)
+        
+        return ranked_portfolios
+
+    def _create_returns_matrix(self, assets: Dict[str, Dict]) -> pd.DataFrame:
+        """Create returns matrix for optimization (mock data for now)"""
+        # In real implementation, this would use actual historical returns
+        # For now, create synthetic returns based on asset metrics
+        
+        returns_data = {}
+        for ticker, metrics in assets.items():
+            # Generate synthetic monthly returns based on annual metrics
+            monthly_return = (1 + metrics['expected_return']) ** (1/12) - 1
+            monthly_risk = metrics['risk'] / np.sqrt(12)
+            
+            # Generate 60 months of returns
+            returns = np.random.normal(monthly_return, monthly_risk, 60)
+            returns_data[ticker] = returns
+        
+        return pd.DataFrame(returns_data)
+
+    def _calculate_diversification_from_weights(self, weights: Dict[str, float], returns_matrix: pd.DataFrame) -> float:
+        """Calculate diversification score from weights and returns"""
+        try:
+            # Calculate correlation matrix
+            corr_matrix = returns_matrix.corr()
+            
+            # Calculate weighted average correlation
+            tickers = list(weights.keys())
+            total_weight = 0
+            weighted_correlation = 0
+            
+            for i, ticker1 in enumerate(tickers):
+                for j, ticker2 in enumerate(tickers):
+                    if i < j:  # Avoid double counting
+                        weight_pair = weights[ticker1] * weights[ticker2]
+                        correlation = abs(corr_matrix.loc[ticker1, ticker2])
+                        
+                        weighted_correlation += weight_pair * correlation
+                        total_weight += weight_pair
+            
+            if total_weight > 0:
+                avg_correlation = weighted_correlation / total_weight
+                diversification_score = max(0, 100 - (avg_correlation * 100))
+                return round(diversification_score, 1)
+            else:
+                return 50.0
+                
+        except Exception as e:
+            logger.error(f"Error calculating diversification: {e}")
+            return 50.0

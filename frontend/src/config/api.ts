@@ -6,10 +6,39 @@ export const API_ENDPOINTS = {
   TWO_ASSET_ANALYSIS: (ticker1: string, ticker2: string) => `${API_BASE_URL}/api/portfolio/two-asset-analysis?ticker1=${ticker1}&ticker2=${ticker2}`,
   RECOMMENDATIONS: (riskProfile: string) => `${API_BASE_URL}/api/portfolio/recommendations/${riskProfile}`,
   
+  // Portfolio metrics and calculation
+  CALCULATE_METRICS: `${API_BASE_URL}/api/portfolio/calculate-metrics`,
+  
+  // Portfolio optimization endpoints
+  OPTIMIZE_RISK_PARITY: `${API_BASE_URL}/api/portfolio/optimize/risk-parity`,
+  OPTIMIZE_MEAN_VARIANCE: `${API_BASE_URL}/api/portfolio/optimize/mean-variance`,
+  
+  // Portfolio monitoring and rebalancing
+  CHECK_REBALANCING: `${API_BASE_URL}/api/portfolio/rebalance/check`,
+  PERFORMANCE_TRACKING: `${API_BASE_URL}/api/portfolio/monitor/performance-tracking`,
+  
+  // Advanced analytics
+  PERFORMANCE_ATTRIBUTION: `${API_BASE_URL}/api/portfolio/analytics/performance-attribution`,
+  RISK_DECOMPOSITION: `${API_BASE_URL}/api/portfolio/analytics/risk-decomposition`,
+  
   // Mini-lesson endpoints
   MINI_LESSON_ASSETS: `${API_BASE_URL}/api/portfolio/mini-lesson/assets`,
   MINI_LESSON_RANDOM_PAIR: `${API_BASE_URL}/api/portfolio/mini-lesson/random-pair`,
   MINI_LESSON_CUSTOM_PORTFOLIO: `${API_BASE_URL}/api/portfolio/mini-lesson/custom-portfolio`,
+  
+  // Cache management
+  CACHE_WARM: `${API_BASE_URL}/api/portfolio/cache/warm`,
+  CACHE_STATUS: `${API_BASE_URL}/api/portfolio/cache/status`,
+  CACHE_CLEAR: `${API_BASE_URL}/api/portfolio/cache/clear`,
+  
+  // Ticker management
+  MASTER_TICKERS: `${API_BASE_URL}/api/portfolio/tickers/master`,
+  REFRESH_TICKERS: `${API_BASE_URL}/api/portfolio/tickers/refresh`,
+  TICKER_TABLE_DATA: `${API_BASE_URL}/api/portfolio/ticker-table/data`,
+  REFRESH_TICKER_TABLE: `${API_BASE_URL}/api/portfolio/ticker-table/refresh`,
+  
+  // Health check
+  HEALTH_CHECK: `${API_BASE_URL}/api/portfolio/health`,
   
   // Legacy endpoints (keep for backward compatibility)
   TICKERS: `${API_BASE_URL}/api/portfolio/tickers`,

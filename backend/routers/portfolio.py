@@ -20,26 +20,374 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 # Initialize portfolio analytics
 portfolio_analytics = PortfolioAnalytics()
 
+# New model for portfolio metrics calculation
+class PortfolioMetricsRequest(BaseModel):
+    allocations: List[PortfolioAllocation]
+    riskProfile: str
+
+# New model for portfolio metrics response
+class PortfolioMetricsResponse(BaseModel):
+    expectedReturn: float
+    risk: float
+    diversificationScore: float
+    sharpeRatio: float
+    totalAllocation: float
+    stockCount: int
+    validation: Dict
+
+# New model for portfolio optimization request
+class PortfolioOptimizationRequest(BaseModel):
+    allocations: List[PortfolioAllocation]
+    riskProfile: str
+    optimizationType: str = "mean-variance"  # "mean-variance", "risk-parity", "custom"
+    targetReturn: Optional[float] = None
+    maxRisk: Optional[float] = None
+
+# New model for portfolio optimization response
+class PortfolioOptimizationResponse(BaseModel):
+    originalMetrics: PortfolioMetricsResponse
+    optimizedMetrics: PortfolioMetricsResponse
+    optimizedAllocations: List[PortfolioAllocation]
+    efficientFrontier: List[Dict]
+    improvement: Dict
+    recommendations: List[str]
+
+@router.post("/calculate-metrics", response_model=PortfolioMetricsResponse)
+def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
+    """
+    Calculate real-time portfolio metrics based on current allocations
+    """
+    try:
+        allocations = request.allocations
+        risk_profile = request.riskProfile
+        
+        if not allocations:
+            raise HTTPException(status_code=400, detail="Portfolio allocations required")
+        
+        # Calculate metrics using cached data
+        portfolio_data = {
+            'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
+        }
+        
+        # Calculate portfolio metrics
+        metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+        
+        # Calculate validation data
+        total_allocation = sum(a.allocation for a in allocations)
+        stock_count = len(allocations)
+        
+        # Generate validation warnings
+        warnings = []
+        if abs(total_allocation - 100) > 0.01:
+            warnings.append(f"Total allocation is {total_allocation:.1f}%. Must equal 100%.")
+        
+        if stock_count < 3:
+            warnings.append(f"Portfolio must have at least 3 stocks. Currently: {stock_count}")
+        
+        for allocation in allocations:
+            if allocation.allocation < 5:
+                warnings.append(f"{allocation.symbol} allocation ({allocation.allocation:.1f}%) is very low")
+            if allocation.allocation > 50:
+                warnings.append(f"{allocation.symbol} allocation ({allocation.allocation:.1f}%) is very high")
+        
+        is_valid = total_allocation == 100 and stock_count >= 3 and len(warnings) == 0
+        can_proceed = stock_count >= 3
+        
+        return PortfolioMetricsResponse(
+            expectedReturn=metrics.get('expected_return', 0.0),
+            risk=metrics.get('risk', 0.0),
+            diversificationScore=metrics.get('diversification_score', 0.0),
+            sharpeRatio=0.0,  # Always 0 as requested
+            totalAllocation=total_allocation,
+            stockCount=stock_count,
+            validation={
+                "isValid": is_valid,
+                "canProceed": can_proceed,
+                "warnings": warnings
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error calculating portfolio metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/optimize", response_model=PortfolioOptimizationResponse)
+def optimize_portfolio(request: PortfolioOptimizationRequest):
+    """
+    Optimize portfolio allocations using advanced algorithms
+    """
+    try:
+        allocations = request.allocations
+        risk_profile = request.riskProfile
+        optimization_type = request.optimizationType
+        
+        if not allocations:
+            raise HTTPException(status_code=400, detail="Portfolio allocations required")
+        
+        if len(allocations) < 3:
+            raise HTTPException(status_code=400, detail="Portfolio must have at least 3 stocks")
+        
+        # Calculate original portfolio metrics
+        original_metrics = portfolio_analytics.calculate_real_portfolio_metrics({
+            'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
+        })
+        
+        # Get ticker symbols for optimization
+        tickers = [a.symbol for a in allocations]
+        
+        # Get historical data from Redis cache
+        try:
+            price_data = get_price_data_from_redis(tickers)
+            if not price_data or len(price_data) < 3:
+                raise HTTPException(status_code=400, detail="Insufficient historical data for optimization")
+        except Exception as e:
+            logger.error(f"Error getting price data: {e}")
+            raise HTTPException(status_code=400, detail="Unable to retrieve historical data for optimization")
+        
+        # Calculate returns for optimization
+        returns_data = {}
+        for ticker, prices in price_data.items():
+            if len(prices) > 1:
+                returns = prices.pct_change().dropna()
+                returns_data[ticker] = returns
+        
+        if len(returns_data) < 3:
+            raise HTTPException(status_code=400, detail="Insufficient return data for optimization")
+        
+        # Run optimization based on type
+        if optimization_type == "mean-variance":
+            optimized_weights = optimize_mean_variance_weights(returns_data, risk_profile)
+        elif optimization_type == "risk-parity":
+            optimized_weights = optimize_risk_parity_weights(returns_data, risk_profile)
+        else:
+            optimized_weights = optimize_custom_weights(returns_data, risk_profile, request.targetReturn, request.maxRisk)
+        
+        # Create optimized allocations
+        optimized_allocations = []
+        for i, ticker in enumerate(tickers):
+            if i < len(optimized_weights):
+                optimized_allocations.append(PortfolioAllocation(
+                    symbol=ticker,
+                    allocation=round(optimized_weights[i] * 100, 1),
+                    name=allocations[i].name if allocations[i].name else None,
+                    assetType=allocations[i].assetType if allocations[i].assetType else 'stock'
+                ))
+        
+        # Calculate optimized metrics
+        optimized_metrics = portfolio_analytics.calculate_real_portfolio_metrics({
+            'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in optimized_allocations]
+        })
+        
+        # Generate efficient frontier points
+        efficient_frontier = generate_efficient_frontier_points(returns_data, allocations, 20)
+        
+        # Calculate improvements
+        return_improvement = ((optimized_metrics.get('expected_return', 0) - original_metrics.get('expected_return', 0)) / 
+                            max(original_metrics.get('expected_return', 0.01), 0.01)) * 100
+        risk_improvement = ((original_metrics.get('risk', 0) - optimized_metrics.get('risk', 0)) / 
+                          max(original_metrics.get('risk', 0.01), 0.01)) * 100
+        
+        # Generate recommendations
+        recommendations = []
+        if return_improvement > 5:
+            recommendations.append(f"Expected return improved by {return_improvement:.1f}%")
+        if risk_improvement > 5:
+            recommendations.append(f"Risk reduced by {risk_improvement:.1f}%")
+        if optimized_metrics.get('diversification_score', 0) > original_metrics.get('diversification_score', 0):
+            recommendations.append("Diversification improved")
+        
+        if not recommendations:
+            recommendations.append("Portfolio is already well-optimized for your risk profile")
+        
+        return PortfolioOptimizationResponse(
+            originalMetrics=PortfolioMetricsResponse(
+                expectedReturn=original_metrics.get('expected_return', 0.0),
+                risk=original_metrics.get('risk', 0.0),
+                diversificationScore=original_metrics.get('diversification_score', 0.0),
+                sharpeRatio=0.0,
+                totalAllocation=100.0,
+                stockCount=len(allocations),
+                validation={"isValid": True, "canProceed": True, "warnings": []}
+            ),
+            optimizedMetrics=PortfolioMetricsResponse(
+                expectedReturn=optimized_metrics.get('expected_return', 0.0),
+                risk=optimized_metrics.get('risk', 0.0),
+                diversificationScore=optimized_metrics.get('diversification_score', 0.0),
+                sharpeRatio=0.0,
+                totalAllocation=100.0,
+                stockCount=len(optimized_allocations),
+                validation={"isValid": True, "canProceed": True, "warnings": []}
+            ),
+            optimizedAllocations=optimized_allocations,
+            efficientFrontier=efficient_frontier,
+            improvement={
+                "returnImprovement": return_improvement,
+                "riskImprovement": risk_improvement,
+                "diversificationImprovement": optimized_metrics.get('diversification_score', 0) - original_metrics.get('diversification_score', 0)
+            },
+            recommendations=recommendations
+        )
+        
+    except Exception as e:
+        logger.error(f"Error optimizing portfolio: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def optimize_mean_variance_weights(returns_data: Dict[str, pd.Series], risk_profile: str) -> List[float]:
+    """
+    Optimize portfolio weights using mean-variance optimization
+    """
+    try:
+        # Convert returns to DataFrame
+        returns_df = pd.DataFrame(returns_data)
+        returns_df = returns_df.dropna()
+        
+        if len(returns_df) < 30:  # Need sufficient data
+            return [1.0/len(returns_data)] * len(returns_data)
+        
+        # Calculate expected returns and covariance matrix
+        expected_returns = returns_df.mean() * 252  # Annualized
+        cov_matrix = returns_df.cov() * 252  # Annualized
+        
+        # Risk profile constraints
+        risk_constraints = {
+            'very-conservative': 0.08,
+            'conservative': 0.12,
+            'moderate': 0.16,
+            'aggressive': 0.22,
+            'very-aggressive': 0.28
+        }
+        max_risk = risk_constraints.get(risk_profile, 0.16)
+        
+        # Simple optimization: minimize variance subject to return constraint
+        n_assets = len(expected_returns)
+        
+        # Use equal weight as starting point
+        weights = np.array([1.0/n_assets] * n_assets)
+        
+        # Simple iterative optimization
+        for _ in range(100):
+            portfolio_return = np.sum(weights * expected_returns)
+            portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+            
+            if portfolio_risk <= max_risk:
+                break
+            
+            # Reduce weights of highest risk assets
+            risk_contributions = np.dot(cov_matrix, weights)
+            high_risk_indices = np.argsort(risk_contributions)[-3:]  # Top 3 risk contributors
+            weights[high_risk_indices] *= 0.95
+            weights = weights / np.sum(weights)  # Renormalize
+        
+        return weights.tolist()
+        
+    except Exception as e:
+        logger.error(f"Error in mean-variance optimization: {e}")
+        # Return equal weights as fallback
+        return [1.0/len(returns_data)] * len(returns_data)
+
+def optimize_risk_parity_weights(returns_data: Dict[str, pd.Series], risk_profile: str) -> List[float]:
+    """
+    Optimize portfolio weights using risk parity approach
+    """
+    try:
+        # Convert returns to DataFrame
+        returns_df = pd.DataFrame(returns_data)
+        returns_df = returns_df.dropna()
+        
+        if len(returns_df) < 30:
+            return [1.0/len(returns_data)] * len(returns_data)
+        
+        # Calculate covariance matrix
+        cov_matrix = returns_df.cov() * 252
+        
+        # Risk parity: equal risk contribution from each asset
+        n_assets = len(returns_data)
+        weights = np.array([1.0/n_assets] * n_assets)
+        
+        # Iterative optimization to achieve risk parity
+        for _ in range(50):
+            portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+            risk_contributions = np.dot(cov_matrix, weights) / portfolio_risk
+            
+            # Adjust weights to equalize risk contributions
+            target_risk_contribution = portfolio_risk / n_assets
+            adjustments = (target_risk_contribution - risk_contributions) / risk_contributions
+            adjustments = np.clip(adjustments, -0.1, 0.1)  # Limit adjustment size
+            
+            weights *= (1 + adjustments)
+            weights = weights / np.sum(weights)  # Renormalize
+        
+        return weights.tolist()
+        
+    except Exception as e:
+        logger.error(f"Error in risk parity optimization: {e}")
+        return [1.0/len(returns_data)] * len(returns_data)
+
+def optimize_custom_weights(returns_data: Dict[str, pd.Series], risk_profile: str, 
+                           target_return: Optional[float] = None, max_risk: Optional[float] = None) -> List[float]:
+    """
+    Custom optimization with specific return/risk targets
+    """
+    try:
+        # Use mean-variance as base, then apply custom constraints
+        weights = optimize_mean_variance_weights(returns_data, risk_profile)
+        
+        if target_return is not None or max_risk is not None:
+            # Apply additional constraints
+            returns_df = pd.DataFrame(returns_data)
+            returns_df = returns_df.dropna()
+            expected_returns = returns_df.mean() * 252
+            cov_matrix = returns_df.cov() * 252
+            
+            # Adjust weights to meet constraints
+            current_return = np.sum(weights * expected_returns)
+            current_risk = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+            
+            if target_return is not None and current_return < target_return:
+                # Increase weights of higher return assets
+                high_return_indices = np.argsort(expected_returns)[-3:]
+                weights[high_return_indices] *= 1.1
+                weights = weights / np.sum(weights)
+            
+            if max_risk is not None and current_risk > max_risk:
+                # Reduce weights of higher risk assets
+                high_risk_indices = np.argsort(np.diag(cov_matrix))[-3:]
+                weights[high_risk_indices] *= 0.9
+                weights = weights / np.sum(weights)
+        
+        return weights
+        
+    except Exception as e:
+        logger.error(f"Error in custom optimization: {e}")
+        return [1.0/len(returns_data)] * len(returns_data)
+
 @router.get("/ticker/search")
 def search_tickers(q: str, limit: int = 10):
     """
     Search tickers by query string
-    Returns: List of matching tickers with cache status
     """
     try:
-        if not q or len(q) < 1:
-            raise HTTPException(status_code=400, detail="Search query required")
-        
         results = enhanced_data_fetcher.search_tickers(q, limit)
-        
-        return {
-            "query": q,
-            "results": results,
-            "total_found": len(results)
-        }
-        
+        return {"results": results}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error searching tickers: {str(e)}")
+        logger.error(f"Error searching tickers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/ticker/{ticker}/info")
+def get_ticker_info(ticker: str):
+    """
+    Get comprehensive ticker information including prices, metrics, and company details
+    """
+    try:
+        ticker_info = enhanced_data_fetcher.get_ticker_info(ticker)
+        if not ticker_info:
+            raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found or no data available")
+        return ticker_info
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting ticker info for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/returns/monthly")
 def get_monthly_returns(ticker: str):
@@ -283,8 +631,176 @@ def get_portfolio_recommendations(risk_profile: str):
         logger.error(f"Error generating portfolio recommendations: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# NEW: Dynamic Portfolio Generation Endpoint
+@router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
+def generate_dynamic_portfolio_recommendations(
+    risk_profile: str,
+    target_return: Optional[float] = None,
+    max_risk: Optional[float] = None,
+    num_portfolios: int = 5
+):
+    """
+    Generate dynamic, optimized portfolio recommendations using advanced algorithms
+    
+    This endpoint uses multiple optimization strategies to create personalized portfolios:
+    1. Sharpe Ratio Optimization - Maximizes risk-adjusted returns
+    2. Risk Parity - Equal risk contribution from each asset
+    3. Maximum Diversification - Minimizes correlation between assets
+    4. Target Return - Optimizes for specific return with minimum risk
+    5. Minimum Risk - For conservative investors
+    
+    Args:
+        risk_profile: User's risk tolerance level
+        target_return: Optional target annual return (e.g., 0.15 for 15%)
+        max_risk: Optional maximum annual risk tolerance (e.g., 0.25 for 25%)
+        num_portfolios: Number of portfolios to generate (default: 5)
+    """
+    try:
+        logger.info(f"Generating dynamic portfolios for {risk_profile} profile")
+        
+        # Get all available assets from cache
+        available_tickers = []
+        cached_assets = {}
+        
+        # Get master ticker list
+        master_tickers = enhanced_data_fetcher.get_all_tickers()
+        
+        # Use all available tickers (no sector filtering)
+        available_tickers = master_tickers[:100]  # Limit to top 100 for performance
+        
+        if not available_tickers:
+            logger.warning("No tickers available for dynamic portfolio generation")
+            return _get_static_portfolio_recommendations(risk_profile)
+        
+        # Generate dynamic portfolios using advanced optimization
+        dynamic_portfolios = portfolio_analytics.generate_dynamic_portfolios(
+            risk_profile=risk_profile,
+            available_assets=available_tickers,
+            target_return=target_return,
+            max_risk=max_risk,
+            num_portfolios=num_portfolios
+        )
+        
+        # Convert to PortfolioResponse format
+        responses = []
+        for portfolio in dynamic_portfolios:
+            # Convert weights to allocations
+            allocations = []
+            for ticker, weight in portfolio['weights'].items():
+                # Get asset info
+                asset_data = cached_assets.get(ticker, {})
+                allocations.append(PortfolioAllocation(
+                    symbol=ticker,
+                    allocation=weight * 100,  # Convert to percentage
+                    name=asset_data.get('company_name', ticker),
+                    assetType='stock'
+                ))
+            
+            responses.append(PortfolioResponse(
+                portfolio=allocations,
+                expectedReturn=portfolio['expected_return'],
+                risk=portfolio['risk'],
+                diversificationScore=portfolio['diversification_score']
+            ))
+        
+        logger.info(f"Generated {len(responses)} dynamic portfolios for {risk_profile} profile")
+        return responses
+        
+    except Exception as e:
+        logger.error(f"Error generating dynamic portfolio recommendations: {e}")
+        # Fallback to static recommendations
+        return _get_static_portfolio_recommendations(risk_profile)
+
+# NEW: Portfolio Optimization Analysis Endpoint
+@router.post("/optimize/analysis", response_model=Dict)
+def analyze_portfolio_optimization(
+    current_portfolio: List[PortfolioAllocation],
+    risk_profile: str,
+    target_return: Optional[float] = None,
+    max_risk: Optional[float] = None
+):
+    """
+    Analyze current portfolio and provide optimization recommendations
+    
+    This endpoint:
+    1. Analyzes current portfolio performance
+    2. Suggests optimization strategies
+    3. Provides alternative portfolio configurations
+    4. Shows risk-return trade-offs
+    """
+    try:
+        # Calculate current portfolio metrics
+        current_data = {
+            'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in current_portfolio]
+        }
+        current_metrics = portfolio_analytics.calculate_real_portfolio_metrics(current_data)
+        
+        # Get available assets for optimization
+        master_tickers = enhanced_data_fetcher.get_all_tickers()[:100]
+        
+        # Generate optimized alternatives
+        optimized_portfolios = portfolio_analytics.generate_dynamic_portfolios(
+            risk_profile=risk_profile,
+            available_assets=master_tickers,
+            target_return=target_return,
+            max_risk=max_risk,
+            num_portfolios=3
+        )
+        
+        # Calculate improvement metrics
+        improvements = []
+        for opt_portfolio in optimized_portfolios:
+            improvement = {
+                'strategy': opt_portfolio['strategy'],
+                'return_improvement': opt_portfolio['expected_return'] - current_metrics['expected_return'],
+                'risk_change': opt_portfolio['risk'] - current_metrics['risk'],
+                'sharpe_improvement': opt_portfolio['sharpe_ratio'] - (current_metrics.get('sharpe_ratio', 0)),
+                'diversification_improvement': opt_portfolio['diversification_score'] - current_metrics['diversification_score']
+            }
+            improvements.append(improvement)
+        
+        return {
+            'current_portfolio': {
+                'metrics': current_metrics,
+                'allocations': current_portfolio
+            },
+            'optimization_alternatives': optimized_portfolios,
+            'improvements': improvements,
+            'recommendations': _generate_optimization_recommendations(current_metrics, improvements, risk_profile)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing portfolio optimization: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def _generate_optimization_recommendations(current_metrics: Dict, improvements: List[Dict], risk_profile: str) -> List[str]:
+    """Generate actionable optimization recommendations"""
+    recommendations = []
+    
+    # Analyze current portfolio
+    if current_metrics['diversification_score'] < 70:
+        recommendations.append("Consider increasing diversification by adding assets from different sectors")
+    
+    if current_metrics['risk'] > 0.3 and risk_profile in ['very-conservative', 'conservative']:
+        recommendations.append("Current portfolio risk is high for your risk profile. Consider adding more stable assets")
+    
+    # Analyze improvements
+    best_improvement = max(improvements, key=lambda x: x['sharpe_improvement'])
+    if best_improvement['sharpe_improvement'] > 0.1:
+        recommendations.append(f"Strategy '{best_improvement['strategy']}' could significantly improve your risk-adjusted returns")
+    
+    if best_improvement['diversification_improvement'] > 10:
+        recommendations.append("Optimization could improve diversification by 10+ points")
+    
+    return recommendations
+
 def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioResponse]:
-    """Fallback static portfolio recommendations"""
+    """Fallback static portfolio recommendations with consistent metrics calculation"""
+    from utils.port_analytics import PortfolioAnalytics
+    
+    # Initialize portfolio analytics for consistent calculations
+    portfolio_analytics = PortfolioAnalytics()
+    
     # Define portfolio templates for each risk profile
     templates = {
         'very-conservative': [
@@ -358,14 +874,30 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
                 assetType=allocation['assetType']
             ))
         
-        # Use fallback metrics
-        responses.append(PortfolioResponse(
-            portfolio=allocations,
-            expectedReturn=0.10,  # 10% fallback
-            risk=0.15,  # 15% fallback
-            diversificationScore=75.0,  # 75% fallback
-            sharpeRatio=0.4  # 0.4 fallback
-        ))
+        # Calculate metrics using the same method as real-time calculations
+        try:
+            portfolio_data = {
+                'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
+            }
+            metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+            
+            responses.append(PortfolioResponse(
+                portfolio=allocations,
+                expectedReturn=metrics.get('expected_return', 0.10),
+                risk=metrics.get('risk', 0.15),
+                diversificationScore=metrics.get('diversification_score', 75.0),
+                sharpeRatio=0.0  # Always 0 as requested
+            ))
+        except Exception as e:
+            logger.warning(f"Failed to calculate metrics for {template['name']}, using fallback: {e}")
+            # Use fallback metrics if calculation fails
+            responses.append(PortfolioResponse(
+                portfolio=allocations,
+                expectedReturn=0.10,  # 10% fallback
+                risk=0.15,  # 15% fallback
+                diversificationScore=75.0,  # 75% fallback
+                sharpeRatio=0.0  # Always 0 as requested
+            ))
     
     return responses
 
@@ -851,7 +1383,6 @@ def get_risk_rating(risk: float) -> str:
         return "High"
     else:
         return "Very High"
-        raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
 
 @router.post("/ticker-table/refresh")
 async def refresh_ticker_table():
@@ -1329,12 +1860,12 @@ def calculate_custom_portfolio(request: dict):
             'asset1_metrics': {
                 'ticker': ticker1.upper(),
                 'return': asset1_metrics['annualized_return'],
-                'risk': asset1_metrics['annualized_volatility']
+                'risk': asset1_metrics['risk']  # Using consistent naming: 'risk' not 'volatility'
             },
             'asset2_metrics': {
                 'ticker': ticker2.upper(),
                 'return': asset2_metrics['annualized_return'],
-                'risk': asset2_metrics['annualized_volatility']
+                'risk': asset2_metrics['risk']  # Using consistent naming: 'risk' not 'volatility'
             },
             'correlation': correlation
         }
@@ -1343,142 +1874,785 @@ def calculate_custom_portfolio(request: dict):
         raise
     except Exception as e:
         logger.error(f"Error calculating custom portfolio: {e}")
-        raise HTTPException(status_code=500, detail=f"Error calculating custom portfolio: {str(e)}") 
-@router.get("/ticker-table/data")
-async def get_ticker_table_data():
+        raise HTTPException(status_code=500, detail=f"Error calculating custom portfolio: {str(e)}")
+
+@router.post("/optimize/risk-parity")
+async def optimize_risk_parity(request: dict):
     """
-    Get simple ticker table data with return and risk metrics
-    Returns: Basic ticker information with essential metrics
+    Optimize portfolio using risk parity approach
+    Returns: Risk-parity optimized weights and metrics
     """
     try:
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
-        import json
-        from datetime import datetime
+        tickers = request.get('tickers', [])
+        target_risk = request.get('target_risk', 0.15)  # Default 15% target risk
         
-        # Get all tickers from the enhanced data fetcher
-        all_tickers = enhanced_data_fetcher.all_tickers
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for optimization")
         
-        ticker_data = []
+        # Get price data for all tickers
+        price_data = {}
+        for ticker in tickers:
+            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            if data and data['prices']:
+                price_data[ticker] = data['prices']
         
-        for ticker in all_tickers:
-            try:
-                # Get price data using enhanced_data_fetcher's Redis connection
-                price_key = f"ticker_data:prices:{ticker}"
-                price_raw = enhanced_data_fetcher.r.get(price_key)
-                
-                # Get sector/company data
-                sector_key = f"ticker_data:sector:{ticker}"
-                sector_raw = enhanced_data_fetcher.r.get(sector_key)
-                
-                if price_raw and sector_raw:
-                    # Parse price data
-                    price_dict = json.loads(gzip.decompress(price_raw).decode())
-                    prices = list(price_dict.values())
-                    dates = list(price_dict.keys())
-                    
-                    # Parse sector data
-                    sector_info = json.loads(sector_raw.decode())
-                    
-                    # Calculate data points and date range
-                    data_points = len(prices)
-                    first_date = dates[0] if dates else "N/A"
-                    last_date = dates[-1] if dates else "N/A"
-                    last_price = prices[-1] if prices else 0
-                    
-                    # Calculate return and risk metrics
-                    annualized_return = 0
-                    annualized_risk = 0
-                    
-                    if len(prices) > 1:
-                        try:
-                            # Calculate returns
-                            returns = []
-                            for i in range(1, len(prices)):
-                                if prices[i-1] > 0:
-                                    ret = (prices[i] - prices[i-1]) / prices[i-1]
-                                    returns.append(ret)
-                            
-                            if returns:
-                                # Annualized return (assuming monthly data)
-                                avg_monthly_return = sum(returns) / len(returns)
-                                annualized_return = avg_monthly_return * 12 * 100  # Convert to percentage
-                                
-                                # Annualized volatility (risk)
-                                if len(returns) > 1:
-                                    monthly_volatility = pd.Series(returns).std()
-                                    annualized_risk = monthly_volatility * (12 ** 0.5) * 100  # Convert to percentage
-                        except Exception as e:
-                            logger.warning(f"Error calculating metrics for {ticker}: {e}")
-                    
-                    ticker_info = {
-                        "ticker": ticker,
-                        "companyName": sector_info.get("companyName", ticker),
-                        "sector": sector_info.get("sector", "Unknown"),
-                        "industry": sector_info.get("industry", "Unknown"),
-                        "exchange": sector_info.get("exchange", "Unknown"),
-                        "country": sector_info.get("country", "Unknown"),
-                        "dataPoints": data_points,
-                        "firstDate": first_date,
-                        "lastDate": last_date,
-                        "lastPrice": round(last_price, 2) if last_price else 0,
-                        "annualizedReturn": round(annualized_return, 2),
-                        "annualizedRisk": round(annualized_risk, 2),
-                        "status": "active",
-                        "lastUpdated": datetime.now().isoformat()
-                    }
-                    
-                    ticker_data.append(ticker_info)
-                else:
-                    # Missing data
-                    ticker_info = {
-                        "ticker": ticker,
-                        "companyName": ticker,
-                        "sector": "Unknown",
-                        "industry": "Unknown",
-                        "exchange": "Unknown",
-                        "country": "Unknown",
-                        "dataPoints": 0,
-                        "firstDate": "N/A",
-                        "lastDate": "N/A",
-                        "lastPrice": 0,
-                        "annualizedReturn": 0,
-                        "annualizedRisk": 0,
-                        "status": "missing_data",
-                        "lastUpdated": datetime.now().isoformat()
-                    }
-                    ticker_data.append(ticker_info)
-                    
-            except Exception as e:
-                logger.error(f"Error processing ticker {ticker}: {e}")
-                # Add error entry
-                ticker_info = {
-                    "ticker": ticker,
-                    "companyName": ticker,
-                    "sector": "Error",
-                    "industry": "Error",
-                    "exchange": "Error",
-                    "country": "Error",
-                    "dataPoints": 0,
-                    "firstDate": "N/A",
-                    "lastDate": "N/A",
-                    "lastPrice": 0,
-                    "annualizedReturn": 0,
-                    "annualizedRisk": 0,
-                    "status": "error",
-                    "lastUpdated": datetime.now().isoformat()
-                }
-                ticker_data.append(ticker_info)
+        if len(price_data) < 2:
+            raise HTTPException(status_code=404, detail="Insufficient price data for optimization")
         
-        # Sort by ticker
-        ticker_data.sort(key=lambda x: x["ticker"])
+        # Calculate returns and covariance matrix
+        returns_data = {}
+        for ticker, prices in price_data.items():
+            returns = pd.Series(prices).pct_change().dropna()
+            returns_data[ticker] = returns
+        
+        # Align all returns to same length
+        min_length = min(len(returns) for returns in returns_data.values())
+        aligned_returns = {}
+        for ticker, returns in returns_data.items():
+            aligned_returns[ticker] = returns.iloc[-min_length:]
+        
+        returns_df = pd.DataFrame(aligned_returns)
+        covariance_matrix = returns_df.cov() * 12  # Annualized
+        
+        # Risk parity optimization
+        from scipy.optimize import minimize
+        
+        def risk_contribution_objective(weights):
+            portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(covariance_matrix, weights)))
+            risk_contributions = []
+            for i in range(len(weights)):
+                risk_contribution = weights[i] * np.dot(covariance_matrix.iloc[i], weights) / portfolio_risk
+                risk_contributions.append(risk_contribution)
+            
+            # Penalty for unequal risk contributions
+            target_contribution = portfolio_risk / len(weights)
+            penalty = sum((rc - target_contribution) ** 2 for rc in risk_contributions)
+            return penalty
+        
+        # Constraints: weights sum to 1, all weights >= 0
+        constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+        bounds = [(0, 1) for _ in range(len(tickers))]
+        
+        # Initial guess: equal weights
+        initial_weights = np.array([1/len(tickers)] * len(tickers))
+        
+        # Optimize
+        result = minimize(risk_contribution_objective, initial_weights, 
+                        method='SLSQP', bounds=bounds, constraints=constraints)
+        
+        if not result.success:
+            raise HTTPException(status_code=500, detail="Optimization failed")
+        
+        optimal_weights = result.x
+        
+        # Calculate portfolio metrics
+        portfolio_return = np.dot(optimal_weights, [np.mean(returns) * 12 for returns in aligned_returns.values()])
+        portfolio_risk = np.sqrt(np.dot(optimal_weights.T, np.dot(covariance_matrix, optimal_weights)))
+        
+        # Calculate risk contributions
+        risk_contributions = []
+        for i, ticker in enumerate(tickers):
+            risk_contribution = optimal_weights[i] * np.dot(covariance_matrix.iloc[i], optimal_weights) / portfolio_risk
+            risk_contributions.append({
+                'ticker': ticker,
+                'weight': optimal_weights[i],
+                'risk_contribution': risk_contribution,
+                'risk_contribution_pct': (risk_contribution / portfolio_risk) * 100
+            })
         
         return {
-            "tickers": ticker_data,
-            "total": len(ticker_data),
-            "lastUpdated": datetime.now().isoformat()
+            'optimization_type': 'risk_parity',
+            'target_risk': target_risk,
+            'portfolio_metrics': {
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - 0.02) / portfolio_risk if portfolio_risk > 0 else 0
+            },
+            'allocations': [
+                {
+                    'ticker': ticker,
+                    'weight': weight,
+                    'allocation_pct': weight * 100
+                }
+                for ticker, weight in zip(tickers, optimal_weights)
+            ],
+            'risk_contributions': risk_contributions,
+            'optimization_success': result.success
         }
         
     except Exception as e:
-        logger.error(f"Error getting ticker table data: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
+        logger.error(f"Error in risk parity optimization: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in risk parity optimization: {str(e)}")
+
+@router.post("/optimize/mean-variance")
+async def optimize_mean_variance(request: dict):
+    """
+    Optimize portfolio using mean-variance optimization (Markowitz)
+    Returns: Mean-variance optimized weights and efficient frontier
+    """
+    try:
+        tickers = request.get('tickers', [])
+        target_return = request.get('target_return', None)
+        risk_aversion = request.get('risk_aversion', 1.0)  # Default risk aversion
+        
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for optimization")
+        
+        # Get price data for all tickers
+        price_data = {}
+        for ticker in tickers:
+            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            if data and data['prices']:
+                price_data[ticker] = data['prices']
+        
+        if len(price_data) < 2:
+            raise HTTPException(status_code=404, detail="Insufficient price data for optimization")
+        
+        # Calculate returns and covariance matrix
+        returns_data = {}
+        for ticker, prices in price_data.items():
+            returns = pd.Series(prices).pct_change().dropna()
+            returns_data[ticker] = returns
+        
+        # Align all returns to same length
+        min_length = min(len(returns) for returns in returns_data.values())
+        aligned_returns = {}
+        for ticker, returns in returns_data.items():
+            aligned_returns[ticker] = returns.iloc[-min_length:]
+        
+        returns_df = pd.DataFrame(aligned_returns)
+        expected_returns = returns_df.mean() * 12  # Annualized
+        covariance_matrix = returns_df.cov() * 12  # Annualized
+        
+        # Mean-variance optimization
+        from scipy.optimize import minimize
+        
+        if target_return is not None:
+            # Constrained optimization: minimize risk for target return
+            def objective(weights):
+                portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(covariance_matrix, weights)))
+                return portfolio_risk
+            
+            constraints = [
+                {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},  # Weights sum to 1
+                {'type': 'eq', 'fun': lambda x: np.dot(x, expected_returns) - target_return}  # Target return
+            ]
+        else:
+            # Unconstrained optimization: maximize utility function
+            def objective(weights):
+                portfolio_return = np.dot(weights, expected_returns)
+                portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(covariance_matrix, weights)))
+                utility = portfolio_return - 0.5 * risk_aversion * portfolio_risk ** 2
+                return -utility  # Minimize negative utility
+            
+            constraints = [{'type': 'eq', 'fun': lambda x: np.sum(x) - 1}]
+        
+        bounds = [(0, 1) for _ in range(len(tickers))]
+        initial_weights = np.array([1/len(tickers)] * len(tickers))
+        
+        # Optimize
+        result = minimize(objective, initial_weights, 
+                        method='SLSQP', bounds=bounds, constraints=constraints)
+        
+        if not result.success:
+            raise HTTPException(status_code=500, detail="Optimization failed")
+        
+        optimal_weights = result.x
+        
+        # Calculate portfolio metrics
+        portfolio_return = np.dot(optimal_weights, expected_returns)
+        portfolio_risk = np.sqrt(np.dot(optimal_weights.T, np.dot(covariance_matrix, optimal_weights)))
+        
+        # Generate efficient frontier points
+        frontier_points = []
+        return_range = np.linspace(expected_returns.min(), expected_returns.max(), 20)
+        
+        for target_ret in return_range:
+            try:
+                constraints = [
+                    {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
+                    {'type': 'eq', 'fun': lambda x: np.dot(x, expected_returns) - target_ret}
+                ]
+                
+                frontier_result = minimize(
+                    lambda x: np.sqrt(np.dot(x.T, np.dot(covariance_matrix, x))),
+                    initial_weights, method='SLSQP', bounds=bounds, constraints=constraints
+                )
+                
+                if frontier_result.success:
+                    frontier_weights = frontier_result.x
+                    frontier_risk = np.sqrt(np.dot(frontier_weights.T, np.dot(covariance_matrix, frontier_weights)))
+                    frontier_points.append({
+                        'return': target_ret,
+                        'risk': frontier_risk,
+                        'weights': frontier_weights.tolist()
+                    })
+            except:
+                continue
+        
+        return {
+            'optimization_type': 'mean_variance',
+            'target_return': target_return,
+            'risk_aversion': risk_aversion,
+            'portfolio_metrics': {
+                'expected_return': portfolio_return,
+                'risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - 0.02) / portfolio_risk if portfolio_risk > 0 else 0
+            },
+            'allocations': [
+                {
+                    'ticker': ticker,
+                    'weight': weight,
+                    'allocation_pct': weight * 100
+                }
+                for ticker, weight in zip(tickers, optimal_weights)
+            ],
+            'efficient_frontier': frontier_points,
+            'optimization_success': result.success
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in mean-variance optimization: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in mean-variance optimization: {str(e)}")
+
+@router.get("/analytics/performance-attribution")
+async def performance_attribution(portfolio_id: str = None, allocations: str = None):
+    """
+    Analyze performance attribution for a portfolio
+    Returns: Performance breakdown by asset, sector, and factor
+    """
+    try:
+        # Parse allocations if provided as string
+        if allocations:
+            import json
+            try:
+                allocation_data = json.loads(allocations)
+            except:
+                raise HTTPException(status_code=400, detail="Invalid allocations format")
+        else:
+            raise HTTPException(status_code=400, detail="Portfolio allocations required")
+        
+        # Extract tickers and weights
+        tickers = [item['symbol'] for item in allocation_data]
+        weights = [item['allocation'] / 100 for item in allocation_data]  # Convert to decimal
+        
+        if len(tickers) < 1:
+            raise HTTPException(status_code=400, detail="At least one asset required")
+        
+        # Get price data for all assets
+        price_data = {}
+        for ticker in tickers:
+            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            if data and data['prices']:
+                price_data[ticker] = data['prices']
+        
+        if not price_data:
+            raise HTTPException(status_code=404, detail="No price data available")
+        
+        # Calculate returns for each asset
+        returns_data = {}
+        asset_performance = {}
+        
+        for ticker, prices in price_data.items():
+            returns = pd.Series(prices).pct_change().dropna()
+            returns_data[ticker] = returns
+            
+            # Calculate individual asset metrics
+            annual_return = (1 + returns.mean()) ** 12 - 1
+            annual_risk = returns.std() * np.sqrt(12)
+            
+            asset_performance[ticker] = {
+                'annual_return': annual_return,
+                'annual_risk': annual_risk,
+                'sharpe_ratio': (annual_return - 0.02) / annual_risk if annual_risk > 0 else 0,
+                'data_points': len(returns)
+            }
+        
+        # Calculate portfolio-level metrics
+        portfolio_return = sum(weights[i] * asset_performance[tickers[i]]['annual_return'] 
+                             for i in range(len(tickers)) if tickers[i] in asset_performance)
+        portfolio_risk = 0
+        
+        if len(tickers) > 1:
+            # Calculate portfolio risk using correlation
+            returns_df = pd.DataFrame(returns_data)
+            correlation_matrix = returns_df.corr().fillna(0)
+            
+            for i, ticker1 in enumerate(tickers):
+                for j, ticker2 in enumerate(tickers):
+                    if ticker1 in asset_performance and ticker2 in asset_performance:
+                        corr = correlation_matrix.loc[ticker1, ticker2] if not pd.isna(correlation_matrix.loc[ticker1, ticker2]) else 0
+                        portfolio_risk += weights[i] * weights[j] * asset_performance[ticker1]['annual_risk'] * asset_performance[ticker2]['annual_risk'] * corr
+            
+            portfolio_risk = np.sqrt(portfolio_risk)
+        else:
+            portfolio_risk = asset_performance[tickers[0]]['annual_risk']
+        
+        # Calculate attribution metrics
+        attribution_analysis = []
+        for i, ticker in enumerate(tickers):
+            if ticker in asset_performance:
+                asset_return = asset_performance[ticker]['annual_return']
+                weight = weights[i]
+                
+                # Return contribution
+                return_contribution = weight * asset_return
+                return_contribution_pct = (return_contribution / portfolio_return) * 100 if portfolio_return != 0 else 0
+                
+                # Risk contribution
+                risk_contribution = weight * asset_performance[ticker]['annual_risk']
+                risk_contribution_pct = (risk_contribution / portfolio_risk) * 100 if portfolio_risk != 0 else 0
+                
+                # Information ratio (excess return per unit of risk)
+                excess_return = asset_return - 0.02  # Assuming 2% risk-free rate
+                information_ratio = excess_return / asset_performance[ticker]['annual_risk'] if asset_performance[ticker]['annual_risk'] > 0 else 0
+                
+                attribution_analysis.append({
+                    'ticker': ticker,
+                    'weight': weight,
+                    'weight_pct': weight * 100,
+                    'asset_return': asset_return,
+                    'asset_risk': asset_performance[ticker]['annual_risk'],
+                    'return_contribution': return_contribution,
+                    'return_contribution_pct': return_contribution_pct,
+                    'risk_contribution': risk_contribution,
+                    'risk_contribution_pct': risk_contribution_pct,
+                    'information_ratio': information_ratio,
+                    'sharpe_ratio': asset_performance[ticker]['sharpe_ratio']
+                })
+        
+        # Sort by return contribution
+        attribution_analysis.sort(key=lambda x: x['return_contribution'], reverse=True)
+        
+        return {
+            'portfolio_id': portfolio_id,
+            'portfolio_metrics': {
+                'total_return': portfolio_return,
+                'total_risk': portfolio_risk,
+                'sharpe_ratio': (portfolio_return - 0.02) / portfolio_risk if portfolio_risk > 0 else 0
+            },
+            'attribution_analysis': attribution_analysis,
+            'summary': {
+                'top_contributor': attribution_analysis[0] if attribution_analysis else None,
+                'bottom_contributor': attribution_analysis[-1] if attribution_analysis else None,
+                'total_assets': len(tickers),
+                'analysis_date': datetime.now().isoformat()
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in performance attribution: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in performance attribution: {str(e)}")
+
+@router.get("/analytics/risk-decomposition")
+async def risk_decomposition(allocations: str):
+    """
+    Decompose portfolio risk into systematic and idiosyncratic components
+    Returns: Risk breakdown and factor analysis
+    """
+    try:
+        # Parse allocations
+        import json
+        try:
+            allocation_data = json.loads(allocations)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid allocations format")
+        
+        tickers = [item['symbol'] for item in allocation_data]
+        weights = [item['allocation'] / 100 for item in allocation_data]
+        
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 assets required for risk decomposition")
+        
+        # Get price data
+        price_data = {}
+        for ticker in tickers:
+            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            if data and data['prices']:
+                price_data[ticker] = data['prices']
+        
+        if len(price_data) < 2:
+            raise HTTPException(status_code=404, detail="Insufficient price data")
+        
+        # Calculate returns and covariance
+        returns_data = {}
+        for ticker, prices in price_data.items():
+            returns = pd.Series(prices).pct_change().dropna()
+            returns_data[ticker] = returns
+        
+        # Align returns
+        min_length = min(len(returns) for returns in returns_data.values())
+        aligned_returns = {}
+        for ticker, returns in returns_data.items():
+            aligned_returns[ticker] = returns.iloc[-min_length:]
+        
+        returns_df = pd.DataFrame(aligned_returns)
+        covariance_matrix = returns_df.cov() * 12  # Annualized
+        
+        # Calculate portfolio risk
+        weights_array = np.array(weights)
+        portfolio_risk = np.sqrt(np.dot(weights_array.T, np.dot(covariance_matrix, weights_array)))
+        
+        # Risk decomposition by asset
+        risk_decomposition = []
+        for i, ticker in enumerate(tickers):
+            # Marginal risk contribution
+            marginal_risk = np.dot(covariance_matrix.iloc[i], weights_array) / portfolio_risk if portfolio_risk > 0 else 0
+            
+            # Risk contribution
+            risk_contribution = weights_array[i] * marginal_risk
+            
+            # Percentage contribution
+            risk_contribution_pct = (risk_contribution / portfolio_risk) * 100 if portfolio_risk > 0 else 0
+            
+            risk_decomposition.append({
+                'ticker': ticker,
+                'weight': weights[i],
+                'weight_pct': weights[i] * 100,
+                'marginal_risk': marginal_risk,
+                'risk_contribution': risk_contribution,
+                'risk_contribution_pct': risk_contribution_pct
+            })
+        
+        # Sort by risk contribution
+        risk_decomposition.sort(key=lambda x: x['risk_contribution'], reverse=True)
+        
+        # Calculate concentration metrics
+        herfindahl_index = sum(w**2 for w in weights)
+        concentration_ratio = max(weights)
+        
+        # Factor analysis (simplified)
+        # Calculate correlation with market proxy (equal-weighted portfolio)
+        market_returns = returns_df.mean(axis=1)
+        factor_loadings = {}
+        
+        for ticker in tickers:
+            if ticker in aligned_returns:
+                correlation = aligned_returns[ticker].corr(market_returns)
+                factor_loadings[ticker] = correlation if not pd.isna(correlation) else 0
+        
+        return {
+            'portfolio_risk': portfolio_risk,
+            'risk_decomposition': risk_decomposition,
+            'concentration_metrics': {
+                'herfindahl_index': herfindahl_index,
+                'concentration_ratio': concentration_ratio,
+                'effective_number_of_assets': 1 / herfindahl_index if herfindahl_index > 0 else 0
+            },
+            'factor_analysis': {
+                'market_correlation': factor_loadings,
+                'average_market_correlation': np.mean(list(factor_loadings.values())) if factor_loadings else 0
+            },
+            'summary': {
+                'highest_risk_contributor': risk_decomposition[0] if risk_decomposition else None,
+                'lowest_risk_contributor': risk_decomposition[-1] if risk_decomposition else None,
+                'total_assets': len(tickers),
+                'analysis_date': datetime.now().isoformat()
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in risk decomposition: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in risk decomposition: {str(e)}") 
+
+@router.post("/rebalance/check")
+async def check_rebalancing_needs(request: dict):
+    """
+    Check if portfolio needs rebalancing based on drift thresholds
+    Returns: Rebalancing recommendations and drift analysis
+    """
+    try:
+        current_allocations = request.get('current_allocations', [])
+        target_allocations = request.get('target_allocations', [])
+        drift_threshold = request.get('drift_threshold', 5.0)  # Default 5% threshold
+        
+        if not current_allocations or not target_allocations:
+            raise HTTPException(status_code=400, detail="Both current and target allocations required")
+        
+        if len(current_allocations) != len(target_allocations):
+            raise HTTPException(status_code=400, detail="Current and target allocations must have same length")
+        
+        # Calculate drift for each asset
+        drift_analysis = []
+        total_drift = 0
+        needs_rebalancing = False
+        
+        for current, target in zip(current_allocations, target_allocations):
+            if current['symbol'] != target['symbol']:
+                continue
+                
+            current_weight = current['allocation']
+            target_weight = target['allocation']
+            drift = current_weight - target_weight
+            drift_pct = abs(drift)
+            
+            if drift_pct > drift_threshold:
+                needs_rebalancing = True
+            
+            drift_analysis.append({
+                'symbol': current['symbol'],
+                'current_allocation': current_weight,
+                'target_allocation': target_weight,
+                'drift': drift,
+                'drift_pct': drift_pct,
+                'exceeds_threshold': drift_pct > drift_threshold,
+                'action_needed': 'buy' if drift < 0 else 'sell' if drift > 0 else 'hold'
+            })
+            
+            total_drift += drift_pct
+        
+        # Calculate portfolio-level metrics
+        portfolio_drift = total_drift / len(drift_analysis) if drift_analysis else 0
+        assets_exceeding_threshold = sum(1 for item in drift_analysis if item['exceeds_threshold'])
+        
+        # Generate rebalancing recommendations
+        rebalancing_recommendations = []
+        for item in drift_analysis:
+            if item['exceeds_threshold']:
+                action = item['action_needed']
+                adjustment = abs(item['drift'])
+                
+                if action == 'buy':
+                    rebalancing_recommendations.append({
+                        'symbol': item['symbol'],
+                        'action': 'buy',
+                        'current_allocation': item['current_allocation'],
+                        'target_allocation': item['target_allocation'],
+                        'adjustment_needed': adjustment,
+                        'priority': 'high' if adjustment > drift_threshold * 2 else 'medium'
+                    })
+                elif action == 'sell':
+                    rebalancing_recommendations.append({
+                        'symbol': item['symbol'],
+                        'action': 'sell',
+                        'current_allocation': item['current_allocation'],
+                        'target_allocation': item['target_allocation'],
+                        'adjustment_needed': adjustment,
+                        'priority': 'high' if adjustment > drift_threshold * 2 else 'medium'
+                    })
+        
+        return {
+            'needs_rebalancing': needs_rebalancing,
+            'portfolio_drift': portfolio_drift,
+            'assets_exceeding_threshold': assets_exceeding_threshold,
+            'drift_threshold': drift_threshold,
+            'drift_analysis': drift_analysis,
+            'rebalancing_recommendations': rebalancing_recommendations,
+            'summary': {
+                'total_assets': len(drift_analysis),
+                'assets_needing_rebalancing': len(rebalancing_recommendations),
+                'high_priority_actions': len([r for r in rebalancing_recommendations if r['priority'] == 'high']),
+                'analysis_date': datetime.now().isoformat()
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking rebalancing needs: {e}")
+        raise HTTPException(status_code=500, detail=f"Error checking rebalancing needs: {str(e)}")
+
+@router.post("/monitor/performance-tracking")
+async def track_portfolio_performance(request: dict):
+    """
+    Track portfolio performance over time with historical analysis
+    Returns: Performance tracking data and analytics
+    """
+    try:
+        portfolio_snapshot = request.get('portfolio_snapshot', {})
+        allocations = portfolio_snapshot.get('allocations', [])
+        start_date = request.get('start_date')
+        end_date = request.get('end_date')
+        
+        if not allocations:
+            raise HTTPException(status_code=400, detail="Portfolio allocations required")
+        
+        # Get tickers and weights
+        tickers = [item['symbol'] for item in allocations]
+        weights = [item['allocation'] / 100 for item in allocations]
+        
+        # Get historical data for all assets
+        price_data = {}
+        for ticker in tickers:
+            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            if data and data['prices']:
+                price_data[ticker] = data['prices']
+        
+        if not price_data:
+            raise HTTPException(status_code=404, detail="No price data available")
+        
+        # Calculate portfolio performance over time
+        portfolio_values = []
+        benchmark_values = []  # Equal-weighted benchmark
+        
+        # Find common date range
+        all_dates = set()
+        for ticker, prices in price_data.items():
+            if isinstance(prices, dict):  # If prices is a date-price dict
+                all_dates.update(prices.keys())
+            else:  # If prices is a list
+                all_dates.update(range(len(prices)))
+        
+        if isinstance(list(all_dates)[0], str):  # Date strings
+            sorted_dates = sorted(all_dates)
+        else:  # Numeric indices
+            sorted_dates = sorted(all_dates)
+        
+        # Calculate portfolio value at each point
+        for date_idx in sorted_dates:
+            portfolio_value = 0
+            benchmark_value = 0
+            
+            for i, ticker in enumerate(tickers):
+                if ticker in price_data:
+                    if isinstance(price_data[ticker], dict):
+                        price = price_data[ticker].get(str(date_idx), 0)
+                    else:
+                        price = price_data[ticker][date_idx] if date_idx < len(price_data[ticker]) else 0
+                    
+                    if price > 0:
+                        portfolio_value += weights[i] * price
+                        benchmark_value += (1 / len(tickers)) * price
+            
+            if portfolio_value > 0:
+                portfolio_values.append(portfolio_value)
+                benchmark_values.append(benchmark_value)
+        
+        # Calculate performance metrics
+        if len(portfolio_values) > 1:
+            portfolio_returns = []
+            benchmark_returns = []
+            
+            for i in range(1, len(portfolio_values)):
+                if portfolio_values[i-1] > 0:
+                    portfolio_ret = (portfolio_values[i] - portfolio_values[i-1]) / portfolio_values[i-1]
+                    portfolio_returns.append(portfolio_ret)
+                
+                if benchmark_values[i-1] > 0:
+                    benchmark_ret = (benchmark_values[i] - benchmark_values[i-1]) / benchmark_values[i-1]
+                    benchmark_returns.append(benchmark_ret)
+            
+            # Portfolio metrics
+            total_return = (portfolio_values[-1] / portfolio_values[0] - 1) * 100 if portfolio_values[0] > 0 else 0
+            annualized_return = ((portfolio_values[-1] / portfolio_values[0]) ** (12 / len(portfolio_values)) - 1) * 100 if portfolio_values[0] > 0 else 0
+            volatility = np.std(portfolio_returns) * np.sqrt(12) * 100 if portfolio_returns else 0
+            sharpe_ratio = (np.mean(portfolio_returns) * 12 - 0.02) / (np.std(portfolio_returns) * np.sqrt(12)) if portfolio_returns and np.std(portfolio_returns) > 0 else 0
+            
+            # Benchmark metrics
+            benchmark_total_return = (benchmark_values[-1] / benchmark_values[0] - 1) * 100 if benchmark_values[0] > 0 else 0
+            benchmark_annualized_return = ((benchmark_values[-1] / benchmark_values[0]) ** (12 / len(benchmark_values)) - 1) * 100 if benchmark_values[0] > 0 else 0
+            
+            # Tracking error and information ratio
+            excess_returns = [p - b for p, b in zip(portfolio_returns, benchmark_returns)]
+            tracking_error = np.std(excess_returns) * np.sqrt(12) * 100 if excess_returns else 0
+            information_ratio = (np.mean(excess_returns) * 12) / (np.std(excess_returns) * np.sqrt(12)) if excess_returns and np.std(excess_returns) > 0 else 0
+            
+            # Maximum drawdown
+            peak = portfolio_values[0]
+            max_drawdown = 0
+            for value in portfolio_values:
+                if value > peak:
+                    peak = value
+                drawdown = (peak - value) / peak * 100 if peak > 0 else 0
+                max_drawdown = max(max_drawdown, drawdown)
+            
+            performance_metrics = {
+                'total_return_pct': round(total_return, 2),
+                'annualized_return_pct': round(annualized_return, 2),
+                'volatility_pct': round(volatility, 2),
+                'sharpe_ratio': round(sharpe_ratio, 2),
+                'max_drawdown_pct': round(max_drawdown, 2),
+                'tracking_error_pct': round(tracking_error, 2),
+                'information_ratio': round(information_ratio, 2),
+                'benchmark_total_return_pct': round(benchmark_total_return, 2),
+                'benchmark_annualized_return_pct': round(benchmark_annualized_return, 2),
+                'excess_return_pct': round(total_return - benchmark_total_return, 2)
+            }
+        else:
+            performance_metrics = {
+                'total_return_pct': 0,
+                'annualized_return_pct': 0,
+                'volatility_pct': 0,
+                'sharpe_ratio': 0,
+                'max_drawdown_pct': 0,
+                'tracking_error_pct': 0,
+                'information_ratio': 0,
+                'benchmark_total_return_pct': 0,
+                'benchmark_annualized_return_pct': 0,
+                'excess_return_pct': 0
+            }
+        
+        return {
+            'portfolio_snapshot': portfolio_snapshot,
+            'performance_metrics': performance_metrics,
+            'time_series': {
+                'dates': sorted_dates,
+                'portfolio_values': portfolio_values,
+                'benchmark_values': benchmark_values
+            },
+            'analysis_period': {
+                'start_date': sorted_dates[0] if sorted_dates else None,
+                'end_date': sorted_dates[-1] if sorted_dates else None,
+                'data_points': len(portfolio_values)
+            },
+            'summary': {
+                'total_assets': len(tickers),
+                'analysis_date': datetime.now().isoformat()
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error tracking portfolio performance: {e}")
+        raise HTTPException(status_code=500, detail=f"Error tracking portfolio performance: {str(e)}")
+
+@router.get("/health")
+async def health_check():
+    """
+    Health check endpoint for portfolio service
+    Returns: Service status and dependencies
+    """
+    try:
+        # Check Redis connection
+        redis_status = "healthy"
+        try:
+            redis_client.ping()
+        except Exception as e:
+            redis_status = f"unhealthy: {str(e)}"
+        
+        # Check data fetcher status
+        data_fetcher_status = "healthy"
+        try:
+            cache_status = enhanced_data_fetcher.get_cache_status()
+            data_fetcher_status = "healthy" if cache_status else "unhealthy"
+        except Exception as e:
+            data_fetcher_status = f"unhealthy: {str(e)}"
+        
+        # Check portfolio analytics
+        analytics_status = "healthy"
+        try:
+            # Simple test calculation
+            test_data = {'allocations': [{'symbol': 'AAPL', 'allocation': 100}]}
+            test_result = portfolio_analytics.calculate_real_portfolio_metrics(test_data)
+            analytics_status = "healthy" if test_result else "unhealthy"
+        except Exception as e:
+            analytics_status = f"unhealthy: {str(e)}"
+        
+        return {
+            'service': 'portfolio-service',
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'dependencies': {
+                'redis': redis_status,
+                'data_fetcher': data_fetcher_status,
+                'portfolio_analytics': analytics_status
+            },
+            'version': '1.0.0'
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            'service': 'portfolio-service',
+            'status': 'unhealthy',
+            'timestamp': datetime.now().isoformat(),
+            'error': str(e)
+        }
 
