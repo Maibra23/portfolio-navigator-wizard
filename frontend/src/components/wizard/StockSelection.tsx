@@ -763,6 +763,11 @@ export const StockSelection = ({
   // REMOVED: getPrimarySectors function - no longer needed since we removed primary sectors display
 
   const handleNext = () => {
+    // Prevent navigation if allocation is invalid
+    if (totalAllocation > 100 || totalAllocation < 85) {
+      return; // Do nothing - button should already be disabled
+    }
+    
     if (activeTab === 'mini-lesson') {
       // From mini-lesson, go to recommendations
       setActiveTab('recommendations');
@@ -1514,114 +1519,250 @@ export const StockSelection = ({
                       </div>
 
                       {/* Portfolio Overview - Moved here, below Selected Assets */}
-                      <div className="bg-white border rounded-lg p-4">
+                      <div className={`border rounded-lg p-4 ${totalAllocation > 100 ? 'bg-red-50 border-red-200' : 'bg-white'}`}>
                         <div className="grid grid-cols-3 gap-4 text-center">
                           <div>
                             <div className="text-2xl font-bold text-primary">{selectedStocks.length}</div>
                             <div className="text-sm text-muted-foreground">Stocks</div>
                           </div>
                           <div>
-                            <div className="text-2xl font-bold text-green-600">
+                            <div className={`text-2xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
                               {totalAllocation.toFixed(1)}%
                             </div>
                             <div className="text-sm text-muted-foreground">Total Allocation</div>
                           </div>
                           <div>
-                            <div className="text-2xl font-bold text-green-600">✓</div>
+                            <div className={`text-2xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
+                              {totalAllocation > 100 ? '✗' : '✓'}
+                            </div>
                             <div className="text-sm text-muted-foreground">Status</div>
                           </div>
                         </div>
-                        <div className="mt-3 text-center text-sm text-muted-foreground">
+                        <div className={`mt-3 text-center text-sm ${totalAllocation > 100 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
                           Total Allocation: {totalAllocation.toFixed(1)}%
                         </div>
                       </div>
 
-                      {/* Weight Editor Toggle */}
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-medium">Weight Editor</h5>
-                          <p className="text-sm text-muted-foreground">
-                            Manually adjust stock weights or use auto-normalization
-                          </p>
-                        </div>
-                        <Switch
-                          checked={showWeightEditor}
-                          onCheckedChange={setShowWeightEditor}
-                        />
-                      </div>
-
-                      {/* Weight Editor */}
-                      {showWeightEditor && (
-                        <div className="space-y-3">
-                          {selectedStocks.map((stock, index) => (
-                            <div key={stock.symbol} className="flex items-center gap-3">
-                              <div className="flex-1">
-                                <div className="font-medium">{stock.symbol}</div>
-                                <div className="text-sm text-muted-foreground">{stock.name || stock.symbol}</div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  type="number"
-                                  value={stock.allocation}
-                                  onChange={(e) => updateAllocation(stock.symbol, parseFloat(e.target.value) || 0)}
-                                  className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 bg-red-50' : ''}`}
-                                  min="0"
-                                  max="100"
-                                  step="0.1"
-                                />
-                                <span className="text-sm text-muted-foreground">%</span>
-                              </div>
-                              <Button
-                                onClick={() => removeStock(stock.symbol)}
-                                size="sm"
-                                variant="destructive"
-                              >
-                                Remove
-                              </Button>
-                            </div>
-                          ))}
-                          
-                          {/* Allocation Warning */}
-                          {selectedStocks.some(stock => stock.allocation > 100) && (
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      {/* Allocation Outcome Warnings - Only in Selected Assets section */}
+                      {(() => {
+                        if (totalAllocation > 100) {
+                          return (
+                            <div className="mt-3 bg-red-100 border border-red-300 rounded-lg p-3">
                               <div className="flex items-center gap-2 text-red-800">
                                 <AlertTriangle className="h-4 w-4" />
-                                <span className="text-sm font-medium">Allocation Warning</span>
+                                <span className="text-sm font-medium">Over-Allocation Warning</span>
                               </div>
                               <p className="text-sm text-red-700 mt-1">
-                                Some stocks have allocations exceeding 100%. Please adjust weights to ensure total allocation equals 100%.
+                                Oops—your allocation exceeds 100%. Adjust the weights so your portfolio stays balanced.
                               </p>
                             </div>
-                          )}
+                          );
+                        } else if (totalAllocation === 0) {
+                          return (
+                            <div className="mt-3 bg-blue-100 border border-blue-300 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-blue-800">
+                                <Info className="h-4 w-4" />
+                                <span className="text-sm font-medium">No Allocations Yet</span>
+                              </div>
+                              <p className="text-sm text-blue-700 mt-1">
+                                No allocations yet. Assign your weights so they sum to 100% before moving on.
+                              </p>
+                            </div>
+                          );
+                        } else if (totalAllocation < 85) {
+                          return (
+                            <div className="mt-3 bg-red-100 border border-red-300 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-red-800">
+                                <AlertTriangle className="h-4 w-4" />
+                                <span className="text-sm font-medium">Insufficient Allocation</span>
+                              </div>
+                              <p className="text-sm text-red-700 mt-1">
+                                You need at least 85% allocation to proceed. Currently at {totalAllocation.toFixed(1)}%. 
+                                Increase your allocations or add more assets to continue.
+                              </p>
+                            </div>
+                          );
+                        } else if (totalAllocation >= 85 && totalAllocation < 90) {
+                          // Check if this is a strategic cash allocation
+                          const cashPercentage = 100 - totalAllocation;
+                          if (cashPercentage >= 10 && cashPercentage <= 15) {
+                            // Strategic cash allocation - show encouraging message with random text
+                            const randomTexts = [
+                              `Great job—you're confidently deployed ${totalAllocation.toFixed(1)}% of your portfolio. Keeping ${cashPercentage.toFixed(1)}% in cash gives you flexibility for opportunities or unexpected needs.`,
+                              `Solid allocation! With ${totalAllocation.toFixed(1)}% invested and ${cashPercentage.toFixed(1)}% in cash, you're well-positioned to act fast on opportunities while staying balanced.`,
+                              `You're nearly fully allocated. Reserving ${cashPercentage.toFixed(1)}% in cash means you're ready to seize chances when they arise, without overextending your investments.`
+                            ];
+                            const randomIndex = Math.floor(Math.random() * randomTexts.length);
+                            
+                            return (
+                              <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-emerald-800">
+                                  <CheckCircle className="h-4 w-4" />
+                                  <span className="text-sm font-medium">Smart Allocation Strategy!</span>
+                                </div>
+                                <p className="text-sm text-emerald-700 mt-1">
+                                  {randomTexts[randomIndex]}
+                                </p>
+                              </div>
+                            );
+                          } else {
+                            // Regular under-allocation notice
+                            return (
+                              <div className="mt-3 bg-amber-100 border border-amber-300 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-amber-800">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <span className="text-sm font-medium">Under-Allocation Notice</span>
+                                </div>
+                                <p className="text-sm text-amber-700 mt-1">
+                                  Heads-up: your allocations don't sum to 100%. You may want to allocate remaining funds or keep cash deliberately.
+                                </p>
+                              </div>
+                            );
+                          }
+                        } else if (totalAllocation >= 90 && totalAllocation < 100) {
+                          // For allocations 90-99%, always show encouraging message since user can proceed
+                          const cashPercentage = 100 - totalAllocation;
+                          const randomTexts = [
+                            `Great job—you're confidently deployed ${totalAllocation.toFixed(1)}% of your portfolio. Keeping ${cashPercentage.toFixed(1)}% in cash gives you flexibility for opportunities or unexpected needs.`,
+                            `Solid allocation! With ${totalAllocation.toFixed(1)}% invested and ${cashPercentage.toFixed(1)}% in cash, you're well-positioned to act fast on opportunities while staying balanced.`,
+                            `You're nearly fully allocated. Reserving ${cashPercentage.toFixed(1)}% in cash means you're ready to seize chances when they arise, without overextending your investments.`
+                          ];
+                          const randomIndex = Math.floor(Math.random() * randomTexts.length);
                           
-                          <div className="flex justify-end">
+                          return (
+                            <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-emerald-800">
+                                <CheckCircle className="h-4 w-4" />
+                                <span className="text-sm font-medium">Smart Allocation Strategy!</span>
+                              </div>
+                              <p className="text-sm text-emerald-700 mt-1">
+                                {randomTexts[randomIndex]}
+                              </p>
+                            </div>
+                          );
+                        } else if (Math.abs(totalAllocation - 100) < 0.1) {
+                          return (
+                            <div className="mt-3 bg-green-100 border border-green-300 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-green-800">
+                                <CheckCircle className="h-4 w-4" />
+                                <span className="text-sm font-medium">Perfect Allocation!</span>
+                              </div>
+                              <p className="text-sm text-green-700 mt-1">
+                                Great job! Your portfolio is perfectly balanced at 100%. You're ready to proceed.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      
+
+                    </div>
+
+                    {/* Weight Editor Toggle */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-medium">Weight Editor</h5>
+                        <p className="text-sm text-muted-foreground">
+                          Manually adjust stock weights or use auto-normalization
+                        </p>
+                      </div>
+                      <Switch
+                        checked={showWeightEditor}
+                        onCheckedChange={setShowWeightEditor}
+                      />
+                    </div>
+
+                    {/* Weight Editor */}
+                    {showWeightEditor && (
+                      <div className="space-y-3">
+                        {selectedStocks.map((stock, index) => (
+                          <div key={stock.symbol} className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <div className="font-medium">{stock.symbol}</div>
+                              <div className="text-sm text-muted-foreground">{stock.name || stock.symbol}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                value={stock.allocation || ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === '') {
+                                    // Allow empty input
+                                    updateAllocation(stock.symbol, 0);
+                                  } else {
+                                    const numValue = parseFloat(value);
+                                    if (!isNaN(numValue)) {
+                                      updateAllocation(stock.symbol, numValue);
+                                    }
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  // When input loses focus, ensure we have a valid number
+                                  const value = e.target.value;
+                                  if (value === '' || isNaN(parseFloat(value))) {
+                                    updateAllocation(stock.symbol, 0);
+                                  }
+                                }}
+                                className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 bg-red-50' : ''}`}
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                placeholder="0"
+                              />
+                              <span className="text-sm text-muted-foreground">%</span>
+                            </div>
                             <Button
-                              onClick={normalizeWeights}
-                              variant="outline"
+                              onClick={() => removeStock(stock.symbol)}
                               size="sm"
+                              variant="destructive"
                             >
-                              Auto-Normalize Weights
+                              Remove
                             </Button>
                           </div>
+                        ))}
+                        
+                        {/* Allocation Warning */}
+                        {selectedStocks.some(stock => stock.allocation > 100) && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-red-800">
+                              <AlertTriangle className="h-4 w-4" />
+                              <span className="text-sm font-medium">Allocation Warning</span>
+                            </div>
+                            <p className="text-sm text-red-700 mt-1">
+                              Some stocks have allocations exceeding 100%. Please adjust weights to ensure total allocation equals 100%.
+                            </p>
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={normalizeWeights}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Auto-Normalize Weights
+                          </Button>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {/* Portfolio Validation */}
-                      <div className="space-y-3">
-                        <h5 className="font-medium">Portfolio Validation</h5>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span>Minimum 3 stocks</span>
-                            <span className={selectedStocks.length >= 3 ? 'text-green-600' : 'text-red-600'}>
-                              {selectedStocks.length >= 3 ? '✓' : '✗'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-sm">
-                            <span>Total allocation = 100%</span>
-                            <span className={Math.abs(totalAllocation - 100) < 0.1 ? 'text-green-600' : 'text-red-600'}>
-                              {Math.abs(totalAllocation - 100) < 0.1 ? '✓' : '✗'}
-                            </span>
-                          </div>
+                    {/* Portfolio Validation */}
+                    <div className="space-y-3">
+                      <h5 className="font-medium">Portfolio Validation</h5>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Minimum 3 stocks</span>
+                          <span className={selectedStocks.length >= 3 ? 'text-green-600' : 'text-red-600'}>
+                            {selectedStocks.length >= 3 ? '✓' : '✗'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Total allocation = 100%</span>
+                          <span className={Math.abs(totalAllocation - 100) < 0.1 ? 'text-green-600' : 'text-red-600'}>
+                            {Math.abs(totalAllocation - 100) < 0.1 ? '✓' : '✗'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1700,11 +1841,47 @@ export const StockSelection = ({
                       <Button 
                         onClick={handleNext}
                         size="lg"
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                        disabled={totalAllocation < 85}
+                        className={`px-8 py-3 rounded-xl shadow-lg transition-all duration-200 ${
+                          totalAllocation < 85 
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed shadow-none' 
+                            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white hover:shadow-xl'
+                        }`}
                       >
-                        Continue to Visual Charts
-                        <ArrowRight className="ml-2 h-5 w-5" />
+                        {totalAllocation > 100 ? (
+                          <>
+                            <AlertTriangle className="mr-2 h-5 w-5" />
+                            Fix Allocation Before Continuing
+                          </>
+                        ) : totalAllocation === 0 ? (
+                          <>
+                            <Info className="mr-2 h-5 w-5" />
+                            Set Allocations to Continue
+                          </>
+                        ) : totalAllocation < 85 ? (
+                          <>
+                            <AlertTriangle className="mr-2 h-5 w-5" />
+                            Need 85%+ Allocation to Continue
+                          </>
+                        ) : totalAllocation >= 85 && totalAllocation < 90 ? (
+                          <>
+                            <Lightbulb className="mr-2 h-5 w-5" />
+                            Proceed with {totalAllocation.toFixed(1)}% Allocation
+                          </>
+                        ) : totalAllocation >= 90 && totalAllocation < 100 ? (
+                          <>
+                            <Lightbulb className="mr-2 h-5 w-5" />
+                            Proceed with {totalAllocation.toFixed(1)}% Allocation
+                          </>
+                        ) : (
+                          <>
+                            Continue to Visual Charts
+                            <ArrowRight className="ml-2 h-5 w-5" />
+                          </>
+                        )}
                       </Button>
+                      
+
                     </div>
                   </CardContent>
                 </Card>
