@@ -1461,7 +1461,7 @@ def get_mini_lesson_assets():
                 'list_id': 'stable_blue_chips',
                 'name': 'Stable Blue Chips',
                 'description': 'Established companies with stable returns',
-                'sector': 'Mixed',
+                'sector': 'Consumer Staples & Healthcare',
                 'assets': [
                     {
                         'ticker': 'JNJ',
@@ -1502,9 +1502,9 @@ def get_mini_lesson_assets():
             },
             {
                 'list_id': 'financial_services',
-                'name': 'Financial Services',
-                'description': 'Banking and financial services companies',
-                'sector': 'Financial Services',
+                'name': 'Financial Services & Consumer',
+                'description': 'Financial services, retail, and consumer companies',
+                'sector': 'Financial Services & Consumer',
                 'assets': [
                     {
                         'ticker': 'JPM',

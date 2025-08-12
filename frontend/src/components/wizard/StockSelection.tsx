@@ -32,7 +32,8 @@ import {
   Settings,
   Database,
   XCircle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { TwoAssetChart } from './TwoAssetChart';
@@ -370,18 +371,72 @@ export const StockSelection = ({
   }, [riskProfile]);
 
   // Load available asset pairs for mini-lesson
-  useEffect(() => {
-    const loadAssetPairs = async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/assets');
-        if (response.ok) {
-          const data = await response.json();
+  const loadAssetPairs = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/assets');
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Create 3 fixed educational pairs from sector lists with improved rotation
+        const pairs = [];
+        
+        // Get random assets from different sector lists
+        if (data.sector_lists && data.sector_lists.length >= 3) {
+          // Create more diverse combinations by randomly selecting from available sectors
+          const availableSectors = data.sector_lists.filter(list => list.assets && list.assets.length > 0);
           
-          // Create 3 fixed educational pairs from sector lists
-          const pairs = [];
+          if (availableSectors.length >= 2) {
+            // Generate 3 random pairs from different sector combinations
+            for (let i = 0; i < 3; i++) {
+              // Randomly select two different sectors
+              const shuffledSectors = [...availableSectors].sort(() => Math.random() - 0.5);
+              const sector1 = shuffledSectors[0];
+              const sector2 = shuffledSectors[1];
+              
+              if (sector1 && sector2 && sector1.assets.length > 0 && sector2.assets.length > 0) {
+                // Randomly select assets from each sector
+                const asset1 = sector1.assets[Math.floor(Math.random() * sector1.assets.length)];
+                const asset2 = sector2.assets[Math.floor(Math.random() * sector2.assets.length)];
+                
+                // Create educational theme based on sectors
+                const themes = {
+                  'Technology': 'Innovation & Growth',
+                  'Healthcare': 'Health & Stability',
+                  'Financial Services': 'Financial Infrastructure',
+                  'Consumer Discretionary': 'Consumer Demand',
+                  'Consumer Staples': 'Essential Goods',
+                  'Energy': 'Energy Infrastructure',
+                  'Communication Services': 'Communication & Media',
+                  'Industrials': 'Industrial Strength',
+                  'Materials': 'Raw Materials',
+                  'Real Estate': 'Property & Real Estate',
+                  'Utilities': 'Utility Services',
+                  'Consumer Staples & Healthcare': 'Stability & Health',
+                  'Financial Services & Consumer': 'Financial & Consumer Services'
+                };
+                
+                const theme1 = themes[sector1.sector] || sector1.sector;
+                const theme2 = themes[sector2.sector] || sector2.sector;
+                
+                // Create shorter, more concise descriptions
+                const shortSector1 = sector1.sector.length > 12 ? sector1.sector.substring(0, 12) + '...' : sector1.sector;
+                const shortSector2 = sector2.sector.length > 12 ? sector2.sector.substring(0, 12) + '...' : sector2.sector;
+                
+                pairs.push({
+                  pair_id: `pair_${i}_${Date.now()}`,
+                  ticker1: asset1.ticker,
+                  ticker2: asset2.ticker,
+                  name1: asset1.name,
+                  name2: asset2.name,
+                  description: `${shortSector1} vs ${shortSector2}`,
+                  educational_focus: `${theme1} vs ${theme2}`
+                });
+              }
+            }
+          }
           
-          // Get random assets from different sector lists
-          if (data.sector_lists && data.sector_lists.length >= 3) {
+          // If we don't have enough diverse sectors, fall back to original logic
+          if (pairs.length < 3) {
             // Pair 1: Tech vs Healthcare
             const techList = data.sector_lists.find(list => list.list_id === 'tech_growth');
             const healthList = data.sector_lists.find(list => list.list_id === 'healthcare_pharma');
@@ -396,8 +451,8 @@ export const StockSelection = ({
                 ticker2: healthAsset.ticker,
                 name1: techAsset.name,
                 name2: healthAsset.name,
-                description: 'Technology vs Healthcare',
-                educational_focus: 'Innovation vs Stability'
+                description: 'Technology Growth vs Healthcare & Pharma',
+                educational_focus: 'Innovation & Growth vs Health & Stability'
               });
             }
             
@@ -414,9 +469,9 @@ export const StockSelection = ({
                 ticker1: consumerAsset.ticker,
                 ticker2: energyAsset.ticker,
                 name1: consumerAsset.name,
-                name2: energyAsset.name,
-                description: 'Consumer vs Energy',
-                educational_focus: 'Consumer Spending vs Energy Infrastructure'
+                name2: consumerAsset.name,
+                description: 'Consumer Discretionary vs Energy & Utilities',
+                educational_focus: 'Consumer Demand vs Energy Infrastructure'
               });
             }
             
@@ -434,24 +489,27 @@ export const StockSelection = ({
                 ticker2: stableAsset.ticker,
                 name1: financialAsset.name,
                 name2: stableAsset.name,
-                description: 'Financial vs Stable Blue Chips',
-                educational_focus: 'Financial Services vs Stability'
+                description: 'Financial Services & Consumer vs Stable Blue Chips',
+                educational_focus: 'Financial & Consumer Services vs Stability & Health'
               });
             }
           }
-          
-          setAvailableAssetPairs(pairs);
-          
-          // Set current pair to the first available pair
-          if (pairs.length > 0) {
-            setCurrentPair({ ticker1: pairs[0].ticker1, ticker2: pairs[0].ticker2 });
-          }
         }
-      } catch (error) {
-        console.error('Error loading asset pairs:', error);
+        
+        setAvailableAssetPairs(pairs);
+        
+        // Set current pair to the first available pair
+        if (pairs.length > 0) {
+          setCurrentPair({ ticker1: pairs[0].ticker1, ticker2: pairs[0].ticker2 });
+          setSelectedPairId(pairs[0].pair_id);
+        }
       }
-    };
+    } catch (error) {
+      console.error('Error loading asset pairs:', error);
+    }
+  };
 
+  useEffect(() => {
     loadAssetPairs();
   }, []);
 
@@ -1086,25 +1144,85 @@ export const StockSelection = ({
                 {/* Asset Pair Selection */}
                 {availableAssetPairs.length > 0 && (
                   <div className="mb-6">
-                    <h4 className="text-lg font-medium text-blue-900 mb-3">Select Asset Pair for Analysis</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-lg font-medium text-blue-900">Select Asset Pair for Analysis</h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadAssetPairs()}
+                        className="text-xs px-3 py-1 h-8"
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        New Pairs
+                      </Button>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       {availableAssetPairs.map((pair) => (
-                        <Button
-                          key={pair.pair_id}
-                          variant={selectedPairId === pair.pair_id ? "default" : "outline"}
-                          className={`p-4 h-auto text-left ${selectedPairId === pair.pair_id ? 'bg-blue-600 text-white' : 'bg-white text-blue-900 border-blue-200'}`}
-                          onClick={() => {
-                            setSelectedPairId(pair.pair_id);
-                            if (pair.pair_id !== 'random') {
-                              setCurrentPair({ ticker1: pair.ticker1, ticker2: pair.ticker2 });
-                            }
-                          }}
-                        >
-                          <div className="flex flex-col">
-                            <div className="font-medium">{pair.description}</div>
-                            <div className="text-sm opacity-80">{pair.educational_focus}</div>
-                          </div>
-                        </Button>
+                        <Tooltip key={pair.pair_id}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={selectedPairId === pair.pair_id ? "default" : "outline"}
+                              className={`p-3 h-auto min-h-[90px] max-h-[120px] text-left w-full flex-shrink-0 group relative ${selectedPairId === pair.pair_id ? 'bg-blue-600 text-white' : 'bg-white text-blue-900 border-blue-200 hover:border-blue-300'}`}
+                              onClick={() => {
+                                setSelectedPairId(pair.pair_id);
+                                if (pair.pair_id !== 'random') {
+                                  setCurrentPair({ ticker1: pair.ticker1, ticker2: pair.ticker2 });
+                                }
+                              }}
+                            >
+                              <div className="flex flex-col w-full h-full justify-center overflow-hidden">
+                                <div className="font-medium text-xs leading-tight mb-2 text-ellipsis overflow-hidden whitespace-nowrap">
+                                  {pair.description}
+                                </div>
+                                <div className="text-xs opacity-80 leading-tight text-ellipsis overflow-hidden whitespace-nowrap">
+                                  {pair.educational_focus}
+                                </div>
+                              </div>
+                              
+                              {/* Hover indicator */}
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                <div className="w-2 h-2 bg-current rounded-full opacity-60"></div>
+                              </div>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm p-4 bg-slate-900 text-white border-0 shadow-xl rounded-lg">
+                            <div className="space-y-3">
+                              <div className="font-semibold text-base border-b border-slate-700 pb-2 text-center">
+                                Asset Pair Analysis
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-blue-300">{pair.ticker1}</span>
+                                  <span className="text-xs opacity-75">vs</span>
+                                  <span className="text-sm font-medium text-amber-300">{pair.ticker2}</span>
+                                </div>
+                                
+                                <div className="text-xs opacity-90 text-center">
+                                  {pair.description}
+                                </div>
+                              </div>
+                              
+                              <div className="bg-slate-800 rounded p-2">
+                                <div className="text-xs font-medium text-slate-300 mb-1">Educational Focus:</div>
+                                <div className="text-sm opacity-90">
+                                  {pair.educational_focus}
+                                </div>
+                              </div>
+                              
+                              <div className="text-xs opacity-75 pt-2 border-t border-slate-700 space-y-1">
+                                <div className="flex justify-between">
+                                  <span className="font-medium">{pair.ticker1}:</span>
+                                  <span className="text-right max-w-[120px] truncate">{pair.name1}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="font-medium">{pair.ticker2}:</span>
+                                  <span className="text-right max-w-[120px] truncate">{pair.name2}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
                       ))}
                     </div>
                   </div>
