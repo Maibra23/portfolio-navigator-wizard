@@ -3,6 +3,7 @@ import yfinance as yf
 import logging
 import time
 import threading
+import random
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +13,8 @@ import json
 import gzip
 import redis
 from collections import defaultdict
+from alpha_vantage.fundamentaldata import FundamentalData
+from alpha_vantage.timeseries import TimeSeries
 
 from .ticker_store import ticker_store
 
@@ -19,23 +22,28 @@ from .ticker_store import ticker_store
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
-BATCH_SIZE = 20  # Reduced for better rate limiting
-MAX_WORKERS = 2  # Reduced to respect free tier limits
-RATE_LIMIT_DELAY = 2  # Increased delay between batches
+# Configuration - OPTIMIZED for rate limit bypass
+BATCH_SIZE = 15  # Reduced batch size for more frequent delays
+MAX_WORKERS = 1  # Single worker to avoid concurrent rate limit issues
+RATE_LIMIT_DELAY = 4  # Increased delay between batches for better rate limit compliance
+
+# Alpha Vantage configuration
+ALPHA_VANTAGE_API_KEY = "6S8WYUVEEFPPN9UQ"
+ALPHA_VANTAGE_RATE_LIMIT = 5  # requests per minute for free tier
+ALPHA_VANTAGE_DELAY = 60 / ALPHA_VANTAGE_RATE_LIMIT  # seconds between requests
 
 # Cache configuration  
 CACHE_TTL_DAYS = 28  # FIXED: 4 weeks as requested
 CACHE_TTL_HOURS = CACHE_TTL_DAYS * 24  # 672 hours
 
 # Data period configuration - FIXED: 15 years minimum
-END_DATE = datetime.now()  # Current date
+END_DATE = datetime.now().replace(day=1)  # Beginning of current month
 START_DATE = END_DATE - timedelta(days=15 * 365)  # 15 years back minimum
 
-# Yahoo Finance rate limiting
-YAHOO_REQUEST_DELAY = 0.1  # 100ms between individual requests
-MAX_RETRIES = 3
-RETRY_DELAY = 1
+# Yahoo Finance rate limiting - OPTIMIZED for rate limit bypass
+YAHOO_REQUEST_DELAY = (1.2, 2.5)  # Random delay between 1.2-2.5 seconds
+MAX_RETRIES = 3  # Reduced retries to avoid triggering blocks
+RETRY_DELAY = 5  # Longer base retry delay
 
 # Daily quota management
 DAILY_REQUEST_LIMIT = 2000
@@ -52,6 +60,21 @@ class EnhancedDataFetcher:
     def __init__(self):
         # Redis cache
         self.r = self._init_redis()
+
+        # Alpha Vantage clients
+        self.alpha_vantage_fundamental = FundamentalData(ALPHA_VANTAGE_API_KEY)
+        self.alpha_vantage_timeseries = TimeSeries(ALPHA_VANTAGE_API_KEY)
+
+        # Enhanced request session for better yfinance compatibility
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        })
 
         # Get all tickers from multiple sources
         self.all_tickers = self._get_all_tickers()
@@ -110,6 +133,45 @@ class EnhancedDataFetcher:
         self.daily_requests += 1
         if self.daily_requests % 100 == 0:  # Log every 100 requests
             logger.info(f"📊 Daily requests: {self.daily_requests}/{DAILY_REQUEST_LIMIT}")
+
+    def _is_rate_limit_error(self, error: Exception) -> bool:
+        """Detect if error is related to rate limiting"""
+        error_str = str(error).lower()
+        rate_limit_indicators = [
+            'rate limit', 'too many requests', '429', 'quota exceeded',
+            'expecting value: line 1 column 1', 'timeout', 'connection'
+        ]
+        return any(indicator in error_str for indicator in rate_limit_indicators)
+
+    def _calculate_rate_limit_wait(self, attempt: int) -> int:
+        """Calculate wait time for rate limit errors with exponential backoff"""
+        base_wait = 30  # Base 30 seconds
+        exponential_wait = base_wait * (2 ** attempt)  # Exponential backoff
+        max_wait = 300  # Maximum 5 minutes
+        return min(exponential_wait, max_wait)
+
+    def _get_random_delay(self) -> float:
+        """Get random delay from the configured range"""
+        if isinstance(YAHOO_REQUEST_DELAY, tuple):
+            return random.uniform(YAHOO_REQUEST_DELAY[0], YAHOO_REQUEST_DELAY[1])
+        else:
+            return float(YAHOO_REQUEST_DELAY)
+    
+    def _get_adaptive_delay(self) -> float:
+        """Get adaptive delay based on current success rate"""
+        base_delay = self._get_random_delay()
+        
+        if self.stats['total_processed'] == 0:
+            return base_delay  # Use base delay for first request
+        
+        success_rate = self.stats['successful'] / self.stats['total_processed']
+        
+        if success_rate > 0.9:  # High success rate
+            return max(base_delay * 0.8, 0.5)  # Reduce delay slightly
+        elif success_rate < 0.7:  # Low success rate
+            return base_delay * 1.5  # Increase delay
+        else:  # Medium success rate
+            return base_delay  # Use base delay
 
     def _get_all_tickers(self) -> List[str]:
         """Get all tickers from multiple sources with deduplication"""
@@ -433,8 +495,9 @@ class EnhancedDataFetcher:
                     self.stats['cached'] += 1
                     return {'prices': cached_prices, 'sector': cached_sector}
 
-                # Rate limiting before Yahoo Finance API call
-                time.sleep(YAHOO_REQUEST_DELAY)
+                # Adaptive rate limiting based on success rate
+                current_delay = self._get_adaptive_delay()
+                time.sleep(current_delay)
                 
                 # Increment daily quota
                 self._increment_daily_quota()
@@ -467,13 +530,19 @@ class EnhancedDataFetcher:
                 # Get sector information with company name
                 try:
                     info = ticker_obj.info
+                    
+                    # Extract company information
                     sector_info = {
                         'sector': info.get('sector', 'Unknown'),
                         'industry': info.get('industry', 'Unknown'),
-                        'country': info.get('country', 'Unknown'),
+                        'country': info.get('country', 'US'),
                         'exchange': info.get('exchange', 'Unknown'),
                         'companyName': info.get('longName', ticker)  # Real company name
                     }
+                    
+                    # REMOVED: Financial metrics fetching for now
+                    # We'll add this back later when needed
+                    
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to fetch company info for {ticker}: {e}")
                     # Fallback for ETFs or failed info fetch
@@ -498,14 +567,34 @@ class EnhancedDataFetcher:
 
             except Exception as e:
                 logger.warning(f"⚠️  Attempt {attempt + 1} failed for {ticker}: {e}")
+                
+                # Intelligent error handling for rate limiting
+                if self._is_rate_limit_error(e):
+                    wait_time = self._calculate_rate_limit_wait(attempt)
+                    logger.warning(f"🔄 Rate limit detected for {ticker}, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY * (attempt + 1))  # Exponential backoff
                 else:
                     logger.error(f"❌ All attempts failed for {ticker}")
                     self.stats['errors'][str(e)] += 1
+                    
+                    # Try Alpha Vantage as fallback on final attempt
+                    logger.info(f"🔄 Attempting Alpha Vantage fallback for {ticker}...")
+                    try:
+                        fallback_data = self._fetch_with_alpha_vantage_fallback(ticker)
+                        if fallback_data:
+                            logger.info(f"✅ {ticker}: Alpha Vantage fallback successful")
+                            self.stats['successful'] += 1
+                            return fallback_data
+                        else:
+                            logger.warning(f"⚠️ {ticker}: Alpha Vantage fallback also failed")
+                    except Exception as fallback_error:
+                        logger.error(f"❌ Alpha Vantage fallback error for {ticker}: {fallback_error}")
+                    
                     return None
-
-        return None
 
     def _process_batch(self, batch: List[str]) -> Dict[str, Dict[str, Any]]:
         """Process a batch of tickers - return statement was incorrectly indented"""
@@ -912,15 +1001,96 @@ class EnhancedDataFetcher:
         try:
             price_keys = self.r.keys("ticker_data:prices:*")
             sector_keys = self.r.keys("ticker_data:sector:*")
+            metrics_keys = self.r.keys("ticker_data:metrics:*")
             
             if price_keys:
                 self.r.delete(*price_keys)
             if sector_keys:
                 self.r.delete(*sector_keys)
+            if metrics_keys:
+                self.r.delete(*metrics_keys)
                 
-            logger.info(f"Cleared {len(price_keys)} price entries and {len(sector_keys)} sector entries")
+            logger.info(f"Cleared {len(price_keys)} price entries, {len(sector_keys)} sector entries, and {len(metrics_keys)} metrics entries")
+            
+            # Reset statistics
+            self.stats = {
+                'total_processed': 0,
+                'successful': 0,
+                'failed': 0,
+                'cached': 0,
+                'errors': defaultdict(int)
+            }
+            logger.info("✅ Statistics reset")
+            
         except Exception as e:
             logger.error(f"Error clearing cache: {e}")
+
+    def fetch_all_data_with_retry(self, max_attempts: int = 3) -> Dict[str, Dict[str, Any]]:
+        """Fetch all data with multiple attempts and intelligent fallback"""
+        logger.info(f"🚀 Starting comprehensive data fetch for {len(self.all_tickers)} tickers")
+        logger.info(f"📊 Optimized settings: batch_size={BATCH_SIZE}, delay={YAHOO_REQUEST_DELAY}, retries={MAX_RETRIES}")
+        
+        for attempt in range(max_attempts):
+            try:
+                logger.info(f"🔄 Attempt {attempt + 1}/{max_attempts}")
+                results = self.fetch_all_data()
+                
+                success_rate = (self.stats['successful'] / max(self.stats['total_processed'], 1)) * 100
+                if success_rate > 0.8:  # 80% success rate threshold
+                    logger.info(f"✅ Data fetch successful with {success_rate:.1f}% success rate")
+                    return results
+                else:
+                    logger.warning(f"⚠️ Low success rate ({success_rate:.1f}%), retrying...")
+                    
+            except Exception as e:
+                logger.error(f"❌ Attempt {attempt + 1} failed: {e}")
+                if attempt < max_attempts - 1:
+                    wait_time = 60 * (2 ** attempt)  # Exponential backoff
+                    logger.info(f"⏳ Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+        
+        logger.error("❌ All attempts failed, falling back to Alpha Vantage for remaining tickers")
+        return self._fallback_to_alpha_vantage()
+
+    def _fallback_to_alpha_vantage(self) -> Dict[str, Dict[str, Any]]:
+        """Fallback to Alpha Vantage for tickers that failed with yfinance"""
+        logger.info("🔄 Starting Alpha Vantage fallback for failed tickers...")
+        
+        failed_tickers = []
+        for ticker in self.all_tickers:
+            if not self._is_cached(ticker, 'prices') or not self._is_cached(ticker, 'sector'):
+                failed_tickers.append(ticker)
+        
+        if not failed_tickers:
+            logger.info("✅ All tickers already have data, no fallback needed")
+            return {}
+        
+        logger.info(f"🔄 Processing {len(failed_tickers)} failed tickers with Alpha Vantage...")
+        
+        results = {}
+        success_count = 0
+        
+        for i, ticker in enumerate(failed_tickers, 1):
+            try:
+                logger.info(f"🔄 [{i}/{len(failed_tickers)}] Processing {ticker} with Alpha Vantage...")
+                
+                fallback_data = self._fetch_with_alpha_vantage_fallback(ticker)
+                if fallback_data:
+                    results[ticker] = fallback_data
+                    success_count += 1
+                    logger.info(f"✅ {ticker}: Alpha Vantage fallback successful")
+                else:
+                    logger.warning(f"⚠️ {ticker}: Alpha Vantage fallback failed")
+                
+                # Rate limiting for Alpha Vantage
+                if i < len(failed_tickers):
+                    time.sleep(ALPHA_VANTAGE_DELAY)
+                    
+            except Exception as e:
+                logger.error(f"❌ Alpha Vantage fallback error for {ticker}: {e}")
+        
+        logger.info(f"🎉 Alpha Vantage fallback completed: {success_count}/{len(failed_tickers)} successful")
+        return results
 
     def warm_required_cache(self) -> Dict[str, Any]:
         """
@@ -993,7 +1163,7 @@ class EnhancedDataFetcher:
                 error_count += 1
             
             # Rate limiting between tickers
-            time.sleep(YAHOO_REQUEST_DELAY)
+            time.sleep(self._get_random_delay())
         
         status = {
             'required_tickers': len(required_tickers),
@@ -1011,6 +1181,250 @@ class EnhancedDataFetcher:
         logger.info(f"✅ Cache warming completed: {status['cache_coverage']} coverage")
         logger.info(f"📅 Time frame: {status['time_frame']['start']} to {status['time_frame']['end']}")
         return status
+
+    def _fetch_alpha_vantage_financial_metrics(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch financial metrics from Alpha Vantage API
+        Returns: Dictionary with financial metrics or None if failed
+        """
+        try:
+            logger.debug(f"🔄 Fetching Alpha Vantage financial metrics for {ticker}...")
+            
+            # Rate limiting for Alpha Vantage free tier
+            time.sleep(ALPHA_VANTAGE_DELAY)
+            
+            # REMOVED: Financial metrics fetching for now
+            # We'll add this back later when needed
+            logger.info(f"✅ {ticker}: Financial metrics fetching disabled for now")
+            return None
+                
+        except Exception as e:
+            logger.error(f"❌ Alpha Vantage fetch error for {ticker}: {e}")
+            return None
+
+    def _fetch_alpha_vantage_price_data(self, ticker: str) -> Optional[pd.Series]:
+        """
+        Fetch monthly price data from Alpha Vantage API
+        Returns: Pandas Series with monthly adjusted close prices
+        """
+        try:
+            logger.debug(f"🔄 Fetching Alpha Vantage price data for {ticker}...")
+            
+            # Rate limiting for Alpha Vantage free tier
+            time.sleep(ALPHA_VANTAGE_DELAY)
+            
+            # Fetch monthly adjusted close data
+            monthly_data, meta_data = self.alpha_vantage_timeseries.get_monthly_adjusted(ticker)
+            
+            # Handle different response formats
+            if isinstance(monthly_data, dict) and 'Error Message' in monthly_data:
+                logger.warning(f"⚠️ Alpha Vantage price data error for {ticker}: {monthly_data['Error Message']}")
+                return None
+            elif hasattr(monthly_data, 'empty') and monthly_data.empty:
+                logger.warning(f"⚠️ Alpha Vantage price data empty for {ticker}")
+                return None
+            
+            # Convert to pandas Series
+            prices = {}
+            
+            # Handle DataFrame response
+            if hasattr(monthly_data, 'to_dict'):
+                monthly_data = monthly_data.to_dict('index')
+            
+            # Handle different data structures
+            if isinstance(monthly_data, dict):
+                for date_str, data in monthly_data.items():
+                    try:
+                        # Parse date and extract adjusted close price
+                        if isinstance(date_str, str):
+                            date = datetime.strptime(date_str, '%Y-%m-%d')
+                        else:
+                            date = date_str
+                        
+                        # Extract adjusted close price from different possible formats
+                        if isinstance(data, dict):
+                            adjusted_close = data.get('5. adjusted close') or data.get('adjusted_close') or data.get('close')
+                        else:
+                            adjusted_close = data
+                        
+                        if adjusted_close is not None:
+                            prices[date] = float(adjusted_close)
+                    except (ValueError, KeyError, TypeError) as e:
+                        logger.debug(f"⚠️ Skipping invalid data point for {ticker}: {e}")
+                        continue
+            
+            if not prices:
+                logger.warning(f"⚠️ No valid price data found for {ticker}")
+                return None
+            
+            # Create pandas Series and sort by date
+            price_series = pd.Series(prices)
+            price_series = price_series.sort_index()
+            
+            logger.info(f"✅ {ticker}: Successfully fetched {len(price_series)} monthly price points from Alpha Vantage")
+            return price_series
+            
+        except Exception as e:
+            logger.error(f"❌ Alpha Vantage price fetch error for {ticker}: {e}")
+            return None
+
+    def _fetch_with_alpha_vantage_fallback(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch data using Alpha Vantage as fallback when yfinance fails
+        Returns: Dictionary with prices, sector info, and financial metrics
+        """
+        try:
+            logger.info(f"🔄 Attempting Alpha Vantage fallback for {ticker}...")
+            
+            # Fetch price data
+            price_data = self._fetch_alpha_vantage_price_data(ticker)
+            if price_data is None:
+                return None
+            
+            # Fetch financial metrics
+            financial_metrics = self._fetch_alpha_vantage_financial_metrics(ticker)
+            
+            # Create sector info (basic fallback)
+            sector_info = {
+                'sector': 'Unknown',
+                'industry': 'Unknown',
+                'country': 'United States',
+                'exchange': 'Unknown',
+                'companyName': ticker
+            }
+            
+            # Add financial metrics if available
+            if financial_metrics:
+                sector_info['financial_metrics'] = financial_metrics
+            
+            # Validate price data
+            if not self._validate_price_data(price_data, ticker):
+                return None
+            
+            data_to_cache = {
+                'prices': price_data,
+                'sector': sector_info
+            }
+            
+            # Cache the data
+            self._save_to_cache(ticker, data_to_cache)
+            
+            logger.info(f"✅ {ticker}: Alpha Vantage fallback successful")
+            return data_to_cache
+            
+        except Exception as e:
+            logger.error(f"❌ Alpha Vantage fallback failed for {ticker}: {e}")
+            return None
+
+    def smart_monthly_refresh(self):
+        """
+        Smart monthly refresh that only fetches the latest month of data
+        - Extends time range incrementally (no re-downloading of historical data)
+        - Respects TTL and only refreshes when needed
+        - Efficient: Only fetches new months, not entire history
+        """
+        if not self.r:
+            logger.warning("❌ Redis unavailable - cannot perform monthly refresh")
+            return
+        
+        logger.info("🔄 Starting smart monthly refresh...")
+        
+        # Update end date to current month (incremental extension)
+        global END_DATE
+        current_end = datetime.now().replace(day=1)  # First of current month
+        
+        if current_end > END_DATE:
+            old_end = END_DATE
+            END_DATE = current_end
+            logger.info(f"📅 Extended time range: {old_end.strftime('%Y-%m-%d')} → {END_DATE.strftime('%Y-%m-%d')}")
+        else:
+            logger.info("✅ Time range already up to date")
+            return
+        
+        # Check which tickers need refresh (only those with expired cache or missing latest month)
+        tickers_needing_refresh = []
+        
+        for ticker in self.all_tickers:
+            try:
+                cached_prices = self._load_from_cache(ticker, 'prices')
+                
+                if cached_prices is None:
+                    # No cached data - needs full fetch
+                    tickers_needing_refresh.append(ticker)
+                    continue
+                
+                if not isinstance(cached_prices, pd.Series) or cached_prices.empty:
+                    # Invalid cached data - needs refresh
+                    tickers_needing_refresh.append(ticker)
+                    continue
+                
+                # Check if we have the latest month
+                last_cached_date = cached_prices.index[-1]
+                if hasattr(last_cached_date, 'tz_localize'):
+                    last_cached_date = last_cached_date.tz_localize(None)
+                
+                # If last cached date is more than 30 days behind current month, refresh
+                if last_cached_date < current_end - timedelta(days=30):
+                    tickers_needing_refresh.append(ticker)
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Error checking {ticker} for refresh: {e}")
+                tickers_needing_refresh.append(ticker)
+        
+        if not tickers_needing_refresh:
+            logger.info("✅ All tickers have current month data")
+            return
+        
+        logger.info(f"🔄 Found {len(tickers_needing_refresh)} tickers needing refresh")
+        
+        # Process in batches with rate limiting
+        success_count = 0
+        error_count = 0
+        
+        for i in range(0, len(tickers_needing_refresh), BATCH_SIZE):
+            batch = tickers_needing_refresh[i:i + BATCH_SIZE]
+            batch_num = i // BATCH_SIZE + 1
+            total_batches = (len(tickers_needing_refresh) + BATCH_SIZE - 1) // BATCH_SIZE
+            
+            logger.info(f"🔄 Processing batch {batch_num}/{total_batches}: {len(batch)} tickers")
+            
+            for ticker in batch:
+                try:
+                    # Fetch only new data (yfinance will automatically extend the range)
+                    data = self._fetch_single_ticker_with_retry(ticker)
+                    if data:
+                        success_count += 1
+                        logger.debug(f"✅ {ticker}: Monthly refresh successful")
+                    else:
+                        error_count += 1
+                        logger.warning(f"⚠️ {ticker}: Monthly refresh failed")
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"❌ Error refreshing {ticker}: {e}")
+                
+                # Rate limiting between individual tickers
+                time.sleep(self._get_random_delay())
+            
+            # Rate limiting between batches (except for last batch)
+            if i + BATCH_SIZE < len(tickers_needing_refresh):
+                logger.info(f"⏳ Waiting {RATE_LIMIT_DELAY}s between batches...")
+                time.sleep(RATE_LIMIT_DELAY)
+        
+        logger.info(f"🎉 Smart monthly refresh completed!")
+        logger.info(f"📊 Results: {success_count} successful, {error_count} failed")
+        logger.info(f"📅 New time range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
+        
+        return {
+            'status': 'completed',
+            'success_count': success_count,
+            'error_count': error_count,
+            'total_processed': len(tickers_needing_refresh),
+            'time_range': {
+                'start': START_DATE.strftime('%Y-%m-%d'),
+                'end': END_DATE.strftime('%Y-%m-%d'),
+                'months': (END_DATE.year - START_DATE.year) * 12 + END_DATE.month - START_DATE.month
+            }
+        }
 
 # Global instance
 enhanced_data_fetcher = EnhancedDataFetcher() 

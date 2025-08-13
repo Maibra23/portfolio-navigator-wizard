@@ -52,6 +52,16 @@ async def proxy_refresh():
         except Exception as e:
             return {"error": f"Failed to refresh data: {str(e)}"}
 
+@app.post("/api/portfolio/ticker-table/smart-refresh")
+async def proxy_smart_refresh():
+    """Proxy smart monthly refresh request to main backend"""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(f"{MAIN_BACKEND_URL}/api/portfolio/ticker-table/smart-refresh")
+            return response.json()
+        except Exception as e:
+            return {"error": f"Failed to perform smart refresh: {str(e)}"}
+
 # Get the path to the HTML file
 current_dir = Path(__file__).parent
 html_file_path = current_dir.parent / "frontend" / "public" / "ticker-table.html"
@@ -96,6 +106,7 @@ async def api_status():
             "ticker_table": "/",
             "api_data": "/api/portfolio/ticker-table/data",
             "api_refresh": "/api/portfolio/ticker-table/refresh",
+            "api_smart_refresh": "/api/portfolio/ticker-table/smart-refresh",
             "health": "/health"
         }
     }

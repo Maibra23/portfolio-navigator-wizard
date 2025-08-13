@@ -29,6 +29,7 @@ app.add_middleware(
 app.include_router(portfolio.router)
 app.include_router(cookie_demo.router)
 
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup"""

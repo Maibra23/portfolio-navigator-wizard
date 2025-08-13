@@ -11,6 +11,7 @@ import gzip
 from utils.enhanced_data_fetcher import enhanced_data_fetcher
 from utils.ticker_store import ticker_store
 from utils.port_analytics import PortfolioAnalytics
+from utils.auto_refresh_service import AutoRefreshService
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -1403,7 +1404,211 @@ async def refresh_ticker_table():
         
     except Exception as e:
         logger.error(f"Error refreshing ticker table: {e}")
-        raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}")
+
+@router.post("/ticker-table/smart-refresh")
+async def smart_monthly_refresh():
+    """
+    Smart monthly refresh that only fetches the latest month of data
+    - Extends time range incrementally (no re-downloading of historical data)
+    - Respects TTL and only refreshes when needed
+    - Efficient: Only fetches new months, not entire history
+    """
+    try:
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        
+        # Perform smart monthly refresh
+        result = enhanced_data_fetcher.smart_monthly_refresh()
+        
+        if result:
+            return {
+                "status": "success",
+                "message": "Smart monthly refresh completed",
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "Smart monthly refresh completed (no action needed)",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+    except Exception as e:
+        logger.error(f"Error in smart monthly refresh: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in smart monthly refresh: {str(e)}")
+
+@router.get("/ticker-table/data")
+async def get_ticker_table_data():
+    """
+    Get ticker table data with return and risk metrics
+    Returns: Ticker information with essential metrics for the ticker table
+    """
+    try:
+        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        import json
+        import gzip
+        from datetime import datetime
+        
+        # Get all tickers from the enhanced data fetcher
+        all_tickers = enhanced_data_fetcher.all_tickers
+        
+        ticker_data = []
+        
+        for index, ticker in enumerate(all_tickers, 1):  # Added index for ID
+            try:
+                # Get price data using enhanced_data_fetcher's Redis connection
+                price_key = f"ticker_data:prices:{ticker}"
+                price_raw = enhanced_data_fetcher.r.get(price_key)
+                
+                # Get sector/company data
+                sector_key = f"ticker_data:sector:{ticker}"
+                sector_raw = enhanced_data_fetcher.r.get(sector_key)
+                
+                if price_raw and sector_raw:
+                    # Parse price data
+                    price_dict = json.loads(gzip.decompress(price_raw).decode())
+                    prices = list(price_dict.values())
+                    dates = list(price_dict.keys())
+                    
+                    # Parse sector data
+                    sector_info = json.loads(sector_raw.decode())
+                    
+                    # Calculate data points and date range
+                    data_points = len(prices)
+                    first_date = dates[0] if dates else "N/A"
+                    last_date = dates[-1] if dates else "N/A"
+                    last_price = prices[-1] if prices else 0
+                    
+                    # Calculate return and risk metrics
+                    annualized_return = 0
+                    annualized_risk = 0
+                    
+                    if len(prices) > 1:
+                        try:
+                            # Calculate returns
+                            returns = []
+                            for i in range(1, len(prices)):
+                                if prices[i-1] > 0:
+                                    ret = (prices[i] - prices[i-1]) / prices[i-1]
+                                    returns.append(ret)
+                            
+                            if returns:
+                                # Annualized return (assuming monthly data)
+                                avg_monthly_return = sum(returns) / len(returns)
+                                annualized_return = avg_monthly_return * 12 * 100  # Convert to percentage
+                                
+                                # Annualized volatility (risk)
+                                if len(returns) > 1:
+                                    import pandas as pd
+                                    monthly_volatility = pd.Series(returns).std()
+                                    annualized_risk = monthly_volatility * (12 ** 0.5) * 100  # Convert to percentage
+                        except Exception as e:
+                            logger.warning(f"Error calculating metrics for {ticker}: {e}")
+                    
+                    # NEW: Check data freshness
+                    data_freshness = "current"
+                    if last_date != "N/A":
+                        try:
+                            # Handle date format: "2025-07-01 00:00:00-04:00"
+                            if " " in last_date:
+                                # Extract just the date part before the space
+                                date_part = last_date.split(" ")[0]
+                                last_date_obj = datetime.strptime(date_part, "%Y-%m-%d")
+                            else:
+                                last_date_obj = datetime.strptime(last_date, "%Y-%m-%d")
+                            
+                            days_old = (datetime.now() - last_date_obj).days
+                            if days_old <= 7:
+                                data_freshness = "very_recent"
+                            elif days_old <= 30:
+                                data_freshness = "recent"
+                            elif days_old <= 90:
+                                data_freshness = "moderate"
+                            else:
+                                data_freshness = "stale"
+                        except Exception as e:
+                            logger.debug(f"Date parsing error for {ticker}: {e}")
+                            data_freshness = "unknown"
+                    
+                    ticker_info = {
+                        "id": index,  # NEW: ID column
+                        "ticker": ticker,
+                        "companyName": sector_info.get("companyName", ticker),
+                        "sector": sector_info.get("sector", "Unknown"),
+                        "industry": sector_info.get("industry", "Unknown"),
+                        "exchange": sector_info.get("exchange", "Unknown"),
+                        "country": sector_info.get("country", "Unknown"),
+                        "dataPoints": data_points,
+                        "firstDate": first_date,
+                        "lastDate": last_date,
+                        "lastPrice": round(last_price, 2) if last_price else 0,
+                        "annualizedReturn": round(annualized_return, 2),
+                        "annualizedRisk": round(annualized_risk, 2),
+                        "dataFreshness": data_freshness,  # NEW: Freshness indicator
+                        "status": "active",
+                        "lastUpdated": datetime.now().isoformat()
+                    }
+                    
+                    ticker_data.append(ticker_info)
+                else:
+                    # Missing data
+                    ticker_info = {
+                        "id": index,  # NEW: ID column
+                        "ticker": ticker,
+                        "companyName": ticker,
+                        "sector": "Unknown",
+                        "industry": "Unknown",
+                        "exchange": "Unknown",
+                        "country": "Unknown",
+                        "dataPoints": 0,
+                        "firstDate": "N/A",
+                        "lastDate": "N/A",
+                        "lastPrice": 0,
+                        "annualizedReturn": 0,
+                        "annualizedRisk": 0,
+                        "dataFreshness": "missing",  # NEW: Freshness indicator
+                        "status": "missing_data",
+                        "lastUpdated": datetime.now().isoformat()
+                    }
+                    
+                    ticker_data.append(ticker_info)
+                    
+            except Exception as e:
+                logger.warning(f"Error processing ticker {ticker}: {e}")
+                # Add error ticker info
+                ticker_info = {
+                    "id": index,  # NEW: ID column
+                    "ticker": ticker,
+                    "companyName": ticker,
+                    "sector": "Error",
+                    "industry": "Error",
+                    "exchange": "Error",
+                    "country": "Error",
+                    "dataPoints": 0,
+                    "firstDate": "N/A",
+                    "lastDate": "N/A",
+                    "lastPrice": 0,
+                    "annualizedReturn": 0,
+                    "annualizedRisk": 0,
+                    "dataFreshness": "error",  # NEW: Freshness indicator
+                    "status": "error",
+                    "lastUpdated": datetime.now().isoformat()
+                }
+                ticker_data.append(ticker_info)
+        
+        logger.info(f"Returning {len(ticker_data)} tickers for ticker table")
+        
+        return {
+            "status": "success",
+            "tickers": ticker_data,
+            "total_count": len(ticker_data),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting ticker table data: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
 
 @router.get("/mini-lesson/assets")
 def get_mini_lesson_assets():
@@ -2656,3 +2861,327 @@ async def health_check():
             'error': str(e)
         }
 
+# Enhanced Ticker Table Endpoints
+
+# Global auto-refresh service instance
+auto_refresh_service = None
+
+def get_auto_refresh_service():
+    """Get or create auto refresh service instance"""
+    global auto_refresh_service
+    if auto_refresh_service is None:
+        auto_refresh_service = AutoRefreshService(enhanced_data_fetcher)
+    return auto_refresh_service
+
+@router.get("/ticker-table/enhanced")
+async def get_enhanced_ticker_table():
+    """Get enhanced ticker table with ID column and quality indicators"""
+    try:
+        # Get all ticker information with enhanced features
+        all_tickers = []
+        
+        for ticker in enhanced_data_fetcher.all_tickers:
+            try:
+                ticker_info = enhanced_data_fetcher.get_ticker_info(ticker)
+                if ticker_info:
+                    # Format data for enhanced table
+                    formatted_ticker = {
+                        'id': len(all_tickers) + 1,
+                        'ticker': ticker,
+                        'companyName': ticker_info.get('company_name', 'N/A'),
+                        'sector': ticker_info.get('sector', 'Unknown'),
+                        'industry': ticker_info.get('industry', 'Unknown'),
+                        'exchange': ticker_info.get('exchange', 'N/A'),
+                        'country': ticker_info.get('country', 'N/A'),
+                        'dataPoints': ticker_info.get('data_points', 0),
+                        'firstDate': ticker_info.get('first_date', 'N/A'),
+                        'lastDate': ticker_info.get('last_date', 'N/A'),
+                        'lastPrice': ticker_info.get('current_price', 0),
+                        'annualizedReturn': ticker_info.get('annualized_return', 0),
+                        'annualizedRisk': ticker_info.get('annualized_volatility', 0),
+                        'quality': get_ticker_quality_status(ticker_info),
+                        'daysLeft': get_ticker_days_left(ticker)
+                    }
+                    all_tickers.append(formatted_ticker)
+                    
+            except Exception as e:
+                logger.warning(f"Error getting info for {ticker}: {e}")
+                # Add error entry
+                all_tickers.append({
+                    'id': len(all_tickers) + 1,
+                    'ticker': ticker,
+                    'companyName': 'Error',
+                    'sector': 'Error',
+                    'industry': 'Error',
+                    'exchange': 'N/A',
+                    'country': 'N/A',
+                    'dataPoints': 0,
+                    'firstDate': 'N/A',
+                    'lastDate': 'N/A',
+                    'lastPrice': 0,
+                    'annualizedReturn': 0,
+                    'annualizedRisk': 0,
+                    'quality': 'critical',
+                    'daysLeft': 'N/A'
+                })
+        
+        return {
+            'success': True,
+            'tickers': all_tickers,
+            'total_count': len(all_tickers),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting enhanced ticker data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get enhanced ticker data: {str(e)}")
+
+def get_ticker_quality_status(ticker_info: Dict) -> str:
+    """Determine ticker quality status"""
+    issues = []
+    
+    if ticker_info.get('sector') in ['Unknown', 'N/A', None]:
+        issues.append('Unknown sector')
+    if ticker_info.get('industry') in ['Unknown', 'N/A', None]:
+        issues.append('Unknown industry')
+    if not ticker_info.get('current_price') or ticker_info.get('current_price', 0) <= 0:
+        issues.append('Invalid price')
+    if not ticker_info.get('data_points') or ticker_info.get('data_points', 0) < 12:
+        issues.append('Insufficient data')
+    
+    if len(issues) == 0:
+        return 'good'
+    elif len(issues) <= 2:
+        return 'warning'
+    else:
+        return 'critical'
+
+def get_ticker_days_left(ticker: str) -> str:
+    """Get days left until refresh for a ticker"""
+    try:
+        auto_service = get_auto_refresh_service()
+        tracking = auto_service.get_ticker_tracking(ticker)
+        if tracking:
+            days_left = min(tracking.get('price_days_left', 0), tracking.get('sector_days_left', 0))
+            return f"{days_left} days"
+        else:
+            return "28 days"  # Default TTL
+    except Exception as e:
+        logger.warning(f"Error getting days left for {ticker}: {e}")
+        return "28 days"
+
+@router.get("/ticker-table/status")
+async def get_enhanced_ticker_status():
+    """Get status of enhanced ticker table and auto-refresh service"""
+    try:
+        auto_service = get_auto_refresh_service()
+        
+        # Get tracking summary
+        tracking_summary = auto_service.get_tracking_summary()
+        
+        # Get cache coverage
+        cache_coverage = enhanced_data_fetcher.get_cache_coverage()
+        
+        return {
+            'success': True,
+            'auto_refresh': {
+                'status': tracking_summary.get('service_status', 'unknown'),
+                'next_check': tracking_summary.get('next_check'),
+                'immediate_refresh_needed': tracking_summary.get('refresh_status', {}).get('immediate_refresh_needed', 0),
+                'warnings': tracking_summary.get('refresh_status', {}).get('warnings', 0)
+            },
+            'data_quality': tracking_summary.get('data_quality', {}),
+            'cache_coverage': cache_coverage,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting enhanced status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get enhanced status: {str(e)}")
+
+@router.post("/ticker-table/start-auto-refresh")
+async def start_auto_refresh_service():
+    """Start the automatic refresh service"""
+    try:
+        auto_service = get_auto_refresh_service()
+        auto_service.start_auto_refresh_service()
+        
+        return {
+            'success': True,
+            'message': 'Auto-refresh service started',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error starting auto-refresh: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start auto-refresh: {str(e)}")
+
+@router.post("/ticker-table/stop-auto-refresh")
+async def stop_auto_refresh_service():
+    """Stop the automatic refresh service"""
+    try:
+        auto_service = get_auto_refresh_service()
+        auto_service.stop_auto_refresh_service()
+        
+        return {
+            'success': True,
+            'message': 'Auto-refresh service stopped',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error stopping auto-refresh: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to stop auto-refresh: {str(e)}")
+
+@router.get("/ticker-table/data-quality-report")
+async def get_data_quality_report():
+    """Get comprehensive data quality report"""
+    try:
+        auto_service = get_auto_refresh_service()
+        
+        # Get tracking summary
+        tracking_summary = auto_service.get_tracking_summary()
+        
+        # Analyze data quality issues
+        quality_issues = []
+        critical_tickers = []
+        warning_tickers = []
+        
+        for ticker, tracking in auto_service.tracking_data.items():
+            quality = tracking.get('data_quality', {})
+            status = quality.get('status', 'unknown')
+            
+            if status == 'critical':
+                critical_tickers.append({
+                    'ticker': ticker,
+                    'issues': quality.get('issues', []),
+                    'days_left': min(tracking.get('price_days_left', 0), tracking.get('sector_days_left', 0))
+                })
+            elif status == 'warning':
+                warning_tickers.append({
+                    'ticker': ticker,
+                    'issues': quality.get('issues', []),
+                    'days_left': min(tracking.get('price_days_left', 0), tracking.get('sector_days_left', 0))
+                })
+        
+        return {
+            'success': True,
+            'summary': {
+                'total_tickers': tracking_summary.get('total_tickers', 0),
+                'critical_count': len(critical_tickers),
+                'warning_count': len(warning_tickers),
+                'good_count': tracking_summary.get('data_quality', {}).get('good', 0)
+            },
+            'critical_tickers': critical_tickers,
+            'warning_tickers': warning_tickers,
+            'recommendations': [
+                'Refresh critical tickers immediately',
+                'Monitor warning tickers closely',
+                'Schedule maintenance for expiring data'
+            ],
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting data quality report: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get quality report: {str(e)}")
+
+@router.get("/ticker-table/enhanced-html")
+async def get_enhanced_ticker_table_html():
+    """Serve the enhanced ticker table HTML page"""
+    try:
+        from fastapi.responses import HTMLResponse
+        import os
+        
+        # Get the path to the enhanced ticker table HTML file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        html_file_path = os.path.join(current_dir, "..", "..", "frontend", "public", "ticker-table.html")
+        
+        if not os.path.exists(html_file_path):
+            # If the file doesn't exist, return a basic HTML with the data
+            enhanced_data = await get_enhanced_ticker_table()
+            
+            html_content = f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Enhanced Ticker Table</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .stats-bar {{ display: flex; justify-content: space-around; margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px; }}
+                    .stat-item {{ text-align: center; }}
+                    .stat-value {{ font-weight: bold; color: #2c5aa0; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                    th, td {{ padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }}
+                    th {{ background-color: #f2f2f2; font-weight: bold; }}
+
+                </style>
+            </head>
+            <body>
+                <h1>Enhanced Ticker Table</h1>
+                
+                <div class="stats-bar">
+                    <div class="stat-item">
+                        <span>Next Refresh:</span><br>
+                        <span class="stat-value">28 days</span>
+                    </div>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Ticker</th>
+                            <th>Company</th>
+                            <th>Sector</th>
+                            <th>Last Price</th>
+                            <th>Return</th>
+                            <th>Risk</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            
+            for ticker in enhanced_data.get('tickers', [])[:50]:  # Show first 50 for demo
+                html_content += f"""
+                        <tr>
+                            <td>{ticker.get('id', '-')}</td>
+                            <td>{ticker.get('ticker', '-')}</td>
+                            <td>{ticker.get('companyName', '-')}</td>
+                            <td>{ticker.get('sector', '-')}</td>
+                            <td>${ticker.get('lastPrice', 0):.2f}</td>
+                            <td>{ticker.get('annualizedReturn', 0):.2%}</td>
+                            <td>{ticker.get('annualizedRisk', 0):.2%}</td>
+                        </tr>
+                """
+            
+            html_content += """
+                    </tbody>
+                </table>
+                
+                <p><em>Showing first 50 tickers. Use the API endpoint for full data.</em></p>
+                
+                <script>
+                    // Auto-hide notifications after 5 seconds
+                    setTimeout(() => {
+                        const notifications = document.querySelectorAll('.notification');
+                        notifications.forEach(n => n.style.display = 'none');
+                    }, 5000);
+                </script>
+            </body>
+            </html>
+            """
+            
+            return HTMLResponse(content=html_content)
+        
+        # Read and return the existing HTML file
+        with open(html_file_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        logger.error(f"Error serving enhanced HTML: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to serve HTML: {str(e)}")
