@@ -3033,6 +3033,43 @@ async def stop_auto_refresh_service():
         logger.error(f"Error stopping auto-refresh: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to stop auto-refresh: {str(e)}")
 
+@router.get("/ticker-table/corruption-scan")
+async def scan_data_corruption():
+    """Scan all cached data for corruption and return detailed report"""
+    try:
+        from utils.data_corruption_detector import DataCorruptionDetector
+        
+        logger.info("🔍 Starting corruption scan via API...")
+        detector = DataCorruptionDetector(enhanced_data_fetcher)
+        corruption_report = detector.scan_all_data_for_corruption()
+        
+        return {
+            'success': True,
+            'corruption_report': corruption_report,
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error scanning corruption: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to scan corruption: {str(e)}")
+
+@router.get("/ticker-table/corruption-status")
+async def get_corruption_status():
+    """Get current corruption status without running full scan"""
+    try:
+        from utils.data_corruption_detector import DataCorruptionDetector
+        
+        detector = DataCorruptionDetector(enhanced_data_fetcher)
+        status = detector.get_corruption_status()
+        
+        return {
+            'success': True,
+            'corruption_status': status,
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting corruption status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get corruption status: {str(e)}")
+
 @router.get("/ticker-table/data-quality-report")
 async def get_data_quality_report():
     """Get comprehensive data quality report"""

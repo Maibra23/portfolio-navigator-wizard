@@ -645,13 +645,14 @@ class PortfolioAnalytics:
                     annual_return = cached_metrics['annualized_return']
                     annual_risk = cached_metrics['risk']
                     
-                    # Create synthetic returns for portfolio calculation
-                    # This is a simplified approach using the metrics
+                    # Create realistic synthetic returns with proper variance
                     monthly_return = (1 + annual_return) ** (1/12) - 1
                     monthly_risk = annual_risk / (12 ** 0.5)
                     
-                    # Create a simple return series for portfolio calculation
-                    returns = pd.Series([monthly_return] * 60)  # 5 years of monthly data
+                    # Generate realistic monthly returns with proper variance
+                    np.random.seed(hash(ticker) % 2**32)  # Consistent but different for each ticker
+                    monthly_returns = np.random.normal(monthly_return, monthly_risk, 60)
+                    returns = pd.Series(monthly_returns)
                     asset_returns.append(returns)
                     weights.append(weight)
                 else:
@@ -684,6 +685,30 @@ class PortfolioAnalytics:
             # Calculate basic statistics
             monthly_return = portfolio_returns.mean()
             monthly_risk = portfolio_returns.std()
+            
+            # Calculate portfolio risk using proper correlation matrix
+            if len(aligned_returns) > 1:
+                # Create correlation matrix
+                returns_df = pd.concat(aligned_returns, axis=1)
+                corr_matrix = returns_df.corr()
+                
+                # Calculate portfolio variance using weights and correlation
+                portfolio_variance = 0
+                for i in range(len(weights)):
+                    for j in range(len(weights)):
+                        if i == j:
+                            # Diagonal: individual asset variance
+                            asset_risk = aligned_returns[i].std()
+                            portfolio_variance += (weights[i] ** 2) * (asset_risk ** 2)
+                        else:
+                            # Off-diagonal: correlation term
+                            correlation = corr_matrix.iloc[i, j] if not pd.isna(corr_matrix.iloc[i, j]) else 0
+                            asset_i_risk = aligned_returns[i].std()
+                            asset_j_risk = aligned_returns[j].std()
+                            portfolio_variance += 2 * weights[i] * weights[j] * correlation * asset_i_risk * asset_j_risk
+                
+                # Portfolio risk is square root of variance
+                monthly_risk = np.sqrt(portfolio_variance)
             
             # Annualize metrics
             ann_return = (1 + monthly_return) ** 12 - 1  # Compound annual return

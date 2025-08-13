@@ -1,6 +1,6 @@
 # Makefile for Portfolio Navigator Wizard
 
-.PHONY: help dev dev-ticker backend frontend ticker-table prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health open-ticker warm-cache activate-ticker-table start-ticker-table check-redis quick-ticker-table enhanced enhanced-quick backend-enhanced enhanced-table test-enhanced demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status
+.PHONY: help dev dev-ticker backend frontend ticker-table prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health open-ticker warm-cache activate-ticker-table start-ticker-table check-redis quick-ticker-table enhanced enhanced-quick enhanced-complete backend-enhanced enhanced-table test-enhanced test-calculations demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status
 
 # Default target - show help
 help:
@@ -25,9 +25,11 @@ help:
 	@echo "🚀 Enhanced Ticker Table Commands:"
 	@echo "  make enhanced          - Start enhanced ticker table system"
 	@echo "  make enhanced-quick    - 🚀 QUICK: Start enhanced system (no waiting)"
+	@echo "  make enhanced-complete - 🚀 COMPLETE: Start everything for enhanced table (recommended)"
 	@echo "  make backend-enhanced  - Start enhanced backend only (fastest)"
 	@echo "  make enhanced-table    - Start enhanced table only"
 	@echo "  make test-enhanced     - Test enhanced features"
+	@echo "  make test-calculations - 🧪 Test all calculation functions"
 	@echo "  make demo-enhanced     - Run enhanced features demo"
 	@echo "  make start-auto-refresh- Start auto-refresh service"
 	@echo "  make stop-auto-refresh - Stop auto-refresh service"
@@ -482,6 +484,62 @@ enhanced-table:
 		echo "❌ Backend server not running. Start it with: make enhanced"; \
 	fi
 
+# 🚀 COMPREHENSIVE: Start everything for enhanced table (recommended)
+enhanced-complete: warm-cache
+	@echo "🚀 STARTING COMPLETE ENHANCED TICKER TABLE SYSTEM..."
+	@echo "=================================================="
+	@echo "📋 This command will:"
+	@echo "  1. 🔥 Warm up Redis cache with all required data"
+	@echo "  2. 🖥️  Start main backend server (port 8000)"
+	@echo "  3. 📊 Start auto-refresh service"
+	@echo "  4. 🌐 Open enhanced ticker table in browser"
+	@echo "  5. 📊 Open recommendation tab in browser"
+	@echo "=================================================="
+	@echo ""
+	@echo "🔄 Step 1: Warming up Redis cache..."
+	@make warm-cache
+	@echo ""
+	@echo "🔄 Step 2: Starting backend server..."
+	@echo "📊 Starting main backend server on port 8000..."
+	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@echo "✅ Backend server started (PID: $$!)"
+	@echo ""
+	@echo "🔄 Step 3: Waiting for backend server to be ready..."
+	@echo "⏳ Waiting for backend server..."
+	@for i in {1..15}; do \
+		if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+			echo "✅ Backend server ready!"; \
+			break; \
+		fi; \
+		echo "  Attempt $$i/15..."; \
+		sleep 2; \
+	done
+	@echo ""
+	@echo "🔄 Step 4: Starting auto-refresh service..."
+	@curl -X POST http://localhost:8000/api/portfolio/ticker-table/start-auto-refresh > /dev/null 2>&1 || echo "⚠️ Auto-refresh service not available yet"
+	@echo ""
+	@echo "🎉 COMPLETE ENHANCED SYSTEM IS NOW RUNNING!"
+	@echo "=================================================="
+	@echo "📊 Main Backend: http://localhost:8000"
+	@echo "📊 Enhanced Table: http://localhost:8000/api/portfolio/ticker-table/enhanced"
+	@echo "📊 Recommendation Tab: http://localhost:8000/api/portfolio/ticker-table/enhanced-html"
+	@echo "📚 API Docs: http://localhost:8000/docs"
+	@echo "=================================================="
+	@echo ""
+	@echo "🔄 Step 5: Opening enhanced table and recommendation tab..."
+	@sleep 3
+	@open "http://localhost:8000/api/portfolio/ticker-table/enhanced-html"
+	@echo "✅ Enhanced table opened in browser!"
+	@echo ""
+	@echo "🎯 COMPLETE ENHANCED SYSTEM READY!"
+	@echo "=================================================="
+	@echo "💡 To stop server: make stop"
+	@echo "💡 To check status: make status"
+	@echo "💡 To test calculations: make test-calculations"
+	@echo "💡 To test corruption detection: make test-corruption-detection"
+	@echo "💡 To run corruption scan: make corruption-scan"
+	@echo "=================================================="
+
 # Test enhanced features
 test-enhanced:
 	@echo "🧪 Testing Enhanced Features..."
@@ -490,6 +548,44 @@ test-enhanced:
 	@cd backend && /usr/local/bin/python3.11 -c "from utils.auto_refresh_service import AutoRefreshService; from utils.enhanced_data_fetcher import enhanced_data_fetcher; service = AutoRefreshService(enhanced_data_fetcher); print('✅ Auto-refresh service initialized successfully'); summary = service.get_tracking_summary(); print(f'📊 Tracking summary: {summary.get(\"total_tickers\", 0)} tickers'); print('✅ Enhanced features test completed!')"
 	@echo "=================================================="
 	@echo "✅ Enhanced features test completed!"
+
+# 🧪 Test all calculation functions
+test-calculations:
+	@echo "🧪 Testing All Calculation Functions..."
+	@echo "=================================================="
+	@echo "This will test:"
+	@echo "  • Enhanced Data Fetcher"
+	@echo "  • Portfolio Analytics"
+	@echo "  • Risk/Return Calculations"
+	@echo "  • Diversification Scoring"
+	@echo "  • API Endpoints (if backend running)"
+	@echo "=================================================="
+	@cd backend && python test_calculations.py
+	@echo "=================================================="
+	@echo "✅ Calculation tests completed!"
+
+test-corruption-detection:
+	@echo "🔍 Testing Data Corruption Detection System..."
+	@echo "=================================================="
+	@echo "This will test:"
+	@echo "  • Corruption Detection Engine"
+	@echo "  • Cache Warming with Corruption Detection"
+	@echo "  • API Endpoints for Corruption Monitoring"
+	@echo "  • Data Quality Validation"
+	@echo "=================================================="
+	@cd backend && python test_corruption_detection.py
+	@echo "=================================================="
+	@echo "✅ Corruption detection tests completed!"
+
+corruption-scan:
+	@echo "🔍 Running Data Corruption Scan..."
+	@echo "=================================================="
+	@echo "This will scan all cached data for corruption"
+	@echo "and provide detailed reports with recommendations"
+	@echo "=================================================="
+	@cd backend && python -c "from utils.data_corruption_detector import DataCorruptionDetector; from utils.enhanced_data_fetcher import enhanced_data_fetcher; detector = DataCorruptionDetector(enhanced_data_fetcher); detector.scan_all_data_for_corruption(); detector.print_corruption_report()"
+	@echo "=================================================="
+	@echo "✅ Corruption scan completed!"
 
 # Start auto-refresh service
 start-auto-refresh:

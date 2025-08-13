@@ -936,8 +936,47 @@ class EnhancedDataFetcher:
                 logger.info("🚀 Cache warming started in background")
             else:
                 logger.info(f"✅ Cache coverage: prices {cache_coverage:.1f}%, sectors {sector_coverage:.1f}% - no warming needed")
+                
+                # Even with good coverage, run corruption scan for data quality
+                self._run_corruption_scan_if_needed()
         except Exception as e:
             logger.error(f"❌ Error in auto-warm cache: {e}")
+    
+    def _run_corruption_scan_if_needed(self):
+        """Run corruption scan if it hasn't been run recently"""
+        try:
+            from utils.data_corruption_detector import DataCorruptionDetector
+            
+            # Check if we should run corruption scan (every 24 hours)
+            corruption_scan_key = "corruption_scan_last_run"
+            if self.r.exists(corruption_scan_key):
+                last_scan = self.r.get(corruption_scan_key)
+                try:
+                    last_scan_time = datetime.fromisoformat(last_scan.decode())
+                    if datetime.now() - last_scan_time < timedelta(hours=24):
+                        return  # Skip if scanned recently
+                except:
+                    pass  # Invalid timestamp, run scan anyway
+            
+            logger.info("🔍 Running scheduled corruption scan...")
+            detector = DataCorruptionDetector(self)
+            corruption_report = detector.scan_all_data_for_corruption()
+            
+            # Store scan timestamp
+            self.r.setex(corruption_scan_key, timedelta(hours=25), datetime.now().isoformat().encode())
+            
+            # Log corruption summary
+            summary = corruption_report['corruption_summary']
+            if summary['critical'] > 0:
+                logger.warning(f"🚨 CORRUPTION ALERT: {summary['critical']} critical issues detected!")
+                logger.warning(f"⚠️  Run 'make warm-cache' to fix corruption issues")
+            elif summary['warning'] > 0:
+                logger.info(f"⚠️  Data quality warnings: {summary['warning']} tickers have minor issues")
+            else:
+                logger.info("✅ Corruption scan: All data is healthy")
+                
+        except Exception as e:
+            logger.error(f"❌ Error running corruption scan: {e}")
 
     def _background_cache_warming(self):
         """Background thread for cache warming with better error handling"""
@@ -1092,6 +1131,110 @@ class EnhancedDataFetcher:
         logger.info(f"🎉 Alpha Vantage fallback completed: {success_count}/{len(failed_tickers)} successful")
         return results
 
+    def warm_cache(self) -> Dict[str, Any]:
+        """
+        Main cache warming method with corruption detection
+        Returns: Cache warming results with corruption status
+        """
+        logger.info("🔥 Starting main cache warming process...")
+        
+        # First, run corruption scan to identify issues
+        corruption_status = self._run_corruption_scan_before_warming()
+        
+        # Then warm the cache
+        warming_results = self._perform_cache_warming()
+        
+        # Combine results
+        results = {
+            'warming_results': warming_results,
+            'corruption_status': corruption_status,
+            'timestamp': datetime.now().isoformat(),
+            'recommendations': []
+        }
+        
+        # Generate recommendations based on corruption status
+        if corruption_status['critical_issues'] > 0:
+            results['recommendations'].append({
+                'priority': 'high',
+                'action': 'Critical corruption detected',
+                'description': f'{corruption_status["critical_issues"]} tickers have critical data issues',
+                'command': 'Data has been refreshed during warming'
+            })
+        
+        if corruption_status['warning_issues'] > 0:
+            results['recommendations'].append({
+                'priority': 'medium',
+                'action': 'Data quality warnings',
+                'description': f'{corruption_status["warning_issues"]} tickers have minor quality issues',
+                'command': 'Monitor and consider manual refresh if needed'
+            })
+        
+        logger.info("✅ Main cache warming completed with corruption detection")
+        return results
+    
+    def _run_corruption_scan_before_warming(self) -> Dict[str, Any]:
+        """Run corruption scan before warming to identify issues"""
+        try:
+            from utils.data_corruption_detector import DataCorruptionDetector
+            
+            logger.info("🔍 Running corruption scan before cache warming...")
+            detector = DataCorruptionDetector(self)
+            corruption_report = detector.scan_all_data_for_corruption()
+            
+            return {
+                'scan_timestamp': corruption_report['scan_timestamp'],
+                'critical_issues': corruption_report['corruption_summary']['critical'],
+                'warning_issues': corruption_report['corruption_summary']['warning'],
+                'missing_data': corruption_report['corruption_summary']['missing'],
+                'total_scanned': corruption_report['total_tickers_scanned'],
+                'corrupted_tickers': corruption_report['corrupted_tickers']
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error running corruption scan: {e}")
+            return {
+                'scan_timestamp': datetime.now().isoformat(),
+                'critical_issues': 0,
+                'warning_issues': 0,
+                'missing_data': 0,
+                'total_scanned': 0,
+                'corrupted_tickers': [],
+                'error': str(e)
+            }
+    
+    def _perform_cache_warming(self) -> Dict[str, Any]:
+        """Perform the actual cache warming process"""
+        try:
+            start_time = time.time()
+            
+            # Use the existing fetch_all_data method
+            self.fetch_all_data()
+            
+            elapsed_time = time.time() - start_time
+            
+            # Get final statistics
+            stats = self.get_statistics()
+            
+            return {
+                'success': True,
+                'elapsed_time': elapsed_time,
+                'statistics': stats,
+                'cache_coverage': {
+                    'prices': self._get_cache_coverage(),
+                    'sectors': self._get_sector_cache_coverage()
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Cache warming failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'elapsed_time': 0,
+                'statistics': {},
+                'cache_coverage': {'prices': 0, 'sectors': 0}
+            }
+    
     def warm_required_cache(self) -> Dict[str, Any]:
         """
         Pre-warm cache for all required tickers (educational pairs and recommendation pools)
@@ -1425,6 +1568,30 @@ class EnhancedDataFetcher:
                 'months': (END_DATE.year - START_DATE.year) * 12 + END_DATE.month - START_DATE.month
             }
         }
+    
+    def _get_cache_coverage(self):
+        """Get cache coverage percentage for prices"""
+        if not self.r:
+            return 0.0
+        
+        try:
+            price_keys = self.r.keys("ticker_data:prices:*")
+            return len(price_keys) / len(self.all_tickers)
+        except Exception as e:
+            logger.error(f"Error getting cache coverage: {e}")
+            return 0.0
+    
+    def _get_sector_cache_coverage(self):
+        """Get cache coverage percentage for sectors"""
+        if not self.r:
+            return 0.0
+        
+        try:
+            sector_keys = self.r.keys("ticker_data:sector:*")
+            return len(sector_keys) / len(self.all_tickers)
+        except Exception as e:
+            logger.error(f"Error getting sector cache coverage: {e}")
+            return 0.0
 
 # Global instance
 enhanced_data_fetcher = EnhancedDataFetcher() 
