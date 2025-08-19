@@ -1,17 +1,24 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import logging
-import numpy as np
-import pandas as pd
-import redis
 import json
-import gzip
-from utils.enhanced_data_fetcher import enhanced_data_fetcher
-from utils.ticker_store import ticker_store
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import redis
+from utils.redis_first_data_service import redis_first_data_service
 from utils.port_analytics import PortfolioAnalytics
+from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+from utils.redis_portfolio_manager import RedisPortfolioManager
+from utils.portfolio_stock_selector import PortfolioStockSelector
+from utils.data_corruption_detector import DataCorruptionDetector
+from utils.data_change_detector import DataChangeDetector
+from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.auto_refresh_service import AutoRefreshService
+from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
+from utils.ticker_store import ticker_store
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -20,6 +27,14 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
 # Initialize portfolio analytics
 portfolio_analytics = PortfolioAnalytics()
+
+# Initialize Redis manager (will be set by main.py)
+redis_manager = None
+
+def set_redis_manager(manager):
+    """Set Redis manager from main application"""
+    global redis_manager
+    redis_manager = manager
 
 # New model for portfolio metrics calculation
 class PortfolioMetricsRequest(BaseModel):
@@ -362,138 +377,161 @@ def optimize_custom_weights(returns_data: Dict[str, pd.Series], risk_profile: st
         logger.error(f"Error in custom optimization: {e}")
         return [1.0/len(returns_data)] * len(returns_data)
 
-@router.get("/ticker/search")
-def search_tickers(q: str, limit: int = 10):
-    """
-    Search tickers by query string
-    """
+@router.get("/search-tickers")
+def search_tickers(
+    q: str = Query(..., description="Search query"), 
+    limit: int = Query(10, description="Maximum results"),
+    sector: str = Query(None, description="Filter by sector"),
+    risk_profile: str = Query(None, description="Filter by risk profile")
+):
+    """Enhanced fuzzy search for tickers with smart relevance scoring and filters"""
     try:
-        results = enhanced_data_fetcher.search_tickers(q, limit)
-        return {"results": results}
+        # Build filters
+        filters = {}
+        if sector:
+            filters['sector'] = sector
+        if risk_profile:
+            filters['risk_profile'] = risk_profile
+        
+        # Perform enhanced search
+        results = redis_first_data_service.search_tickers(q, limit, filters)
+        
+        # Format response with enhanced information
+        formatted_results = []
+        for result in results:
+            formatted_result = {
+                'ticker': result['ticker'],
+                'company_name': result['company_name'],
+                'sector': result['sector'],
+                'industry': result['industry'],
+                'relevance_score': result['relevance_score'],
+                'cached': result['cached'],
+                'risk_level': result['risk_level'],
+                'market_cap': result['market_cap'],
+                'last_price': result['last_price'],
+                'data_quality': result['data_quality']
+            }
+            formatted_results.append(formatted_result)
+        
+        return {
+            'success': True,
+            'query': q,
+            'filters_applied': filters,
+            'total_results': len(formatted_results),
+            'results': formatted_results,
+            'search_features': {
+                'fuzzy_matching': True,
+                'relevance_scoring': True,
+                'sector_filtering': sector is not None,
+                'risk_filtering': risk_profile is not None,
+                'cache_status': True
+            }
+        }
+        
     except Exception as e:
-        logger.error(f"Error searching tickers: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in enhanced ticker search: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
-@router.get("/ticker/{ticker}/info")
+@router.get("/ticker-info/{ticker}")
 def get_ticker_info(ticker: str):
-    """
-    Get comprehensive ticker information including prices, metrics, and company details
-    """
+    """Get comprehensive ticker information with Redis-first approach"""
     try:
-        ticker_info = enhanced_data_fetcher.get_ticker_info(ticker)
+        ticker_info = redis_first_data_service.get_ticker_info(ticker)
         if not ticker_info:
-            raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found or no data available")
+            raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
         return ticker_info
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting ticker info for {ticker}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get ticker info: {str(e)}")
 
-@router.get("/returns/monthly")
-def get_monthly_returns(ticker: str):
-    """
-    Get monthly returns data for a ticker
-    Returns: Monthly prices and dates (cached if available)
-    """
+@router.get("/ticker-price-history/{ticker}")
+def get_ticker_price_history(ticker: str, days: int = Query(30, description="Number of days")):
+    """Get ticker price history with Redis-first approach"""
     try:
-        if not ticker:
-            raise HTTPException(status_code=400, detail="Ticker required")
-        
-        # Validate ticker
-        if not ticker_store.validate_ticker(ticker):
-            raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker}")
-        
-        data = enhanced_data_fetcher.get_monthly_data(ticker)
-        
-        if not data:
-            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
-        
-        return {
-            "ticker": ticker.upper(),
-            "dates": data['dates'],
-            "prices": data['prices'],
-            "data_points": data['data_points'],
-            "source": data['source']
-        }
-        
+        price_data = redis_first_data_service.get_ticker_price_history(ticker, days)
+        if not price_data:
+            raise HTTPException(status_code=404, detail=f"Price data not found for {ticker}")
+        return price_data
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching monthly data: {str(e)}")
+        logger.error(f"Error getting price history for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get price history: {str(e)}")
 
-@router.post("/cache/warm")
+@router.get("/ticker-monthly-data/{ticker}")
+def get_ticker_monthly_data(ticker: str):
+    """Get monthly data for a ticker with Redis-first approach"""
+    try:
+        data = redis_first_data_service.get_monthly_data(ticker)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"Monthly data not found for {ticker}")
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting monthly data for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get monthly data: {str(e)}")
+
+@router.post("/warm-cache")
 def warm_cache():
-    """
-    Warm the cache with monthly data for all master tickers
-    Returns: Cache warming results
-    """
+    """Warm up the Redis cache with Redis-first approach"""
     try:
-        logger.info("Starting cache warming process...")
-        results = enhanced_data_fetcher.warm_cache()
-        
-        return {
-            "status": "success",
-            "results": results,
-            "message": "Cache warming completed"
-        }
-        
+        results = redis_first_data_service.warm_cache()
+        return {"message": "Cache warming completed", "results": results}
     except Exception as e:
-        logger.error(f"Error warming cache: {e}")
-        raise HTTPException(status_code=500, detail=f"Error warming cache: {str(e)}")
+        logger.error(f"Cache warming error: {e}")
+        raise HTTPException(status_code=500, detail=f"Cache warming failed: {str(e)}")
 
-@router.get("/cache/status")
+@router.get("/cache-status")
 def get_cache_status():
-    """
-    Get cache status
-    Returns: Cache statistics and system information
-    """
+    """Get cache status with Redis-first approach"""
     try:
-        status = enhanced_data_fetcher.get_cache_status()
-        
-        return {
-            "system_status": status,
-            "timestamp": datetime.now().isoformat()
-        }
-        
+        status = redis_first_data_service.get_cache_status()
+        return status
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting cache status: {str(e)}")
+        logger.error(f"Cache status error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get cache status: {str(e)}")
 
-@router.delete("/cache/clear")
+@router.post("/clear-cache")
 def clear_cache():
-    """
-    Clear all cached monthly data
-    """
+    """Clear all cached data with Redis-first approach"""
     try:
-        results = enhanced_data_fetcher.clear_cache()
-        
-        return {
-            "status": "success",
-            "results": results,
-            "message": "Cache cleared for all tickers"
-        }
-        
+        results = redis_first_data_service.clear_cache()
+        return {"message": "Cache cleared successfully", "results": results}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
+        logger.error(f"Cache clearing error: {e}")
+        raise HTTPException(status_code=500, detail=f"Cache clearing failed: {str(e)}")
 
 @router.get("/tickers/master")
 def get_master_tickers():
-    """
-    Get the complete master ticker list
-    Returns: All available tickers
-    """
+    """Get master ticker list with Redis-first approach"""
     try:
-        tickers = ticker_store.get_all_tickers()
-        
+        master_tickers = redis_first_data_service.all_tickers
         return {
-            "total_tickers": len(tickers),
-            "tickers": tickers,
-            "sp500_count": len(ticker_store.sp500_tickers),
-            "nasdaq100_count": len(ticker_store.nasdaq100_tickers)
+            "tickers": master_tickers,
+            "total": len(master_tickers),
+            "source": "redis_first_data_service"
         }
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting master tickers: {str(e)}")
+        logger.error(f"Error getting master tickers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get master tickers: {str(e)}")
+
+@router.get("/tickers/available")
+def get_available_tickers(limit: int = Query(100, description="Maximum number of tickers")):
+    """Get available tickers with Redis-first approach"""
+    try:
+        master_tickers = redis_first_data_service.all_tickers[:limit]
+        return {
+            "tickers": master_tickers,
+            "total": len(master_tickers),
+            "limit": limit,
+            "source": "redis_first_data_service"
+        }
+    except Exception as e:
+        logger.error(f"Error getting available tickers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get available tickers: {str(e)}")
 
 @router.post("/tickers/refresh")
 def refresh_tickers():
@@ -514,129 +552,51 @@ def refresh_tickers():
 
 @router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
 def get_portfolio_recommendations(risk_profile: str):
-    """Generate portfolio recommendations based on risk profile using cached data only"""
-    
+    """Get portfolio recommendations from Enhanced Portfolio System"""
     try:
-        # Cache should be warmed at startup, not on every request
-        # cache_status = enhanced_data_fetcher.warm_required_cache()
-        # logger.info(f"Cache status: {cache_status}")
+        if risk_profile not in ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']:
+            raise HTTPException(status_code=400, detail="Invalid risk profile")
         
-        # Define asset pools based on risk characteristics
-        asset_pools = {
-            'conservative': [
-                ('JNJ', 'Healthcare - Stable'),
-                ('PG', 'Consumer Staples'),
-                ('KO', 'Consumer Staples'),
-                ('WMT', 'Consumer Staples'),
-                ('VZ', 'Telecom - Stable'),
-                ('UNH', 'Healthcare - Stable')
-            ],
-            'moderate': [
-                ('AAPL', 'Tech - Blue Chip'),
-                ('MSFT', 'Tech - Blue Chip'),
-                ('GOOGL', 'Tech - Blue Chip'),
-                ('V', 'Fintech - Stable'),
-                ('MA', 'Fintech - Stable'),
-                ('HD', 'Retail - Stable')
-            ],
-            'aggressive': [
-                ('NVDA', 'Tech - Growth'),
-                ('TSLA', 'EV - Growth'),
-                ('AMD', 'Tech - Growth'),
-                ('ADBE', 'Tech - Growth'),
-                ('CRM', 'Tech - Growth'),
-                ('META', 'Tech - Growth')
-            ]
-        }
-        
-        # Get cached data for all assets
-        cached_assets = {}
-        for pool in asset_pools.values():
-            for ticker, _ in pool:
-                data = enhanced_data_fetcher.get_monthly_data(ticker)
-                if data and data['prices'] and len(data['prices']) >= 12:  # Minimum 1 year of data
-                    cached_assets[ticker] = {
-                        'prices': data['prices'],
-                        'name': data.get('company_name', ticker),
-                        'sector': data.get('sector', 'Unknown'),
-                        'data_points': len(data['prices'])
-                    }
-                    # Reduced logging verbosity
-                    # logger.info(f"Using {ticker} with {cached_assets[ticker]['data_points']} months of data")
-        
-        if not cached_assets:
-            # Use fallback instead of warming cache
-            logger.warning("No cached data available, using fallback recommendations")
+        # Check if enhanced portfolio system is available
+        if not redis_manager:
+            logger.warning("⚠️ Enhanced portfolio system not available, falling back to static portfolios")
             return _get_static_portfolio_recommendations(risk_profile)
         
-        # Risk-based weights
-        risk_weights = {
-            'very-conservative': {'conservative': 0.8, 'moderate': 0.2, 'aggressive': 0.0},
-            'conservative': {'conservative': 0.6, 'moderate': 0.3, 'aggressive': 0.1},
-            'moderate': {'conservative': 0.3, 'moderate': 0.5, 'aggressive': 0.2},
-            'aggressive': {'conservative': 0.1, 'moderate': 0.4, 'aggressive': 0.5},
-            'very-aggressive': {'conservative': 0.0, 'moderate': 0.3, 'aggressive': 0.7}
-        }
+        # Get portfolios from enhanced system
+        portfolios = redis_manager.get_portfolio_recommendations(risk_profile, count=3)
         
-        weights = risk_weights.get(risk_profile, risk_weights['moderate'])
+        if not portfolios:
+            logger.warning(f"⚠️ No portfolios available for {risk_profile}, falling back to static portfolios")
+            return _get_static_portfolio_recommendations(risk_profile)
+        
+        # Convert to response format
         responses = []
+        for portfolio in portfolios:
+            try:
+                response = PortfolioResponse(
+                    portfolio=portfolio['allocations'],
+                    name=portfolio['name'],
+                    description=portfolio['description'],
+                    expectedReturn=portfolio['expectedReturn'],
+                    risk=portfolio['risk'],
+                    diversificationScore=portfolio['diversificationScore']
+                )
+                responses.append(response)
+            except Exception as e:
+                logger.error(f"Error converting portfolio to response: {e}")
+                continue
         
-        # Generate 3 different portfolio options
-        for option in range(3):
-            allocations = []
-            total_weight = 0
-            
-            # Select assets from each pool based on risk weights
-            for pool_type, pool_weight in weights.items():
-                if pool_weight > 0:
-                    pool = asset_pools[pool_type]
-                    available_tickers = [(t, d) for t, d in pool if t in cached_assets]
-                    
-                    if available_tickers:
-                        # Select 1-2 assets based on pool weight
-                        import random
-                        num_assets = min(2, max(1, int(pool_weight * 4)))
-                        selected = random.sample(available_tickers, min(num_assets, len(available_tickers)))
-                        
-                        for ticker, description in selected:
-                            weight = (pool_weight / len(selected)) * 100
-                            allocations.append(PortfolioAllocation(
-                                symbol=ticker,
-                                allocation=weight,
-                                name=cached_assets[ticker]['name'],
-                                assetType='stock'
-                            ))
-                            total_weight += weight
-            
-            # Normalize weights to 100%
-            for alloc in allocations:
-                alloc.allocation = (alloc.allocation / total_weight) * 100
-            
-            # Calculate portfolio metrics using cached data only
-            portfolio_data = {
-                'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
-            }
-            
-            metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
-            
-            # Generate portfolio name and description based on risk profile and option
-            portfolio_name = _generate_portfolio_name(risk_profile, option)
-            portfolio_description = _generate_portfolio_description(risk_profile, option)
-            
-            responses.append(PortfolioResponse(
-                portfolio=allocations,
-                name=portfolio_name,
-                description=portfolio_description,
-                expectedReturn=metrics['expected_return'],
-                risk=metrics['risk'],  # Using risk instead of volatility
-                diversificationScore=metrics['diversification_score']
-            ))
+        if not responses:
+            logger.warning(f"⚠️ Failed to convert portfolios for {risk_profile}, falling back to static portfolios")
+            return _get_static_portfolio_recommendations(risk_profile)
         
+        logger.info(f"✅ Retrieved {len(responses)} portfolio recommendations for {risk_profile} from enhanced system")
         return responses
         
     except Exception as e:
-        logger.error(f"Error generating portfolio recommendations: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting enhanced portfolio recommendations: {e}")
+        logger.info("🔄 Falling back to static portfolio recommendations")
+        return _get_static_portfolio_recommendations(risk_profile)
 
 # NEW: Dynamic Portfolio Generation Endpoint
 @router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
@@ -670,10 +630,18 @@ def generate_dynamic_portfolio_recommendations(
         cached_assets = {}
         
         # Get master ticker list
-        master_tickers = enhanced_data_fetcher.get_all_tickers()
+        master_tickers = redis_first_data_service.all_tickers
         
-        # Use all available tickers (no sector filtering)
-        available_tickers = master_tickers[:100]  # Limit to top 100 for performance
+        # Filter to only include tickers that have data
+        available_tickers = []
+        for ticker in master_tickers:
+            try:
+                # Check if ticker has cached data
+                if redis_first_data_service._is_cached(ticker, 'prices'):
+                    available_tickers.append(ticker)
+            except Exception as e:
+                logger.warning(f"Error checking cache for {ticker}: {e}")
+                continue
         
         if not available_tickers:
             logger.warning("No tickers available for dynamic portfolio generation")
@@ -743,7 +711,7 @@ def analyze_portfolio_optimization(
         current_metrics = portfolio_analytics.calculate_real_portfolio_metrics(current_data)
         
         # Get available assets for optimization
-        master_tickers = enhanced_data_fetcher.get_all_tickers()[:100]
+        master_tickers = redis_first_data_service.all_tickers[:100]
         
         # Generate optimized alternatives
         optimized_portfolios = portfolio_analytics.generate_dynamic_portfolios(
@@ -1029,11 +997,11 @@ def two_asset_analysis(ticker1: str, ticker2: str):
             raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker2}")
         
         # Get monthly data for both tickers using enhanced method
-        data1 = enhanced_data_fetcher.get_monthly_data(ticker1)
-        data2 = enhanced_data_fetcher.get_monthly_data(ticker2)
+        data1 = redis_first_data_service.get_monthly_data(ticker1)
+        data2 = redis_first_data_service.get_monthly_data(ticker2)
         
         if not data1 or not data2:
-            raise HTTPException(status_code=404, detail="Data not available for one or both tickers")
+            raise HTTPException(status_code=404, detail="One or both tickers not found")
         
         # Use portfolio analytics for comprehensive analysis
         analysis = portfolio_analytics.two_asset_analysis(
@@ -1066,6 +1034,114 @@ def two_asset_analysis(ticker1: str, ticker2: str):
     except Exception as e:
         logger.error(f"Error in two-asset analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Error in two-asset analysis: {str(e)}")
+
+@router.get("/ticker-info/{ticker}")
+def get_ticker_info(ticker: str):
+    """
+    Get comprehensive ticker information including company details, sector, and performance metrics
+    """
+    try:
+        if not ticker or not ticker.strip():
+            raise HTTPException(status_code=400, detail="Ticker symbol required")
+        
+        ticker = ticker.strip().upper()
+        
+        # Validate ticker
+        if not ticker_store.validate_ticker(ticker):
+            raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker}")
+        
+        # Get comprehensive ticker data
+        ticker_data = redis_first_data_service.get_monthly_data(ticker)
+        
+        if not ticker_data:
+            raise HTTPException(status_code=404, detail=f"Data not available for ticker: {ticker}")
+        
+        # Calculate performance metrics
+        if 'prices' in ticker_data and len(ticker_data['prices']) > 1:
+            prices = ticker_data['prices']
+            returns = [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+            
+            annualized_return = ((prices[-1] / prices[0]) ** (12 / len(prices)) - 1) if len(prices) > 1 else 0
+            annualized_volatility = (np.std(returns) * np.sqrt(12)) if returns else 0
+        else:
+            annualized_return = 0
+            annualized_volatility = 0
+        
+        # Build comprehensive response
+        ticker_info = {
+            'symbol': ticker,
+            'company_name': ticker_data.get('company_name', ticker),
+            'sector': ticker_data.get('sector', 'Unknown'),
+            'industry': ticker_data.get('industry', 'Unknown'),
+            'current_price': ticker_data['prices'][-1] if ticker_data['prices'] else 0,
+            'price_change_1m': ticker_data['prices'][-1] - ticker_data['prices'][-2] if len(ticker_data['prices']) > 1 else 0,
+            'price_change_1m_pct': ((ticker_data['prices'][-1] / ticker_data['prices'][-2] - 1) * 100) if len(ticker_data['prices']) > 1 else 0,
+            'annualized_return': annualized_return,
+            'annualized_volatility': annualized_volatility,
+            'data_points': len(ticker_data['prices']),
+            'start_date': ticker_data['dates'][0] if ticker_data['dates'] else None,
+            'end_date': ticker_data['dates'][-1] if ticker_data['dates'] else None,
+            'data_source': ticker_data.get('data_source', 'yahoo_finance'),
+            'last_updated': datetime.now().isoformat()
+        }
+        
+        return ticker_info
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting ticker info for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting ticker info: {str(e)}")
+
+@router.get("/portfolio-validation/{risk_profile}")
+def get_portfolio_validation(risk_profile: str):
+    """
+    Get portfolio validation and uniqueness status for a specific risk profile
+    """
+    try:
+        if not risk_profile or not risk_profile.strip():
+            raise HTTPException(status_code=400, detail="Risk profile required")
+        
+        risk_profile = risk_profile.strip()
+        
+        # Get portfolios from Redis
+        if not redis_manager:
+            raise HTTPException(status_code=503, detail="Redis manager not available")
+        
+        portfolios = redis_manager.get_portfolio_bucket(risk_profile)
+        
+        if not portfolios:
+            raise HTTPException(status_code=404, detail=f"No portfolios found for {risk_profile}")
+        
+        # Analyze portfolio uniqueness
+        unique_allocations = set()
+        duplicate_count = 0
+        
+        for portfolio in portfolios:
+            allocation_key = "|".join([f"{alloc['symbol']}:{alloc['allocation']}" 
+                                     for alloc in sorted(portfolio['allocations'], key=lambda x: x['symbol'])])
+            if allocation_key in unique_allocations:
+                duplicate_count += 1
+            else:
+                unique_allocations.add(allocation_key)
+        
+        validation_result = {
+            'risk_profile': risk_profile,
+            'total_portfolios': len(portfolios),
+            'unique_portfolios': len(unique_allocations),
+            'duplicate_portfolios': duplicate_count,
+            'uniqueness_percentage': (len(unique_allocations) / len(portfolios)) * 100 if portfolios else 0,
+            'validation_status': 'PASS' if duplicate_count == 0 else 'FAIL',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return validation_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating portfolios for {risk_profile}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error validating portfolios: {str(e)}")
 
 # Redis connection for enhanced analytics
 redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
@@ -1403,13 +1479,11 @@ def get_risk_rating(risk: float) -> str:
 @router.post("/ticker-table/refresh")
 async def refresh_ticker_table():
     """
-    Force refresh of all ticker data in Redis
+    Force refresh of all ticker data in Redis using Redis-first approach
     """
     try:
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
-        
         # Force refresh expired data
-        enhanced_data_fetcher.force_refresh_expired_data()
+        redis_first_data_service.force_refresh_expired_data()
         
         return {
             "status": "success",
@@ -1424,16 +1498,14 @@ async def refresh_ticker_table():
 @router.post("/ticker-table/smart-refresh")
 async def smart_monthly_refresh():
     """
-    Smart monthly refresh that only fetches the latest month of data
+    Smart monthly refresh that only fetches the latest month of data using Redis-first approach
     - Extends time range incrementally (no re-downloading of historical data)
     - Respects TTL and only refreshes when needed
     - Efficient: Only fetches new months, not entire history
     """
     try:
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
-        
         # Perform smart monthly refresh
-        result = enhanced_data_fetcher.smart_monthly_refresh()
+        result = redis_first_data_service.smart_monthly_refresh()
         
         if result:
             return {
@@ -1456,29 +1528,28 @@ async def smart_monthly_refresh():
 @router.get("/ticker-table/data")
 async def get_ticker_table_data():
     """
-    Get ticker table data with return and risk metrics
+    Get ticker table data with return and risk metrics using Redis-first approach
     Returns: Ticker information with essential metrics for the ticker table
     """
     try:
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
         import json
         import gzip
         from datetime import datetime
         
-        # Get all tickers from the enhanced data fetcher
-        all_tickers = enhanced_data_fetcher.all_tickers
+        # Get all tickers from the Redis-first data service
+        all_tickers = redis_first_data_service.all_tickers
         
         ticker_data = []
         
         for index, ticker in enumerate(all_tickers, 1):  # Added index for ID
             try:
-                # Get price data using enhanced_data_fetcher's Redis connection
-                price_key = f"ticker_data:prices:{ticker}"
-                price_raw = enhanced_data_fetcher.r.get(price_key)
+                # Get price data using Redis-first approach
+                price_key = redis_first_data_service._get_cache_key(ticker, 'prices')
+                price_raw = redis_first_data_service.redis_client.get(price_key)
                 
                 # Get sector/company data
-                sector_key = f"ticker_data:sector:{ticker}"
-                sector_raw = enhanced_data_fetcher.r.get(sector_key)
+                sector_key = redis_first_data_service._get_cache_key(ticker, 'sector')
+                sector_raw = redis_first_data_service.redis_client.get(sector_key)
                 
                 if price_raw and sector_raw:
                     # Parse price data
@@ -1900,9 +1971,9 @@ def get_mini_lesson_assets():
             available_assets = []
             for asset in asset_list['assets']:
                 ticker = asset['ticker']
-                if enhanced_data_fetcher._is_cached(ticker, 'prices'):
+                if redis_first_data_service._is_cached(ticker, 'prices'):
                     # Get pre-calculated metrics from cache
-                    cached_metrics = enhanced_data_fetcher.get_cached_metrics(ticker)
+                    cached_metrics = redis_first_data_service.get_cached_metrics(ticker)
                     if cached_metrics:
                         available_assets.append({
                             **asset,
@@ -1913,7 +1984,7 @@ def get_mini_lesson_assets():
                         })
                     else:
                         # Fallback: calculate metrics on-the-fly
-                        asset_data = enhanced_data_fetcher.get_monthly_data(ticker)
+                        asset_data = redis_first_data_service.get_monthly_data(ticker)
                         if asset_data and len(asset_data['prices']) >= 12:
                             prices = asset_data['prices']
                             returns = pd.Series(prices).pct_change().dropna()
@@ -2048,11 +2119,11 @@ def calculate_custom_portfolio(request: dict):
             raise HTTPException(status_code=400, detail="Weight must be between 0 and 1")
         
         # Get data for both assets
-        data1 = enhanced_data_fetcher.get_monthly_data(ticker1)
-        data2 = enhanced_data_fetcher.get_monthly_data(ticker2)
+        data1 = redis_first_data_service.get_monthly_data(ticker1)
+        data2 = redis_first_data_service.get_monthly_data(ticker2)
         
         if not data1 or not data2:
-            raise HTTPException(status_code=404, detail="Data not available for one or both tickers")
+            raise HTTPException(status_code=404, detail="One or both tickers not found")
         
         # Calculate individual asset metrics
         asset1_metrics = portfolio_analytics.calculate_asset_metrics(data1['prices'])
@@ -2112,7 +2183,7 @@ async def optimize_risk_parity(request: dict):
         # Get price data for all tickers
         price_data = {}
         for ticker in tickers:
-            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            data = redis_first_data_service.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2221,7 +2292,7 @@ async def optimize_mean_variance(request: dict):
         # Get price data for all tickers
         price_data = {}
         for ticker in tickers:
-            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            data = redis_first_data_service.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2362,7 +2433,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
         # Get price data for all assets
         price_data = {}
         for ticker in tickers:
-            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            data = redis_first_data_service.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2487,7 +2558,7 @@ async def risk_decomposition(allocations: str):
         # Get price data
         price_data = {}
         for ticker in tickers:
-            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            data = redis_first_data_service.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2692,7 +2763,7 @@ async def track_portfolio_performance(request: dict):
         # Get historical data for all assets
         price_data = {}
         for ticker in tickers:
-            data = enhanced_data_fetcher.get_monthly_data(ticker)
+            data = redis_first_data_service.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2840,7 +2911,7 @@ async def health_check():
         # Check data fetcher status
         data_fetcher_status = "healthy"
         try:
-            cache_status = enhanced_data_fetcher.get_cache_status()
+            cache_status = redis_first_data_service.get_cache_status()
             data_fetcher_status = "healthy" if cache_status else "unhealthy"
         except Exception as e:
             data_fetcher_status = f"unhealthy: {str(e)}"
@@ -2885,7 +2956,7 @@ def get_auto_refresh_service():
     """Get or create auto refresh service instance"""
     global auto_refresh_service
     if auto_refresh_service is None:
-        auto_refresh_service = AutoRefreshService(enhanced_data_fetcher)
+        auto_refresh_service = AutoRefreshService(redis_first_data_service)
     return auto_refresh_service
 
 @router.get("/ticker-table/enhanced")
@@ -2895,9 +2966,9 @@ async def get_enhanced_ticker_table():
         # Get all ticker information with enhanced features
         all_tickers = []
         
-        for ticker in enhanced_data_fetcher.all_tickers:
+        for ticker in redis_first_data_service.all_tickers:
             try:
-                ticker_info = enhanced_data_fetcher.get_ticker_info(ticker)
+                ticker_info = redis_first_data_service.get_ticker_info(ticker)
                 if ticker_info:
                     # Format data for enhanced table
                     formatted_ticker = {
@@ -2995,7 +3066,7 @@ async def get_enhanced_ticker_status():
         tracking_summary = auto_service.get_tracking_summary()
         
         # Get cache coverage
-        cache_coverage = enhanced_data_fetcher.get_cache_coverage()
+        cache_coverage = redis_first_data_service.get_cache_coverage()
         
         return {
             'success': True,
@@ -3055,7 +3126,7 @@ async def scan_data_corruption():
         from utils.data_corruption_detector import DataCorruptionDetector
         
         logger.info("🔍 Starting corruption scan via API...")
-        detector = DataCorruptionDetector(enhanced_data_fetcher)
+        detector = DataCorruptionDetector(redis_first_data_service)
         corruption_report = detector.scan_all_data_for_corruption()
         
         return {
@@ -3073,7 +3144,7 @@ async def get_corruption_status():
     try:
         from utils.data_corruption_detector import DataCorruptionDetector
         
-        detector = DataCorruptionDetector(enhanced_data_fetcher)
+        detector = DataCorruptionDetector(redis_first_data_service)
         status = detector.get_corruption_status()
         
         return {
@@ -3304,3 +3375,26 @@ def _generate_portfolio_description(risk_profile: str, option: int) -> str:
     
     profile_descriptions = descriptions.get(risk_profile, descriptions['moderate'])
     return profile_descriptions[option % len(profile_descriptions)]
+
+@router.post("/force-refresh-expired-data")
+def force_refresh_expired_data():
+    """Force refresh of expired data using Redis-first approach"""
+    try:
+        redis_first_data_service.force_refresh_expired_data()
+        return {"message": "Force refresh completed successfully"}
+    except Exception as e:
+        logger.error(f"Force refresh error: {e}")
+        raise HTTPException(status_code=500, detail=f"Force refresh failed: {str(e)}")
+
+@router.post("/smart-monthly-refresh")
+def smart_monthly_refresh():
+    """Smart monthly refresh using Redis-first approach"""
+    try:
+        result = redis_first_data_service.smart_monthly_refresh()
+        return {"message": "Smart monthly refresh completed", "result": result}
+    except Exception as e:
+        logger.error(f"Smart monthly refresh error: {e}")
+        raise HTTPException(status_code=500, detail=f"Smart monthly refresh failed: {str(e)}")
+
+
+

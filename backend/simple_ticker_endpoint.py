@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 import pandas as pd
 
-from utils.enhanced_data_fetcher import enhanced_data_fetcher
+from utils.redis_first_data_service import redis_first_data_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -22,19 +22,19 @@ async def get_simple_ticker_table_data():
     """
     try:
         # Get all tickers from the enhanced data fetcher
-        all_tickers = enhanced_data_fetcher.all_tickers
+        all_tickers = redis_first_data_service.all_tickers
         
         ticker_data = []
         
         for ticker in all_tickers:
             try:
                 # Get price data using enhanced_data_fetcher's Redis connection
-                price_key = f"ticker_data:prices:{ticker}"
-                price_raw = enhanced_data_fetcher.r.get(price_key)
+                price_key = redis_first_data_service._get_cache_key(ticker, 'prices')
+                price_raw = redis_first_data_service.redis_client.get(price_key)
                 
                 # Get sector/company data
-                sector_key = f"ticker_data:sector:{ticker}"
-                sector_raw = enhanced_data_fetcher.r.get(sector_key)
+                sector_key = redis_first_data_service._get_cache_key(ticker, 'sector')
+                sector_raw = redis_first_data_service.redis_client.get(sector_key)
                 
                 if price_raw and sector_raw:
                     # Parse price data

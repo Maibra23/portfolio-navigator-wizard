@@ -24,9 +24,19 @@ class DataCorruptionDetector:
     4. Offers automatic corruption repair options
     """
     
-    def __init__(self, enhanced_data_fetcher):
-        self.enhanced_data_fetcher = enhanced_data_fetcher
-        self.redis_client = enhanced_data_fetcher.r
+    def __init__(self, data_service):
+        """
+        Initialize Data Corruption Detector
+        Args:
+            data_service: RedisFirstDataService or EnhancedDataFetcher instance
+        """
+        self.data_service = data_service
+        
+        # Handle both RedisFirstDataService and EnhancedDataFetcher
+        if hasattr(data_service, 'redis_client'):
+            self.redis_client = data_service.redis_client
+        else:
+            self.redis_client = data_service.r
         self.corruption_report = {
             'scan_timestamp': None,
             'total_tickers_scanned': 0,
@@ -78,10 +88,10 @@ class DataCorruptionDetector:
             'recommendations': []
         }
         
-        total_tickers = len(self.enhanced_data_fetcher.all_tickers)
+        total_tickers = len(self.data_service.all_tickers)
         logger.info(f"📊 Scanning {total_tickers} tickers for corruption...")
         
-        for i, ticker in enumerate(self.enhanced_data_fetcher.all_tickers):
+        for i, ticker in enumerate(self.data_service.all_tickers):
             if i % 100 == 0:
                 logger.info(f"🔍 Progress: {i}/{total_tickers} tickers scanned...")
             
@@ -120,8 +130,8 @@ class DataCorruptionDetector:
         """
         try:
             # Check if ticker exists in cache
-            price_key = self.enhanced_data_fetcher._get_cache_key(ticker, 'prices')
-            sector_key = self.enhanced_data_fetcher._get_cache_key(ticker, 'sector')
+            price_key = self.data_service._get_cache_key(ticker, 'prices')
+            sector_key = self.data_service._get_cache_key(ticker, 'sector')
             
             if not self.redis_client.exists(price_key):
                 return {
@@ -135,7 +145,7 @@ class DataCorruptionDetector:
                 }
             
             # Load and analyze price data
-            cached_prices = self.enhanced_data_fetcher._load_from_cache(ticker, 'prices')
+            cached_prices = self.data_service._load_from_cache(ticker, 'prices')
             if cached_prices is None or not isinstance(cached_prices, pd.Series):
                 return {
                     'severity': 'critical',

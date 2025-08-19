@@ -10,6 +10,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 import random
+from .ticker_store import ticker_store
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,26 @@ class PortfolioStockSelector:
     4. Correlation analysis (minimize portfolio risk)
     """
     
-    def __init__(self, enhanced_data_fetcher=None):
-        self.enhanced_data_fetcher = enhanced_data_fetcher
-        if enhanced_data_fetcher:
-            self.redis_client = enhanced_data_fetcher.r
+    def __init__(self, data_service=None):
+        """
+        Initialize Portfolio Stock Selector
+        Args:
+            data_service: RedisFirstDataService or EnhancedDataFetcher instance
+        """
+        self.data_service = data_service
+        if data_service:
+            # Handle both RedisFirstDataService and EnhancedDataFetcher
+            if hasattr(data_service, 'redis_client'):
+                self.redis_client = data_service.redis_client
+            else:
+                self.redis_client = data_service.r
         else:
             self.redis_client = None
+        
+        # Cache for stock data to avoid repeated processing
+        self._stock_cache = {}
+        self._cache_timestamp = None
+        self.CACHE_TTL_HOURS = 24  # Cache for 24 hours
         
         # Enhanced sector categories for better diversification
         self.SECTOR_CATEGORIES = {
@@ -180,58 +195,197 @@ class PortfolioStockSelector:
             return self._get_fallback_portfolio(risk_profile)
     
     def _get_available_stocks_with_metrics(self) -> List[Dict]:
-        """Get all available stocks with their metrics from cache"""
-        available_stocks = []
+        """Get all available stocks with their metrics from cache - LAZY INITIALIZATION VERSION"""
+        from datetime import datetime
+        import time
+        
+        current_time = datetime.now()
+        
+        # Check if cache is still valid
+        if (self._stock_cache and self._cache_timestamp and 
+            (current_time - self._cache_timestamp).total_seconds() < self._cache_ttl_hours * 3600):
+            logger.info("⚡ Using cached stock data (cache hit)")
+            return self._stock_cache
+        
+        # Cache miss - populate on-demand (lazy initialization)
+        logger.info("🔄 Cache miss - performing lazy initialization of stock selection cache...")
+        
+        # Add timeout protection
+        start_time = time.time()
+        max_processing_time = 30  # 30 seconds timeout
         
         try:
-            # Get all available tickers
-            all_tickers = self.enhanced_data_fetcher.all_tickers
+            logger.info("🔍 Starting optimized stock selection process (lazy initialization)...")
             
-            for ticker in all_tickers[:100]:  # Limit to top 100 for performance
+            # Get all available tickers
+            all_tickers = self.data_service.all_tickers
+            logger.info(f"📊 Total tickers available: {len(all_tickers)}")
+            
+            # Phase 1: Quick pre-filtering
+            logger.info("⚡ Phase 1: Quick pre-filtering...")
+            pre_filtered = []
+            for ticker in all_tickers:
                 try:
-                    # Get sector info from cache
-                    sector_info = self.enhanced_data_fetcher._load_from_cache(ticker, 'sector')
-                    if not sector_info:
+                    # Basic validation
+                    if len(ticker) >= 1 and ticker.isalpha():
+                        pre_filtered.append(ticker)
+                except:
+                    continue
+            
+            logger.info(f"✅ Pre-filtered to {len(pre_filtered)} tickers")
+            
+            # Phase 2: Batch processing stocks
+            logger.info("⚡ Phase 2: Batch processing stocks...")
+            available_stocks = []
+            batch_size = 50
+            total_batches = (len(pre_filtered) + batch_size - 1) // batch_size
+            
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(pre_filtered))
+                batch_tickers = pre_filtered[start_idx:end_idx]
+                
+                logger.info(f"📦 Processing batch {batch_num + 1}/{total_batches} ({start_idx + 1}-{end_idx})")
+                
+                for ticker in batch_tickers:
+                    try:
+                        # Get ticker info with timeout protection
+                        ticker_info = self.data_service.get_ticker_info(ticker)
+                        if ticker_info and self._validate_ticker_data(ticker_info):
+                            stock_data = {
+                                'ticker': ticker,
+                                'company_name': ticker_info.get('company_name', ticker),
+                                'sector': ticker_info.get('sector', 'Unknown'),
+                                'industry': ticker_info.get('industry', 'Unknown'),
+                                'volatility': ticker_info.get('annualized_volatility', 0),
+                                'return': ticker_info.get('annualized_return', 0),
+                                'price': ticker_info.get('current_price', 0),
+                                'data_quality': ticker_info.get('data_quality', 'Unknown')
+                            }
+                            available_stocks.append(stock_data)
+                    except Exception as e:
+                        logger.debug(f"⚠️ Skipping {ticker}: {e}")
                         continue
-                    
-                    # Get price data for volatility calculation
-                    price_data = self.enhanced_data_fetcher.get_monthly_data(ticker)
-                    if not price_data or not price_data.get('prices') or len(price_data['prices']) < 12:
-                        continue
-                    
-                    prices = price_data['prices']
-                    
-                    # Calculate volatility from price data
-                    price_series = pd.Series(prices)
-                    returns = price_series.pct_change().dropna()
-                    volatility = returns.std() * np.sqrt(12)  # Monthly to annual
-                    
-                    # Get company name
-                    company_name = sector_info.get('company_name', ticker)
-                    sector = sector_info.get('sector', 'Unknown')
-                    industry = sector_info.get('industry', 'Unknown')
-                    
-                    stock_data = {
-                        'symbol': ticker,
-                        'name': company_name,
-                        'sector': sector,
-                        'industry': industry,
-                        'volatility': volatility,
-                        'prices': prices,
-                        'returns': returns
-                    }
-                    
-                    available_stocks.append(stock_data)
-                    
-                except Exception as e:
-                    logger.debug(f"Error processing {ticker}: {e}")
+                
+                # Progress update
+                progress = ((batch_num + 1) / total_batches) * 100
+                logger.info(f"📊 Progress: {progress:.1f}% - Found {len(available_stocks)} stocks so far")
+                
+                # Check timeout
+                if time.time() - start_time > max_processing_time:
+                    logger.warning(f"⚠️ Timeout reached after {max_processing_time}s - returning partial results")
+                    break
+            
+            # Cache the results
+            self._stock_cache = available_stocks
+            self._cache_timestamp = current_time
+            
+            logger.info(f"✅ Found {len(available_stocks)} stocks with complete data")
+            logger.info("💾 Stock data cached for 24 hours")
+            
+            return available_stocks
+            
+        except Exception as e:
+            logger.error(f"❌ Error in stock selection: {e}")
+            if self._stock_cache:
+                logger.info("⚠️ Returning cached data due to error")
+                return self._stock_cache
+            return []
+        
+        finally:
+            processing_time = time.time() - start_time
+            if processing_time > max_processing_time:
+                logger.warning(f"⚠️ Stock selection took {processing_time:.1f}s (exceeded {max_processing_time}s timeout)")
+            else:
+                logger.info(f"⚡ Stock selection completed in {processing_time:.1f}s")
+    
+    def _quick_pre_filter_tickers(self, all_tickers: List[str]) -> List[str]:
+        """Quick pre-filtering to reduce processing load"""
+        pre_filtered = []
+        
+        # Priority 1: S&P 500 stocks (most liquid)
+        sp500_tickers = [t for t in all_tickers if t in getattr(ticker_store, 'sp500_tickers', [])]
+        pre_filtered.extend(sp500_tickers[:200])  # Top 200 S&P 500
+        
+        # Priority 2: NASDAQ 100 stocks (growth focus)
+        nasdaq_tickers = [t for t in all_tickers if t in getattr(ticker_store, 'nasdaq100_tickers', [])]
+        nasdaq_tickers = [t for t in nasdaq_tickers if t not in pre_filtered]
+        pre_filtered.extend(nasdaq_tickers[:100])  # Top 100 NASDAQ
+        
+        # Priority 3: Additional diversified stocks
+        remaining_tickers = [t for t in all_tickers if t not in pre_filtered]
+        pre_filtered.extend(remaining_tickers[:100])  # Top 100 remaining
+        
+        return pre_filtered[:400]  # Cap at 400 for performance
+    
+    def _batch_process_stocks(self, tickers: List[str]) -> List[Dict]:
+        """Process stocks in batches with progress tracking"""
+        available_stocks = []
+        batch_size = 50
+        total_batches = (len(tickers) + batch_size - 1) // batch_size
+        
+        for batch_num in range(total_batches):
+            start_idx = batch_num * batch_size
+            end_idx = min(start_idx + batch_size, len(tickers))
+            batch_tickers = tickers[start_idx:end_idx]
+            
+            logger.info(f"📦 Processing batch {batch_num + 1}/{total_batches} ({start_idx + 1}-{end_idx})")
+            
+            batch_stocks = self._process_stock_batch(batch_tickers)
+            available_stocks.extend(batch_stocks)
+            
+            # Progress update
+            progress = ((batch_num + 1) / total_batches) * 100
+            logger.info(f"📊 Progress: {progress:.1f}% - Found {len(available_stocks)} stocks so far")
+        
+        return available_stocks
+    
+    def _process_stock_batch(self, batch_tickers: List[str]) -> List[Dict]:
+        """Process a batch of tickers efficiently"""
+        batch_stocks = []
+        
+        for ticker in batch_tickers:
+            try:
+                # Quick cache check
+                sector_info = self.data_service._load_from_cache(ticker, 'sector')
+                if not sector_info:
                     continue
                 
-        except Exception as e:
-            logger.error(f"Error getting available stocks: {e}")
+                price_data = self.data_service.get_monthly_data(ticker)
+                if not price_data or 'prices' not in price_data:
+                    continue
+                
+                prices = price_data['prices']
+                if len(prices) < 12:  # Need at least 1 year of data
+                    continue
+                
+                # Calculate volatility efficiently
+                price_series = pd.Series(prices)
+                returns = price_series.pct_change().dropna()
+                volatility = returns.std() * np.sqrt(12)  # Monthly to annual
+                
+                # Get company info
+                company_name = sector_info.get('company_name', ticker)
+                sector = sector_info.get('sector', 'Unknown')
+                industry = sector_info.get('industry', 'Unknown')
+                
+                stock_data = {
+                    'symbol': ticker,
+                    'name': company_name,
+                    'sector': sector,
+                    'industry': industry,
+                    'volatility': volatility,
+                    'prices': prices,
+                    'returns': returns
+                }
+                
+                batch_stocks.append(stock_data)
+                
+            except Exception as e:
+                logger.debug(f"Error processing {ticker}: {e}")
+                continue
         
-        logger.info(f"📊 Found {len(available_stocks)} stocks with complete data")
-        return available_stocks
+        return batch_stocks
     
     def _filter_stocks_by_volatility(self, stocks: List[Dict], volatility_range: Tuple[float, float]) -> List[Dict]:
         """Filter stocks by volatility range"""
@@ -478,6 +632,12 @@ class PortfolioStockSelector:
             logger.warning(f"Correlation optimization failed: {e}, returning original selection")
             return selected_stocks
     
+    def invalidate_cache(self):
+        """Invalidate the stock cache to force fresh data fetch"""
+        self._stock_cache = {}
+        self._cache_timestamp = None
+        logger.info("🗑️ Stock cache invalidated")
+    
     def _create_portfolio_allocations(self, selected_stocks: List[Dict], portfolio_size: int) -> List[Dict]:
         """Create portfolio allocations with weights"""
         if not selected_stocks:
@@ -567,3 +727,33 @@ class PortfolioStockSelector:
                 'correlation_optimization': 'Yes - minimize portfolio risk'
             }
         }
+
+    def _validate_ticker_data(self, ticker_info: Dict) -> bool:
+        """Validate ticker data for inclusion in stock selection"""
+        try:
+            # Check if essential data exists
+            if not ticker_info:
+                return False
+            
+            # Check if price data exists
+            if not ticker_info.get('current_price', 0):
+                return False
+            
+            # Check if volatility data exists
+            if ticker_info.get('annualized_volatility', 0) <= 0:
+                return False
+            
+            # Check if return data exists
+            if ticker_info.get('annualized_return', 0) == 0:
+                return False
+            
+            # Check data quality
+            data_quality = ticker_info.get('data_quality', 'Unknown')
+            if data_quality == 'corrupted' or data_quality == 'missing':
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.debug(f"⚠️ Data validation failed: {e}")
+            return False

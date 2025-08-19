@@ -19,10 +19,22 @@ class AutoRefreshService:
     Automatic refresh service that monitors TTL and refreshes data automatically
     """
     
-    def __init__(self, enhanced_data_fetcher, notification_callback: Optional[Callable] = None):
-        self.enhanced_data_fetcher = enhanced_data_fetcher
+    def __init__(self, data_service, notification_callback: Optional[Callable] = None):
+        """
+        Initialize Auto Refresh Service
+        Args:
+            data_service: RedisFirstDataService or EnhancedDataFetcher instance
+            notification_callback: Optional callback for notifications
+        """
+        self.data_service = data_service
         self.notification_callback = notification_callback
-        self.r = enhanced_data_fetcher.r
+        
+        # Handle both RedisFirstDataService and EnhancedDataFetcher
+        if hasattr(data_service, 'redis_client'):
+            self.r = data_service.redis_client
+        else:
+            self.r = data_service.r
+            
         self.is_running = False
         self.refresh_thread = None
         self.tracking_data = {}
@@ -42,7 +54,7 @@ class AutoRefreshService:
             return
         
         try:
-            for ticker in self.enhanced_data_fetcher.all_tickers:
+            for ticker in self.data_service.all_tickers:
                 self._update_ticker_tracking(ticker)
         except Exception as e:
             logger.error(f"Error initializing tracking: {e}")
@@ -51,8 +63,8 @@ class AutoRefreshService:
         """Update tracking information for a specific ticker"""
         try:
             # Get TTL for prices and sector data
-            price_key = self.enhanced_data_fetcher._get_cache_key(ticker, 'prices')
-            sector_key = self.enhanced_data_fetcher._get_cache_key(ticker, 'sector')
+            price_key = self.data_service._get_cache_key(ticker, 'prices')
+            sector_key = self.data_service._get_cache_key(ticker, 'sector')
             
             price_ttl = self.r.ttl(price_key) if self.r.exists(price_key) else -1
             sector_ttl = self.r.ttl(sector_key) if self.r.exists(sector_key) else -1
@@ -86,7 +98,7 @@ class AutoRefreshService:
     def _check_ticker_data_quality(self, ticker: str) -> Dict:
         """Check data quality for a ticker"""
         try:
-            ticker_info = self.enhanced_data_fetcher.get_ticker_info(ticker)
+            ticker_info = self.data_service.get_ticker_info(ticker)
             if not ticker_info:
                 return {'status': 'missing', 'issues': ['No data available']}
             
@@ -154,7 +166,7 @@ class AutoRefreshService:
         refresh_needed = []
         warnings_needed = []
         
-        for ticker in self.enhanced_data_fetcher.all_tickers:
+        for ticker in self.data_service.all_tickers:
             self._update_ticker_tracking(ticker)
             tracking = self.tracking_data.get(ticker, {})
             
@@ -197,7 +209,7 @@ class AutoRefreshService:
         
         try:
             # Use the enhanced data fetcher's smart monthly refresh
-            self.enhanced_data_fetcher.smart_monthly_refresh()
+            self.data_service.smart_monthly_refresh()
             
             # Update tracking after refresh
             for ticker in tickers:
@@ -277,7 +289,7 @@ class AutoRefreshService:
             logger.info(f"🔄 Force refreshing {ticker}")
             
             # Use the enhanced data fetcher to refresh
-            data = self.enhanced_data_fetcher._fetch_single_ticker_with_retry(ticker)
+            data = self.data_service._fetch_single_ticker_with_retry(ticker)
             
             if data:
                 self._update_ticker_tracking(ticker)

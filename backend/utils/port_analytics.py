@@ -3,7 +3,7 @@ import pypfopt
 from pypfopt import EfficientFrontier, risk_models, expected_returns
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -542,14 +542,48 @@ class PortfolioAnalytics:
     def _select_assets_by_risk(self, rule: Dict, conservative: List[str], 
                               moderate: List[str], aggressive: List[str]) -> List[Dict]:
         """Select assets based on risk allocation rules with real data"""
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        def get_ticker_monthly_data(ticker: str) -> Optional[Dict[str, Any]]:
+            """
+            Get monthly data for a ticker using Redis-first approach
+            Returns: Dict with prices, dates, sector, industry, company name
+            """
+            try:
+                from utils.redis_first_data_service import redis_first_data_service
+                return redis_first_data_service.get_monthly_data(ticker)
+            except Exception as e:
+                logger.error(f"Error getting monthly data for {ticker}: {e}")
+                return None
+
+        def get_ticker_cached_metrics(ticker: str) -> Optional[Dict[str, Any]]:
+            """
+            Get cached metrics for a ticker using Redis-first approach
+            Returns: Dict with cached metrics or None
+            """
+            try:
+                from utils.redis_first_data_service import redis_first_data_service
+                return redis_first_data_service.get_cached_metrics(ticker)
+            except Exception as e:
+                logger.error(f"Error getting cached metrics for {ticker}: {e}")
+                return None
+
+        def is_ticker_cached(ticker: str) -> bool:
+            """
+            Check if ticker data is cached using Redis-first approach
+            Returns: True if cached, False otherwise
+            """
+            try:
+                from utils.redis_first_data_service import redis_first_data_service
+                return redis_first_data_service._is_cached(ticker, 'prices')
+            except Exception as e:
+                logger.error(f"Error checking cache for {ticker}: {e}")
+                return False
         
         selected_assets = []
         
         # Helper function to get asset data
         def get_asset_info(ticker):
             try:
-                data = enhanced_data_fetcher.get_monthly_data(ticker)
+                data = get_ticker_monthly_data(ticker)
                 if data:
                     return {
                         'symbol': ticker,
@@ -564,7 +598,7 @@ class PortfolioAnalytics:
         # Select conservative assets
         conservative_count = min(2, max(1, int(rule['low_vol'] / 30)))  # 1-2 assets
         available_conservative = [asset for asset in conservative 
-                                if enhanced_data_fetcher._is_cached(asset, 'prices')][:conservative_count]
+                                if is_ticker_cached(asset)][:conservative_count]
         
         for ticker in available_conservative:
             asset_info = get_asset_info(ticker)
@@ -580,7 +614,7 @@ class PortfolioAnalytics:
         # Select moderate assets
         moderate_count = min(2, max(1, int(rule['moderate'] / 30)))
         available_moderate = [asset for asset in moderate 
-                            if enhanced_data_fetcher._is_cached(asset, 'prices')][:moderate_count]
+                            if is_ticker_cached(asset)][:moderate_count]
         
         for ticker in available_moderate:
             asset_info = get_asset_info(ticker)
@@ -597,7 +631,7 @@ class PortfolioAnalytics:
         if rule['high_growth'] > 0:
             aggressive_count = min(1, max(0, int(rule['high_growth'] / 20)))
             available_aggressive = [asset for asset in aggressive 
-                                  if enhanced_data_fetcher._is_cached(asset, 'prices')][:aggressive_count]
+                                  if is_ticker_cached(asset)][:aggressive_count]
             
             for ticker in available_aggressive:
                 asset_info = get_asset_info(ticker)
@@ -623,7 +657,41 @@ class PortfolioAnalytics:
     
     def calculate_real_portfolio_metrics(self, portfolio_data: Dict) -> Dict:
         """Calculate portfolio metrics using real data from portfolio allocations"""
-        from utils.enhanced_data_fetcher import enhanced_data_fetcher
+        def get_ticker_monthly_data(ticker: str) -> Optional[Dict[str, Any]]:
+            """
+            Get monthly data for a ticker using Redis-first approach
+            Returns: Dict with prices, dates, sector, industry, company name
+            """
+            try:
+                from utils.redis_first_data_service import redis_first_data_service
+                return redis_first_data_service.get_monthly_data(ticker)
+            except Exception as e:
+                logger.error(f"Error getting monthly data for {ticker}: {e}")
+                return None
+
+        def get_ticker_cached_metrics(ticker: str) -> Optional[Dict[str, Any]]:
+            """
+            Get cached metrics for a ticker using Redis-first approach
+            Returns: Dict with cached metrics or None
+            """
+            try:
+                from utils.redis_first_data_service import redis_first_data_service
+                return redis_first_data_service.get_cached_metrics(ticker)
+            except Exception as e:
+                logger.error(f"Error getting cached metrics for {ticker}: {e}")
+                return None
+
+        def is_ticker_cached(ticker: str) -> bool:
+            """
+            Check if ticker data is cached using Redis-first approach
+            Returns: True if cached, False otherwise
+            """
+            try:
+                from utils.redis_first_data_service import redis_first_data_service
+                return redis_first_data_service._is_cached(ticker, 'prices')
+            except Exception as e:
+                logger.error(f"Error checking cache for {ticker}: {e}")
+                return False
         
         try:
             allocations = portfolio_data.get('allocations', [])
@@ -639,7 +707,7 @@ class PortfolioAnalytics:
                 weight = allocation['allocation'] / 100  # Convert percentage to decimal
                 
                 # Get pre-calculated metrics from cache first
-                cached_metrics = enhanced_data_fetcher.get_cached_metrics(ticker)
+                cached_metrics = get_ticker_cached_metrics(ticker)
                 if cached_metrics:
                     # Use cached metrics for faster calculation
                     annual_return = cached_metrics['annualized_return']
@@ -657,7 +725,7 @@ class PortfolioAnalytics:
                     weights.append(weight)
                 else:
                     # Fallback: get monthly data and calculate
-                    data = enhanced_data_fetcher.get_monthly_data(ticker)
+                    data = get_ticker_monthly_data(ticker)
                     if data and data['prices']:
                         prices = np.array(data['prices'], dtype=float)
                         returns = pd.Series(prices).pct_change().dropna()

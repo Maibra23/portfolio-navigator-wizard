@@ -523,7 +523,14 @@ export const StockSelection = ({
         const ticker1 = currentPair.ticker1;
         const ticker2 = currentPair.ticker2;
         
-        const apiUrl = `http://127.0.0.1:8000/api/portfolio/two-asset-analysis?ticker1=${ticker1}&ticker2=${ticker2}`;
+        // Validate tickers before making API call
+        if (!ticker1 || !ticker2 || ticker1.trim() === '' || ticker2.trim() === '') {
+          console.error('Invalid tickers:', { ticker1, ticker2 });
+          setError('Please select two valid tickers for analysis');
+          return;
+        }
+        
+        const apiUrl = `/api/portfolio/two-asset-analysis?ticker1=${encodeURIComponent(ticker1.trim())}&ticker2=${encodeURIComponent(ticker2.trim())}`;
         
         const response = await fetch(apiUrl);
         console.log('Mini-lesson response status:', response.status);
@@ -1111,7 +1118,7 @@ export const StockSelection = ({
           </div>
         </CardHeader>
         
-        <CardContent className="space-y-6">
+        <CardContent>
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "mini-lesson" | "recommendations" | "full-customization" | "dynamic-generation")}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="mini-lesson" className="flex items-center gap-2">

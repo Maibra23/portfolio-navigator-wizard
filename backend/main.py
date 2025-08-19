@@ -1,100 +1,363 @@
-from fastapi import FastAPI, Request
+#!/usr/bin/env python3
+"""
+Portfolio Navigator Wizard - Enhanced Backend
+FastAPI application with Enhanced Portfolio Generator System
+"""
+
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import logging
-from routers import portfolio, cookie_demo
-from utils.enhanced_data_fetcher import enhanced_data_fetcher
-from utils.ticker_store import ticker_store
+from datetime import datetime
 
-# Set up logging
+# Import existing routers
+from routers import portfolio, cookie_demo
+
+# Import enhanced portfolio system
+from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+from utils.redis_portfolio_manager import RedisPortfolioManager
+from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
+# Import will be done locally in lifespan function
+from utils.port_analytics import PortfolioAnalytics
+
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global variables for enhanced portfolio system
+redis_first_data_service = None
+enhanced_generator = None
+redis_manager = None
+auto_regeneration_service = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    logger.info("🚀 Starting Portfolio Navigator Wizard Backend...")
+    
+    try:
+        # Initialize Redis-first data service (fast, no external API calls)
+        global redis_first_data_service
+        from utils.redis_first_data_service import RedisFirstDataService
+        redis_first_data_service = RedisFirstDataService()
+        
+        # No waiting needed - Redis-first service is instant
+        logger.info("✅ Redis-first data service initialized")
+        
+        # Initialize portfolio analytics
+        portfolio_analytics = PortfolioAnalytics()
+        
+        # Initialize enhanced portfolio generator with Redis-first service
+        global enhanced_generator
+        enhanced_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_analytics)
+        
+        # Initialize Redis portfolio manager with Redis connection
+        global redis_manager
+        redis_manager = RedisPortfolioManager(redis_first_data_service.redis_client)
+        
+        # Initialize auto-regeneration service
+        global auto_regeneration_service
+        auto_regeneration_service = PortfolioAutoRegenerationService(
+            redis_first_data_service, enhanced_generator, redis_manager
+        )
+        
+        # Initialize and start auto refresh service for data management
+        from utils.auto_refresh_service import AutoRefreshService
+        auto_refresh_service = AutoRefreshService(redis_first_data_service)
+        auto_refresh_service.start_auto_refresh_service()
+        logger.info("✅ Auto refresh service started for data management")
+        
+        # Smart portfolio availability check - only generate if truly needed
+        logger.info("🚀 Checking portfolio availability in Redis...")
+        
+        risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
+        
+        # Quick check: count total portfolios in Redis
+        total_portfolios = 0
+        profiles_needing_generation = []
+        
+        for risk_profile in risk_profiles:
+            portfolio_count = redis_manager.get_portfolio_count(risk_profile)
+            total_portfolios += portfolio_count
+            
+            if portfolio_count < 12:  # Need at least 12 portfolios per profile
+                profiles_needing_generation.append(risk_profile)
+                logger.info(f"📊 {risk_profile}: {portfolio_count}/12 portfolios - needs generation")
+            else:
+                logger.info(f"✅ {risk_profile}: {portfolio_count}/12 portfolios - sufficient")
+        
+        logger.info(f"📊 Total portfolios in Redis: {total_portfolios}")
+        
+        # Only generate if we have less than 60 total portfolios (5 profiles × 12 portfolios)
+        if total_portfolios < 60:
+            logger.warning(f"⚠️ Insufficient portfolios in Redis ({total_portfolios}/60) - generating missing portfolios...")
+            
+            if profiles_needing_generation:
+                logger.info(f"🚀 Generating portfolios for {len(profiles_needing_generation)} risk profiles...")
+                
+                # Create tasks for parallel portfolio generation
+                portfolio_tasks = []
+                for risk_profile in profiles_needing_generation:
+                    task = asyncio.create_task(enhanced_generator.generate_portfolio_bucket_async(risk_profile))
+                    portfolio_tasks.append((risk_profile, task))
+                
+                # Wait for all portfolios to be generated
+                for risk_profile, task in portfolio_tasks:
+                    try:
+                        portfolios = await task
+                        if portfolios and len(portfolios) == 12:
+                            storage_success = redis_manager.store_portfolio_bucket(risk_profile, portfolios)
+                            if storage_success:
+                                logger.info(f"✅ Generated and stored {len(portfolios)} portfolios for {risk_profile}")
+                            else:
+                                logger.error(f"❌ Failed to store portfolios for {risk_profile}")
+                        else:
+                            logger.error(f"❌ Failed to generate portfolios for {risk_profile}: got {len(portfolios) if portfolios else 0}")
+                            
+                    except Exception as e:
+                        logger.error(f"❌ Failed to generate portfolios for {risk_profile}: {e}")
+            else:
+                logger.info("ℹ️ All profiles have sufficient portfolios but total count is low - may need data refresh")
+        else:
+            logger.info("✅ Sufficient portfolios available in Redis - no generation needed")
+            
+            # Lazy Stock Selection - cache will be populated on-demand when needed
+            logger.info("🔄 Stock selection cache will be populated on-demand when needed")
+            logger.info("✅ Portfolio system ready for immediate use")
+            
+            # Verify Redis health
+            try:
+                # Use the correct method for Redis health check
+                redis_status = redis_manager.redis_client.ping() if redis_manager.redis_client else False
+                if redis_status:
+                    logger.info("✅ Redis health check: connected and responsive")
+                else:
+                    logger.warning("⚠️ Redis health check: not responsive")
+            except Exception as e:
+                logger.warning(f"⚠️ Redis health check failed: {e}")
+        
+        # Start auto-regeneration service
+        auto_regeneration_service.start_monitoring()
+        
+        logger.info("✅ Enhanced portfolio system initialized successfully")
+        
+        # Set Redis manager in portfolio router
+        from routers.portfolio import set_redis_manager
+        set_redis_manager(redis_manager)
+        logger.info("✅ Redis manager set in portfolio router")
+        
+        # Yield control back to FastAPI
+        yield
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize enhanced portfolio system: {e}")
+        yield
+    
+    finally:
+        # Shutdown
+        logger.info("🛑 Shutting down Portfolio Navigator Wizard Backend...")
+        
+        if auto_regeneration_service:
+            auto_regeneration_service.stop_monitoring()
+            logger.info("✅ Auto-regeneration service stopped")
+
+# Create FastAPI app with lifespan
 app = FastAPI(
-    title="Portfolio Navigator Wizard API",
-    description="Enhanced portfolio construction and analysis API with Redis caching",
-    version="2.0.0"
+    title="Portfolio Navigator Wizard - Enhanced Backend",
+    description="Enhanced portfolio generation system with automatic regeneration",
+    version="2.0.0",
+    lifespan=lifespan
 )
 
-# CORS middleware
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(portfolio.router)
-app.include_router(cookie_demo.router)
+# Include existing routers
+app.include_router(portfolio.router, tags=["portfolio"])
+app.include_router(cookie_demo.router, tags=["cookie"])
 
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the application on startup"""
-    import os
-    
-    logger.info("Starting Portfolio Navigator Wizard API...")
-    
-    # Initialize ticker store
-    logger.info(f"📊 Loaded {ticker_store.get_ticker_count()} master tickers")
-    logger.info(f"   S&P 500: {len(ticker_store.sp500_tickers)} tickers")
-    logger.info(f"   Nasdaq 100: {len(ticker_store.nasdaq100_tickers)} tickers")
-    
-    # Cache warming is now handled by Makefile before startup
-    # No need to warm cache here as it's done during make warm-cache
-    logger.info("🚀 Cache warming completed via Makefile - ready to serve requests")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on application shutdown"""
-    logger.info("Shutting down Portfolio Navigator Wizard API...")
-
-@app.get("/")
-async def root():
-    """Root endpoint with API information"""
-    return {
-        "message": "Portfolio Navigator Wizard API",
-        "version": "2.0.0",
-        "features": [
-            "Enhanced monthly data fetching with Redis caching",
-            "S&P 500 + Nasdaq 100 ticker validation",
-            "Instant cached lookups for monthly returns",
-            "Simple and efficient data management"
-        ],
-        "endpoints": {
-            "ticker_search": "/api/portfolio/ticker/search",
-            "monthly_returns": "/api/portfolio/returns/monthly",
-            "cache_warm": "/api/portfolio/cache/warm",
-            "cache_status": "/api/portfolio/cache/status",
-            "master_tickers": "/api/portfolio/tickers/master"
-        },
-        "docs": "/docs"
-    }
-
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    ticker_count = ticker_store.get_ticker_count()
-    
     try:
-        cache_status = enhanced_data_fetcher.get_cache_status()
-        cached_count = cache_status.get('cached_count', 0)
-    except:
-        cached_count = 0
-    
-    return {
-        "status": "healthy",
-        "ticker_count": ticker_count,
-        "cached_tickers": cached_count
-    }
+        # Check if enhanced portfolio system is available
+        if redis_manager:
+            portfolio_status = redis_manager.get_all_portfolio_buckets_status()
+            available_buckets = sum(1 for status in portfolio_status.values() if status.get('available'))
+            
+            return {
+                "status": "healthy",
+                "enhanced_portfolio_system": True,
+                "available_portfolio_buckets": available_buckets,
+                "total_risk_profiles": 5,
+                "auto_regeneration_service": auto_regeneration_service.is_running if auto_regeneration_service else False
+            }
+        else:
+            return {
+                "status": "degraded",
+                "enhanced_portfolio_system": False,
+                "message": "Enhanced portfolio system not initialized"
+            }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
+# Enhanced portfolio system status endpoint
+@app.get("/api/enhanced-portfolio/status")
+async def get_enhanced_portfolio_status():
+    """Get status of enhanced portfolio system"""
+    try:
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=503, detail="Enhanced portfolio system not available")
+        
+        status = auto_regeneration_service.get_service_status()
+        return status
+        
+    except Exception as e:
+        logger.error(f"Failed to get enhanced portfolio status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Enhanced portfolio system performance endpoint
+@app.get("/api/enhanced-portfolio/performance")
+async def get_enhanced_portfolio_performance():
+    """Get performance metrics of enhanced portfolio system"""
+    try:
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=503, detail="Enhanced portfolio system not available")
+        
+        metrics = auto_regeneration_service.get_performance_metrics()
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Failed to get enhanced portfolio performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Force portfolio regeneration endpoint
+@app.post("/api/enhanced-portfolio/regenerate")
+async def force_portfolio_regeneration(risk_profile: str = None):
+    """Force portfolio regeneration for specific or all risk profiles"""
+    try:
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=503, detail="Enhanced portfolio system not available")
+        
+        results = auto_regeneration_service.force_regeneration(risk_profile)
+        return results
+        
+    except Exception as e:
+        logger.error(f"Failed to force portfolio regeneration: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Emergency portfolio regeneration endpoint
+@app.post("/api/enhanced-portfolio/emergency-regenerate")
+async def emergency_portfolio_regeneration():
+    """Emergency portfolio regeneration when system detects critical issues"""
+    try:
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=503, detail="Enhanced portfolio system not available")
+        
+        results = auto_regeneration_service.emergency_regeneration()
+        return results
+        
+    except Exception as e:
+        logger.error(f"Failed to perform emergency portfolio regeneration: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Data change detection endpoint
+@app.get("/api/enhanced-portfolio/data-changes")
+async def get_data_changes():
+    """Get summary of data changes across all risk profiles"""
+    try:
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=503, detail="Enhanced portfolio system not available")
+        
+        data_change_detector = auto_regeneration_service.data_change_detector
+        summary = data_change_detector.get_data_change_summary()
+        return summary
+        
+    except Exception as e:
+        logger.error(f"Failed to get data changes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Portfolio bucket status endpoint
+@app.get("/api/enhanced-portfolio/buckets")
+async def get_portfolio_buckets_status():
+    """Get status of all portfolio buckets"""
+    try:
+        if not redis_manager:
+            raise HTTPException(status_code=503, detail="Redis portfolio manager not available")
+        
+        status = redis_manager.get_all_portfolio_buckets_status()
+        return status
+        
+    except Exception as e:
+        logger.error(f"Failed to get portfolio buckets status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Enhanced portfolio system cache status endpoint
+@app.get("/api/enhanced-portfolio/cache-status")
+async def get_cache_status():
+    """Get cache status and performance metrics"""
+    try:
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=503, detail="Enhanced portfolio system not available")
+        
+        # Get cache status from stock selector
+        from utils.portfolio_stock_selector import PortfolioStockSelector
+        
+        stock_selector = PortfolioStockSelector(redis_first_data_service)
+        cache_status = {
+            'cache_enabled': True,
+            'cache_timestamp': stock_selector._cache_timestamp.isoformat() if stock_selector._cache_timestamp else None,
+            'cache_ttl_hours': stock_selector._cache_ttl_hours,
+            'cache_size': len(stock_selector._stock_cache),
+            'cache_valid': (
+                stock_selector._cache_timestamp and 
+                (datetime.now() - stock_selector._cache_timestamp).total_seconds() < stock_selector._cache_ttl_hours * 3600
+            ) if stock_selector._cache_timestamp else False
+        }
+        
+        return {
+            'cache_status': cache_status,
+            'optimization_features': {
+                'stock_cache_enabled': True,
+                'shared_stock_data': True,
+                'batch_portfolio_generation': True,
+                'smart_regeneration_scheduling': True
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get cache status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Error handler for unhandled exceptions
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request, exc):
     """Global exception handler"""
     logger.error(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)}
-    ) 
+        content={
+            "detail": "Internal server error",
+            "error": str(exc),
+            "timestamp": str(datetime.now())
+        }
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
