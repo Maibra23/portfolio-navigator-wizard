@@ -14,6 +14,8 @@ class PortfolioRequest(BaseModel):
 
 class PortfolioResponse(BaseModel):
     portfolio: List[PortfolioAllocation]
+    name: str  # Add portfolio name
+    description: str  # Add portfolio description
     expectedReturn: float
     risk: float
     diversificationScore: float

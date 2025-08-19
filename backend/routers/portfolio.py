@@ -619,8 +619,14 @@ def get_portfolio_recommendations(risk_profile: str):
             
             metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
             
+            # Generate portfolio name and description based on risk profile and option
+            portfolio_name = _generate_portfolio_name(risk_profile, option)
+            portfolio_description = _generate_portfolio_description(risk_profile, option)
+            
             responses.append(PortfolioResponse(
                 portfolio=allocations,
+                name=portfolio_name,
+                description=portfolio_description,
                 expectedReturn=metrics['expected_return'],
                 risk=metrics['risk'],  # Using risk instead of volatility
                 diversificationScore=metrics['diversification_score']
@@ -807,6 +813,7 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
         'very-conservative': [
             {
                 'name': 'Conservative Growth Seeker',
+                'description': 'Defensive strategy focused on stable dividend stocks and capital preservation. Ideal for investors who prioritize safety over growth.',
                 'allocations': [
                     {'symbol': 'JNJ', 'allocation': 40, 'name': 'Johnson & Johnson', 'assetType': 'stock'},
                     {'symbol': 'PG', 'allocation': 30, 'name': 'Procter & Gamble', 'assetType': 'stock'},
@@ -818,6 +825,7 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
         'conservative': [
             {
                 'name': 'Balanced Conservative',
+                'description': 'Balanced approach combining steady income generation with moderate growth potential. Suitable for conservative investors seeking reliable returns.',
                 'allocations': [
                     {'symbol': 'JNJ', 'allocation': 35, 'name': 'Johnson & Johnson', 'assetType': 'stock'},
                     {'symbol': 'PG', 'allocation': 30, 'name': 'Procter & Gamble', 'assetType': 'stock'},
@@ -829,6 +837,7 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
         'moderate': [
             {
                 'name': 'Moderate Growth',
+                'description': 'Diversified mix of growth and value stocks offering balanced risk-return profile. Perfect for investors comfortable with moderate market volatility.',
                 'allocations': [
                     {'symbol': 'AAPL', 'allocation': 30, 'name': 'Apple Inc.', 'assetType': 'stock'},
                     {'symbol': 'MSFT', 'allocation': 25, 'name': 'Microsoft', 'assetType': 'stock'},
@@ -840,6 +849,7 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
         'aggressive': [
             {
                 'name': 'Growth Focused',
+                'description': 'High-growth strategy targeting companies with strong momentum and innovation potential. Designed for investors seeking above-market returns.',
                 'allocations': [
                     {'symbol': 'NVDA', 'allocation': 35, 'name': 'NVIDIA', 'assetType': 'stock'},
                     {'symbol': 'TSLA', 'allocation': 30, 'name': 'Tesla Inc.', 'assetType': 'stock'},
@@ -851,6 +861,7 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
         'very-aggressive': [
             {
                 'name': 'Maximum Growth',
+                'description': 'High-conviction growth strategy focusing on disruptive technologies and emerging trends. For investors with high risk tolerance seeking maximum growth potential.',
                 'allocations': [
                     {'symbol': 'NVDA', 'allocation': 40, 'name': 'NVIDIA', 'assetType': 'stock'},
                     {'symbol': 'TSLA', 'allocation': 35, 'name': 'Tesla Inc.', 'assetType': 'stock'},
@@ -884,6 +895,8 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
             
             responses.append(PortfolioResponse(
                 portfolio=allocations,
+                name=template['name'],
+                description=template['description'],
                 expectedReturn=metrics.get('expected_return', 0.10),
                 risk=metrics.get('risk', 0.15),
                 diversificationScore=metrics.get('diversification_score', 75.0),
@@ -894,6 +907,8 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
             # Use fallback metrics if calculation fails
             responses.append(PortfolioResponse(
                 portfolio=allocations,
+                name=template['name'],
+                description=template['description'],
                 expectedReturn=0.10,  # 10% fallback
                 risk=0.15,  # 15% fallback
                 diversificationScore=75.0,  # 75% fallback
@@ -3222,3 +3237,70 @@ async def get_enhanced_ticker_table_html():
     except Exception as e:
         logger.error(f"Error serving enhanced HTML: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to serve HTML: {str(e)}")
+
+# Portfolio name and description generation functions
+def _generate_portfolio_name(risk_profile: str, option: int) -> str:
+    """Generate descriptive portfolio names based on risk profile and option"""
+    names = {
+        'very-conservative': [
+            'Capital Preservation Portfolio',
+            'Defensive Income Portfolio', 
+            'Stable Growth Portfolio'
+        ],
+        'conservative': [
+            'Income & Stability Portfolio',
+            'Balanced Conservative Portfolio',
+            'Moderate Growth Portfolio'
+        ],
+        'moderate': [
+            'Core Diversified Portfolio',
+            'Balanced Growth Portfolio',
+            'Moderate Growth Portfolio'
+        ],
+        'aggressive': [
+            'Growth Momentum Portfolio',
+            'Innovation Focus Portfolio',
+            'High Growth Portfolio'
+        ],
+        'very-aggressive': [
+            'Maximum Growth Portfolio',
+            'Disruptive Tech Portfolio',
+            'High Conviction Portfolio'
+        ]
+    }
+    
+    profile_names = names.get(risk_profile, names['moderate'])
+    return profile_names[option % len(profile_names)]
+
+def _generate_portfolio_description(risk_profile: str, option: int) -> str:
+    """Generate portfolio descriptions based on risk profile and option"""
+    descriptions = {
+        'very-conservative': [
+            'Defensive strategy focused on stable dividend stocks and capital preservation. Ideal for investors who prioritize safety over growth.',
+            'Conservative approach combining steady income generation with minimal risk exposure. Suitable for retirees and conservative investors.',
+            'Balanced defensive strategy offering modest growth potential while maintaining capital stability.'
+        ],
+        'conservative': [
+            'Balanced approach combining steady income generation with moderate growth potential. Suitable for conservative investors seeking reliable returns.',
+            'Conservative growth strategy with focus on established companies and dividend-paying stocks.',
+            'Moderate growth approach with emphasis on stability and consistent performance.'
+        ],
+        'moderate': [
+            'Diversified mix of growth and value stocks offering balanced risk-return profile. Perfect for investors comfortable with moderate market volatility.',
+            'Growth-focused strategy with sector diversification and risk management. Designed for investors seeking balanced growth.',
+            'Innovation-driven approach with stability anchors. Combines growth potential with risk management.'
+        ],
+        'aggressive': [
+            'High-growth strategy targeting companies with strong momentum and innovation potential. Designed for investors seeking above-market returns.',
+            'Innovation-focused portfolio emphasizing disruptive technologies and emerging trends.',
+            'Growth-oriented strategy with focus on high-potential companies and emerging markets.'
+        ],
+        'very-aggressive': [
+            'High-conviction growth strategy focusing on disruptive technologies and emerging trends. For investors with high risk tolerance seeking maximum growth potential.',
+            'Maximum growth portfolio targeting the most innovative and high-potential companies.',
+            'High-conviction strategy focusing on emerging trends and disruptive technologies.'
+        ]
+    }
+    
+    profile_descriptions = descriptions.get(risk_profile, descriptions['moderate'])
+    return profile_descriptions[option % len(profile_descriptions)]
