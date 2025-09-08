@@ -1620,6 +1620,42 @@ class EnhancedDataFetcher:
         except Exception as e:
             logger.error(f"Error getting sector cache coverage: {e}")
             return 0.0
+    
+    def refresh_specific_tickers(self, tickers: List[str]):
+        """
+        Refresh specific tickers using smart monthly refresh logic
+        """
+        try:
+            logger.info(f"🔄 Refreshing {len(tickers)} specific tickers")
+            
+            success_count = 0
+            error_count = 0
+            
+            for ticker in tickers:
+                try:
+                    # Use the same logic as smart_monthly_refresh but for specific tickers
+                    data = self._fetch_single_ticker_with_retry(ticker)
+                    if data:
+                        success_count += 1
+                        logger.debug(f"✅ {ticker} refreshed successfully")
+                    else:
+                        error_count += 1
+                        logger.warning(f"⚠️ {ticker} refresh failed")
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"❌ Error refreshing {ticker}: {e}")
+            
+            logger.info(f"🎉 Specific ticker refresh completed: {success_count} successful, {error_count} failed")
+            
+            return {
+                "success_count": success_count,
+                "error_count": error_count,
+                "total_processed": len(tickers)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error in specific ticker refresh: {e}")
+            return None
 
 # Global instance
 enhanced_data_fetcher = EnhancedDataFetcher() 

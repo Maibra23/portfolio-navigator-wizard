@@ -1560,34 +1560,155 @@ async def refresh_ticker_table():
         raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}")
 
 @router.post("/ticker-table/smart-refresh")
-async def smart_monthly_refresh():
+async def smart_monthly_refresh(request: Optional[Dict] = None):
     """
     Smart monthly refresh that only fetches the latest month of data using Redis-first approach
     - Extends time range incrementally (no re-downloading of historical data)
     - Respects TTL and only refreshes when needed
     - Efficient: Only fetches new months, not entire history
+    - Can target specific tickers if provided in request body
     """
     try:
+        # Check if specific tickers were requested
+        target_tickers = None
+        if request and 'tickers' in request:
+            target_tickers = request['tickers']
+            logger.info(f"Smart refresh targeting {len(target_tickers)} specific tickers")
+        
         # Perform smart monthly refresh
-        result = redis_first_data_service.smart_monthly_refresh()
+        if target_tickers:
+            # Refresh only specific tickers
+            result = redis_first_data_service.smart_refresh_tickers(target_tickers)
+        else:
+            # Refresh all tickers
+            result = redis_first_data_service.smart_monthly_refresh()
         
         if result:
             return {
                 "status": "success",
-                "message": "Smart monthly refresh completed",
+                "message": f"Smart refresh completed - {len(target_tickers) if target_tickers else 'all'} tickers processed",
+                "changed_count": result.get('changed_count', 0) if isinstance(result, dict) else 0,
                 "result": result,
                 "timestamp": datetime.now().isoformat()
             }
         else:
             return {
                 "status": "success",
-                "message": "Smart monthly refresh completed (no action needed)",
+                "message": "Smart refresh completed (no action needed)",
+                "changed_count": 0,
                 "timestamp": datetime.now().isoformat()
             }
         
     except Exception as e:
         logger.error(f"Error in smart monthly refresh: {e}")
         raise HTTPException(status_code=500, detail=f"Error in smart monthly refresh: {str(e)}")
+
+@router.get("/tickers/ttl-status")
+async def get_ttl_status():
+    """
+    Get TTL status for all tickers using AutoRefreshService
+    Returns which tickers are expired or near expiry
+    """
+    try:
+        from utils.auto_refresh_service import AutoRefreshService
+        
+        # Get the auto refresh service instance
+        auto_refresh_service = None
+        if hasattr(redis_first_data_service, 'auto_refresh_service'):
+            auto_refresh_service = redis_first_data_service.auto_refresh_service
+        else:
+            # Create temporary instance for TTL checking
+            auto_refresh_service = AutoRefreshService(redis_first_data_service)
+        
+        # Get tracking data for all tickers
+        expired_tickers = []
+        near_expiry_tickers = []
+        total_tickers = len(redis_first_data_service.all_tickers)
+        
+        for ticker in redis_first_data_service.all_tickers:
+            auto_refresh_service._update_ticker_tracking(ticker)
+            tracking = auto_refresh_service.tracking_data.get(ticker, {})
+            
+            days_left = min(tracking.get('price_days_left', 0), tracking.get('sector_days_left', 0))
+            
+            if days_left <= 1:  # Expired or expiring today
+                expired_tickers.append(ticker)
+            elif days_left <= 3:  # Near expiry (within 3 days)
+                near_expiry_tickers.append(ticker)
+        
+        return {
+            "success": True,
+            "total_tickers": total_tickers,
+            "expired_tickers": expired_tickers,
+            "near_expiry_tickers": near_expiry_tickers,
+            "expired_count": len(expired_tickers),
+            "near_expiry_count": len(near_expiry_tickers),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting TTL status: {e}")
+        raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
+
+@router.post("/regenerate")
+async def regenerate_all_portfolios():
+    """
+    Regenerate all portfolios using EnhancedPortfolioGenerator + RedisPortfolioManager
+    This creates fresh portfolios across all risk profiles
+    """
+    try:
+        from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+        from utils.redis_portfolio_manager import RedisPortfolioManager
+        import redis
+        
+        logger.info("🚀 Starting portfolio regeneration for all risk profiles")
+        
+        # Initialize services
+        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        portfolio_manager = RedisPortfolioManager(redis_client)
+        portfolio_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_manager)
+        
+        risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
+        total_portfolios = 0
+        profiles_generated = []
+        
+        for risk_profile in risk_profiles:
+            try:
+                logger.info(f"🔄 Regenerating portfolios for {risk_profile} profile")
+                
+                # Generate 12 portfolios for this risk profile
+                portfolios = portfolio_generator.generate_portfolio_bucket(risk_profile)
+                
+                if portfolios:
+                    # Store in Redis
+                    success = portfolio_manager.store_portfolio_bucket(risk_profile, portfolios)
+                    
+                    if success:
+                        total_portfolios += len(portfolios)
+                        profiles_generated.append(risk_profile)
+                        logger.info(f"✅ Generated {len(portfolios)} portfolios for {risk_profile}")
+                    else:
+                        logger.error(f"❌ Failed to store portfolios for {risk_profile}")
+                else:
+                    logger.warning(f"⚠️ No portfolios generated for {risk_profile}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error generating portfolios for {risk_profile}: {e}")
+                continue
+        
+        logger.info(f"🎉 Portfolio regeneration completed: {total_portfolios} portfolios across {len(profiles_generated)} profiles")
+        
+        return {
+            "success": True,
+            "message": f"Successfully regenerated {total_portfolios} portfolios",
+            "total_portfolios": total_portfolios,
+            "profiles_generated": profiles_generated,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in portfolio regeneration: {e}")
+        raise HTTPException(status_code=500, detail=f"Portfolio regeneration failed: {str(e)}")
 
 @router.get("/ticker-table/data")
 async def get_ticker_table_data():

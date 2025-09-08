@@ -657,6 +657,240 @@
             letter-spacing: 0.5px;
         }
 
+        /* Tooltip Styles */
+        .btn-tooltip {
+            position: relative;
+            cursor: help;
+        }
+
+        /* Popup Confirmation Dialog */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .popup-dialog {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            animation: popupSlideIn 0.3s ease-out;
+        }
+
+        @keyframes popupSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .popup-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .popup-message {
+            font-size: 1rem;
+            color: #6c757d;
+            line-height: 1.5;
+            margin-bottom: 25px;
+        }
+
+        .popup-stats {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .popup-stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+
+        .popup-stat-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .popup-stat-label {
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .popup-stat-value {
+            color: #2c3e50;
+            font-weight: 700;
+        }
+
+        .popup-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 25px;
+        }
+
+        .popup-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .popup-btn-confirm {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .popup-btn-confirm:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+
+        .popup-btn-cancel {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+        }
+
+        .popup-btn-cancel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
+        }
+
+        .btn-tooltip {
+            position: relative;
+        }
+
+        .btn-tooltip .tooltip-content {
+            position: absolute;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            line-height: 1.3;
+            white-space: pre-line;
+            text-align: left;
+            min-width: 280px;
+            max-width: 320px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 9999;
+            pointer-events: none;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-tooltip .tooltip-arrow {
+            position: absolute;
+            border: 8px solid transparent;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 9999;
+        }
+
+        /* Default positioning - top */
+        .btn-tooltip .tooltip-content {
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .btn-tooltip .tooltip-arrow {
+            bottom: 115%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-top-color: #2c3e50;
+        }
+
+        /* Right side positioning */
+        .btn-tooltip.tooltip-right .tooltip-content {
+            bottom: 50%;
+            left: 120%;
+            transform: translateY(50%);
+        }
+
+        .btn-tooltip.tooltip-right .tooltip-arrow {
+            bottom: 50%;
+            left: 110%;
+            transform: translateY(50%);
+            border-top-color: transparent;
+            border-right-color: #2c3e50;
+            border-left: none;
+        }
+
+        /* Left side positioning */
+        .btn-tooltip.tooltip-left .tooltip-content {
+            bottom: 50%;
+            right: 120%;
+            left: auto;
+            transform: translateY(50%);
+        }
+
+        .btn-tooltip.tooltip-left .tooltip-arrow {
+            bottom: 50%;
+            right: 110%;
+            left: auto;
+            transform: translateY(50%);
+            border-top-color: transparent;
+            border-left-color: #2c3e50;
+            border-right: none;
+        }
+
+        /* Bottom positioning */
+        .btn-tooltip.tooltip-bottom .tooltip-content {
+            top: 125%;
+            bottom: auto;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .btn-tooltip.tooltip-bottom .tooltip-arrow {
+            top: 115%;
+            bottom: auto;
+            left: 50%;
+            transform: translateX(-50%);
+            border-top-color: transparent;
+            border-bottom-color: #2c3e50;
+        }
+
+        .btn-tooltip:hover .tooltip-content,
+        .btn-tooltip:hover .tooltip-arrow {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .btn-tooltip:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .container {
@@ -715,7 +949,7 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>📊 Portfolio Navigator Wizard</h1>
+            <h1>Portfolio Navigator Wizard</h1>
             <p>Consolidated Ticker & Portfolio Database</p>
         </div>
 
@@ -741,11 +975,16 @@
                 <select id="sector-filter" class="filter-select">
                     <option value="">All Sectors</option>
                 </select>
-                <button class="btn btn-primary" onclick="refreshTickerData()">
+                <button class="btn btn-primary btn-tooltip" onclick="refreshTickerData()" id="refreshTickerBtn">
                     🔄 Refresh Data
-                </button>
-                <button class="btn btn-success" onclick="smartRefresh()">
-                    🧠 Smart Refresh
+                    <div class="tooltip-content">🔄 REFRESH DATA
+
+• Checks TTL → Fetches expired data
+• Preserves historical data
+• Updates table automatically
+
+⏱️ 2-5 min (if expired) | 🚀 3-5 sec (if current)</div>
+                    <div class="tooltip-arrow"></div>
                 </button>
             </div>
 
@@ -813,8 +1052,27 @@
                 <select id="profile-filter" class="filter-select">
                     <option value="">All Risk Profiles</option>
                 </select>
-                <button class="btn btn-primary" onclick="refreshPortfolioData()">
+                <button class="btn btn-primary btn-tooltip" onclick="refreshPortfolioData()" id="refreshPortfolioBtn">
                     🔄 Refresh Portfolios
+                    <div class="tooltip-content">🔄 REFRESH PORTFOLIOS
+
+• Reloads existing portfolio data from Redis
+• Updates display with latest information
+• No external API calls needed
+
+⏱️ Time: 1-2 seconds</div>
+                    <div class="tooltip-arrow"></div>
+                </button>
+                <button class="btn btn-success btn-tooltip" onclick="regeneratePortfolios()" id="regeneratePortfolioBtn">
+                    🚀 Regenerate Portfolios
+                    <div class="tooltip-content">🚀 REGENERATE PORTFOLIOS
+
+• Creates 60 new portfolios (12 per risk profile)
+• Uses EnhancedPortfolioGenerator algorithm
+• Replaces existing portfolio data in Redis
+
+⏱️ Time: 2-5 minutes</div>
+                    <div class="tooltip-arrow"></div>
                 </button>
             </div>
 
@@ -828,6 +1086,38 @@
                 <div id="portfolio-list" style="display: none;">
                     <!-- Portfolio cards will be inserted here -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup Confirmation Dialog -->
+    <div id="refreshPopup" class="popup-overlay">
+        <div class="popup-dialog">
+            <div class="popup-title">🔄 Refresh Data Confirmation</div>
+            <div class="popup-message">
+                This will fetch fresh data from external APIs. Please review the details below:
+            </div>
+            <div class="popup-stats">
+                <div class="popup-stat-item">
+                    <span class="popup-stat-label">Expired Tickers:</span>
+                    <span class="popup-stat-value" id="expiredCount">-</span>
+                </div>
+                <div class="popup-stat-item">
+                    <span class="popup-stat-label">Total Tickers:</span>
+                    <span class="popup-stat-value" id="totalCount">-</span>
+                </div>
+                <div class="popup-stat-item">
+                    <span class="popup-stat-label">API Calls Required:</span>
+                    <span class="popup-stat-value" id="apiCalls">-</span>
+                </div>
+                <div class="popup-stat-item">
+                    <span class="popup-stat-label">Estimated Time:</span>
+                    <span class="popup-stat-value" id="estimatedTime">-</span>
+                </div>
+            </div>
+            <div class="popup-buttons">
+                <button class="popup-btn popup-btn-cancel" onclick="cancelRefresh()">Cancel</button>
+                <button class="popup-btn popup-btn-confirm" onclick="confirmRefresh()">Proceed</button>
             </div>
         </div>
     </div>
@@ -1001,12 +1291,179 @@
                     sortTable(column);
                 });
             });
+
+            // Smart tooltip positioning
+            const tooltipButtons = document.querySelectorAll('.btn-tooltip');
+            console.log(`Found ${tooltipButtons.length} tooltip buttons`);
+            tooltipButtons.forEach(button => {
+                button.addEventListener('mouseenter', function() {
+                    console.log('Mouse enter on tooltip button');
+                    positionTooltip(this);
+                });
+            });
+            
+            // Also apply positioning on page load for any existing buttons
+            positionAllTooltips();
+            
+            // Reposition tooltips on window resize
+            window.addEventListener('resize', function() {
+                positionAllTooltips();
+            });
         });
 
+        function positionTooltip(button) {
+            const rect = button.getBoundingClientRect();
+            
+            // Remove existing positioning classes
+            button.classList.remove('tooltip-right', 'tooltip-left', 'tooltip-bottom');
+            
+            // Check if this is the ticker database tab (force sideways)
+            const isTickerTab = button.closest('#ticker-tab');
+            console.log('Positioning tooltip for button:', button.textContent.trim(), 'isTickerTab:', !!isTickerTab);
+            
+            if (isTickerTab) {
+                // Force ticker database tooltips to show sideways (right)
+                button.classList.add('tooltip-right');
+                console.log('Added tooltip-right class for ticker tab');
+            } else {
+                // Smart positioning for portfolio tab
+                if (rect.top < 200) {
+                    // Check if there's space on the right
+                    if (rect.right < window.innerWidth - 400) {
+                        button.classList.add('tooltip-right');
+                    }
+                    // Check if there's space on the left
+                    else if (rect.left > 400) {
+                        button.classList.add('tooltip-left');
+                    }
+                    // Otherwise show below
+                    else {
+                        button.classList.add('tooltip-bottom');
+                    }
+                }
+                // Default to top (no additional class needed)
+            }
+        }
+
+        function positionAllTooltips() {
+            const tooltipButtons = document.querySelectorAll('.btn-tooltip');
+            console.log(`Positioning ${tooltipButtons.length} tooltip buttons`);
+            tooltipButtons.forEach(button => {
+                positionTooltip(button);
+            });
+        }
+
+        // Debug function to test tooltips
+        function testTooltips() {
+            console.log('Testing tooltip positioning...');
+            positionAllTooltips();
+        }
+
+        // Global variables for popup
+        let pendingRefreshData = null;
+
         async function refreshTickerData() {
-            document.getElementById('ticker-loading').style.display = 'block';
-            document.getElementById('ticker-error').style.display = 'none';
-            document.getElementById('ticker-table').style.display = 'none';
+            // Show popup immediately when button is pressed
+            showRefreshPopup('Checking...', 'Checking...');
+            
+            // Then check TTL status in the background
+            try {
+                const response = await fetch('/api/portfolio/tickers/ttl-status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const expiredCount = data.expired_count || 0;
+                    const totalCount = data.total_tickers || 0;
+                    
+                    // Update popup with real TTL data
+                    updateRefreshPopup(expiredCount, totalCount);
+                    return;
+                } else {
+                    // Fallback: show popup with unknown data
+                    showRefreshPopup('Unknown', 'Unknown');
+                }
+            } catch (error) {
+                console.error('Error checking TTL status:', error);
+                // Fallback: show popup with unknown data
+                showRefreshPopup('Unknown', 'Unknown');
+            }
+        }
+
+        function showRefreshPopup(expiredCount, totalCount) {
+            // Update popup content
+            document.getElementById('expiredCount').textContent = expiredCount;
+            document.getElementById('totalCount').textContent = totalCount;
+            document.getElementById('apiCalls').textContent = expiredCount === 'Unknown' ? 'Unknown' : `${expiredCount} tickers`;
+            
+            // Calculate estimated time
+            let estimatedTime = 'Unknown';
+            if (expiredCount === 'Checking...') {
+                estimatedTime = 'Checking TTL...';
+            } else if (expiredCount !== 'Unknown' && expiredCount > 0) {
+                const minutes = Math.ceil(expiredCount / 15) * 4 / 60; // 4s per batch, 15 tickers per batch
+                estimatedTime = `${Math.max(1, Math.ceil(minutes))} minutes`;
+            } else if (expiredCount === 0) {
+                estimatedTime = '3-5 seconds';
+            }
+            document.getElementById('estimatedTime').textContent = estimatedTime;
+            
+            // Show popup
+            document.getElementById('refreshPopup').style.display = 'flex';
+        }
+
+        function updateRefreshPopup(expiredCount, totalCount) {
+            // Update popup content with real data
+            document.getElementById('expiredCount').textContent = expiredCount;
+            document.getElementById('totalCount').textContent = totalCount;
+            document.getElementById('apiCalls').textContent = `${expiredCount} tickers`;
+            
+            // Calculate estimated time
+            let estimatedTime = 'Unknown';
+            if (expiredCount > 0) {
+                const minutes = Math.ceil(expiredCount / 15) * 4 / 60; // 4s per batch, 15 tickers per batch
+                estimatedTime = `${Math.max(1, Math.ceil(minutes))} minutes`;
+            } else {
+                estimatedTime = '3-5 seconds';
+            }
+            document.getElementById('estimatedTime').textContent = estimatedTime;
+        }
+
+        function showNoRefreshNeeded() {
+            const btn = document.getElementById('refreshTickerBtn');
+            btn.innerHTML = '✅ No Refresh Needed';
+            btn.disabled = true;
+            
+            setTimeout(() => {
+                btn.innerHTML = '🔄 Refresh Data';
+                btn.disabled = false;
+            }, 2000);
+        }
+
+        function cancelRefresh() {
+            document.getElementById('refreshPopup').style.display = 'none';
+            pendingRefreshData = null;
+        }
+
+        async function confirmRefresh() {
+            // Hide popup
+            document.getElementById('refreshPopup').style.display = 'none';
+            
+            // Proceed with refresh
+            await performRefresh();
+        }
+
+        async function performRefresh() {
+            const btn = document.getElementById('refreshTickerBtn');
+            const loading = document.getElementById('ticker-loading');
+            const error = document.getElementById('ticker-error');
+            const table = document.getElementById('ticker-table');
+            
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = '🔄 Refreshing...';
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            table.style.display = 'none';
             
             try {
                 const response = await fetch('/api/portfolio/ticker-table/refresh', {
@@ -1015,37 +1472,33 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    // Show success message
+                    btn.innerHTML = `✅ ${data.refresh_type === 'smart' ? 'Smart' : 'Full'} Refresh Complete`;
+                    loading.innerHTML = `Loading updated data... (${data.message})`;
+                    
+                    // Reload data
                     await loadTickerData();
+                    
+                    // Reset button after 3 seconds
+                    setTimeout(() => {
+                        btn.innerHTML = '🔄 Refresh Data';
+                        btn.disabled = false;
+                    }, 3000);
                 } else {
-                    throw new Error(data.error || 'Failed to refresh data');
+                    throw new Error(data.message || 'Failed to refresh data');
                 }
             } catch (error) {
                 console.error('Error refreshing data:', error);
-                document.getElementById('ticker-loading').style.display = 'none';
-                document.getElementById('ticker-error').style.display = 'block';
-            }
-        }
-
-        async function smartRefresh() {
-            document.getElementById('ticker-loading').style.display = 'block';
-            document.getElementById('ticker-error').style.display = 'none';
-            document.getElementById('ticker-table').style.display = 'none';
-            
-            try {
-                const response = await fetch('/api/portfolio/ticker-table/smart-refresh', {
-                    method: 'POST'
-                });
-                const data = await response.json();
+                btn.innerHTML = '❌ Refresh Failed';
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.innerHTML = `Refresh failed: ${error.message}`;
                 
-                if (data.success) {
-                    await loadTickerData();
-                } else {
-                    throw new Error(data.error || 'Failed to perform smart refresh');
-                }
-            } catch (error) {
-                console.error('Error performing smart refresh:', error);
-                document.getElementById('ticker-loading').style.display = 'none';
-                document.getElementById('ticker-error').style.display = 'block';
+                // Reset button after 5 seconds
+                setTimeout(() => {
+                    btn.innerHTML = '🔄 Refresh Data';
+                    btn.disabled = false;
+                }, 5000);
             }
         }
 
@@ -1172,11 +1625,89 @@
         }
 
         async function refreshPortfolioData() {
-            document.getElementById('portfolio-loading').style.display = 'block';
-            document.getElementById('portfolio-error').style.display = 'none';
-            document.getElementById('portfolio-list').style.display = 'none';
+            const btn = document.getElementById('refreshPortfolioBtn');
+            const loading = document.getElementById('portfolio-loading');
+            const error = document.getElementById('portfolio-error');
+            const list = document.getElementById('portfolio-list');
             
-            await loadPortfolioData();
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = '🔄 Refreshing...';
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            list.style.display = 'none';
+            
+            try {
+                await loadPortfolioData();
+                
+                // Show success
+                btn.innerHTML = '✅ Refreshed';
+                setTimeout(() => {
+                    btn.innerHTML = '🔄 Refresh Portfolios';
+                    btn.disabled = false;
+                }, 2000);
+            } catch (error) {
+                console.error('Error refreshing portfolios:', error);
+                btn.innerHTML = '❌ Refresh Failed';
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                
+                setTimeout(() => {
+                    btn.innerHTML = '🔄 Refresh Portfolios';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        }
+
+        async function regeneratePortfolios() {
+            const btn = document.getElementById('regeneratePortfolioBtn');
+            const loading = document.getElementById('portfolio-loading');
+            const error = document.getElementById('portfolio-error');
+            const list = document.getElementById('portfolio-list');
+            
+            // Show loading state
+            btn.disabled = true;
+            btn.innerHTML = '🚀 Regenerating...';
+            loading.style.display = 'block';
+            loading.innerHTML = 'Generating new portfolios... This may take a moment.';
+            error.style.display = 'none';
+            list.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/portfolio/table/regenerate', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Show success message
+                    btn.innerHTML = '✅ Regeneration Complete';
+                    loading.innerHTML = `Loading new portfolios... (${data.message})`;
+                    
+                    // Reload data
+                    await loadPortfolioData();
+                    
+                    // Reset button after 3 seconds
+                    setTimeout(() => {
+                        btn.innerHTML = '🚀 Regenerate Portfolios';
+                        btn.disabled = false;
+                    }, 3000);
+                } else {
+                    throw new Error(data.message || 'Failed to regenerate portfolios');
+                }
+            } catch (error) {
+                console.error('Error regenerating portfolios:', error);
+                btn.innerHTML = '❌ Regeneration Failed';
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.innerHTML = `Regeneration failed: ${error.message}`;
+                
+                // Reset button after 5 seconds
+                setTimeout(() => {
+                    btn.innerHTML = '🚀 Regenerate Portfolios';
+                    btn.disabled = false;
+                }, 5000);
+            }
         }
 
         // Event listeners

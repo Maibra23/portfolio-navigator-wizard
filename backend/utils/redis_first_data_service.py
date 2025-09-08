@@ -529,6 +529,25 @@ class RedisFirstDataService:
         except Exception as e:
             logger.error(f"Error performing monthly refresh: {e}")
             return None
+    
+    def smart_refresh_tickers(self, tickers: List[str]):
+        """Smart refresh for specific tickers using EnhancedDataFetcher"""
+        if not self.enhanced_data_fetcher:
+            logger.warning("EnhancedDataFetcher not available - cannot perform ticker refresh")
+            return None
+        
+        try:
+            logger.info(f"Smart refreshing {len(tickers)} specific tickers")
+            # Use the enhanced data fetcher to refresh specific tickers
+            result = self.enhanced_data_fetcher.refresh_specific_tickers(tickers)
+            return {
+                "changed_count": len(tickers),
+                "tickers": tickers,
+                "result": result
+            }
+        except Exception as e:
+            logger.error(f"Error refreshing specific tickers: {e}")
+            return None
 
 # Global instance for lazy initialization
 redis_first_data_service = RedisFirstDataService()
