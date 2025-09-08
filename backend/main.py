@@ -13,12 +13,13 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 
 # Import existing routers
-from routers import portfolio, cookie_demo
+from routers import portfolio, cookie_demo, strategy_buckets
 
 # Import enhanced portfolio system
 from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
 from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
+from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 # Import will be done locally in lifespan function
 from utils.port_analytics import PortfolioAnalytics
 
@@ -31,6 +32,7 @@ redis_first_data_service = None
 enhanced_generator = None
 redis_manager = None
 auto_regeneration_service = None
+strategy_optimizer = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,6 +59,11 @@ async def lifespan(app: FastAPI):
         # Initialize Redis portfolio manager with Redis connection
         global redis_manager
         redis_manager = RedisPortfolioManager(redis_first_data_service.redis_client)
+        
+        # Initialize strategy portfolio optimizer
+        global strategy_optimizer
+        strategy_optimizer = StrategyPortfolioOptimizer(redis_first_data_service, redis_manager)
+        logger.info("✅ Strategy portfolio optimizer initialized")
         
         # Initialize auto-regeneration service
         global auto_regeneration_service
@@ -184,6 +191,7 @@ app.add_middleware(
 # Include existing routers
 app.include_router(portfolio.router, tags=["portfolio"])
 app.include_router(cookie_demo.router, tags=["cookie"])
+app.include_router(strategy_buckets.router, prefix="/api/strategy-buckets", tags=["strategy-buckets"])
 
 # Health check endpoint
 @app.get("/health")

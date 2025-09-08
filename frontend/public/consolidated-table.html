@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Navigator Wizard - Consolidated Tables</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "Inter", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: white;
+            padding: 30px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+            font-weight: 400;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Tab Navigation */
+        .tab-navigation {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 20px 30px;
+            background: transparent;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #6c757d;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-button:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            border-bottom-color: #667eea;
+        }
+
+        .tab-button .tab-icon {
+            margin-right: 8px;
+            font-size: 1.2rem;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Ticker Table Styles (existing) */
+        .controls {
+            padding: 20px 30px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 18px;
+            align-items: center;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+
+        .search-container {
+            position: relative;
+            flex: 1;
+            max-width: 400px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 20px 12px 50px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 1rem;
+            background: white;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            font-size: 1.1rem;
+        }
+
+        .filter-select {
+            padding: 12px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+
+        .table-container {
+            padding: 30px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+        }
+
+        thead {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 700;
+            color: white;
+            border-bottom: 2px solid #1a252f;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-size: 11px;
+        }
+
+        th:hover {
+            background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        th.sortable::after {
+            content: '↕';
+            margin-left: 8px;
+            opacity: 0.7;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        th.sort-asc::after {
+            content: '↑';
+            opacity: 1;
+            color: #2ecc71;
+            transform: scale(1.2);
+        }
+
+        th.sort-desc::after {
+            content: '↓';
+            opacity: 1;
+            color: #e74c3c;
+            transform: scale(1.2);
+        }
+
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #f1f3f4;
+            vertical-align: middle;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+
+        tbody tr {
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        tbody tr:hover {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            transform: translateX(4px);
+            border-left-color: #667eea;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.15);
+        }
+        
+        tbody tr:nth-child(even) {
+            background: rgba(248, 249, 250, 0.5);
+        }
+        
+        tbody tr:nth-child(even):hover {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .ticker {
+            font-weight: 700;
+            color: #2c3e50;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 13px;
+        }
+
+        .company-name {
+            font-weight: 500;
+            color: #495057;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
+        }
+
+        .sector {
+            color: #6c757d;
+            font-size: 11px;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .industry {
+            color: #6c757d;
+            font-size: 11px;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .exchange {
+            font-weight: 500;
+            color: #495057;
+            font-size: 12px;
+        }
+
+        .country {
+            color: #6c757d;
+            font-size: 11px;
+        }
+
+        .data-points {
+            text-align: center;
+            font-weight: 500;
+            color: #495057;
+            font-size: 12px;
+        }
+
+        .date {
+            color: #6c757d;
+            font-size: 11px;
+        }
+
+        .price {
+            font-weight: 500;
+            color: #28a745;
+            text-align: right;
+            font-size: 11px;
+        }
+
+        .return {
+            font-weight: 500;
+            text-align: right;
+            font-size: 11px;
+        }
+
+        .return.positive {
+            color: #28a745;
+        }
+
+        .return.negative {
+            color: #dc3545;
+        }
+
+        .risk {
+            font-weight: 500;
+            color: #6c757d;
+            text-align: right;
+            font-size: 11px;
+        }
+
+        .id-column {
+            text-align: center;
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 12px;
+        }
+
+        .company-name {
+            color: #495057;
+            font-weight: 500;
+        }
+
+
+        .risk-level {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .risk-low {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+            color: #2e7d32;
+        }
+
+        .risk-medium {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffcc02 100%);
+            color: #f57c00;
+        }
+
+        .risk-high {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            color: #c62828;
+        }
+
+
+        .data-quality {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .quality-good {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+            color: #2e7d32;
+        }
+
+        .quality-limited {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffcc02 100%);
+            color: #f57c00;
+        }
+
+        .quality-poor {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            color: #c62828;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+            font-size: 1.1rem;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            text-align: center;
+            padding: 60px 20px;
+            color: #dc3545;
+            font-size: 1.1rem;
+        }
+
+        .error-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            opacity: 0.7;
+        }
+
+        /* Portfolio Table Specific Styles */
+        .portfolio-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid #f1f3f4;
+            transition: all 0.3s ease;
+        }
+
+        .portfolio-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+        }
+
+        .portfolio-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .portfolio-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .portfolio-description {
+            color: #6c757d;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .portfolio-metrics {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .metric {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .portfolio-stocks {
+            margin-top: 15px;
+        }
+
+        .stocks-header {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 10px;
+        }
+
+        .stock-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .stock-item {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #495057;
+            border: 1px solid #dee2e6;
+        }
+
+        .stock-symbol {
+            color: #667eea;
+            font-weight: 700;
+        }
+
+        .stock-allocation {
+            color: #6c757d;
+            margin-left: 5px;
+        }
+
+        .risk-profile-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .risk-conservative {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+            color: #2e7d32;
+        }
+
+        .risk-moderate {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffcc02 100%);
+            color: #f57c00;
+        }
+
+        .risk-aggressive {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            color: #c62828;
+        }
+
+        .portfolio-stats {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 16px;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .tab-button {
+                padding: 15px 20px;
+                font-size: 1rem;
+            }
+
+            .controls {
+                padding: 15px 20px;
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .search-container {
+                max-width: 100%;
+            }
+
+            .table-container {
+                padding: 20px;
+            }
+
+            .table {
+                font-size: 0.9rem;
+            }
+
+            .table th,
+            .table td {
+                padding: 12px 8px;
+            }
+
+            .portfolio-metrics {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .stock-list {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 Portfolio Navigator Wizard</h1>
+            <p>Consolidated Ticker & Portfolio Database</p>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-button active" onclick="switchTab('ticker')">
+                Ticker Database
+            </button>
+            <button class="tab-button" onclick="switchTab('portfolio')">
+                Portfolio Database
+            </button>
+        </div>
+
+        <!-- Ticker Tab Content -->
+        <div id="ticker-tab" class="tab-content active">
+
+            <!-- Controls -->
+            <div class="controls">
+                <div class="search-container">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="search-input" class="search-input" placeholder="Search tickers, companies, or sectors...">
+                </div>
+                <select id="sector-filter" class="filter-select">
+                    <option value="">All Sectors</option>
+                </select>
+                <button class="btn btn-primary" onclick="refreshTickerData()">
+                    🔄 Refresh Data
+                </button>
+                <button class="btn btn-success" onclick="smartRefresh()">
+                    🧠 Smart Refresh
+                </button>
+            </div>
+
+            <!-- Ticker Table -->
+            <div class="table-container">
+                <div id="ticker-loading" class="loading">Loading ticker data...</div>
+                <div id="ticker-error" class="error" style="display: none;">
+                    <div class="error-icon">❌</div>
+                    <div>Failed to load ticker data. Please try again.</div>
+                </div>
+                <table id="ticker-table" class="table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="id">#</th>
+                            <th class="sortable" data-sort="ticker">Ticker</th>
+                            <th class="sortable" data-sort="companyName">Company Name</th>
+                            <th class="sortable" data-sort="sector">Sector</th>
+                            <th class="sortable" data-sort="industry">Industry</th>
+                            <th class="sortable" data-sort="exchange">Exchange</th>
+                            <th class="sortable" data-sort="country">Country</th>
+                            <th class="sortable" data-sort="dataPoints">Data Points</th>
+                            <th class="sortable" data-sort="firstDate">First Date</th>
+                            <th class="sortable" data-sort="lastDate">Last Date</th>
+                            <th class="sortable" data-sort="lastPrice">Last Price</th>
+                            <th class="sortable" data-sort="annualizedReturn">Return %</th>
+                            <th class="sortable" data-sort="annualizedRisk">Risk %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ticker-table-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Portfolio Tab Content -->
+        <div id="portfolio-tab" class="tab-content">
+            <!-- Portfolio Stats -->
+            <div class="portfolio-stats">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="total-portfolios">-</div>
+                        <div class="stat-label">Total Portfolios</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="total-profiles">-</div>
+                        <div class="stat-label">Risk Profiles</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="avg-stocks">-</div>
+                        <div class="stat-label">Avg Stocks/Portfolio</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="diversification-avg">-</div>
+                        <div class="stat-label">Avg Diversification</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Portfolio Controls -->
+            <div class="controls">
+                <div class="search-container">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="portfolio-search" class="search-input" placeholder="Search portfolios by name or description...">
+                </div>
+                <select id="profile-filter" class="filter-select">
+                    <option value="">All Risk Profiles</option>
+                </select>
+                <button class="btn btn-primary" onclick="refreshPortfolioData()">
+                    🔄 Refresh Portfolios
+                </button>
+            </div>
+
+            <!-- Portfolio List -->
+            <div class="table-container">
+                <div id="portfolio-loading" class="loading">Loading portfolio data...</div>
+                <div id="portfolio-error" class="error" style="display: none;">
+                    <div class="error-icon">❌</div>
+                    <div>Failed to load portfolio data. Please try again.</div>
+                </div>
+                <div id="portfolio-list" style="display: none;">
+                    <!-- Portfolio cards will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tickerData = [];
+        let portfolioData = [];
+        let filteredTickerData = [];
+        let filteredPortfolioData = [];
+        let currentSortColumn = null;
+        let currentSortAscending = true;
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+            
+            // Load data for the selected tab
+            if (tabName === 'ticker' && tickerData.length === 0) {
+                loadTickerData();
+            } else if (tabName === 'portfolio' && portfolioData.length === 0) {
+                loadPortfolioData();
+            }
+        }
+
+        // Ticker data functions
+        async function loadTickerData() {
+            try {
+                const response = await fetch('/api/portfolio/ticker-table/data');
+                const data = await response.json();
+                
+                if (data.success) {
+                    tickerData = data.tickers || [];
+                    filteredTickerData = [...tickerData];
+                    populateSectorFilter(data.sectors || []);
+                    renderTickerTable();
+                    document.getElementById('ticker-loading').style.display = 'none';
+                    document.getElementById('ticker-table').style.display = 'table';
+                } else {
+                    throw new Error(data.error || 'Failed to load ticker data');
+                }
+            } catch (error) {
+                console.error('Error loading ticker data:', error);
+                document.getElementById('ticker-loading').style.display = 'none';
+                document.getElementById('ticker-error').style.display = 'block';
+            }
+        }
+
+
+        function populateSectorFilter(sectors) {
+            const select = document.getElementById('sector-filter');
+            select.innerHTML = '<option value="">All Sectors</option>';
+            sectors.forEach(sector => {
+                const option = document.createElement('option');
+                option.value = sector;
+                option.textContent = sector;
+                select.appendChild(option);
+            });
+        }
+
+        function renderTickerTable() {
+            const tbody = document.getElementById('ticker-table-body');
+            tbody.innerHTML = '';
+            
+            filteredTickerData.forEach((ticker, index) => {
+                const globalIndex = index + 1;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="id-column">${globalIndex}</td>
+                    <td class="ticker">${ticker.ticker}</td>
+                    <td class="company-name" title="${ticker.companyName || 'N/A'}">${ticker.companyName || 'N/A'}</td>
+                    <td class="sector">${ticker.sector || 'N/A'}</td>
+                    <td class="industry">${ticker.industry || 'N/A'}</td>
+                    <td class="exchange">${ticker.exchange || 'N/A'}</td>
+                    <td class="country">${ticker.country || 'N/A'}</td>
+                    <td class="data-points">${ticker.dataPoints || 0}</td>
+                    <td class="date">${formatDate(ticker.firstDate)}</td>
+                    <td class="date">${formatDate(ticker.lastDate)}</td>
+                    <td class="price">$${formatPrice(ticker.lastPrice)}</td>
+                    <td class="return ${(ticker.annualizedReturn || 0) >= 0 ? 'positive' : 'negative'}">${formatPercentage(ticker.annualizedReturn)}</td>
+                    <td class="risk">${formatPercentage(ticker.annualizedRisk)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function formatDate(dateString) {
+            if (!dateString || dateString === 'N/A') return 'N/A';
+            try {
+                return new Date(dateString).toLocaleDateString();
+            } catch {
+                return dateString;
+            }
+        }
+
+        function formatPrice(price) {
+            if (!price || isNaN(price)) return 'N/A';
+            return parseFloat(price).toFixed(2);
+        }
+
+        function formatPercentage(value) {
+            if (!value || isNaN(value)) return 'N/A';
+            return parseFloat(value).toFixed(2) + '%';
+        }
+
+        function filterTickerData() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const sectorFilter = document.getElementById('sector-filter').value;
+            
+            filteredTickerData = tickerData.filter(ticker => {
+                const matchesSearch = !searchTerm || 
+                    ticker.ticker.toLowerCase().includes(searchTerm) ||
+                    ticker.companyName.toLowerCase().includes(searchTerm) ||
+                    ticker.sector.toLowerCase().includes(searchTerm);
+                
+                const matchesSector = !sectorFilter || ticker.sector === sectorFilter;
+                
+                return matchesSearch && matchesSector;
+            });
+            
+            renderTickerTable();
+        }
+
+        // Add sorting functionality
+        function sortTable(column) {
+            const isAscending = currentSortColumn === column ? !currentSortAscending : true;
+            currentSortColumn = column;
+            currentSortAscending = isAscending;
+            
+            filteredTickerData.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+                
+                // Handle numeric values
+                if (column === 'id' || column === 'dataPoints' || column === 'lastPrice' || 
+                    column === 'annualizedReturn' || column === 'annualizedRisk') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
+                } else {
+                    aVal = (aVal || '').toString().toLowerCase();
+                    bVal = (bVal || '').toString().toLowerCase();
+                }
+                
+                if (aVal < bVal) return isAscending ? -1 : 1;
+                if (aVal > bVal) return isAscending ? 1 : -1;
+                return 0;
+            });
+            
+            renderTickerTable();
+        }
+
+        // Add click handlers for sortable columns
+        document.addEventListener('DOMContentLoaded', function() {
+            const sortableHeaders = document.querySelectorAll('.sortable');
+            sortableHeaders.forEach(header => {
+                header.addEventListener('click', () => {
+                    const column = header.getAttribute('data-sort');
+                    sortTable(column);
+                });
+            });
+        });
+
+        async function refreshTickerData() {
+            document.getElementById('ticker-loading').style.display = 'block';
+            document.getElementById('ticker-error').style.display = 'none';
+            document.getElementById('ticker-table').style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/portfolio/ticker-table/refresh', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadTickerData();
+                } else {
+                    throw new Error(data.error || 'Failed to refresh data');
+                }
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+                document.getElementById('ticker-loading').style.display = 'none';
+                document.getElementById('ticker-error').style.display = 'block';
+            }
+        }
+
+        async function smartRefresh() {
+            document.getElementById('ticker-loading').style.display = 'block';
+            document.getElementById('ticker-error').style.display = 'none';
+            document.getElementById('ticker-table').style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/portfolio/ticker-table/smart-refresh', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    await loadTickerData();
+                } else {
+                    throw new Error(data.error || 'Failed to perform smart refresh');
+                }
+            } catch (error) {
+                console.error('Error performing smart refresh:', error);
+                document.getElementById('ticker-loading').style.display = 'none';
+                document.getElementById('ticker-error').style.display = 'block';
+            }
+        }
+
+        // Portfolio data functions
+        async function loadPortfolioData() {
+            try {
+                const response = await fetch('/api/portfolio/table/data');
+                const data = await response.json();
+                
+                if (data.success) {
+                    portfolioData = data.portfolios || [];
+                    filteredPortfolioData = [...portfolioData];
+                    updatePortfolioStats(data);
+                    populateProfileFilter(data.profiles || []);
+                    renderPortfolioList();
+                    document.getElementById('portfolio-loading').style.display = 'none';
+                    document.getElementById('portfolio-list').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Failed to load portfolio data');
+                }
+            } catch (error) {
+                console.error('Error loading portfolio data:', error);
+                document.getElementById('portfolio-loading').style.display = 'none';
+                document.getElementById('portfolio-error').style.display = 'block';
+            }
+        }
+
+        function updatePortfolioStats(data) {
+            document.getElementById('total-portfolios').textContent = data.total_portfolios || 0;
+            document.getElementById('total-profiles').textContent = data.profiles?.length || 0;
+            
+            const avgStocks = data.portfolios?.length > 0 ? 
+                (data.portfolios.reduce((sum, p) => sum + (p.stocks?.length || 0), 0) / data.portfolios.length).toFixed(1) : 0;
+            document.getElementById('avg-stocks').textContent = avgStocks;
+            
+            const avgDiversification = data.portfolios?.length > 0 ? 
+                (data.portfolios.reduce((sum, p) => sum + (p.diversification_score || 0), 0) / data.portfolios.length).toFixed(1) : 0;
+            document.getElementById('diversification-avg').textContent = avgDiversification + '%';
+        }
+
+        function populateProfileFilter(profiles) {
+            const select = document.getElementById('profile-filter');
+            select.innerHTML = '<option value="">All Risk Profiles</option>';
+            profiles.forEach(profile => {
+                const option = document.createElement('option');
+                option.value = profile;
+                option.textContent = profile.charAt(0).toUpperCase() + profile.slice(1).replace('-', ' ');
+                select.appendChild(option);
+            });
+        }
+
+        function renderPortfolioList() {
+            const container = document.getElementById('portfolio-list');
+            container.innerHTML = '';
+            
+            filteredPortfolioData.forEach(portfolio => {
+                const card = document.createElement('div');
+                card.className = 'portfolio-card';
+                
+                const riskClass = portfolio.risk_profile?.toLowerCase().replace('_', '-') || 'unknown';
+                
+                card.innerHTML = `
+                    <div class="portfolio-header">
+                        <div>
+                            <div class="portfolio-name">${portfolio.name}</div>
+                            <div class="portfolio-description">${portfolio.description}</div>
+                        </div>
+                        <div class="risk-profile-badge risk-${riskClass}">
+                            ${portfolio.risk_profile?.replace('-', ' ').toUpperCase() || 'UNKNOWN'}
+                        </div>
+                    </div>
+                    
+                    <div class="portfolio-metrics">
+                        <div class="metric">
+                            <div class="metric-value">${(portfolio.expected_return * 100).toFixed(1)}%</div>
+                            <div class="metric-label">Expected Return</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">${(portfolio.risk * 100).toFixed(1)}%</div>
+                            <div class="metric-label">Risk</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">${portfolio.diversification_score?.toFixed(1) || 0}%</div>
+                            <div class="metric-label">Diversification</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">${portfolio.stocks?.length || 0}</div>
+                            <div class="metric-label">Stocks</div>
+                        </div>
+                    </div>
+                    
+                    <div class="portfolio-stocks">
+                        <div class="stocks-header">Portfolio Holdings:</div>
+                        <div class="stock-list">
+                            ${(portfolio.stocks || []).map(stock => `
+                                <div class="stock-item">
+                                    <span class="stock-symbol">${stock.symbol}</span>
+                                    <span class="stock-allocation">${stock.allocation}%</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function filterPortfolioData() {
+            const searchTerm = document.getElementById('portfolio-search').value.toLowerCase();
+            const profileFilter = document.getElementById('profile-filter').value;
+            
+            filteredPortfolioData = portfolioData.filter(portfolio => {
+                const matchesSearch = !searchTerm || 
+                    portfolio.name.toLowerCase().includes(searchTerm) ||
+                    portfolio.description.toLowerCase().includes(searchTerm);
+                
+                const matchesProfile = !profileFilter || portfolio.risk_profile === profileFilter;
+                
+                return matchesSearch && matchesProfile;
+            });
+            
+            renderPortfolioList();
+        }
+
+        async function refreshPortfolioData() {
+            document.getElementById('portfolio-loading').style.display = 'block';
+            document.getElementById('portfolio-error').style.display = 'none';
+            document.getElementById('portfolio-list').style.display = 'none';
+            
+            await loadPortfolioData();
+        }
+
+        // Event listeners
+        document.getElementById('search-input').addEventListener('input', filterTickerData);
+        document.getElementById('sector-filter').addEventListener('change', filterTickerData);
+        document.getElementById('portfolio-search').addEventListener('input', filterPortfolioData);
+        document.getElementById('profile-filter').addEventListener('change', filterPortfolioData);
+
+        // Load initial data
+        loadTickerData();
+    </script>
+</body>
+</html>

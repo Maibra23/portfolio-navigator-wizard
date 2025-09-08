@@ -2223,66 +2223,66 @@ export const StockSelection = ({
 
                     {/* Dynamic Portfolios Display */}
                     {isLoadingDynamic ? (
-                      <div className="text-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                        <div className="text-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                         <p className="mt-2 text-muted-foreground">Generating dynamic portfolios...</p>
-                      </div>
-                    ) : dynamicPortfolios.length > 0 ? (
-                      <div className="mt-6">
+                        </div>
+                      ) : dynamicPortfolios.length > 0 ? (
+                        <div className="mt-6">
                         <h4 className="text-lg font-medium mb-4">Generated Dynamic Portfolios</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           {dynamicPortfolios.map((portfolio, index) => (
-                            <Card
+                          <Card
                               key={index}
                               className={`relative overflow-hidden transition-all duration-200 cursor-pointer ${
                                 selectedPortfolioIndex === index
-                                  ? 'ring-2 ring-primary shadow-lg scale-105'
-                                  : 'hover:shadow-md'
-                              }`}
+                                ? 'ring-2 ring-primary shadow-lg scale-105'
+                                : 'hover:shadow-md'
+                            }`}
                               onClick={() => acceptRecommendation(portfolio, index)}
-                            >
-                              {/* Selection indicator */}
+                          >
+                            {/* Selection indicator */}
                               {selectedPortfolioIndex === index && (
-                                <div className="absolute top-2 right-2 z-10">
-                                  <Badge variant="default" className="bg-green-600">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Selected
-                                  </Badge>
-                                </div>
-                              )}
-                              
-                              <CardHeader className="pb-4">
-                                <div className="flex items-center justify-between">
+                              <div className="absolute top-2 right-2 z-10">
+                                <Badge variant="default" className="bg-green-600">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Selected
+                                </Badge>
+                              </div>
+                            )}
+                            
+                            <CardHeader className="pb-4">
+                              <div className="flex items-center justify-between">
                                   <CardTitle className="text-lg">{portfolio.name}</CardTitle>
                                   <Badge variant={index === 0 ? "default" : "secondary"}>
                                     {index === 0 ? "Top Pick" : "Alternative " + (index + 1)}
                                   </Badge>
-                                </div>
+                              </div>
                                 <p className="text-sm text-muted-foreground">{portfolio.description}</p>
-                              </CardHeader>
-                              <CardContent className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <div className="text-muted-foreground">Expected Return</div>
-                                    <div className="font-semibold text-green-600">
-                                      {(portfolio.expectedReturn * 100).toFixed(1)}%
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className="text-muted-foreground">Risk Level</div>
-                                    <div className="font-semibold text-orange-600">
-                                      {(portfolio.risk * 100).toFixed(1)}%
-                                    </div>
-                                  </div>
-                                </div>
-                                
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div>
-                                  <div className="flex justify-between text-sm mb-1">
-                                    <span>Diversification Score</span>
-                                    <span>{portfolio.diversificationScore}%</span>
+                                  <div className="text-muted-foreground">Expected Return</div>
+                                  <div className="font-semibold text-green-600">
+                                      {(portfolio.expectedReturn * 100).toFixed(1)}%
                                   </div>
-                                  <Progress value={portfolio.diversificationScore} className="h-2" />
                                 </div>
+                                <div>
+                                  <div className="text-muted-foreground">Risk Level</div>
+                                  <div className="font-semibold text-orange-600">
+                                      {(portfolio.risk * 100).toFixed(1)}%
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span>Diversification Score</span>
+                                    <span>{portfolio.diversificationScore}%</span>
+                                </div>
+                                  <Progress value={portfolio.diversificationScore} className="h-2" />
+                              </div>
 
                                 {/* Enhanced portfolio information */}
                                 <div className="mt-4 space-y-3">
@@ -2293,46 +2293,46 @@ export const StockSelection = ({
                                   <div className="flex justify-between text-sm">
                                     <span>Number of Assets:</span>
                                     <span className="font-medium">{portfolio.allocations.length}</span>
-                                  </div>
-                                </div>
+                              </div>
+                              </div>
 
-                                <div className="space-y-2">
-                                  <div className="text-sm font-medium">Allocations:</div>
+                              <div className="space-y-2">
+                                <div className="text-sm font-medium">Allocations:</div>
                                   {portfolio.allocations.slice(0, 3).map((allocation, idx) => (
-                                    <div key={idx} className="flex justify-between text-xs">
-                                      <span>{allocation.symbol}</span>
-                                      <span>{allocation.allocation}%</span>
-                                    </div>
-                                  ))}
+                                  <div key={idx} className="flex justify-between text-xs">
+                                    <span>{allocation.symbol}</span>
+                                    <span>{allocation.allocation}%</span>
+                                  </div>
+                                ))}
                                   {portfolio.allocations.length > 3 && (
                                     <div className="text-xs text-muted-foreground">
                                       +{portfolio.allocations.length - 3} more stocks
                                     </div>
                                   )}
-                                </div>
+                              </div>
 
-                                <Button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                              <Button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                     acceptRecommendation(portfolio, index);
-                                  }}
-                                  className="w-full"
+                                }}
+                                className="w-full"
                                   variant={selectedPortfolioIndex === index ? "default" : "outline"}
-                                >
+                              >
                                   {selectedPortfolioIndex === index ? (
-                                    <>
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Portfolio Selected
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Use This Portfolio
-                                    </>
+                                  <>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Portfolio Selected
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Use This Portfolio
+                                  </>
                                   )}
-                                </Button>
-                              </CardContent>
-                            </Card>
+                              </Button>
+                            </CardContent>
+                          </Card>
                           ))}
                         </div>
                       </div>

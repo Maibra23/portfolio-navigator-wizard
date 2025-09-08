@@ -12,6 +12,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Union
 from functools import lru_cache
+from .timestamp_utils import normalize_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +120,35 @@ class RedisFirstDataService:
                     data_dict = json.loads(gzip.decompress(raw).decode())
                     # Convert back to Series
                     data = pd.Series(data_dict)
-                    data.index = pd.to_datetime(data.index, utc=True)
-                    return data
+                    # ENHANCED: Use robust timestamp parsing for all formats
+                    try:
+                        # Parse timestamps using our robust utility
+                        parsed_dates = []
+                        for date_str in data.index:
+                            # First try to normalize the timestamp
+                            normalized = normalize_timestamp(date_str)
+                            if normalized:
+                                try:
+                                    parsed_date = pd.to_datetime(normalized)
+                                    parsed_dates.append(parsed_date)
+                                except Exception as e:
+                                    logger.warning(f"⚠️ Failed to parse normalized date {normalized} for {ticker}: {e}")
+                                    # Fallback to direct parsing
+                                    try:
+                                        parsed_date = pd.to_datetime(date_str)
+                                        parsed_dates.append(parsed_date)
+                                    except Exception as e2:
+                                        logger.error(f"❌ Failed to parse date {date_str} for {ticker}: {e2}")
+                                        return None
+                            else:
+                                logger.error(f"❌ Could not normalize date {date_str} for {ticker}")
+                                return None
+                        
+                        data.index = pd.DatetimeIndex(parsed_dates)
+                        return data
+                    except Exception as e:
+                        logger.error(f"❌ Failed to parse timestamps for {ticker}: {e}")
+                        return None
                 else:  # sector, metrics, or other metadata
                     return json.loads(raw.decode())
         except Exception as e:

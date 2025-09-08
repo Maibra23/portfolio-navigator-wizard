@@ -15,7 +15,7 @@ help:
 	@echo "  make ticker-table - Start ticker table server on http://localhost:8081 (requires backend)"
 	@echo "  make full-dev     - Start with full ticker list (FAST startup with lazy initialization)"
 	@echo "  make fix-health   - Fix health endpoint error (restart backend)"
-	@echo "  make open-ticker  - Open ticker table in browser"
+	@echo "  make open-ticker  - Open consolidated ticker & portfolio tables in browser"
 	@echo "  make warm-cache   - Pre-warm Redis cache with all required data"
 	@echo "  make check-redis  - 🆕 Check Redis status and provide startup instructions"
 	@echo "  make quick-ticker-table - 🆕 QUICK: Check Redis + start essential ticker table system"
@@ -256,15 +256,38 @@ fix-health:
 	sleep 2
 	make backend
 
-# Open ticker table in browser
-open-ticker:
-	@echo "🌐 Opening ticker table in browser..."
-	@if curl -s http://localhost:8081/health > /dev/null 2>&1; then \
-		open "http://localhost:8081"; \
-		echo "✅ Ticker table opened in browser"; \
+# Open consolidated ticker and portfolio tables in browser
+open-ticker: check-redis
+	@echo "🌐 Opening consolidated ticker and portfolio tables in browser..."
+	@echo "🚀 Starting consolidated table system..."
+	@echo "=================================================="
+	@echo "📊 This will start:"
+	@echo "  1. 📊 Consolidated table server (port 8081) - if not running"
+	@echo "  2. 🌐 Open browser with both ticker and portfolio tables"
+	@echo "=================================================="
+	@echo ""
+	@# Note: Backend server not needed for consolidated table system
+	@echo "ℹ️  Using consolidated table server (no main backend required)"
+	@# Check if consolidated table server is running
+	@if ! curl -s http://localhost:8081/health > /dev/null 2>&1; then \
+		echo "🔄 Starting consolidated table server..."; \
+		cd backend && /usr/local/bin/python3.11 consolidated_table_server.py > /dev/null 2>&1 & \
+		echo "✅ Consolidated table server started (PID: $$!)"; \
+		sleep 2; \
 	else \
-		echo "❌ Ticker table server not running. Start it with: make ticker-table"; \
+		echo "✅ Consolidated table server already running"; \
 	fi
+	@echo ""
+	@echo "🌐 Opening consolidated tables in browser..."
+	@open "http://localhost:8081"
+	@echo "✅ Consolidated ticker and portfolio tables opened in browser!"
+	@echo ""
+	@echo "🎯 CONSOLIDATED TABLE SYSTEM READY!"
+	@echo "=================================================="
+	@echo "📊 Ticker Table: http://localhost:8081 (Tab 1)"
+	@echo "📊 Portfolio Table: http://localhost:8081 (Tab 2)"
+	@echo "📚 API Endpoints: http://localhost:8081/docs"
+	@echo "=================================================="
 
 # Frontend tests
 test-frontend:
@@ -821,4 +844,4 @@ test-performance:
 		print('✅ Lazy initialization working - no external API calls'); \
 		print('✅ Stock selection cache will populate on-demand'); \
 		print(f'\\n⚡ Performance: {init_time:.2f}s vs 5-10 minutes (old system)'); \
-		print(f'🚀 Improvement: {((300-init_time)/300)*100:.1f}% faster startup')" 
+		print(f'🚀 Improvement: {((300-init_time)/300)*100:.1f}% faster startup')" ck

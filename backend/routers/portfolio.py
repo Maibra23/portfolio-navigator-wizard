@@ -17,6 +17,7 @@ from utils.data_corruption_detector import DataCorruptionDetector
 from utils.data_change_detector import DataChangeDetector
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.auto_refresh_service import AutoRefreshService
+from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from utils.ticker_store import ticker_store
 from datetime import datetime, timedelta
@@ -884,6 +885,69 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
             ))
     
     return responses
+
+@router.post("/recommendations/strategy-comparison")
+async def generate_strategy_comparison(strategy: str, risk_profile: str):
+    """
+    Generate strategy comparison portfolios for advanced recommendations
+    
+    This endpoint creates portfolios using different investment strategies:
+    - diversification: Focus on sector diversification
+    - risk: Focus on risk management
+    - return: Focus on return maximization
+    
+    Args:
+        strategy: Investment strategy ('diversification', 'risk', 'return')
+        risk_profile: User's risk tolerance level
+    """
+    try:
+        logger.info(f"Generating strategy comparison for {strategy} strategy, {risk_profile} profile")
+        
+        # Initialize strategy optimizer if not already done
+        if not hasattr(redis_first_data_service, 'strategy_optimizer'):
+            redis_first_data_service.strategy_optimizer = StrategyPortfolioOptimizer(
+                redis_first_data_service, 
+                redis_manager
+            )
+        
+        # Generate strategy portfolios
+        strategy_buckets = redis_first_data_service.strategy_optimizer.generate_strategy_portfolio_buckets(
+            strategy=strategy,
+            risk_profiles=[risk_profile]
+        )
+        
+        # Convert to response format
+        responses = []
+        if strategy in strategy_buckets and 'personalized' in strategy_buckets[strategy]:
+            personalized_portfolios = strategy_buckets[strategy]['personalized'].get(risk_profile, [])
+            
+            for i, portfolio in enumerate(personalized_portfolios[:5]):  # Limit to 5 portfolios
+                try:
+                    response = PortfolioResponse(
+                        portfolio=portfolio.get('allocations', []),
+                        name=f"{strategy.title()} Strategy Portfolio {i+1}",
+                        description=f"Portfolio optimized for {strategy} strategy with {risk_profile} risk profile",
+                        expectedReturn=portfolio.get('expected_return', 0.12),
+                        risk=portfolio.get('risk', 0.15),
+                        diversificationScore=portfolio.get('diversification_score', 75.0),
+                        sharpeRatio=0.0  # Always 0 as requested
+                    )
+                    responses.append(response)
+                except Exception as e:
+                    logger.error(f"Error converting strategy portfolio to response: {e}")
+                    continue
+        
+        if not responses:
+            logger.warning(f"No strategy portfolios found for {strategy}, falling back to static recommendations")
+            return _get_static_portfolio_recommendations(risk_profile)
+        
+        logger.info(f"Generated {len(responses)} strategy comparison portfolios for {strategy}")
+        return responses
+        
+    except Exception as e:
+        logger.error(f"Error generating strategy comparison: {e}")
+        # Fallback to static recommendations
+        return _get_static_portfolio_recommendations(risk_profile)
 
 @router.post("", response_model=PortfolioResponse)
 def create_portfolio(data: PortfolioRequest):
