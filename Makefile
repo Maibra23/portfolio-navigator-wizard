@@ -1,5 +1,14 @@
 # Makefile for Portfolio Navigator Wizard
 
+# Python interpreter standardization
+# Prefer Homebrew Python 3.11 when available, otherwise fall back to python3 in PATH
+PYTHON_BIN ?= /usr/local/bin/python3.11
+PYTHON_FALLBACK ?= python3
+PYTHON_EXEC := $(shell if [ -x "$(PYTHON_BIN)" ]; then echo "$(PYTHON_BIN)"; else echo "$(PYTHON_FALLBACK)"; fi)
+CHECK_CACHE_CMD = "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); status = service.get_health_metrics(); print('Redis Status:', status.get('redis_status')); cov = status.get('cache_coverage',{}); print('Price Coverage %:', round(cov.get('price_cache_coverage', 0),1)); print('Fast Startup: No external API calls during startup')"
+CHECK_STATUS_CMD = "from utils.redis_first_data_service import redis_first_data_service as s; inv = s.get_cache_inventory(); print(f'\\nRedis: {inv.get(\"redis\") }'); cov = inv.get('coverage',{}); print(f'Joined tickers: {cov.get(\"joined_tickers\",0)}'); print(f'Prices keys: {cov.get(\"prices\",0)}, Sector keys: {cov.get(\"sector\",0)}, Metrics keys: {cov.get(\"metrics\",0)}'); print(f'TTL sample: {inv.get(\"ttl_sample\", [])[:3]}')"
+
+
 .PHONY: help dev dev-ticker backend frontend ticker-table prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health open-ticker warm-cache activate-ticker-table start-ticker-table check-redis quick-ticker-table enhanced enhanced-quick enhanced-complete backend-enhanced enhanced-table test-enhanced test-enhanced-auto-refresh test-calculations demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status test-search demo-search performance test-performance
 
 # Default target - show help
@@ -99,7 +108,7 @@ help:
 check-cache:
 	@echo "🔍 Checking Redis cache status (LIGHTWEIGHT)..."
 	@echo "⚡ Using Lazy Stock Selection - no heavy cache warming"
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); status = service.get_health_metrics(); print(f'Redis Status: {status[\"redis_status\"]}'); print(f'Cache Coverage: {status[\"cache_coverage\"].get(\"price_cache_coverage\", 0):.1f}%'); print(f'Enhanced Data Fetcher: {\"Lazy\" if status[\"enhanced_data_fetcher_status\"] == \"lazy\" else \"Initialized\"}'); print(f'Cache TTL: {status[\"cache_coverage\"].get(\"ttl_days\", 28)} days'); print('✅ Lazy Stock Selection: Stock data loads on-demand'); print('🔍 Enhanced Fuzzy Search: Ready for use'); print('⚡ Fast Startup: No external API calls during startup')"
+	@cd backend && $(PYTHON_EXEC) -c $(CHECK_CACHE_CMD)
 
 # Development: run both backend and frontend (FAST startup with lazy stock selection)
 dev: check-cache
@@ -109,7 +118,7 @@ dev: check-cache
 	@echo "📊 Backend: http://localhost:8000"
 	@echo "🌐 Frontend: http://localhost:8080"
 	@echo "=================================================="
-	cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 & \
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 & \
 	cd frontend && npm run dev
 
 # Development with ticker table instead of frontend
@@ -120,10 +129,10 @@ dev-ticker: check-cache
 	@echo "📊 Ticker Table: http://localhost:8081"
 	@echo "=================================================="
 	@echo "🔄 Starting servers in background..."
-	cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 & \
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 & \
 	echo "✅ Backend server started (PID: $$!)" && \
 	sleep 3 && \
-	cd backend && /usr/local/bin/python3.11 ticker_table_server.py > /dev/null 2>&1 & \
+	cd backend && $(PYTHON_EXEC) ticker_table_server.py > /dev/null 2>&1 & \
 	echo "✅ Ticker table server started (PID: $$!)" && \
 	echo "" && \
 	echo "🎉 Both servers are now running in background!" && \
@@ -133,20 +142,17 @@ dev-ticker: check-cache
 	echo "💡 To check status: make status"
 
 # Full development: run with all tickers and complete cache (FAST startup with lazy initialization)
-full-dev: check-cache
-	@echo "🚀 Starting Portfolio Navigator Wizard (Full Mode - FAST STARTUP)..."
+full-dev: check-cache stop
+	@echo "\ud83d\ude80 Starting Portfolio Navigator Wizard (Full Mode - FAST STARTUP)..."
 	@echo "⚡ Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
 	@echo "🔍 Enhanced Fuzzy Search: Smart search with relevance scoring"
 	@echo "📊 Backend: http://localhost:8000 (with all tickers)"
 	@echo "🌐 Frontend: http://localhost:8080"
 	@echo "=================================================="
-	@echo "🔄 Checking Redis status..."
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.enhanced_data_fetcher import enhanced_data_fetcher; \
-		status = enhanced_data_fetcher.get_health_metrics(); \
-		print(f'\nRedis Status: {status[\"redis\"][\"status\"]}'); \
-		print(f'Cache Coverage: {status[\"data\"].get(\"cache_coverage\", 0):.1f}%\n')"
-	@echo "🚀 Starting servers with full data mode (lazy initialization)..."
-	cd backend && PYTHONPATH=/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard FAST_STARTUP=false /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 & \
+	@echo "\ud83d\udd04 Checking Redis status..."
+	@cd backend && $(PYTHON_EXEC) -c $(CHECK_STATUS_CMD)
+	@echo "\ud83d\ude80 Starting servers with full data mode (lazy initialization)..."
+	@cd backend && PYTHONPATH=$(PWD)/backend FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
 	cd frontend && npm run dev
 
 # Backend only (FAST startup with lazy stock selection)
@@ -157,7 +163,7 @@ backend: check-cache
 	@echo "📊 Server: http://localhost:8000"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
-	cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Backend with full ticker list (FAST startup with lazy initialization)
 backend-full: check-cache
@@ -167,7 +173,7 @@ backend-full: check-cache
 	@echo "📊 Server: http://localhost:8000 (with all tickers)"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
-	cd backend && FAST_STARTUP=false /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Frontend only
 frontend:
@@ -182,12 +188,12 @@ ticker-table:
 	@echo "📊 Server: http://localhost:8081"
 	@echo "📊 Requires main backend on http://localhost:8000"
 	@echo "=================================================="
-	cd backend && /usr/local/bin/python3.11 ticker_table_server.py
+	@cd backend && $(PYTHON_EXEC) ticker_table_server.py
 
 # Install all dependencies
 install:
 	@echo "📦 Installing Backend Dependencies..."
-	cd backend && /usr/local/bin/python3.11 -m pip install -r requirements.txt
+	@cd backend && $(PYTHON_EXEC) -m pip install -r requirements.txt
 	@echo "📦 Installing Frontend Dependencies..."
 	cd frontend && npm install
 	@echo "✅ All dependencies installed!"
@@ -246,7 +252,7 @@ prod-copy:
 # Backend tests
 test-backend:
 	@echo "🧪 Running Backend Tests..."
-	cd backend && /usr/local/bin/python3.11 -m pytest
+	@cd backend && $(PYTHON_EXEC) -m pytest
 
 # Fix health endpoint (temporary workaround)
 fix-health:
@@ -271,7 +277,7 @@ open-ticker: check-redis
 	@# Check if consolidated table server is running
 	@if ! curl -s http://localhost:8081/health > /dev/null 2>&1; then \
 		echo "🔄 Starting consolidated table server..."; \
-		cd backend && /usr/local/bin/python3.11 consolidated_table_server.py > /dev/null 2>&1 & \
+		cd backend && $(PYTHON_EXEC) consolidated_table_server.py > /dev/null 2>&1 & \
 		echo "✅ Consolidated table server started (PID: $$!)"; \
 		sleep 2; \
 	else \
@@ -301,13 +307,7 @@ test-enhanced:
 	@echo "🔍 Testing Enhanced Fuzzy Search..."
 	@echo "📊 Testing Portfolio System..."
 	@echo "=================================================="
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.redis_first_data_service import RedisFirstDataService; \
-		service = RedisFirstDataService(); \
-		print('✅ RedisFirstDataService initialized'); \
-		results = service.search_tickers('appl', limit=3); \
-		print(f'✅ Enhanced search test: {len(results)} results found'); \
-		for result in results[:2]: \
-			print(f'  - {result[\"ticker\"]}: {result[\"company_name\"]} (Score: {result[\"relevance_score\"]})')"
+	@cd backend && $(PYTHON_EXEC) -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); print('✅ RedisFirstDataService initialized'); results = service.search_tickers('appl', limit=3); print(f'✅ Enhanced search test: {len(results)} results found'); [print(f'  - {r[\"ticker\"]}: {r[\"company_name\"]} (Score: {r[\"relevance_score\"]})') for r in results[:2]]"
 
 # Test enhanced search functionality
 test-search:
@@ -317,7 +317,7 @@ test-search:
 	@echo "🧪 Testing Relevance Scoring..."
 	@echo "🧪 Testing Sector Filtering..."
 	@echo "=================================================="
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); print('✅ Enhanced Search Test Results:'); results1 = service.search_tickers('appl', limit=3); print(f'Test 1: Found {len(results1)} results for \"appl\"'); results2 = service.search_tickers('tech', limit=3, filters={'sector': 'Technology'}); print(f'Test 2: Found {len(results2)} Technology sector results'); print('✅ Enhanced search tests completed successfully!')"
+	@cd backend && $(PYTHON_EXEC) -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); print('✅ Enhanced Search Test Results:'); results1 = service.search_tickers('appl', limit=3); print(f'Test 1: Found {len(results1)} results for \"appl\"'); results2 = service.search_tickers('tech', limit=3, filters={'sector': 'Technology'}); print(f'Test 2: Found {len(results2)} Technology sector results'); print('✅ Enhanced search tests completed successfully!')"
 
 # 🆕 COMPLETE: Activate ticker table with cache warming and all necessary servers
 activate-ticker-table: check-cache
@@ -338,11 +338,11 @@ activate-ticker-table: check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting all servers in background..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@sleep 3
 	@echo "📊 Starting ticker table server on port 8081..."
-	@cd backend && /usr/local/bin/python3.11 ticker_table_server.py > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) ticker_table_server.py > /dev/null 2>&1 &
 	@echo "✅ Ticker table server started (PID: $$!)"
 	@sleep 2
 	@echo "🌐 Starting frontend development server on port 8080..."
@@ -399,11 +399,11 @@ start-ticker-table: check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting essential servers in background..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@sleep 3
 	@echo "📊 Starting ticker table server on port 8081..."
-	@cd backend && /usr/local/bin/python3.11 ticker_table_server.py > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) ticker_table_server.py > /dev/null 2>&1 &
 	@echo "✅ Ticker table server started (PID: $$!)"
 	@sleep 2
 	@echo "🌐 Starting frontend development server on port 8080..."
@@ -488,7 +488,7 @@ enhanced: check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting backend server..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@echo ""
 	@echo "🔄 Step 3: Starting server (this may take a few seconds)..."
@@ -539,7 +539,7 @@ enhanced-quick: check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting backend server..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@echo ""
 	@echo "🔄 Step 3: Opening enhanced table in browser..."
@@ -586,7 +586,7 @@ enhanced-complete: check-cache
 	@echo ""
 	@echo "🔄 Step 1: Starting backend server..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@echo ""
 	@echo "🔄 Step 2: Waiting for backend server to be ready..."
@@ -630,7 +630,7 @@ test-enhanced-auto-refresh:
 	@echo "🧪 Testing Enhanced Auto-Refresh Features..."
 	@echo "=================================================="
 	@echo "Running auto-refresh service test..."
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.auto_refresh_service import AutoRefreshService; from utils.enhanced_data_fetcher import enhanced_data_fetcher; service = AutoRefreshService(enhanced_data_fetcher); print('✅ Auto-refresh service initialized successfully'); summary = service.get_tracking_summary(); print(f'📊 Tracking summary: {summary.get(\"total_tickers\", 0)} tickers'); print('✅ Enhanced auto-refresh features test completed!')"
+	@cd backend && $(PYTHON_EXEC) -c "from utils.auto_refresh_service import AutoRefreshService; from utils.enhanced_data_fetcher import enhanced_data_fetcher; service = AutoRefreshService(enhanced_data_fetcher); print('✅ Auto-refresh service initialized successfully'); summary = service.get_tracking_summary(); print(f'📊 Tracking summary: {summary.get(\"total_tickers\", 0)} tickers'); print('✅ Enhanced auto-refresh features test completed!')"
 	@echo "=================================================="
 	@echo "✅ Enhanced auto-refresh features test completed!"
 
@@ -645,7 +645,7 @@ test-calculations:
 	@echo "  • Diversification Scoring"
 	@echo "  • API Endpoints (if backend running)"
 	@echo "=================================================="
-	@cd backend && python test_calculations.py
+	@cd backend && $(PYTHON_EXEC) test_calculations.py
 	@echo "=================================================="
 	@echo "✅ Calculation tests completed!"
 
@@ -658,7 +658,7 @@ test-corruption-detection:
 	@echo "  • API Endpoints for Corruption Monitoring"
 	@echo "  • Data Quality Validation"
 	@echo "=================================================="
-	@cd backend && python test_corruption_detection.py
+	@cd backend && $(PYTHON_EXEC) test_corruption_detection.py
 	@echo "=================================================="
 	@echo "✅ Corruption detection tests completed!"
 
@@ -668,7 +668,7 @@ corruption-scan:
 	@echo "This will scan all cached data for corruption"
 	@echo "and provide detailed reports with recommendations"
 	@echo "=================================================="
-	@cd backend && python -c "from utils.data_corruption_detector import DataCorruptionDetector; from utils.enhanced_data_fetcher import enhanced_data_fetcher; detector = DataCorruptionDetector(enhanced_data_fetcher); detector.scan_all_data_for_corruption(); detector.print_corruption_report()"
+	@cd backend && $(PYTHON_EXEC) -c "from utils.data_corruption_detector import DataCorruptionDetector; from utils.enhanced_data_fetcher import enhanced_data_fetcher; detector = DataCorruptionDetector(enhanced_data_fetcher); detector.scan_all_data_for_corruption(); detector.print_corruption_report()"
 	@echo "=================================================="
 	@echo "✅ Corruption scan completed!"
 
@@ -710,7 +710,7 @@ backend-enhanced: check-cache
 	@echo ""
 	@echo "🔄 Starting enhanced backend server..."
 	@echo "📊 Starting enhanced backend server on port 8000..."
-	@cd backend && /usr/local/bin/python3.11 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Enhanced backend server started (PID: $$!)"
 	@echo ""
 	@echo "🎯 ENHANCED BACKEND SERVER STARTING!"
@@ -728,14 +728,7 @@ backend-enhanced: check-cache
 # Check enhanced system status
 enhanced-status:
 	@echo "🔍 Checking enhanced system status..."
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.redis_first_data_service import redis_first_data_service; \
-		status = redis_first_data_service.get_health_metrics(); \
-		print(f'System Status: {status[\"system_status\"]}'); \
-		print(f'Redis Status: {status[\"redis_status\"]}'); \
-		print(f'Enhanced Data Fetcher: {status[\"enhanced_data_fetcher_status\"]}'); \
-		print(f'Cache Coverage: {status[\"cache_coverage\"].get(\"price_cache_coverage\", 0):.1f}%'); \
-		print(f'Timestamp: {status[\"timestamp\"]}'); \
-		" 
+	@cd backend && $(PYTHON_EXEC) -c "from utils.redis_first_data_service import redis_first_data_service; status = redis_first_data_service.get_health_metrics(); print(f'System Status: {status[\"system_status\"]}'); print(f'Redis Status: {status[\"redis_status\"]}'); print(f'Enhanced Data Fetcher: {status[\"enhanced_data_fetcher_status\"]}'); print(f'Cache Coverage: {status[\"cache_coverage\"].get(\"price_cache_coverage\", 0):.1f}%'); print(f'Timestamp: {status[\"timestamp\"]}')"
 
 # Demo enhanced features
 demo-enhanced:
@@ -745,28 +738,7 @@ demo-enhanced:
 	@echo "⚡ Lazy Stock Selection Demo..."
 	@echo "📊 Portfolio System Demo..."
 	@echo "=================================================="
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.redis_first_data_service import RedisFirstDataService; \
-		service = RedisFirstDataService(); \
-		print('🎬 Enhanced Features Demo:'); \
-		print('\\n🔍 Demo 1: Fuzzy Search with Typos'); \
-		print('  User types: \"appl\" (typo)'); \
-		results1 = service.search_tickers('appl', limit=3); \
-		print(f'  Results: {len(results1)} found'); \
-		for result in results1: \
-			print(f'    {result[\"ticker\"]}: {result[\"company_name\"]} (Score: {result[\"relevance_score\"]})'); \
-		print('\\n🔍 Demo 2: Company Name Search'); \
-		print('  User types: \"apple\" (company name)'); \
-		results2 = service.search_tickers('apple', limit=3); \
-		print(f'  Results: {len(results2)} found'); \
-		for result in results2: \
-			print(f'    {result[\"ticker\"]}: {result[\"company_name\"]} (Score: {result[\"relevance_score\"]})'); \
-		print('\\n🔍 Demo 3: Sector Filtering'); \
-		print('  User types: \"tech\" with Technology sector filter'); \
-		results3 = service.search_tickers('tech', limit=3, filters={'sector': 'Technology'}); \
-		print(f'  Results: {len(results3)} Technology sector results'); \
-		for result in results3: \
-			print(f'    {result[\"ticker\"]}: {result[\"sector\"]} (Score: {result[\"relevance_score\"]})'); \
-		print('\\n🎉 Enhanced Features Demo Completed!')"
+	@cd backend && $(PYTHON_EXEC) -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); print('🎬 Enhanced Features Demo:'); print('\\n🔍 Demo 1: Fuzzy Search with Typos'); print('  User types: \"appl\" (typo)'); results1 = service.search_tickers('appl', limit=3); print(f'  Results: {len(results1)} found'); [print(f'    {r[\"ticker\"]}: {r[\"company_name\"]} (Score: {r[\"relevance_score\"]})') for r in results1]; print('\\n🔍 Demo 2: Company Name Search'); print('  User types: \"apple\" (company name)'); results2 = service.search_tickers('apple', limit=3); print(f'  Results: {len(results2)} found'); [print(f'    {r[\"ticker\"]}: {r[\"company_name\"]} (Score: {r[\"relevance_score\"]})') for r in results2]; print('\\n🔍 Demo 3: Sector Filtering'); print('  User types: \"tech\" with Technology sector filter'); results3 = service.search_tickers('tech', limit=3, filters={'sector': 'Technology'}); print(f'  Results: {len(results3)} Technology sector results'); [print(f'    {r[\"ticker\"]}: {r[\"sector\"]} (Score: {r[\"relevance_score\"]})') for r in results3]; print('\\n🎉 Enhanced Features Demo Completed!')"
 
 # Demo enhanced search capabilities
 demo-search:
@@ -776,29 +748,7 @@ demo-search:
 	@echo "📊 Showing relevance scoring..."
 	@echo "🔍 Demonstrating fuzzy matching..."
 	@echo "=================================================="
-	@cd backend && /usr/local/bin/python3.11 -c "from utils.redis_first_data_service import RedisFirstDataService; \
-		service = RedisFirstDataService(); \
-		print('🔍 Enhanced Search Capabilities Demo:'); \
-		print('\\n📊 Search Feature 1: Exact Ticker Match (50 points)'); \
-		results1 = service.search_tickers('AAPL', limit=1); \
-		if results1: \
-			print(f'  AAPL: {results1[0][\"company_name\"]} (Score: {results1[0][\"relevance_score\"]})'); \
-		print('\\n📊 Search Feature 2: Ticker Prefix Match (40 points)'); \
-		results2 = service.search_tickers('APP', limit=3); \
-		print(f'  Prefix \"APP\" results: {len(results2)} found'); \
-		for result in results2: \
-			print(f'    {result[\"ticker\"]}: {result[\"company_name\"]} (Score: {result[\"relevance_score\"]})'); \
-		print('\\n📊 Search Feature 3: Company Name Match (30-40 points)'); \
-		results3 = service.search_tickers('microsoft', limit=2); \
-		print(f'  Company name \"microsoft\" results: {len(results3)} found'); \
-		for result in results3: \
-			print(f'    {result[\"ticker\"]}: {result[\"company_name\"]} (Score: {result[\"relevance_score\"]})'); \
-		print('\\n📊 Search Feature 4: Sector Match (20 points)'); \
-		results4 = service.search_tickers('healthcare', limit=2); \
-		print(f'  Sector \"healthcare\" results: {len(results4)} found'); \
-		for result in results4: \
-			print(f'    {result[\"ticker\"]}: {result[\"sector\"]} (Score: {result[\"relevance_score\"]})'); \
-		print('\\n🎉 Enhanced Search Demo Completed!')" 
+	@cd backend && $(PYTHON_EXEC) -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); print('🔍 Enhanced Search Capabilities Demo:'); print('\\n📊 Search Feature 1: Exact Ticker Match (50 points)'); results1 = service.search_tickers('AAPL', limit=1); [print(f'  AAPL: {r[\"company_name\"]} (Score: {r[\"relevance_score\"]})') for r in results1]; print('\\n📊 Search Feature 2: Ticker Prefix Match (40 points)'); results2 = service.search_tickers('APP', limit=3); print(f'  Prefix \"APP\" results: {len(results2)} found'); [print(f'    {r[\"ticker\"]}: {r[\"company_name\"]} (Score: {r[\"relevance_score\"]})') for r in results2]; print('\\n📊 Search Feature 3: Company Name Match (30-40 points)'); results3 = service.search_tickers('microsoft', limit=2); print(f'  Company name \"microsoft\" results: {len(results3)} found'); [print(f'    {r[\"ticker\"]}: {r[\"company_name\"]} (Score: {r[\"relevance_score\"]})') for r in results3]; print('\\n📊 Search Feature 4: Sector Match (20 points)'); results4 = service.search_tickers('healthcare', limit=2); print(f'  Sector \"healthcare\" results: {len(results4)} found'); [print(f'    {r[\"ticker\"]}: {r[\"sector\"]} (Score: {r[\"relevance_score\"]})') for r in results4]; print('\\n🎉 Enhanced Search Demo Completed!')"
 
 # Show performance improvements
 performance:
@@ -835,13 +785,4 @@ test-performance:
 	@echo "=================================================="
 	@echo "🧪 Testing startup time and lazy initialization..."
 	@echo "=================================================="
-	@cd backend && /usr/local/bin/python3.11 -c "import time; \
-		start_time = time.time(); \
-		from utils.redis_first_data_service import RedisFirstDataService; \
-		service = RedisFirstDataService(); \
-		init_time = time.time() - start_time; \
-		print(f'✅ RedisFirstDataService initialized in {init_time:.2f} seconds'); \
-		print('✅ Lazy initialization working - no external API calls'); \
-		print('✅ Stock selection cache will populate on-demand'); \
-		print(f'\\n⚡ Performance: {init_time:.2f}s vs 5-10 minutes (old system)'); \
-		print(f'🚀 Improvement: {((300-init_time)/300)*100:.1f}% faster startup')" ck
+	@cd backend && $(PYTHON_EXEC) -c "import time; start_time = time.time(); from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); init_time = time.time() - start_time; print(f'✅ RedisFirstDataService initialized in {init_time:.2f} seconds'); print('✅ Lazy initialization working - no external API calls'); print('✅ Stock selection cache will populate on-demand'); print(f'\\n⚡ Performance: {init_time:.2f}s vs 5-10 minutes (old system)'); print(f'🚀 Improvement: {((300-init_time)/300)*100:.1f}% faster startup')"

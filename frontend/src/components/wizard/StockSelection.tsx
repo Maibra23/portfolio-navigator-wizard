@@ -532,7 +532,18 @@ export const StockSelection = ({
         
         const apiUrl = `/api/portfolio/two-asset-analysis?ticker1=${encodeURIComponent(ticker1.trim())}&ticker2=${encodeURIComponent(ticker2.trim())}`;
         
-        const response = await fetch(apiUrl);
+        // Simple retry with backoff: try up to 2 times
+        let response: Response | null = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            response = await fetch(apiUrl);
+            if (response.ok) break;
+          } catch (e) {
+            if (attempt === 2) throw e;
+          }
+          await new Promise(res => setTimeout(res, attempt * 500));
+        }
+        if (!response) throw new Error('No response from server');
         console.log('Mini-lesson response status:', response.status);
         
         if (response.ok) {
@@ -564,9 +575,11 @@ export const StockSelection = ({
         } else {
           const errorText = await response.text();
           console.error('Mini-lesson API error:', response.status, errorText);
+          setError(`Unable to load financial data (HTTP ${response.status}). Please try again.`);
         }
       } catch (error) {
         console.error('Error loading mini-lesson data:', error);
+        setError('Unable to load financial data. Please try refreshing the page.');
       } finally {
         setIsLoadingMiniLesson(false);
       }

@@ -8,18 +8,14 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import redis
-from utils.redis_first_data_service import redis_first_data_service
+from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.port_analytics import PortfolioAnalytics
 from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
 from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_stock_selector import PortfolioStockSelector
-from utils.data_corruption_detector import DataCorruptionDetector
-from utils.data_change_detector import DataChangeDetector
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
-from utils.auto_refresh_service import AutoRefreshService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
-from utils.ticker_store import ticker_store
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -395,7 +391,7 @@ def search_tickers(
             filters['risk_profile'] = risk_profile
         
         # Perform enhanced search
-        results = redis_first_data_service.search_tickers(q, limit, filters)
+        results = _rds.search_tickers(q, limit, filters)
         
         # Format response with enhanced information
         formatted_results = []
@@ -437,7 +433,7 @@ def search_tickers(
 def get_ticker_info(ticker: str):
     """Get comprehensive ticker information with Redis-first approach"""
     try:
-        ticker_info = redis_first_data_service.get_ticker_info(ticker)
+        ticker_info = _rds.get_ticker_info(ticker)
         if not ticker_info:
             raise HTTPException(status_code=404, detail=f"Ticker {ticker} not found")
         return ticker_info
@@ -451,7 +447,7 @@ def get_ticker_info(ticker: str):
 def get_ticker_price_history(ticker: str, days: int = Query(30, description="Number of days")):
     """Get ticker price history with Redis-first approach"""
     try:
-        price_data = redis_first_data_service.get_ticker_price_history(ticker, days)
+        price_data = _rds.get_ticker_price_history(ticker, days)
         if not price_data:
             raise HTTPException(status_code=404, detail=f"Price data not found for {ticker}")
         return price_data
@@ -465,7 +461,7 @@ def get_ticker_price_history(ticker: str, days: int = Query(30, description="Num
 def get_ticker_monthly_data(ticker: str):
     """Get monthly data for a ticker with Redis-first approach"""
     try:
-        data = redis_first_data_service.get_monthly_data(ticker)
+        data = _rds.get_monthly_data(ticker)
         if not data:
             raise HTTPException(status_code=404, detail=f"Monthly data not found for {ticker}")
         return data
@@ -479,7 +475,7 @@ def get_ticker_monthly_data(ticker: str):
 def warm_cache():
     """Warm up the Redis cache with Redis-first approach"""
     try:
-        results = redis_first_data_service.warm_cache()
+        results = _rds.warm_cache()
         return {"message": "Cache warming completed", "results": results}
     except Exception as e:
         logger.error(f"Cache warming error: {e}")
@@ -489,7 +485,7 @@ def warm_cache():
 def get_cache_status():
     """Get cache status with Redis-first approach"""
     try:
-        status = redis_first_data_service.get_cache_status()
+        status = _rds.get_cache_status()
         return status
     except Exception as e:
         logger.error(f"Cache status error: {e}")
@@ -499,7 +495,7 @@ def get_cache_status():
 def clear_cache():
     """Clear all cached data with Redis-first approach"""
     try:
-        results = redis_first_data_service.clear_cache()
+        results = _rds.clear_cache()
         return {"message": "Cache cleared successfully", "results": results}
     except Exception as e:
         logger.error(f"Cache clearing error: {e}")
@@ -509,7 +505,7 @@ def clear_cache():
 def get_master_tickers():
     """Get master ticker list with Redis-first approach"""
     try:
-        master_tickers = redis_first_data_service.all_tickers
+        master_tickers = _rds.all_tickers
         return {
             "tickers": master_tickers,
             "total": len(master_tickers),
@@ -523,7 +519,7 @@ def get_master_tickers():
 def get_available_tickers(limit: int = Query(100, description="Maximum number of tickers")):
     """Get available tickers with Redis-first approach"""
     try:
-        master_tickers = redis_first_data_service.all_tickers[:limit]
+        master_tickers = _rds.all_tickers[:limit]
         return {
             "tickers": master_tickers,
             "total": len(master_tickers),
@@ -540,14 +536,15 @@ def refresh_tickers():
     Refresh ticker lists from sources
     """
     try:
-        ticker_store.refresh_tickers()
-        
+        # Redis-first: report current master coverage from Redis (no external fetch)
+        inv = _rds.get_cache_inventory()
+        total = inv.get('coverage', {}).get('joined_tickers', 0)
         return {
-            "status": "success",
-            "message": "Ticker lists refreshed",
-            "total_tickers": ticker_store.get_ticker_count()
-        }
-        
+                "status": "success",
+            "message": "Ticker master list refreshed from Redis",
+            "total_tickers": total,
+            "source": "redis"
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error refreshing tickers: {str(e)}")
 
@@ -631,14 +628,14 @@ def generate_dynamic_portfolio_recommendations(
         cached_assets = {}
         
         # Get master ticker list
-        master_tickers = redis_first_data_service.all_tickers
+        master_tickers = _rds.all_tickers
         
         # Filter to only include tickers that have data
         available_tickers = []
         for ticker in master_tickers:
             try:
                 # Check if ticker has cached data
-                if redis_first_data_service._is_cached(ticker, 'prices'):
+                if _rds._is_cached(ticker, 'prices'):
                     available_tickers.append(ticker)
             except Exception as e:
                 logger.warning(f"Error checking cache for {ticker}: {e}")
@@ -712,7 +709,7 @@ def analyze_portfolio_optimization(
         current_metrics = portfolio_analytics.calculate_real_portfolio_metrics(current_data)
         
         # Get available assets for optimization
-        master_tickers = redis_first_data_service.all_tickers[:100]
+        master_tickers = _rds.all_tickers[:100]
         
         # Generate optimized alternatives
         optimized_portfolios = portfolio_analytics.generate_dynamic_portfolios(
@@ -904,14 +901,14 @@ async def generate_strategy_comparison(strategy: str, risk_profile: str):
         logger.info(f"Generating strategy comparison for {strategy} strategy, {risk_profile} profile")
         
         # Initialize strategy optimizer if not already done
-        if not hasattr(redis_first_data_service, 'strategy_optimizer'):
-            redis_first_data_service.strategy_optimizer = StrategyPortfolioOptimizer(
-                redis_first_data_service, 
+        if not hasattr(_rds, 'strategy_optimizer'):
+            _rds.strategy_optimizer = StrategyPortfolioOptimizer(
+                _rds, 
                 redis_manager
             )
         
         # Generate strategy portfolios
-        strategy_buckets = redis_first_data_service.strategy_optimizer.generate_strategy_portfolio_buckets(
+        strategy_buckets = _rds.strategy_optimizer.generate_strategy_portfolio_buckets(
             strategy=strategy,
             risk_profiles=[risk_profile]
         )
@@ -1055,14 +1052,14 @@ def two_asset_analysis(ticker1: str, ticker2: str):
             raise HTTPException(status_code=400, detail="Both tickers required")
         
         # Validate tickers
-        if not ticker_store.validate_ticker(ticker1):
-            raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker1}")
-        if not ticker_store.validate_ticker(ticker2):
-            raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker2}")
+        if ticker1.upper() not in set(_rds.all_tickers):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker1}")
+        if ticker2.upper() not in set(_rds.all_tickers):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker2}")
         
         # Get monthly data for both tickers using enhanced method
-        data1 = redis_first_data_service.get_monthly_data(ticker1)
-        data2 = redis_first_data_service.get_monthly_data(ticker2)
+        data1 = _rds.get_monthly_data(ticker1)
+        data2 = _rds.get_monthly_data(ticker2)
         
         if not data1 or not data2:
             raise HTTPException(status_code=404, detail="One or both tickers not found")
@@ -1111,11 +1108,11 @@ def get_ticker_info(ticker: str):
         ticker = ticker.strip().upper()
         
         # Validate ticker
-        if not ticker_store.validate_ticker(ticker):
-            raise HTTPException(status_code=404, detail=f"Invalid ticker: {ticker}")
+        if ticker.upper() not in set(_rds.all_tickers):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
         
         # Get comprehensive ticker data
-        ticker_data = redis_first_data_service.get_monthly_data(ticker)
+        ticker_data = _rds.get_monthly_data(ticker)
         
         if not ticker_data:
             raise HTTPException(status_code=404, detail=f"Data not available for ticker: {ticker}")
@@ -1547,7 +1544,7 @@ async def refresh_ticker_table():
     """
     try:
         # Force refresh expired data
-        redis_first_data_service.force_refresh_expired_data()
+        _rds.force_refresh_expired_data()
         
         return {
             "status": "success",
@@ -1578,10 +1575,10 @@ async def smart_monthly_refresh(request: Optional[Dict] = None):
         # Perform smart monthly refresh
         if target_tickers:
             # Refresh only specific tickers
-            result = redis_first_data_service.smart_refresh_tickers(target_tickers)
+            result = _rds.smart_refresh_tickers(target_tickers)
         else:
             # Refresh all tickers
-            result = redis_first_data_service.smart_monthly_refresh()
+            result = _rds.smart_monthly_refresh()
         
         if result:
             return {
@@ -1610,22 +1607,21 @@ async def get_ttl_status():
     Returns which tickers are expired or near expiry
     """
     try:
-        from utils.auto_refresh_service import AutoRefreshService
         
         # Get the auto refresh service instance
         auto_refresh_service = None
-        if hasattr(redis_first_data_service, 'auto_refresh_service'):
-            auto_refresh_service = redis_first_data_service.auto_refresh_service
+        if hasattr(_rds, 'auto_refresh_service'):
+            auto_refresh_service = _rds.auto_refresh_service
         else:
             # Create temporary instance for TTL checking
-            auto_refresh_service = AutoRefreshService(redis_first_data_service)
+            auto_refresh_service = AutoRefreshService(_rds)
         
         # Get tracking data for all tickers
         expired_tickers = []
         near_expiry_tickers = []
-        total_tickers = len(redis_first_data_service.all_tickers)
+        total_tickers = len(_rds.all_tickers)
         
-        for ticker in redis_first_data_service.all_tickers:
+        for ticker in _rds.all_tickers:
             auto_refresh_service._update_ticker_tracking(ticker)
             tracking = auto_refresh_service.tracking_data.get(ticker, {})
             
@@ -1650,6 +1646,31 @@ async def get_ttl_status():
         logger.error(f"Error getting TTL status: {e}")
         raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
 
+@router.post("/trigger-regeneration")
+async def trigger_portfolio_regeneration(risk_profile: str = None):
+    """
+    Trigger manual portfolio regeneration using the optimized service
+    Can regenerate specific risk profile or all profiles
+    """
+    try:
+        from main import auto_regeneration_service
+        
+        if not auto_regeneration_service:
+            raise HTTPException(status_code=500, detail="Auto-regeneration service not available")
+        
+        result = auto_regeneration_service.trigger_regeneration(risk_profile)
+        
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "timestamp": result["timestamp"],
+            "data": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error triggering portfolio regeneration: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger regeneration: {str(e)}")
+
 @router.post("/regenerate")
 async def regenerate_all_portfolios():
     """
@@ -1666,7 +1687,7 @@ async def regenerate_all_portfolios():
         # Initialize services
         redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
         portfolio_manager = RedisPortfolioManager(redis_client)
-        portfolio_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_manager)
+        portfolio_generator = EnhancedPortfolioGenerator(_rds, portfolio_manager)
         
         risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         total_portfolios = 0
@@ -1722,19 +1743,19 @@ async def get_ticker_table_data():
         from datetime import datetime
         
         # Get all tickers from the Redis-first data service
-        all_tickers = redis_first_data_service.all_tickers
+        all_tickers = _rds.all_tickers
         
         ticker_data = []
         
         for index, ticker in enumerate(all_tickers, 1):  # Added index for ID
             try:
                 # Get price data using Redis-first approach
-                price_key = redis_first_data_service._get_cache_key(ticker, 'prices')
-                price_raw = redis_first_data_service.redis_client.get(price_key)
+                price_key = _rds._get_cache_key(ticker, 'prices')
+                price_raw = _rds.redis_client.get(price_key)
                 
                 # Get sector/company data
-                sector_key = redis_first_data_service._get_cache_key(ticker, 'sector')
-                sector_raw = redis_first_data_service.redis_client.get(sector_key)
+                sector_key = _rds._get_cache_key(ticker, 'sector')
+                sector_raw = _rds.redis_client.get(sector_key)
                 
                 if price_raw and sector_raw:
                     # Parse price data
@@ -1886,9 +1907,18 @@ def get_mini_lesson_assets():
     """
     Get available assets for mini-lesson with predefined sector-based asset lists
     Returns: Sector-based asset lists for educational analysis with pre-calculated metrics
+    Now includes 10 assets per sector: 6 US + 4 international (from Redis master list)
     """
     try:
-        # Predefined sector-based asset lists (5 assets each from different sectors)
+        # Check Redis cache first (6h TTL)
+        cache_key = "mini_lesson_assets:v1"
+        if _rds.redis_client:
+            cached_result = _rds.redis_client.get(cache_key)
+            if cached_result:
+                import json
+                return json.loads(cached_result.decode())
+        
+        # Predefined sector-based asset lists (5 US assets each from different sectors)
         sector_asset_lists = [
             {
                 'list_id': 'tech_growth',
@@ -2150,52 +2180,164 @@ def get_mini_lesson_assets():
             }
         ]
         
-        # Check which assets are available in cache and add pre-calculated metrics
-        available_lists = []
-        for asset_list in sector_asset_lists:
-            available_assets = []
-            for asset in asset_list['assets']:
-                ticker = asset['ticker']
-                if redis_first_data_service._is_cached(ticker, 'prices'):
-                    # Get pre-calculated metrics from cache
-                    cached_metrics = redis_first_data_service.get_cached_metrics(ticker)
-                    if cached_metrics:
-                        available_assets.append({
-                            **asset,
+        # Helper function to get asset data with metrics
+        def get_asset_with_metrics(ticker, name, sector, industry, focus, country="United States"):
+            if not _rds._is_cached(ticker, 'prices') or not _rds._is_cached(ticker, 'sector'):
+                return None
+            
+            # Get pre-calculated metrics from cache
+            cached_metrics = _rds.get_cached_metrics(ticker)
+            if cached_metrics:
+                return {
+                    'ticker': ticker,
+                    'name': name,
+                    'sector': sector,
+                    'industry': industry,
+                    'focus': focus,
+                    'country': country,
                             'annualized_return': cached_metrics['annualized_return'],
-                            'risk': cached_metrics['risk'],  # Consistent naming: 'risk' not 'volatility'
+                    'risk': cached_metrics['risk'],
                             'data_points': cached_metrics['data_points'],
                             'last_price': cached_metrics['last_price']
-                        })
-                    else:
-                        # Fallback: calculate metrics on-the-fly
-                        asset_data = redis_first_data_service.get_monthly_data(ticker)
+                }
+            else:
+                # Fallback: calculate metrics on-the-fly
+                asset_data = _rds.get_monthly_data(ticker)
+                if asset_data and len(asset_data['prices']) >= 12:
+                    prices = asset_data['prices']
+                    returns = pd.Series(prices).pct_change().dropna()
+                    annual_return = (1 + returns.mean()) ** 12 - 1
+                    annual_risk = returns.std() * np.sqrt(12)
+                    
+            return {
+                'ticker': ticker,
+                'name': name,
+                'sector': sector,
+                'industry': industry,
+                'focus': focus,
+                'country': country,
+                        'annualized_return': annual_return,
+                'risk': annual_risk,
+                        'data_points': len(prices),
+                        'last_price': prices[-1] if prices else 0
+            }
+            return None
+        
+        # Helper function to get additional assets from Redis master list
+        def get_additional_assets(target_sector, existing_tickers, country_filter=None, count=1):
+            additional_assets = []
+            all_tickers = _rds.all_tickers
+            
+            # Get candidates from master list
+            candidates = []
+            for ticker in all_tickers:
+                if ticker in existing_tickers:
+                    continue
+                
+                # Check if ticker has data and matches sector
+                if not _rds._is_cached(ticker, 'prices') or not _rds._is_cached(ticker, 'sector'):
+                    continue
+                
+                # Get sector data
+                sector_data = _rds._load_from_cache(ticker, 'sector')
+                if not sector_data:
+                    continue
+                
+                ticker_sector = sector_data.get('sector', '')
+                ticker_country = sector_data.get('country', '')
+                ticker_name = sector_data.get('companyName', ticker)
+                ticker_industry = sector_data.get('industry', 'Unknown')
+                
+                # Filter by sector and country
+                if ticker_sector == target_sector and ticker_sector not in ['', 'Unknown', None]:
+                    if country_filter is None or (country_filter == 'US' and ticker_country == 'United States') or (country_filter == 'INTL' and ticker_country != 'United States'):
+                        # Get data points for ranking
+                        asset_data = _rds.get_monthly_data(ticker)
                         if asset_data and len(asset_data['prices']) >= 12:
-                            prices = asset_data['prices']
-                            returns = pd.Series(prices).pct_change().dropna()
-                            annual_return = (1 + returns.mean()) ** 12 - 1
-                            annual_risk = returns.std() * np.sqrt(12)
-                            
-                            available_assets.append({
-                                **asset,
-                                'annualized_return': annual_return,
-                                'risk': annual_risk,  # Consistent naming: 'risk' not 'volatility'
-                                'data_points': len(prices),
-                                'last_price': prices[-1] if prices else 0
+                            candidates.append({
+                                'ticker': ticker,
+                                'name': ticker_name,
+                                'sector': ticker_sector,
+                                'industry': ticker_industry,
+                                'country': ticker_country,
+                                'data_points': len(asset_data['prices']),
+                                'end_date': asset_data['dates'][-1] if asset_data['dates'] else '2020-01-01'
                             })
             
-            if len(available_assets) >= 3:  # Only include lists with at least 3 available assets
+            # Sort by data quality (more data points, more recent)
+            candidates.sort(key=lambda x: (x['data_points'], x['end_date']), reverse=True)
+            
+            # Take top candidates and get full metrics
+            for candidate in candidates[:count]:
+                asset = get_asset_with_metrics(
+                    candidate['ticker'],
+                    candidate['name'],
+                    candidate['sector'],
+                    candidate['industry'],
+                    f"{candidate['industry']} - {candidate['country']}",
+                    candidate['country']
+                )
+                if asset:
+                    additional_assets.append(asset)
+            
+            return additional_assets
+        
+        # Process each sector list and augment with additional assets
+        available_lists = []
+        for asset_list in sector_asset_lists:
+            target_sector = asset_list['sector']
+            available_assets = []
+            existing_tickers = set()
+            
+            # First, add existing US assets (5)
+            for asset in asset_list['assets']:
+                ticker = asset['ticker']
+                existing_tickers.add(ticker)
+                asset_data = get_asset_with_metrics(
+                    ticker, asset['name'], asset['sector'], 
+                    asset['industry'], asset['focus'], 'United States'
+                )
+                if asset_data:
+                    available_assets.append(asset_data)
+            
+            # Add 1 more US asset from Redis (to reach 6 US total)
+            us_additional = get_additional_assets(target_sector, existing_tickers, 'US', 1)
+            for asset in us_additional:
+                existing_tickers.add(asset['ticker'])
+                available_assets.append(asset)
+            
+            # Add 4 international assets from Redis
+            intl_additional = get_additional_assets(target_sector, existing_tickers, 'INTL', 4)
+            for asset in intl_additional:
+                existing_tickers.add(asset['ticker'])
+                available_assets.append(asset)
+            
+            # Only include lists with at least 6 assets (minimum viable)
+            if len(available_assets) >= 6:
                 available_lists.append({
                     **asset_list,
                     'assets': available_assets,
-                    'available_count': len(available_assets)
+                    'available_count': len(available_assets),
+                    'us_count': len([a for a in available_assets if a.get('country') == 'United States']),
+                    'international_count': len([a for a in available_assets if a.get('country') != 'United States'])
                 })
         
-        return {
+        result = {
             'sector_lists': available_lists,
             'total_lists': len(available_lists),
-            'message': 'Sector-based asset lists with pre-calculated metrics'
+            'message': 'Sector-based asset lists with pre-calculated metrics (6 US + 4 international per sector)',
+            'total_assets': sum(len(lst['assets']) for lst in available_lists),
+            'total_us_assets': sum(lst.get('us_count', 0) for lst in available_lists),
+            'total_international_assets': sum(lst.get('international_count', 0) for lst in available_lists)
         }
+        
+        # Cache the result for 6 hours
+        if _rds.redis_client:
+            import json
+            from datetime import timedelta
+            _rds.redis_client.setex(cache_key, timedelta(hours=6), json.dumps(result))
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error getting mini-lesson assets: {e}")
@@ -2304,8 +2446,8 @@ def calculate_custom_portfolio(request: dict):
             raise HTTPException(status_code=400, detail="Weight must be between 0 and 1")
         
         # Get data for both assets
-        data1 = redis_first_data_service.get_monthly_data(ticker1)
-        data2 = redis_first_data_service.get_monthly_data(ticker2)
+        data1 = _rds.get_monthly_data(ticker1)
+        data2 = _rds.get_monthly_data(ticker2)
         
         if not data1 or not data2:
             raise HTTPException(status_code=404, detail="One or both tickers not found")
@@ -2368,7 +2510,7 @@ async def optimize_risk_parity(request: dict):
         # Get price data for all tickers
         price_data = {}
         for ticker in tickers:
-            data = redis_first_data_service.get_monthly_data(ticker)
+            data = _rds.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2477,7 +2619,7 @@ async def optimize_mean_variance(request: dict):
         # Get price data for all tickers
         price_data = {}
         for ticker in tickers:
-            data = redis_first_data_service.get_monthly_data(ticker)
+            data = _rds.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2618,7 +2760,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
         # Get price data for all assets
         price_data = {}
         for ticker in tickers:
-            data = redis_first_data_service.get_monthly_data(ticker)
+            data = _rds.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2743,7 +2885,7 @@ async def risk_decomposition(allocations: str):
         # Get price data
         price_data = {}
         for ticker in tickers:
-            data = redis_first_data_service.get_monthly_data(ticker)
+            data = _rds.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -2823,7 +2965,7 @@ async def risk_decomposition(allocations: str):
                 'highest_risk_contributor': risk_decomposition[0] if risk_decomposition else None,
                 'lowest_risk_contributor': risk_decomposition[-1] if risk_decomposition else None,
                 'total_assets': len(tickers),
-                'analysis_date': datetime.now().isoformat()
+            'analysis_date': datetime.now().isoformat()
             }
         }
         
@@ -2948,7 +3090,7 @@ async def track_portfolio_performance(request: dict):
         # Get historical data for all assets
         price_data = {}
         for ticker in tickers:
-            data = redis_first_data_service.get_monthly_data(ticker)
+            data = _rds.get_monthly_data(ticker)
             if data and data['prices']:
                 price_data[ticker] = data['prices']
         
@@ -3096,7 +3238,7 @@ async def health_check():
         # Check data fetcher status
         data_fetcher_status = "healthy"
         try:
-            cache_status = redis_first_data_service.get_cache_status()
+            cache_status = _rds.get_cache_status()
             data_fetcher_status = "healthy" if cache_status else "unhealthy"
         except Exception as e:
             data_fetcher_status = f"unhealthy: {str(e)}"
@@ -3141,7 +3283,7 @@ def get_auto_refresh_service():
     """Get or create auto refresh service instance"""
     global auto_refresh_service
     if auto_refresh_service is None:
-        auto_refresh_service = AutoRefreshService(redis_first_data_service)
+        auto_refresh_service = AutoRefreshService(_rds)
     return auto_refresh_service
 
 @router.get("/ticker-table/enhanced")
@@ -3151,9 +3293,9 @@ async def get_enhanced_ticker_table():
         # Get all ticker information with enhanced features
         all_tickers = []
         
-        for ticker in redis_first_data_service.all_tickers:
+        for ticker in _rds.all_tickers:
             try:
-                ticker_info = redis_first_data_service.get_ticker_info(ticker)
+                ticker_info = _rds.get_ticker_info(ticker)
                 if ticker_info:
                     # Format data for enhanced table
                     formatted_ticker = {
@@ -3251,7 +3393,7 @@ async def get_enhanced_ticker_status():
         tracking_summary = auto_service.get_tracking_summary()
         
         # Get cache coverage
-        cache_coverage = redis_first_data_service.get_cache_coverage()
+        cache_coverage = _rds.get_cache_coverage()
         
         return {
             'success': True,
@@ -3304,42 +3446,6 @@ async def stop_auto_refresh_service():
         logger.error(f"Error stopping auto-refresh: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to stop auto-refresh: {str(e)}")
 
-@router.get("/ticker-table/corruption-scan")
-async def scan_data_corruption():
-    """Scan all cached data for corruption and return detailed report"""
-    try:
-        from utils.data_corruption_detector import DataCorruptionDetector
-        
-        logger.info("🔍 Starting corruption scan via API...")
-        detector = DataCorruptionDetector(redis_first_data_service)
-        corruption_report = detector.scan_all_data_for_corruption()
-        
-        return {
-            'success': True,
-            'corruption_report': corruption_report,
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Error scanning corruption: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to scan corruption: {str(e)}")
-
-@router.get("/ticker-table/corruption-status")
-async def get_corruption_status():
-    """Get current corruption status without running full scan"""
-    try:
-        from utils.data_corruption_detector import DataCorruptionDetector
-        
-        detector = DataCorruptionDetector(redis_first_data_service)
-        status = detector.get_corruption_status()
-        
-        return {
-            'success': True,
-            'corruption_status': status,
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Error getting corruption status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get corruption status: {str(e)}")
 
 @router.get("/ticker-table/data-quality-report")
 async def get_data_quality_report():
@@ -3565,7 +3671,7 @@ def _generate_portfolio_description(risk_profile: str, option: int) -> str:
 def force_refresh_expired_data():
     """Force refresh of expired data using Redis-first approach"""
     try:
-        redis_first_data_service.force_refresh_expired_data()
+        _rds.force_refresh_expired_data()
         return {"message": "Force refresh completed successfully"}
     except Exception as e:
         logger.error(f"Force refresh error: {e}")
@@ -3575,7 +3681,7 @@ def force_refresh_expired_data():
 def smart_monthly_refresh():
     """Smart monthly refresh using Redis-first approach"""
     try:
-        result = redis_first_data_service.smart_monthly_refresh()
+        result = _rds.smart_monthly_refresh()
         return {"message": "Smart monthly refresh completed", "result": result}
     except Exception as e:
         logger.error(f"Smart monthly refresh error: {e}")

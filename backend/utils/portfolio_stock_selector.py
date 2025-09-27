@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 import random
-from .ticker_store import ticker_store
+from .redis_first_data_service import redis_first_data_service as _rds
 
 logger = logging.getLogger(__name__)
 
@@ -195,122 +195,78 @@ class PortfolioStockSelector:
             return self._get_fallback_portfolio(risk_profile)
     
     def _get_available_stocks_with_metrics(self) -> List[Dict]:
-        """Get all available stocks with their metrics from cache - LAZY INITIALIZATION VERSION"""
+        """Get all available stocks with their metrics from cache - Redis-first enumeration (fast)."""
         from datetime import datetime
-        import time
-        
         current_time = datetime.now()
-        
-        # Check if cache is still valid
+
+        # Cache hit path
         if (self._stock_cache and self._cache_timestamp and 
             (current_time - self._cache_timestamp).total_seconds() < self._cache_ttl_hours * 3600):
             logger.info("⚡ Using cached stock data (cache hit)")
             return self._stock_cache
-        
-        # Cache miss - populate on-demand (lazy initialization)
-        logger.info("🔄 Cache miss - performing lazy initialization of stock selection cache...")
-        
-        # Add timeout protection
-        start_time = time.time()
-        max_processing_time = 30  # 30 seconds timeout
-        
+
+        if not self.data_service or not getattr(self.data_service, 'redis_client', None):
+            logger.warning("⚠️ Redis service unavailable; returning empty stock list")
+            return []
+
         try:
-            logger.info("🔍 Starting optimized stock selection process (lazy initialization)...")
-            
-            # Get all available tickers
-            all_tickers = self.data_service.all_tickers
-            logger.info(f"📊 Total tickers available: {len(all_tickers)}")
-            
-            # Phase 1: Quick pre-filtering
-            logger.info("⚡ Phase 1: Quick pre-filtering...")
-            pre_filtered = []
-            for ticker in all_tickers:
-                try:
-                    # Basic validation
-                    if len(ticker) >= 1 and ticker.isalpha():
-                        pre_filtered.append(ticker)
-                except:
-                    continue
-            
-            logger.info(f"✅ Pre-filtered to {len(pre_filtered)} tickers")
-            
-            # Phase 2: Batch processing stocks
-            logger.info("⚡ Phase 2: Batch processing stocks...")
-            available_stocks = []
-            batch_size = 50
-            total_batches = (len(pre_filtered) + batch_size - 1) // batch_size
-            
-            for batch_num in range(total_batches):
-                start_idx = batch_num * batch_size
-                end_idx = min(start_idx + batch_size, len(pre_filtered))
-                batch_tickers = pre_filtered[start_idx:end_idx]
-                
-                logger.info(f"📦 Processing batch {batch_num + 1}/{total_batches} ({start_idx + 1}-{end_idx})")
-                
-                for ticker in batch_tickers:
+            # Canonical, fast enumeration from Redis
+            tickers = []
+            if hasattr(self.data_service, 'list_cached_tickers'):
+                tickers = self.data_service.list_cached_tickers()
+            else:
+                # Fallback: derive from keys
+                price_keys = self.data_service.redis_client.keys("ticker_data:prices:*")
+                sector_keys = set(self.data_service.redis_client.keys("ticker_data:sector:*"))
+                for k in price_keys:
                     try:
-                        # Get ticker info with timeout protection
-                        ticker_info = self.data_service.get_ticker_info(ticker)
-                        if ticker_info and self._validate_ticker_data(ticker_info):
-                            stock_data = {
-                                'ticker': ticker,
-                                'company_name': ticker_info.get('company_name', ticker),
-                                'sector': ticker_info.get('sector', 'Unknown'),
-                                'industry': ticker_info.get('industry', 'Unknown'),
-                                'volatility': ticker_info.get('annualized_volatility', 0),
-                                'return': ticker_info.get('annualized_return', 0),
-                                'price': ticker_info.get('current_price', 0),
-                                'data_quality': ticker_info.get('data_quality', 'Unknown')
-                            }
-                            available_stocks.append(stock_data)
-                    except Exception as e:
-                        logger.debug(f"⚠️ Skipping {ticker}: {e}")
-                        continue
-                
-                # Progress update
-                progress = ((batch_num + 1) / total_batches) * 100
-                logger.info(f"📊 Progress: {progress:.1f}% - Found {len(available_stocks)} stocks so far")
-                
-                # Check timeout
-                if time.time() - start_time > max_processing_time:
-                    logger.warning(f"⚠️ Timeout reached after {max_processing_time}s - returning partial results")
-                    break
-            
-            # Cache the results
+                        t = k.decode().split(":")[-1]
+                    except Exception:
+                        t = str(k).split(":")[-1]
+                    if f"ticker_data:sector:{t}".encode() in sector_keys:
+                        tickers.append(t)
+
+            logger.info(f"📊 Redis enumeration found {len(tickers)} tickers with prices+sector")
+
+            # Build stock entries without redundant validation
+            available_stocks: List[Dict] = []
+            # Limit to a reasonable subset to avoid huge payloads in one go
+            for t in tickers[:500]:
+                info = self.data_service.get_ticker_info(t)
+                if not info:
+                    continue
+                stock_data = {
+                    'ticker': t,
+                    'company_name': info.get('company_name', t),
+                    'sector': info.get('sector', 'Unknown'),
+                    'industry': info.get('industry', 'Unknown'),
+                    'volatility': info.get('annualized_volatility', info.get('risk', 0)),
+                    'return': info.get('annualized_return', 0),
+                    'price': info.get('current_price', 0),
+                    'data_quality': info.get('data_quality', 'cached')
+                }
+                available_stocks.append(stock_data)
+
             self._stock_cache = available_stocks
             self._cache_timestamp = current_time
-            
-            logger.info(f"✅ Found {len(available_stocks)} stocks with complete data")
-            logger.info("💾 Stock data cached for 24 hours")
-            
+            logger.info(f"✅ Prepared {len(available_stocks)} stocks from Redis (no re-validation)")
             return available_stocks
-            
         except Exception as e:
-            logger.error(f"❌ Error in stock selection: {e}")
-            if self._stock_cache:
-                logger.info("⚠️ Returning cached data due to error")
-                return self._stock_cache
-            return []
-        
-        finally:
-            processing_time = time.time() - start_time
-            if processing_time > max_processing_time:
-                logger.warning(f"⚠️ Stock selection took {processing_time:.1f}s (exceeded {max_processing_time}s timeout)")
-            else:
-                logger.info(f"⚡ Stock selection completed in {processing_time:.1f}s")
+            logger.error(f"❌ Error building stock list from Redis: {e}")
+            return self._stock_cache or []
     
     def _quick_pre_filter_tickers(self, all_tickers: List[str]) -> List[str]:
         """Quick pre-filtering to reduce processing load"""
         pre_filtered = []
         
         # Priority 1: S&P 500 stocks (most liquid)
-        sp500_tickers = [t for t in all_tickers if t in getattr(ticker_store, 'sp500_tickers', [])]
-        pre_filtered.extend(sp500_tickers[:200])  # Top 200 S&P 500
+        sp500_tickers = []  # Classification removed; rely on Redis presence only
+        pre_filtered.extend(sp500_tickers[:0])
         
         # Priority 2: NASDAQ 100 stocks (growth focus)
-        nasdaq_tickers = [t for t in all_tickers if t in getattr(ticker_store, 'nasdaq100_tickers', [])]
+        nasdaq_tickers = []  # Classification removed
         nasdaq_tickers = [t for t in nasdaq_tickers if t not in pre_filtered]
-        pre_filtered.extend(nasdaq_tickers[:100])  # Top 100 NASDAQ
+        pre_filtered.extend(nasdaq_tickers[:0])
         
         # Priority 3: Additional diversified stocks
         remaining_tickers = [t for t in all_tickers if t not in pre_filtered]

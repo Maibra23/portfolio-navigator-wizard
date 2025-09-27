@@ -15,8 +15,9 @@ import redis
 from collections import defaultdict
 from alpha_vantage.fundamentaldata import FundamentalData
 from alpha_vantage.timeseries import TimeSeries
+import os
+from .redis_first_data_service import redis_first_data_service as _rds
 
-from .ticker_store import ticker_store
 from .timestamp_utils import normalize_timestamp
 
 # Set up logging
@@ -77,8 +78,14 @@ class EnhancedDataFetcher:
             'Upgrade-Insecure-Requests': '1'
         })
 
-        # Get all tickers from multiple sources
-        self.all_tickers = self._get_all_tickers()
+        # Get all tickers from Redis master list (canonical)
+        try:
+            master = _rds.all_tickers
+            if not master:
+                master = _rds.list_cached_tickers()
+            self.all_tickers = list(master) if master else []
+        except Exception:
+            self.all_tickers = []
         
         # Track processing statistics
         self.stats = {
@@ -175,53 +182,8 @@ class EnhancedDataFetcher:
             return base_delay  # Use base delay
 
     def _get_all_tickers(self) -> List[str]:
-        """Get all tickers from multiple sources with deduplication"""
-        tickers = set()
-        
-        # Get S&P 500 tickers
-        try:
-            sp500_tickers = self._fetch_sp500_tickers()
-            tickers.update(sp500_tickers)
-            logger.info(f"✅ Added {len(sp500_tickers)} S&P 500 tickers")
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch S&P 500 tickers: {e}")
-            # Use fallback from ticker_store
-            sp500_fallback = getattr(ticker_store, 'sp500_tickers', [])
-            tickers.update(sp500_fallback)
-            logger.info(f"📦 Used fallback S&P 500 tickers: {len(sp500_fallback)}")
-
-        # Get NASDAQ 100 tickers
-        try:
-            nasdaq_tickers = self._fetch_nasdaq100_tickers()
-            tickers.update(nasdaq_tickers)
-            logger.info(f"✅ Added {len(nasdaq_tickers)} NASDAQ 100 tickers")
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch NASDAQ 100 tickers: {e}")
-            # Use fallback from ticker_store
-            nasdaq_fallback = getattr(ticker_store, 'nasdaq100_tickers', [])
-            tickers.update(nasdaq_fallback)
-            logger.info(f"📦 Used fallback NASDAQ 100 tickers: {len(nasdaq_fallback)}")
-
-        # Get top 15 ETFs by market cap
-        try:
-            etf_tickers = self._fetch_top_etfs()
-            tickers.update(etf_tickers)
-            logger.info(f"✅ Added {len(etf_tickers)} top ETFs")
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch top ETFs: {e}")
-            # Use comprehensive ETF fallback
-            etf_fallback = [
-                'SPY', 'IVV', 'VOO', 'QQQ', 'VTI', 'DIA', 'EFA', 'IWM', 'GLD', 'VWO',
-                'VEA', 'VTV', 'BND', 'AGG', 'VXUS'
-            ]
-            tickers.update(etf_fallback)
-            logger.info(f"📦 Used fallback ETFs: {len(etf_fallback)}")
-
-        # Convert to sorted list
-        all_tickers = sorted(list(tickers))
-        logger.info(f"🎯 Total unique tickers: {len(all_tickers)}")
-        
-        return all_tickers
+        """Deprecated: kept for compatibility; use Redis master list instead."""
+        return _rds.all_tickers or _rds.list_cached_tickers()
 
     def _fetch_sp500_tickers(self) -> List[str]:
         """Fetch S&P 500 tickers from Wikipedia"""
@@ -705,7 +667,10 @@ class EnhancedDataFetcher:
             logger.debug(f"✅ {ticker} served from cache")
             return {'prices': cached_prices, 'sector': cached_sector}
 
-        # Only fetch from external API if not in cache
+        # Only fetch from external API if not in cache AND not in FAST_STARTUP mode
+        if os.environ.get('FAST_STARTUP', 'true').lower() == 'true':
+            logger.info(f"⏭️ FAST_STARTUP enabled - skipping external fetch for {ticker}")
+        return None
         logger.info(f"📥 {ticker} not in cache, fetching from Yahoo Finance...")
         return self._fetch_single_ticker_with_retry(ticker)
 
@@ -971,40 +936,8 @@ class EnhancedDataFetcher:
             logger.error(f"❌ Error in auto-warm cache: {e}")
     
     def _run_corruption_scan_if_needed(self):
-        """Run corruption scan if it hasn't been run recently"""
-        try:
-            from utils.data_corruption_detector import DataCorruptionDetector
-            
-            # Check if we should run corruption scan (every 24 hours)
-            corruption_scan_key = "corruption_scan_last_run"
-            if self.r.exists(corruption_scan_key):
-                last_scan = self.r.get(corruption_scan_key)
-                try:
-                    last_scan_time = datetime.fromisoformat(last_scan.decode())
-                    if datetime.now() - last_scan_time < timedelta(hours=24):
-                        return  # Skip if scanned recently
-                except:
-                    pass  # Invalid timestamp, run scan anyway
-            
-            logger.info("🔍 Running scheduled corruption scan...")
-            detector = DataCorruptionDetector(self)
-            corruption_report = detector.scan_all_data_for_corruption()
-            
-            # Store scan timestamp
-            self.r.setex(corruption_scan_key, timedelta(hours=25), datetime.now().isoformat().encode())
-            
-            # Log corruption summary
-            summary = corruption_report['corruption_summary']
-            if summary['critical'] > 0:
-                logger.warning(f"🚨 CORRUPTION ALERT: {summary['critical']} critical issues detected!")
-                logger.warning(f"⚠️  Run 'make warm-cache' to fix corruption issues")
-            elif summary['warning'] > 0:
-                logger.info(f"⚠️  Data quality warnings: {summary['warning']} tickers have minor issues")
-            else:
-                logger.info("✅ Corruption scan: All data is healthy")
-                
-        except Exception as e:
-            logger.error(f"❌ Error running corruption scan: {e}")
+        """Corruption scan disabled for performance"""
+        logger.info("✅ Corruption scan disabled for fast startup")
 
     def _background_cache_warming(self):
         """Background thread for cache warming with better error handling"""
@@ -1201,34 +1134,17 @@ class EnhancedDataFetcher:
         return results
     
     def _run_corruption_scan_before_warming(self) -> Dict[str, Any]:
-        """Run corruption scan before warming to identify issues"""
-        try:
-            from utils.data_corruption_detector import DataCorruptionDetector
-            
-            logger.info("🔍 Running corruption scan before cache warming...")
-            detector = DataCorruptionDetector(self)
-            corruption_report = detector.scan_all_data_for_corruption()
-            
-            return {
-                'scan_timestamp': corruption_report['scan_timestamp'],
-                'critical_issues': corruption_report['corruption_summary']['critical'],
-                'warning_issues': corruption_report['corruption_summary']['warning'],
-                'missing_data': corruption_report['corruption_summary']['missing'],
-                'total_scanned': corruption_report['total_tickers_scanned'],
-                'corrupted_tickers': corruption_report['corrupted_tickers']
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error running corruption scan: {e}")
-            return {
-                'scan_timestamp': datetime.now().isoformat(),
-                'critical_issues': 0,
-                'warning_issues': 0,
-                'missing_data': 0,
-                'total_scanned': 0,
-                'corrupted_tickers': [],
-                'error': str(e)
-            }
+        """Corruption scan disabled for performance"""
+        logger.info("✅ Corruption scan disabled for fast startup")
+        return {
+            'scan_timestamp': datetime.now().isoformat(),
+            'critical_issues': 0,
+            'warning_issues': 0,
+            'missing_data': 0,
+            'total_scanned': 0,
+            'corrupted_tickers': [],
+            'status': 'disabled'
+        }
     
     def _perform_cache_warming(self) -> Dict[str, Any]:
         """Perform the actual cache warming process"""

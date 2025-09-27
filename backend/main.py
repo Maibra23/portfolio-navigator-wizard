@@ -71,11 +71,8 @@ async def lifespan(app: FastAPI):
             redis_first_data_service, enhanced_generator, redis_manager
         )
         
-        # Initialize and start auto refresh service for data management
-        from utils.auto_refresh_service import AutoRefreshService
-        auto_refresh_service = AutoRefreshService(redis_first_data_service)
-        auto_refresh_service.start_auto_refresh_service()
-        logger.info("✅ Auto refresh service started for data management")
+        # Auto refresh service removed - using Redis TTL for automatic expiration
+        logger.info("✅ Using Redis TTL for automatic data expiration (28 days)")
         
         # Smart portfolio availability check - only generate if truly needed
         logger.info("🚀 Checking portfolio availability in Redis...")
@@ -146,8 +143,8 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"⚠️ Redis health check failed: {e}")
         
-        # Start auto-regeneration service
-        auto_regeneration_service.start_monitoring()
+        # Auto-regeneration service ready for manual triggers (monitoring removed)
+        logger.info("✅ Auto-regeneration service ready for manual triggers")
         
         logger.info("✅ Enhanced portfolio system initialized successfully")
         
@@ -182,7 +179,14 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

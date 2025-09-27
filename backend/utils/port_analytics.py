@@ -17,7 +17,7 @@ class PortfolioAnalytics:
     def __init__(self):
         self.risk_free_rate = 0.04  # 4% risk-free rate
         qs.extend_pandas()  # Extend pandas with QuantStats methods
-        
+    
     def calculate_asset_metrics(self, prices: List[float]) -> Dict:
         """
         Calculate comprehensive metrics for single asset using QuantStats

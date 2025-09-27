@@ -463,6 +463,64 @@ class RedisFirstDataService:
                 'timestamp': datetime.now().isoformat()
             }
     
+    def list_cached_tickers(self) -> List[str]:
+        """List tickers that have both prices and sector cached (canonical, fast)."""
+        if not self.redis_client:
+            return []
+        try:
+            price_keys = self.redis_client.keys("ticker_data:prices:*")
+            sector_keys = set(self.redis_client.keys("ticker_data:sector:*"))
+            tickers: List[str] = []
+            for k in price_keys:
+                try:
+                    t = k.decode().split(":")[-1]
+                except Exception:
+                    t = str(k).split(":")[-1]
+                sector_key = f"ticker_data:sector:{t}".encode()
+                if sector_key in sector_keys:
+                    tickers.append(t)
+            return tickers
+        except Exception as e:
+            logger.error(f"list_cached_tickers failed: {e}")
+            return []
+
+    def get_cache_inventory(self) -> Dict[str, Any]:
+        """Canonical Redis cache inventory and summary for startup-time checks."""
+        if not self.redis_client:
+            return {'redis': 'unavailable'}
+        try:
+            price_keys = self.redis_client.keys("ticker_data:prices:*")
+            sector_keys = self.redis_client.keys("ticker_data:sector:*")
+            metrics_keys = self.redis_client.keys("ticker_data:metrics:*")
+
+            tickers = self.list_cached_tickers()
+            coverage = {
+                'prices': len(price_keys),
+                'sector': len(sector_keys),
+                'metrics': len(metrics_keys),
+                'joined_tickers': len(tickers)
+            }
+
+            # TTL sampling for quick freshness view (sample 5 symbols if available)
+            sample = tickers[:5]
+            ttl_sample = []
+            for t in sample:
+                pk = f"ticker_data:prices:{t}"
+                sk = f"ticker_data:sector:{t}"
+                pt = self.redis_client.ttl(pk)
+                st = self.redis_client.ttl(sk)
+                ttl_sample.append({'ticker': t, 'prices_ttl_s': pt, 'sector_ttl_s': st})
+
+            return {
+                'redis': 'available',
+                'coverage': coverage,
+                'ttl_sample': ttl_sample,
+                'timestamp': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"get_cache_inventory failed: {e}")
+            return {'redis': 'error', 'error': str(e)}
+    
     def warm_cache(self) -> Dict[str, Any]:
         """Warm cache using EnhancedDataFetcher if available"""
         if not self.enhanced_data_fetcher:

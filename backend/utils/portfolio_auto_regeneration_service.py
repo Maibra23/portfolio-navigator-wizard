@@ -9,7 +9,7 @@ import threading
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from .enhanced_portfolio_generator import EnhancedPortfolioGenerator
 from .redis_portfolio_manager import RedisPortfolioManager
 
@@ -34,9 +34,7 @@ class PortfolioAutoRegenerationService:
         self.enhanced_generator = enhanced_generator
         self.redis_manager = redis_manager
         
-        # Initialize data change detector
-        from utils.data_change_detector import DataChangeDetector
-        self.data_change_detector = DataChangeDetector(data_service)
+        # Data change detector removed - using time-based regeneration only
         
         # Service state
         self.is_running = False
@@ -53,10 +51,10 @@ class PortfolioAutoRegenerationService:
             'average_processing_time': 0
         }
         
-        # Configuration - Much less frequent
-        self.REGENERATION_INTERVAL_DAYS = 4  # Regenerate every 4 days
+        # Configuration - Weekly regeneration
+        self.REGENERATION_INTERVAL_DAYS = 7  # Regenerate every 7 days (1 week)
         self.REGENERATION_INTERVAL_SECONDS = self.REGENERATION_INTERVAL_DAYS * 24 * 3600
-        self.CHECK_INTERVAL_HOURS = 6  # Check every 6 hours instead of every 4 days
+        self.CHECK_INTERVAL_HOURS = 24  # Check every 24 hours
         self.MAX_RETRY_ATTEMPTS = 3
         self.RETRY_DELAY_HOURS = 6
         
@@ -64,19 +62,48 @@ class PortfolioAutoRegenerationService:
         self.RISK_PROFILES = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         
         logger.info("🚀 Portfolio Auto-Regeneration Service initialized")
-        logger.info(f"📅 Regeneration interval: {self.REGENERATION_INTERVAL_DAYS} days")
-        logger.info(f"⏰ Check interval: {self.CHECK_INTERVAL_HOURS} hours")
+        logger.info(f"📅 Regeneration interval: {self.REGENERATION_INTERVAL_DAYS} days (weekly)")
+        logger.info(f"⏰ Check interval: {self.CHECK_INTERVAL_HOURS} hours (daily)")
     
-    def start_monitoring(self):
-        """Start portfolio regeneration monitoring"""
-        if self.is_running:
-            logger.info("⚠️ Service already running")
-            return
-        
-        self.is_running = True
-        self.regeneration_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
-        self.regeneration_thread.start()
-        logger.info("✅ Portfolio auto-regeneration service started")
+    def trigger_regeneration(self, risk_profile: str = None) -> Dict[str, Any]:
+        """Trigger manual portfolio regeneration for specific risk profile or all profiles"""
+        try:
+            if risk_profile:
+                # Regenerate specific risk profile
+                logger.info(f"🔄 Manual regeneration triggered for {risk_profile}")
+                success = self._regenerate_portfolios(risk_profile)
+                return {
+                    'success': success,
+                    'risk_profile': risk_profile,
+                    'timestamp': datetime.now().isoformat(),
+                    'message': f"Regeneration {'successful' if success else 'failed'} for {risk_profile}"
+                }
+            else:
+                # Regenerate all risk profiles
+                logger.info("🔄 Manual regeneration triggered for all risk profiles")
+                results = {}
+                for profile in self.RISK_PROFILES:
+                    success = self._regenerate_portfolios(profile)
+                    results[profile] = success
+                    self.last_regeneration[profile] = datetime.now()
+                
+                successful_count = sum(1 for success in results.values() if success)
+                return {
+                    'success': successful_count == len(self.RISK_PROFILES),
+                    'results': results,
+                    'successful_count': successful_count,
+                    'total_count': len(self.RISK_PROFILES),
+                    'timestamp': datetime.now().isoformat(),
+                    'message': f"Regenerated {successful_count}/{len(self.RISK_PROFILES)} risk profiles"
+                }
+        except Exception as e:
+            logger.error(f"❌ Error during manual regeneration: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat(),
+                'message': f"Regeneration failed: {str(e)}"
+            }
     
     def stop_monitoring(self):
         """Stop portfolio regeneration monitoring"""
@@ -88,82 +115,11 @@ class PortfolioAutoRegenerationService:
             self.regeneration_thread.join(timeout=5)
         logger.info("🛑 Portfolio auto-regeneration service stopped")
     
-    def _monitoring_loop(self):
-        """Main monitoring loop - check every 6 hours, regenerate every 4 days"""
-        logger.info("🔄 Starting portfolio monitoring loop...")
-        
-        while self.is_running:
-            try:
-                # Check if portfolios need regeneration (every 6 hours)
-                self._check_and_regenerate_if_needed()
-                
-                # Wait for next check (6 hours)
-                time.sleep(self.CHECK_INTERVAL_HOURS * 3600)
-                
-            except Exception as e:
-                logger.error(f"❌ Error in monitoring loop: {e}")
-                time.sleep(3600)  # Wait 1 hour on error
+    # Monitoring loop removed - using manual trigger only
     
-    def _check_and_regenerate_if_needed(self):
-        """Check if portfolios need regeneration based on time interval"""
-        logger.info("🔍 Checking for portfolio regeneration needs...")
-        
-        for risk_profile in self.RISK_PROFILES:
-            try:
-                # Check if enough time has passed since last regeneration
-                if self._should_regenerate_by_time(risk_profile):
-                    logger.info(f"🔄 Time-based regeneration needed for {risk_profile}")
-                    
-                    # Regenerate portfolios
-                    success = self._regenerate_portfolios(risk_profile)
-                    
-                    if success:
-                        self.last_regeneration[risk_profile] = datetime.now()
-                        logger.info(f"✅ Successfully regenerated portfolios for {risk_profile}")
-                    else:
-                        logger.error(f"❌ Failed to regenerate portfolios for {risk_profile}")
-                else:
-                    # Check if data has significantly changed (emergency regeneration)
-                    if self.data_change_detector.has_data_changed(risk_profile):
-                        logger.info(f"🔄 Data change detected for {risk_profile}, triggering emergency regeneration")
-                        
-                        # Regenerate portfolios immediately
-                        success = self._regenerate_portfolios(risk_profile)
-                        
-                        if success:
-                            self.last_regeneration[risk_profile] = datetime.now()
-                            logger.info(f"✅ Successfully regenerated portfolios for {risk_profile} due to data changes")
-                        else:
-                            logger.error(f"❌ Failed to regenerate portfolios for {risk_profile}")
-                    else:
-                        logger.debug(f"✅ No regeneration needed for {risk_profile}")
-                        
-            except Exception as e:
-                logger.error(f"❌ Error checking {risk_profile}: {e}")
+    # Check and regenerate function removed - using manual trigger only
     
-    def _should_regenerate_by_time(self, risk_profile: str) -> bool:
-        """Check if enough time has passed for regeneration (4 days)"""
-        last_regen = self.last_regeneration.get(risk_profile)
-        
-        # If never regenerated, check if portfolios exist in Redis first
-        if not last_regen:
-            # Check if portfolios already exist in Redis
-            if self.redis_manager.is_portfolio_bucket_available(risk_profile):
-                # Portfolios exist, set last regeneration to now to avoid immediate regeneration
-                self.last_regeneration[risk_profile] = datetime.now()
-                logger.info(f"✅ {risk_profile}: Portfolios already exist, setting regeneration timestamp to now")
-                return False
-            else:
-                # No portfolios exist, regenerate now
-                logger.info(f"🔄 {risk_profile}: No portfolios found, triggering initial generation")
-                return True
-        
-        time_since_regen = datetime.now() - last_regen
-        days_since_regen = time_since_regen.days
-        
-        logger.debug(f"📊 {risk_profile}: {days_since_regen} days since last regeneration")
-        
-        return days_since_regen >= self.REGENERATION_INTERVAL_DAYS
+    # Time-based regeneration check removed - using manual trigger only
     
     def _regenerate_portfolios(self, risk_profile: str, retry_count: int = 0) -> bool:
         """Regenerate portfolios for a specific risk profile with retry logic"""
@@ -282,7 +238,7 @@ class PortfolioAutoRegenerationService:
             'check_interval_hours': self.CHECK_INTERVAL_HOURS,
             'regeneration_stats': self.regeneration_stats,
             'last_regeneration': self.last_regeneration,
-            'data_health_score': self.data_change_detector.get_data_health_score(),
+            'data_health_score': 'N/A (data change detection removed)',
             'portfolio_buckets_status': self.redis_manager.get_all_portfolio_buckets_status(),
             'optimization_features': {
                 'stock_cache_enabled': True,
@@ -358,7 +314,7 @@ class PortfolioAutoRegenerationService:
                 'timestamp': datetime.now().isoformat(),
                 'clear_results': results,
                 'regeneration_results': regeneration_results,
-                'data_health_after': self.data_change_detector.get_data_health_score()
+                'data_health_after': 'N/A (data change detection removed)'
             }
             
             logger.critical(f"🚨 Emergency regeneration completed. Results: {emergency_report}")
@@ -389,8 +345,8 @@ class PortfolioAutoRegenerationService:
             
             success_rate = (successful / total * 100) if total > 0 else 0
             
-            # Get data health metrics
-            data_health = self.data_change_detector.get_data_health_score()
+            # Data health metrics removed (data change detection removed)
+            data_health = 'N/A'
             
             # Get portfolio availability
             portfolio_status = self.redis_manager.get_all_portfolio_buckets_status()
