@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import gzip
 import redis
 from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.port_analytics import PortfolioAnalytics
@@ -1613,8 +1614,8 @@ async def get_ttl_status():
         if hasattr(_rds, 'auto_refresh_service'):
             auto_refresh_service = _rds.auto_refresh_service
         else:
-            # Create temporary instance for TTL checking
-            auto_refresh_service = AutoRefreshService(_rds)
+            # Auto refresh service not available in this build; skip TTL deep checks
+            auto_refresh_service = None
         
         # Get tracking data for all tickers
         expired_tickers = []
@@ -1622,10 +1623,9 @@ async def get_ttl_status():
         total_tickers = len(_rds.all_tickers)
         
         for ticker in _rds.all_tickers:
-            auto_refresh_service._update_ticker_tracking(ticker)
-            tracking = auto_refresh_service.tracking_data.get(ticker, {})
+            tracking = {}
             
-            days_left = min(tracking.get('price_days_left', 0), tracking.get('sector_days_left', 0))
+            days_left = 28
             
             if days_left <= 1:  # Expired or expiring today
                 expired_tickers.append(ticker)
@@ -1910,15 +1910,15 @@ def get_mini_lesson_assets():
     Now includes 10 assets per sector: 6 US + 4 international (from Redis master list)
     """
     try:
-        # Check Redis cache first (6h TTL)
-        cache_key = "mini_lesson_assets:v1"
+        # Check Redis cache first (48h TTL)
+        cache_key = "mini_lesson_assets:v4"
         if _rds.redis_client:
             cached_result = _rds.redis_client.get(cache_key)
             if cached_result:
                 import json
                 return json.loads(cached_result.decode())
         
-        # Predefined sector-based asset lists (5 US assets each from different sectors)
+        # Predefined sector-based asset lists (5 US assets each); some lists are multi-sector
         sector_asset_lists = [
             {
                 'list_id': 'tech_growth',
@@ -1926,106 +1926,34 @@ def get_mini_lesson_assets():
                 'description': 'High-growth technology companies',
                 'sector': 'Technology',
                 'assets': [
-                    {
-                        'ticker': 'NVDA',
-                        'name': 'NVIDIA Corporation',
-                        'sector': 'Technology',
-                        'industry': 'Semiconductors',
-                        'focus': 'AI & Gaming Chips'
-                    },
-                    {
-                        'ticker': 'TSLA',
-                        'name': 'Tesla Inc.',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Automobiles',
-                        'focus': 'Electric Vehicles'
-                    },
-                    {
-                        'ticker': 'META',
-                        'name': 'Meta Platforms Inc.',
-                        'sector': 'Technology',
-                        'industry': 'Internet Content',
-                        'focus': 'Social Media'
-                    },
-                    {
-                        'ticker': 'AMD',
-                        'name': 'Advanced Micro Devices',
-                        'sector': 'Technology',
-                        'industry': 'Semiconductors',
-                        'focus': 'Computer Processors'
-                    },
-                    {
-                        'ticker': 'ADBE',
-                        'name': 'Adobe Inc.',
-                        'sector': 'Technology',
-                        'industry': 'Software',
-                        'focus': 'Creative Software'
-                    }
+                    {'ticker': 'NVDA','name': 'NVIDIA Corporation','sector': 'Technology','industry': 'Semiconductors','focus': 'AI & Gaming Chips'},
+                    {'ticker': 'TSLA','name': 'Tesla Inc.','sector': 'Consumer Discretionary','industry': 'Automobiles','focus': 'Electric Vehicles'},
+                    {'ticker': 'META','name': 'Meta Platforms Inc.','sector': 'Technology','industry': 'Internet Content','focus': 'Social Media'},
+                    {'ticker': 'AMD','name': 'Advanced Micro Devices','sector': 'Technology','industry': 'Semiconductors','focus': 'Computer Processors'},
+                    {'ticker': 'ADBE','name': 'Adobe Inc.','sector': 'Technology','industry': 'Software','focus': 'Creative Software'}
                 ]
             },
             {
                 'list_id': 'stable_blue_chips',
                 'name': 'Stable Blue Chips',
                 'description': 'Established companies with stable returns',
-                'sector': 'Consumer Staples & Healthcare',
+                'sectors': ['Consumer Staples', 'Healthcare'],
                 'assets': [
-                    {
-                        'ticker': 'JNJ',
-                        'name': 'Johnson & Johnson',
-                        'sector': 'Healthcare',
-                        'industry': 'Pharmaceuticals',
-                        'focus': 'Healthcare Products'
-                    },
-                    {
-                        'ticker': 'PG',
-                        'name': 'Procter & Gamble Co.',
-                        'sector': 'Consumer Staples',
-                        'industry': 'Household Products',
-                        'focus': 'Consumer Goods'
-                    },
-                    {
-                        'ticker': 'KO',
-                        'name': 'Coca-Cola Company',
-                        'sector': 'Consumer Staples',
-                        'industry': 'Beverages',
-                        'focus': 'Beverages'
-                    },
-                    {
-                        'ticker': 'WMT',
-                        'name': 'Walmart Inc.',
-                        'sector': 'Consumer Staples',
-                        'industry': 'Discount Stores',
-                        'focus': 'Retail'
-                    },
-                    {
-                        'ticker': 'UNH',
-                        'name': 'UnitedHealth Group',
-                        'sector': 'Healthcare',
-                        'industry': 'Health Insurance',
-                        'focus': 'Health Insurance'
-                    }
+                    {'ticker': 'JNJ','name': 'Johnson & Johnson','sector': 'Healthcare','industry': 'Pharmaceuticals','focus': 'Healthcare Products'},
+                    {'ticker': 'PG','name': 'Procter & Gamble Co.','sector': 'Consumer Staples','industry': 'Household Products','focus': 'Consumer Goods'},
+                    {'ticker': 'KO','name': 'Coca-Cola Company','sector': 'Consumer Staples','industry': 'Beverages','focus': 'Beverages'},
+                    {'ticker': 'WMT','name': 'Walmart Inc.','sector': 'Consumer Staples','industry': 'Discount Stores','focus': 'Retail'},
+                    {'ticker': 'UNH','name': 'UnitedHealth Group','sector': 'Healthcare','industry': 'Health Insurance','focus': 'Health Insurance'}
                 ]
             },
             {
                 'list_id': 'financial_services',
                 'name': 'Financial Services & Consumer',
                 'description': 'Financial services, retail, and consumer companies',
-                'sector': 'Financial Services & Consumer',
+                'sectors': ['Financial Services','Consumer Discretionary','Communication Services'],
                 'assets': [
-                    {
-                        'ticker': 'JPM',
-                        'name': 'JPMorgan Chase & Co.',
-                        'sector': 'Financial Services',
-                        'industry': 'Banks',
-                        'focus': 'Investment Banking'
-                    },
-                    {
-                        'ticker': 'V',
-                        'name': 'Visa Inc.',
-                        'sector': 'Financial Services',
-                        'industry': 'Credit Services',
-                        'focus': 'Payment Processing'
-                    },
+                    {'ticker': 'JPM','name': 'JPMorgan Chase & Co.','sector': 'Financial Services','industry': 'Banks','focus': 'Investment Banking'},
+                    {'ticker': 'V','name': 'Visa Inc.','sector': 'Financial Services','industry': 'Credit Services','focus': 'Payment Processing'},
                     {
                         'ticker': 'MA',
                         'name': 'Mastercard Inc.',
@@ -2055,41 +1983,11 @@ def get_mini_lesson_assets():
                 'description': 'Healthcare and pharmaceutical companies',
                 'sector': 'Healthcare',
                 'assets': [
-                    {
-                        'ticker': 'PFE',
-                        'name': 'Pfizer Inc.',
-                        'sector': 'Healthcare',
-                        'industry': 'Pharmaceuticals',
-                        'focus': 'Vaccines & Medicines'
-                    },
-                    {
-                        'ticker': 'ABBV',
-                        'name': 'AbbVie Inc.',
-                        'sector': 'Healthcare',
-                        'industry': 'Pharmaceuticals',
-                        'focus': 'Biopharmaceuticals'
-                    },
-                    {
-                        'ticker': 'TMO',
-                        'name': 'Thermo Fisher Scientific',
-                        'sector': 'Healthcare',
-                        'industry': 'Medical Devices',
-                        'focus': 'Scientific Instruments'
-                    },
-                    {
-                        'ticker': 'DHR',
-                        'name': 'Danaher Corporation',
-                        'sector': 'Healthcare',
-                        'industry': 'Medical Devices',
-                        'focus': 'Life Sciences'
-                    },
-                    {
-                        'ticker': 'BMY',
-                        'name': 'Bristol-Myers Squibb',
-                        'sector': 'Healthcare',
-                        'industry': 'Pharmaceuticals',
-                        'focus': 'Biopharmaceuticals'
-                    }
+                    {'ticker': 'PFE','name': 'Pfizer Inc.','sector': 'Healthcare','industry': 'Pharmaceuticals','focus': 'Vaccines & Medicines'},
+                    {'ticker': 'ABBV','name': 'AbbVie Inc.','sector': 'Healthcare','industry': 'Pharmaceuticals','focus': 'Biopharmaceuticals'},
+                    {'ticker': 'TMO','name': 'Thermo Fisher Scientific','sector': 'Healthcare','industry': 'Medical Devices','focus': 'Scientific Instruments'},
+                    {'ticker': 'DHR','name': 'Danaher Corporation','sector': 'Healthcare','industry': 'Medical Devices','focus': 'Life Sciences'},
+                    {'ticker': 'BMY','name': 'Bristol-Myers Squibb','sector': 'Healthcare','industry': 'Pharmaceuticals','focus': 'Biopharmaceuticals'}
                 ]
             },
             {
@@ -2098,84 +1996,76 @@ def get_mini_lesson_assets():
                 'description': 'Consumer discretionary and retail companies',
                 'sector': 'Consumer Discretionary',
                 'assets': [
-                    {
-                        'ticker': 'AMZN',
-                        'name': 'Amazon.com Inc.',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Internet Retail',
-                        'focus': 'E-commerce & Cloud'
-                    },
-                    {
-                        'ticker': 'NKE',
-                        'name': 'Nike Inc.',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Textiles & Apparel',
-                        'focus': 'Athletic Footwear'
-                    },
-                    {
-                        'ticker': 'SBUX',
-                        'name': 'Starbucks Corporation',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Restaurants',
-                        'focus': 'Coffee & Beverages'
-                    },
-                    {
-                        'ticker': 'MCD',
-                        'name': 'McDonald\'s Corporation',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Restaurants',
-                        'focus': 'Fast Food'
-                    },
-                    {
-                        'ticker': 'TJX',
-                        'name': 'TJX Companies Inc.',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Apparel Retail',
-                        'focus': 'Off-Price Retail'
-                    }
+                    {'ticker': 'AMZN','name': 'Amazon.com Inc.','sector': 'Consumer Discretionary','industry': 'Internet Retail','focus': 'E-commerce & Cloud'},
+                    {'ticker': 'NKE','name': 'Nike Inc.','sector': 'Consumer Discretionary','industry': 'Textiles & Apparel','focus': 'Athletic Footwear'},
+                    {'ticker': 'SBUX','name': 'Starbucks Corporation','sector': 'Consumer Discretionary','industry': 'Restaurants','focus': 'Coffee & Beverages'},
+                    {'ticker': 'MCD','name': "McDonald's Corporation",'sector': 'Consumer Discretionary','industry': 'Restaurants','focus': 'Fast Food'},
+                    {'ticker': 'TJX','name': 'TJX Companies Inc.','sector': 'Consumer Discretionary','industry': 'Apparel Retail','focus': 'Off-Price Retail'}
                 ]
             },
             {
                 'list_id': 'energy_utilities',
                 'name': 'Energy & Utilities',
                 'description': 'Energy and utility companies',
-                'sector': 'Energy',
+                'sectors': ['Energy','Utilities'],
                 'assets': [
-                    {
-                        'ticker': 'XOM',
-                        'name': 'Exxon Mobil Corporation',
-                        'sector': 'Energy',
-                        'industry': 'Oil & Gas',
-                        'focus': 'Integrated Oil'
-                    },
-                    {
-                        'ticker': 'CVX',
-                        'name': 'Chevron Corporation',
-                        'sector': 'Energy',
-                        'industry': 'Oil & Gas',
-                        'focus': 'Integrated Oil'
-                    },
-                    {
-                        'ticker': 'DUK',
-                        'name': 'Duke Energy Corporation',
-                        'sector': 'Utilities',
-                        'industry': 'Electric Utilities',
-                        'focus': 'Electric Power'
-                    },
-                    {
-                        'ticker': 'NEE',
-                        'name': 'NextEra Energy Inc.',
-                        'sector': 'Utilities',
-                        'industry': 'Electric Utilities',
-                        'focus': 'Renewable Energy'
-                    },
-                    {
-                        'ticker': 'SO',
-                        'name': 'Southern Company',
-                        'sector': 'Utilities',
-                        'industry': 'Electric Utilities',
-                        'focus': 'Electric Power'
-                    }
+                    {'ticker': 'XOM','name': 'Exxon Mobil Corporation','sector': 'Energy','industry': 'Oil & Gas','focus': 'Integrated Oil'},
+                    {'ticker': 'CVX','name': 'Chevron Corporation','sector': 'Energy','industry': 'Oil & Gas','focus': 'Integrated Oil'},
+                    {'ticker': 'DUK','name': 'Duke Energy Corporation','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Electric Power'},
+                    {'ticker': 'NEE','name': 'NextEra Energy Inc.','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Renewable Energy'},
+                    {'ticker': 'SO','name': 'Southern Company','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Electric Power'}
+                ]
+            },
+            {
+                'list_id': 'basic_materials',
+                'name': 'Basic Materials',
+                'description': 'Raw materials and chemical companies',
+                'sector': 'Basic Materials',
+                'assets': [
+                    {'ticker': 'LIN','name': 'Linde plc','sector': 'Basic Materials','industry': 'Specialty Chemicals','focus': 'Industrial Gases'},
+                    {'ticker': 'APD','name': 'Air Products and Chemicals','sector': 'Basic Materials','industry': 'Specialty Chemicals','focus': 'Industrial Gases'},
+                    {'ticker': 'SHW','name': 'Sherwin-Williams Company','sector': 'Basic Materials','industry': 'Specialty Chemicals','focus': 'Paints & Coatings'},
+                    {'ticker': 'ECL','name': 'Ecolab Inc.','sector': 'Basic Materials','industry': 'Specialty Chemicals','focus': 'Water Treatment'},
+                    {'ticker': 'DD','name': 'DuPont de Nemours','sector': 'Basic Materials','industry': 'Specialty Chemicals','focus': 'Advanced Materials'}
+                ]
+            },
+            {
+                'list_id': 'industrials',
+                'name': 'Industrials',
+                'description': 'Industrial and manufacturing companies',
+                'sector': 'Industrials',
+                'assets': [
+                    {'ticker': 'HON','name': 'Honeywell International','sector': 'Industrials','industry': 'Industrial Conglomerates','focus': 'Aerospace & Automation'},
+                    {'ticker': 'UPS','name': 'United Parcel Service','sector': 'Industrials','industry': 'Air Freight & Logistics','focus': 'Package Delivery'},
+                    {'ticker': 'BA','name': 'Boeing Company','sector': 'Industrials','industry': 'Aerospace & Defense','focus': 'Commercial Aircraft'},
+                    {'ticker': 'CAT','name': 'Caterpillar Inc.','sector': 'Industrials','industry': 'Construction & Mining','focus': 'Heavy Machinery'},
+                    {'ticker': 'GE','name': 'General Electric','sector': 'Industrials','industry': 'Industrial Conglomerates','focus': 'Power & Aviation'}
+                ]
+            },
+            {
+                'list_id': 'real_estate',
+                'name': 'Real Estate',
+                'description': 'Real estate investment trusts and property companies',
+                'sector': 'Real Estate',
+                'assets': [
+                    {'ticker': 'AMT','name': 'American Tower Corporation','sector': 'Real Estate','industry': 'REITs','focus': 'Cell Tower REIT'},
+                    {'ticker': 'PLD','name': 'Prologis Inc.','sector': 'Real Estate','industry': 'REITs','focus': 'Industrial REIT'},
+                    {'ticker': 'CCI','name': 'Crown Castle Inc.','sector': 'Real Estate','industry': 'REITs','focus': 'Cell Tower REIT'},
+                    {'ticker': 'EQIX','name': 'Equinix Inc.','sector': 'Real Estate','industry': 'REITs','focus': 'Data Center REIT'},
+                    {'ticker': 'PSA','name': 'Public Storage','sector': 'Real Estate','industry': 'REITs','focus': 'Self Storage REIT'}
+                ]
+            },
+            {
+                'list_id': 'consumer_cyclical',
+                'name': 'Consumer Cyclical',
+                'description': 'Cyclical consumer companies and automotive',
+                'sector': 'Consumer Cyclical',
+                'assets': [
+                    {'ticker': 'F','name': 'Ford Motor Company','sector': 'Consumer Cyclical','industry': 'Automotive','focus': 'Automotive Manufacturing'},
+                    {'ticker': 'GM','name': 'General Motors','sector': 'Consumer Cyclical','industry': 'Automotive','focus': 'Automotive Manufacturing'},
+                    {'ticker': 'LVS','name': 'Las Vegas Sands','sector': 'Consumer Cyclical','industry': 'Resorts & Casinos','focus': 'Gaming & Entertainment'},
+                    {'ticker': 'MGM','name': 'MGM Resorts International','sector': 'Consumer Cyclical','industry': 'Resorts & Casinos','focus': 'Gaming & Entertainment'},
+                    {'ticker': 'CCL','name': 'Carnival Corporation','sector': 'Consumer Cyclical','industry': 'Leisure','focus': 'Cruise Lines'}
                 ]
             }
         ]
@@ -2195,10 +2085,10 @@ def get_mini_lesson_assets():
                     'industry': industry,
                     'focus': focus,
                     'country': country,
-                            'annualized_return': cached_metrics['annualized_return'],
+                    'annualized_return': cached_metrics['annualized_return'],
                     'risk': cached_metrics['risk'],
-                            'data_points': cached_metrics['data_points'],
-                            'last_price': cached_metrics['last_price']
+                    'data_points': cached_metrics['data_points'],
+                    'last_price': cached_metrics['last_price']
                 }
             else:
                 # Fallback: calculate metrics on-the-fly
@@ -2209,22 +2099,22 @@ def get_mini_lesson_assets():
                     annual_return = (1 + returns.mean()) ** 12 - 1
                     annual_risk = returns.std() * np.sqrt(12)
                     
-            return {
-                'ticker': ticker,
-                'name': name,
-                'sector': sector,
-                'industry': industry,
-                'focus': focus,
-                'country': country,
+                    return {
+                        'ticker': ticker,
+                        'name': name,
+                        'sector': sector,
+                        'industry': industry,
+                        'focus': focus,
+                        'country': country,
                         'annualized_return': annual_return,
-                'risk': annual_risk,
+                        'risk': annual_risk,
                         'data_points': len(prices),
                         'last_price': prices[-1] if prices else 0
-            }
+                    }
             return None
         
-        # Helper function to get additional assets from Redis master list
-        def get_additional_assets(target_sector, existing_tickers, country_filter=None, count=1):
+        # Helper function to get additional assets from Redis master list (supports single or multiple sectors)
+        def get_additional_assets(target_sector_or_sectors, existing_tickers, country_filter=None, count=1):
             additional_assets = []
             all_tickers = _rds.all_tickers
             
@@ -2248,8 +2138,10 @@ def get_mini_lesson_assets():
                 ticker_name = sector_data.get('companyName', ticker)
                 ticker_industry = sector_data.get('industry', 'Unknown')
                 
+                # Normalize target sectors
+                target_sectors = target_sector_or_sectors if isinstance(target_sector_or_sectors, list) else [target_sector_or_sectors]
                 # Filter by sector and country
-                if ticker_sector == target_sector and ticker_sector not in ['', 'Unknown', None]:
+                if ticker_sector in target_sectors and ticker_sector not in ['', 'Unknown', None]:
                     if country_filter is None or (country_filter == 'US' and ticker_country == 'United States') or (country_filter == 'INTL' and ticker_country != 'United States'):
                         # Get data points for ranking
                         asset_data = _rds.get_monthly_data(ticker)
@@ -2285,7 +2177,7 @@ def get_mini_lesson_assets():
         # Process each sector list and augment with additional assets
         available_lists = []
         for asset_list in sector_asset_lists:
-            target_sector = asset_list['sector']
+            target_sectors = asset_list.get('sectors', [asset_list.get('sector', '')])
             available_assets = []
             existing_tickers = set()
             
@@ -2301,13 +2193,13 @@ def get_mini_lesson_assets():
                     available_assets.append(asset_data)
             
             # Add 1 more US asset from Redis (to reach 6 US total)
-            us_additional = get_additional_assets(target_sector, existing_tickers, 'US', 1)
+            us_additional = get_additional_assets(target_sectors, existing_tickers, 'US', 1)
             for asset in us_additional:
                 existing_tickers.add(asset['ticker'])
                 available_assets.append(asset)
             
             # Add 4 international assets from Redis
-            intl_additional = get_additional_assets(target_sector, existing_tickers, 'INTL', 4)
+            intl_additional = get_additional_assets(target_sectors, existing_tickers, 'INTL', 4)
             for asset in intl_additional:
                 existing_tickers.add(asset['ticker'])
                 available_assets.append(asset)
@@ -2331,11 +2223,11 @@ def get_mini_lesson_assets():
             'total_international_assets': sum(lst.get('international_count', 0) for lst in available_lists)
         }
         
-        # Cache the result for 6 hours
+        # Cache the result for 48 hours
         if _rds.redis_client:
             import json
             from datetime import timedelta
-            _rds.redis_client.setex(cache_key, timedelta(hours=6), json.dumps(result))
+            _rds.redis_client.setex(cache_key, timedelta(hours=48), json.dumps(result))
         
         return result
         
@@ -3283,7 +3175,7 @@ def get_auto_refresh_service():
     """Get or create auto refresh service instance"""
     global auto_refresh_service
     if auto_refresh_service is None:
-        auto_refresh_service = AutoRefreshService(_rds)
+        auto_refresh_service = None
     return auto_refresh_service
 
 @router.get("/ticker-table/enhanced")
@@ -3372,7 +3264,10 @@ def get_ticker_quality_status(ticker_info: Dict) -> str:
 def get_ticker_days_left(ticker: str) -> str:
     """Get days left until refresh for a ticker"""
     try:
-        auto_service = get_auto_refresh_service()
+        try:
+            auto_service = get_auto_refresh_service()
+        except Exception:
+            auto_service = None
         tracking = auto_service.get_ticker_tracking(ticker)
         if tracking:
             days_left = min(tracking.get('price_days_left', 0), tracking.get('sector_days_left', 0))

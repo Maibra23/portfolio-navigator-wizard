@@ -370,12 +370,58 @@ export const StockSelection = ({
     loadDynamicRecommendations();
   }, [riskProfile]);
 
+  // Client cache key for mini-lesson asset lists (bump to invalidate stale data)
+  const MINI_LESSON_CACHE_KEY = 'mini_lesson_assets_v3';
+
   // Load available asset pairs for mini-lesson
-  const loadAssetPairs = async () => {
+  const loadAssetPairs = async (attempt = 1) => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/portfolio/mini-lesson/assets');
+      // Try localStorage first
+      const cached = typeof window !== 'undefined' ? window.localStorage.getItem(MINI_LESSON_CACHE_KEY) : null;
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          if (data && Array.isArray(data.sector_lists)) {
+            // Build pairs from cached data
+            const pairsFromCache: any[] = [];
+            const availableSectors = data.sector_lists.filter((list: any) => list.assets && list.assets.length > 0);
+            if (availableSectors.length >= 2) {
+              for (let i = 0; i < 3; i++) {
+                const shuffledSectors = [...availableSectors].sort(() => Math.random() - 0.5);
+                const sector1 = shuffledSectors[0];
+                const sector2 = shuffledSectors[1];
+                if (sector1 && sector2 && sector1.assets.length > 0 && sector2.assets.length > 0) {
+                  const asset1 = sector1.assets[Math.floor(Math.random() * sector1.assets.length)];
+                  const asset2 = sector2.assets[Math.floor(Math.random() * sector2.assets.length)];
+                  pairsFromCache.push({
+                    pair_id: `pair_cached_${i}_${Date.now()}`,
+                    ticker1: asset1.ticker,
+                    ticker2: asset2.ticker,
+                    name1: asset1.name,
+                    name2: asset2.name,
+                    description: `${sector1.sector || sector1.sectors?.join(' / ')} vs ${sector2.sector || sector2.sectors?.join(' / ')}`,
+                    educational_focus: `${sector1.sector || 'Sector 1'} vs ${sector2.sector || 'Sector 2'}`
+                  });
+                }
+              }
+            }
+            if (pairsFromCache.length > 0) {
+              setAvailableAssetPairs(pairsFromCache);
+              setCurrentPair({ ticker1: pairsFromCache[0].ticker1, ticker2: pairsFromCache[0].ticker2 });
+              setSelectedPairId(pairsFromCache[0].pair_id);
+              // Continue to refresh cache in background
+            }
+          }
+        } catch {}
+      }
+
+      const response = await fetch('/api/portfolio/mini-lesson/assets');
       if (response.ok) {
         const data = await response.json();
+        // Save to localStorage for instant reloads
+        if (typeof window !== 'undefined') {
+          try { window.localStorage.setItem(MINI_LESSON_CACHE_KEY, JSON.stringify(data)); } catch {}
+        }
         
         // Create 3 fixed educational pairs from sector lists with improved rotation
         const pairs = [];
@@ -398,7 +444,11 @@ export const StockSelection = ({
                 const asset1 = sector1.assets[Math.floor(Math.random() * sector1.assets.length)];
                 const asset2 = sector2.assets[Math.floor(Math.random() * sector2.assets.length)];
                 
-                // Create educational theme based on sectors
+                // Use individual asset sectors for more accurate descriptions
+                const asset1Sector = asset1.sector || 'Unknown';
+                const asset2Sector = asset2.sector || 'Unknown';
+                
+                // Create educational themes based on sectors
                 const themes = {
                   'Technology': 'Innovation & Growth',
                   'Healthcare': 'Health & Stability',
@@ -410,17 +460,15 @@ export const StockSelection = ({
                   'Industrials': 'Industrial Strength',
                   'Materials': 'Raw Materials',
                   'Real Estate': 'Property & Real Estate',
-                  'Utilities': 'Utility Services',
-                  'Consumer Staples & Healthcare': 'Stability & Health',
-                  'Financial Services & Consumer': 'Financial & Consumer Services'
+                  'Utilities': 'Utility Services'
                 };
                 
-                const theme1 = themes[sector1.sector] || sector1.sector;
-                const theme2 = themes[sector2.sector] || sector2.sector;
+                const theme1 = themes[asset1Sector] || asset1Sector;
+                const theme2 = themes[asset2Sector] || asset2Sector;
                 
-                // Create shorter, more concise descriptions
-                const shortSector1 = sector1.sector.length > 12 ? sector1.sector.substring(0, 12) + '...' : sector1.sector;
-                const shortSector2 = sector2.sector.length > 12 ? sector2.sector.substring(0, 12) + '...' : sector2.sector;
+                // Create shorter, more concise descriptions using individual asset sectors
+                const shortSector1 = asset1Sector.length > 12 ? asset1Sector.substring(0, 12) + '...' : asset1Sector;
+                const shortSector2 = asset2Sector.length > 12 ? asset2Sector.substring(0, 12) + '...' : asset2Sector;
                 
                 pairs.push({
                   pair_id: `pair_${i}_${Date.now()}`,
@@ -445,13 +493,17 @@ export const StockSelection = ({
               const techAsset = techList.assets[Math.floor(Math.random() * techList.assets.length)];
               const healthAsset = healthList.assets[Math.floor(Math.random() * healthList.assets.length)];
               
+              // Use individual asset sectors for descriptions
+              const techSector = techAsset.sector || 'Technology';
+              const healthSector = healthAsset.sector || 'Healthcare';
+              
               pairs.push({
                 pair_id: 'tech_health',
                 ticker1: techAsset.ticker,
                 ticker2: healthAsset.ticker,
                 name1: techAsset.name,
                 name2: healthAsset.name,
-                description: 'Technology Growth vs Healthcare & Pharma',
+                description: `${techSector} vs ${healthSector}`,
                 educational_focus: 'Innovation & Growth vs Health & Stability'
               });
             }
@@ -464,13 +516,17 @@ export const StockSelection = ({
               const consumerAsset = consumerList.assets[Math.floor(Math.random() * consumerList.assets.length)];
               const energyAsset = energyList.assets[Math.floor(Math.random() * energyList.assets.length)];
               
+              // Use individual asset sectors for descriptions
+              const consumerSector = consumerAsset.sector || 'Consumer Discretionary';
+              const energySector = energyAsset.sector || 'Energy';
+              
               pairs.push({
                 pair_id: 'consumer_energy',
                 ticker1: consumerAsset.ticker,
                 ticker2: energyAsset.ticker,
                 name1: consumerAsset.name,
-                name2: consumerAsset.name,
-                description: 'Consumer Discretionary vs Energy & Utilities',
+                name2: energyAsset.name,
+                description: `${consumerSector} vs ${energySector}`,
                 educational_focus: 'Consumer Demand vs Energy Infrastructure'
               });
             }
@@ -483,13 +539,17 @@ export const StockSelection = ({
               const financialAsset = financialList.assets[Math.floor(Math.random() * financialList.assets.length)];
               const stableAsset = stableList.assets[Math.floor(Math.random() * stableList.assets.length)];
               
+              // Use individual asset sectors for descriptions
+              const financialSector = financialAsset.sector || 'Financial Services';
+              const stableSector = stableAsset.sector || 'Consumer Staples';
+              
               pairs.push({
                 pair_id: 'financial_stable',
                 ticker1: financialAsset.ticker,
                 ticker2: stableAsset.ticker,
                 name1: financialAsset.name,
                 name2: stableAsset.name,
-                description: 'Financial Services & Consumer vs Stable Blue Chips',
+                description: `${financialSector} vs ${stableSector}`,
                 educational_focus: 'Financial & Consumer Services vs Stability & Health'
               });
             }
@@ -497,15 +557,21 @@ export const StockSelection = ({
         }
         
         setAvailableAssetPairs(pairs);
-        
-        // Set current pair to the first available pair
+        // Set current pair only if valid pairs exist; otherwise retry a bit later
         if (pairs.length > 0) {
           setCurrentPair({ ticker1: pairs[0].ticker1, ticker2: pairs[0].ticker2 });
           setSelectedPairId(pairs[0].pair_id);
+        } else if (attempt < 3) {
+          await new Promise(res => setTimeout(res, attempt * 500));
+          return loadAssetPairs(attempt + 1);
         }
       }
     } catch (error) {
       console.error('Error loading asset pairs:', error);
+      if (attempt < 3) {
+        await new Promise(res => setTimeout(res, attempt * 500));
+        return loadAssetPairs(attempt + 1);
+      }
     }
   };
 
@@ -520,17 +586,18 @@ export const StockSelection = ({
       try {
         console.log('Loading mini-lesson data for:', currentPair);
         
-        const ticker1 = currentPair.ticker1;
-        const ticker2 = currentPair.ticker2;
+        const ticker1 = (currentPair.ticker1 || '').trim();
+        const ticker2 = (currentPair.ticker2 || '').trim();
         
         // Validate tickers before making API call
-        if (!ticker1 || !ticker2 || ticker1.trim() === '' || ticker2.trim() === '') {
-          console.error('Invalid tickers:', { ticker1, ticker2 });
-          setError('Please select two valid tickers for analysis');
+        if (!ticker1 || !ticker2 || ticker1 === '' || ticker2 === '' || ticker1 === ticker2) {
+          console.log('Skipping mini-lesson load due to invalid/same tickers', { ticker1, ticker2 });
+          setTwoAssetAnalysis(null);
+          setIsLoadingMiniLesson(false);
           return;
         }
         
-        const apiUrl = `/api/portfolio/two-asset-analysis?ticker1=${encodeURIComponent(ticker1.trim())}&ticker2=${encodeURIComponent(ticker2.trim())}`;
+        const apiUrl = `/api/portfolio/two-asset-analysis?ticker1=${encodeURIComponent(ticker1)}&ticker2=${encodeURIComponent(ticker2)}`;
         
         // Simple retry with backoff: try up to 2 times
         let response: Response | null = null;
@@ -575,11 +642,26 @@ export const StockSelection = ({
         } else {
           const errorText = await response.text();
           console.error('Mini-lesson API error:', response.status, errorText);
+          // Auto-rotate to next available pair to self-heal
+          if (availableAssetPairs && availableAssetPairs.length > 1) {
+            const nextIndex = Math.floor(Math.random() * availableAssetPairs.length);
+            const nextPair = availableAssetPairs[nextIndex];
+            if (nextPair && nextPair.ticker1 && nextPair.ticker2 && nextPair.ticker1 !== nextPair.ticker2) {
+              setCurrentPair({ ticker1: nextPair.ticker1, ticker2: nextPair.ticker2 });
+              setSelectedPairId(nextPair.pair_id);
+              setIsLoadingMiniLesson(false);
+              return;
+            }
+          }
           setError(`Unable to load financial data (HTTP ${response.status}). Please try again.`);
         }
       } catch (error) {
         console.error('Error loading mini-lesson data:', error);
-        setError('Unable to load financial data. Please try refreshing the page.');
+        // Clear stale client cache and retry pair loading once
+        try { if (typeof window !== 'undefined') window.localStorage.removeItem(MINI_LESSON_CACHE_KEY); } catch {}
+        setError('Unable to load financial data. Retrying with a fresh list...');
+        // Trigger a refresh of pairs
+        loadAssetPairs(2);
       } finally {
         setIsLoadingMiniLesson(false);
       }
