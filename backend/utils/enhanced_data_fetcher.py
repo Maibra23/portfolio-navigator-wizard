@@ -467,6 +467,11 @@ class EnhancedDataFetcher:
 
     def _fetch_single_ticker_with_retry(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Fetch data for a single ticker with retry logic and rate limiting"""
+        # Validate ticker is in master list
+        if ticker not in self.all_tickers:
+            logger.warning(f"⚠️ Ticker {ticker} not in master list - skipping fetch")
+            return None
+            
         # Check daily quota first
         if not self._check_daily_quota():
             logger.warning(f"⚠️ Daily quota exceeded, skipping {ticker}")
@@ -670,7 +675,8 @@ class EnhancedDataFetcher:
         # Only fetch from external API if not in cache AND not in FAST_STARTUP mode
         if os.environ.get('FAST_STARTUP', 'true').lower() == 'true':
             logger.info(f"⏭️ FAST_STARTUP enabled - skipping external fetch for {ticker}")
-        return None
+            return None
+        
         logger.info(f"📥 {ticker} not in cache, fetching from Yahoo Finance...")
         return self._fetch_single_ticker_with_retry(ticker)
 

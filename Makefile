@@ -152,9 +152,11 @@ full-dev: check-cache stop
 	@echo "\ud83d\udd04 Checking Redis status..."
 	@cd backend && $(PYTHON_EXEC) -c $(CHECK_STATUS_CMD)
 	@echo "\ud83d\ude80 Starting servers with full data mode (lazy initialization)..."
+	# Preflight import check to fail fast on syntax/indent errors
+	@cd backend && $(PYTHON_EXEC) -c "import importlib; importlib.import_module('routers.portfolio')" || { echo "❌ portfolio.py import failed"; exit 1; }
 	@cd backend && PYTHONPATH=$(PWD)/backend FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
 	cd frontend && npm run dev & \
-	wait -n; true
+	true
 	@echo "⏳ Waiting for backend server to be ready..."
 	@for i in {1..15}; do \
 		if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
@@ -165,8 +167,11 @@ full-dev: check-cache stop
 		sleep 2; \
 	done
 	@echo "🔥 Warming mini-lesson assets cache..."
-	@curl -s http://localhost:8000/api/portfolio/mini-lesson/assets > /dev/null 2>&1 || echo "⚠️ Failed to warm mini-lesson cache"
-	@echo "✅ Mini-lesson cache warmed!"
+	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+		curl -s http://localhost:8000/api/portfolio/mini-lesson/assets > /dev/null 2>&1 && echo "✅ Mini-lesson cache warmed!" || echo "⚠️ Failed to warm mini-lesson cache"; \
+	else \
+		echo "⚠️ Backend not healthy yet; skipping mini-lesson warm"; \
+	fi
 
 # Backend only (FAST startup with lazy stock selection)
 backend: check-cache

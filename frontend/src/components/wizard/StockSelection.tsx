@@ -370,10 +370,10 @@ export const StockSelection = ({
     loadDynamicRecommendations();
   }, [riskProfile]);
 
-  // Client cache key for mini-lesson asset lists (bump to invalidate stale data)
-  const MINI_LESSON_CACHE_KEY = 'mini_lesson_assets_v3';
+  // Client cache key for mini-lesson asset lists (v5 includes all 11 sectors)
+  const MINI_LESSON_CACHE_KEY = 'mini_lesson_assets_v5';
 
-  // Load available asset pairs for mini-lesson
+  // FIX #5 & #6: Load available asset pairs with strict validation
   const loadAssetPairs = async (attempt = 1) => {
     try {
       // Try localStorage first
@@ -382,7 +382,7 @@ export const StockSelection = ({
         try {
           const data = JSON.parse(cached);
           if (data && Array.isArray(data.sector_lists)) {
-            // Build pairs from cached data
+            // Build pairs from cached data with STRICT VALIDATION
             const pairsFromCache: any[] = [];
             const availableSectors = data.sector_lists.filter((list: any) => list.assets && list.assets.length > 0);
             if (availableSectors.length >= 2) {
@@ -393,15 +393,22 @@ export const StockSelection = ({
                 if (sector1 && sector2 && sector1.assets.length > 0 && sector2.assets.length > 0) {
                   const asset1 = sector1.assets[Math.floor(Math.random() * sector1.assets.length)];
                   const asset2 = sector2.assets[Math.floor(Math.random() * sector2.assets.length)];
-                  pairsFromCache.push({
-                    pair_id: `pair_cached_${i}_${Date.now()}`,
-                    ticker1: asset1.ticker,
-                    ticker2: asset2.ticker,
-                    name1: asset1.name,
-                    name2: asset2.name,
-                    description: `${sector1.sector || sector1.sectors?.join(' / ')} vs ${sector2.sector || sector2.sectors?.join(' / ')}`,
-                    educational_focus: `${sector1.sector || 'Sector 1'} vs ${sector2.sector || 'Sector 2'}`
-                  });
+                  
+                  // STRICT VALIDATION: Ensure tickers are valid and different
+                  if (asset1 && asset2 && 
+                      asset1.ticker && asset2.ticker && 
+                      asset1.ticker !== asset2.ticker &&
+                      asset1.ticker.trim() !== '' && asset2.ticker.trim() !== '') {
+                    pairsFromCache.push({
+                      pair_id: `pair_cached_${i}_${Date.now()}`,
+                      ticker1: asset1.ticker,
+                      ticker2: asset2.ticker,
+                      name1: asset1.name,
+                      name2: asset2.name,
+                      description: `${sector1.sector || sector1.sectors?.join(' / ')} vs ${sector2.sector || sector2.sectors?.join(' / ')}`,
+                      educational_focus: `${sector1.sector || 'Sector 1'} vs ${sector2.sector || 'Sector 2'}`
+                    });
+                  }
                 }
               }
             }
@@ -415,34 +422,86 @@ export const StockSelection = ({
         } catch {}
       }
 
-      const response = await fetch('/api/portfolio/mini-lesson/assets');
-      if (response.ok) {
+      // FIX #7: Add retry logic for API connection failures
+      let response: Response | null = null;
+      for (let retryAttempt = 1; retryAttempt <= 3; retryAttempt++) {
+        try {
+          response = await fetch('/api/portfolio/mini-lesson/assets');
+          if (response.ok) break;
+          if (retryAttempt < 3) await new Promise(res => setTimeout(res, retryAttempt * 500));
+        } catch (e) {
+          console.warn(`Fetch attempt ${retryAttempt} failed:`, e);
+          if (retryAttempt < 3) await new Promise(res => setTimeout(res, retryAttempt * 500));
+        }
+      }
+      
+      if (response && response.ok) {
         const data = await response.json();
         // Save to localStorage for instant reloads
         if (typeof window !== 'undefined') {
           try { window.localStorage.setItem(MINI_LESSON_CACHE_KEY, JSON.stringify(data)); } catch {}
         }
         
-        // Create 3 fixed educational pairs from sector lists with improved rotation
+        // FIX #6 + ENHANCEMENT: Create unique sector pairs (no repeating sectors in same cycle)
         const pairs = [];
         
         // Get random assets from different sector lists
         if (data.sector_lists && data.sector_lists.length >= 3) {
-          // Create more diverse combinations by randomly selecting from available sectors
+          // Create more diverse combinations with UNIQUE sector pairings
           const availableSectors = data.sector_lists.filter(list => list.assets && list.assets.length > 0);
           
           if (availableSectors.length >= 2) {
-            // Generate 3 random pairs from different sector combinations
+            // Track used sectors to ensure uniqueness in this cycle
+            const usedSectorIndices = new Set<number>();
+            
+            // Generate 3 random pairs with UNIQUE sectors (no sector repeats in same cycle)
             for (let i = 0; i < 3; i++) {
-              // Randomly select two different sectors
-              const shuffledSectors = [...availableSectors].sort(() => Math.random() - 0.5);
-              const sector1 = shuffledSectors[0];
-              const sector2 = shuffledSectors[1];
+              // Find two sectors that haven't been used yet
+              let sector1 = null;
+              let sector2 = null;
+              let sector1Index = -1;
+              let sector2Index = -1;
+              
+              // Try to find two unused sectors (max 20 attempts)
+              for (let attempt = 0; attempt < 20; attempt++) {
+                const randomIndex1 = Math.floor(Math.random() * availableSectors.length);
+                const randomIndex2 = Math.floor(Math.random() * availableSectors.length);
+                
+                // Ensure both sectors are different and not used yet
+                if (randomIndex1 !== randomIndex2 && 
+                    !usedSectorIndices.has(randomIndex1) && 
+                    !usedSectorIndices.has(randomIndex2)) {
+                  sector1 = availableSectors[randomIndex1];
+                  sector2 = availableSectors[randomIndex2];
+                  sector1Index = randomIndex1;
+                  sector2Index = randomIndex2;
+                  break;
+                }
+              }
+              
+              // If we couldn't find unique sectors, allow repeats for this pair
+              if (!sector1 || !sector2) {
+                const shuffled = [...availableSectors].sort(() => Math.random() - 0.5);
+                sector1 = shuffled[0];
+                sector2 = shuffled[1];
+              }
               
               if (sector1 && sector2 && sector1.assets.length > 0 && sector2.assets.length > 0) {
+                // Mark these sectors as used for this cycle
+                if (sector1Index !== -1) usedSectorIndices.add(sector1Index);
+                if (sector2Index !== -1) usedSectorIndices.add(sector2Index);
+                
                 // Randomly select assets from each sector
                 const asset1 = sector1.assets[Math.floor(Math.random() * sector1.assets.length)];
                 const asset2 = sector2.assets[Math.floor(Math.random() * sector2.assets.length)];
+                
+                // STRICT VALIDATION: Only create pair if both assets are valid
+                if (!asset1 || !asset2 || !asset1.ticker || !asset2.ticker || 
+                    asset1.ticker === asset2.ticker || 
+                    asset1.ticker.trim() === '' || asset2.ticker.trim() === '') {
+                  console.warn(`Invalid pair at index ${i}, skipping`);
+                  continue;
+                }
                 
                 // Use individual asset sectors for more accurate descriptions
                 const asset1Sector = asset1.sector || 'Unknown';
@@ -556,21 +615,53 @@ export const StockSelection = ({
           }
         }
         
+        // FIX #6: Validate pairs before setting - ensure we have at least 1 valid pair
+        if (pairs.length === 0) {
+          console.error('No valid pairs generated from backend data');
+          if (attempt < 3) {
+            console.log(`Retrying pair generation (attempt ${attempt + 1}/3)...`);
+            await new Promise(res => setTimeout(res, attempt * 1000));
+            return loadAssetPairs(attempt + 1);
+          } else {
+            setError('Unable to generate asset pairs. Please refresh the page.');
+            return;
+          }
+        }
+        
         setAvailableAssetPairs(pairs);
-        // Set current pair only if valid pairs exist; otherwise retry a bit later
+        // Set current pair only if valid pairs exist
         if (pairs.length > 0) {
-          setCurrentPair({ ticker1: pairs[0].ticker1, ticker2: pairs[0].ticker2 });
-          setSelectedPairId(pairs[0].pair_id);
-        } else if (attempt < 3) {
-          await new Promise(res => setTimeout(res, attempt * 500));
+          // Double-check first pair is valid before setting
+          if (pairs[0].ticker1 && pairs[0].ticker2 && pairs[0].ticker1 !== pairs[0].ticker2) {
+            setCurrentPair({ ticker1: pairs[0].ticker1, ticker2: pairs[0].ticker2 });
+            setSelectedPairId(pairs[0].pair_id);
+          } else {
+            console.error('First pair is invalid, using fallback');
+            if (pairs.length > 1) {
+              setCurrentPair({ ticker1: pairs[1].ticker1, ticker2: pairs[1].ticker2 });
+              setSelectedPairId(pairs[1].pair_id);
+            }
+          }
+        }
+      } else {
+        // FIX #7: Handle failed API response
+        console.error('Failed to fetch mini-lesson assets:', response?.status);
+        if (attempt < 3) {
+          console.log(`Retrying fetch (attempt ${attempt + 1}/3)...`);
+          await new Promise(res => setTimeout(res, attempt * 1000));
           return loadAssetPairs(attempt + 1);
+        } else {
+          setError('Unable to load asset data from server. Please try again later.');
         }
       }
     } catch (error) {
       console.error('Error loading asset pairs:', error);
       if (attempt < 3) {
-        await new Promise(res => setTimeout(res, attempt * 500));
+        console.log(`Retrying after error (attempt ${attempt + 1}/3)...`);
+        await new Promise(res => setTimeout(res, attempt * 1000));
         return loadAssetPairs(attempt + 1);
+      } else {
+        setError('Unable to connect to server. Please check your connection and try again.');
       }
     }
   };
@@ -707,8 +798,8 @@ export const StockSelection = ({
     try {
       console.log(`Searching for: "${query}"`);
       
-      // FIXED: Use relative URL to work with Vite proxy
-      const response = await fetch(`/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=10`);
+      // FIXED: Use correct endpoint path to match backend
+      const response = await fetch(`/api/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=10`);
 
       console.log(`Response status: ${response.status}`);
       

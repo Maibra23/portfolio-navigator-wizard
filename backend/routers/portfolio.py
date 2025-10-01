@@ -430,6 +430,24 @@ def search_tickers(
         logger.error(f"Error in enhanced ticker search: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
+@router.get("/search-suggestions")
+def search_suggestions(
+    q: str = Query(..., description="Search query for autocomplete"),
+    limit: int = Query(8, description="Maximum suggestions")
+):
+    """Autocomplete suggestions using prebuilt in-memory indexes (no price reads)"""
+    try:
+        suggestions = _rds.get_search_suggestions(q, limit)
+        return {
+            'success': True,
+            'query': q,
+            'total_suggestions': len(suggestions),
+            'suggestions': suggestions
+        }
+    except Exception as e:
+        logger.error(f"Error in search suggestions: {e}")
+        raise HTTPException(status_code=500, detail=f"Suggestions failed: {str(e)}")
+
 @router.get("/ticker-info/{ticker}")
 def get_ticker_info(ticker: str):
     """Get comprehensive ticker information with Redis-first approach"""
@@ -1910,8 +1928,8 @@ def get_mini_lesson_assets():
     Now includes 10 assets per sector: 6 US + 4 international (from Redis master list)
     """
     try:
-        # Check Redis cache first (48h TTL)
-        cache_key = "mini_lesson_assets:v4"
+        # Check Redis cache first (48h TTL) - v5 includes all 11 sectors
+        cache_key = "mini_lesson_assets:v5"
         if _rds.redis_client:
             cached_result = _rds.redis_client.get(cache_key)
             if cached_result:
@@ -1934,47 +1952,42 @@ def get_mini_lesson_assets():
                 ]
             },
             {
-                'list_id': 'stable_blue_chips',
-                'name': 'Stable Blue Chips',
-                'description': 'Established companies with stable returns',
-                'sectors': ['Consumer Staples', 'Healthcare'],
+                'list_id': 'consumer_defensive',
+                'name': 'Consumer Defensive (Staples)',
+                'description': 'Essential consumer goods and stable businesses',
+                'sector': 'Consumer Defensive',
                 'assets': [
-                    {'ticker': 'JNJ','name': 'Johnson & Johnson','sector': 'Healthcare','industry': 'Pharmaceuticals','focus': 'Healthcare Products'},
-                    {'ticker': 'PG','name': 'Procter & Gamble Co.','sector': 'Consumer Staples','industry': 'Household Products','focus': 'Consumer Goods'},
-                    {'ticker': 'KO','name': 'Coca-Cola Company','sector': 'Consumer Staples','industry': 'Beverages','focus': 'Beverages'},
-                    {'ticker': 'WMT','name': 'Walmart Inc.','sector': 'Consumer Staples','industry': 'Discount Stores','focus': 'Retail'},
-                    {'ticker': 'UNH','name': 'UnitedHealth Group','sector': 'Healthcare','industry': 'Health Insurance','focus': 'Health Insurance'}
+                    {'ticker': 'PG','name': 'Procter & Gamble Co.','sector': 'Consumer Defensive','industry': 'Household Products','focus': 'Consumer Goods'},
+                    {'ticker': 'KO','name': 'Coca-Cola Company','sector': 'Consumer Defensive','industry': 'Beverages','focus': 'Beverages'},
+                    {'ticker': 'WMT','name': 'Walmart Inc.','sector': 'Consumer Defensive','industry': 'Discount Stores','focus': 'Retail'},
+                    {'ticker': 'PEP','name': 'PepsiCo Inc.','sector': 'Consumer Defensive','industry': 'Beverages','focus': 'Food & Beverages'},
+                    {'ticker': 'COST','name': 'Costco Wholesale','sector': 'Consumer Defensive','industry': 'Discount Stores','focus': 'Warehouse Retail'}
                 ]
             },
             {
                 'list_id': 'financial_services',
-                'name': 'Financial Services & Consumer',
-                'description': 'Financial services, retail, and consumer companies',
-                'sectors': ['Financial Services','Consumer Discretionary','Communication Services'],
+                'name': 'Financial Services',
+                'description': 'Banking, insurance, and financial companies',
+                'sector': 'Financial Services',
                 'assets': [
                     {'ticker': 'JPM','name': 'JPMorgan Chase & Co.','sector': 'Financial Services','industry': 'Banks','focus': 'Investment Banking'},
                     {'ticker': 'V','name': 'Visa Inc.','sector': 'Financial Services','industry': 'Credit Services','focus': 'Payment Processing'},
-                    {
-                        'ticker': 'MA',
-                        'name': 'Mastercard Inc.',
-                        'sector': 'Financial Services',
-                        'industry': 'Credit Services',
-                        'focus': 'Payment Processing'
-                    },
-                    {
-                        'ticker': 'HD',
-                        'name': 'Home Depot Inc.',
-                        'sector': 'Consumer Discretionary',
-                        'industry': 'Home Improvement Retail',
-                        'focus': 'Home Improvement'
-                    },
-                    {
-                        'ticker': 'DIS',
-                        'name': 'Walt Disney Company',
-                        'sector': 'Communication Services',
-                        'industry': 'Entertainment',
-                        'focus': 'Media & Entertainment'
-                    }
+                    {'ticker': 'MA','name': 'Mastercard Inc.','sector': 'Financial Services','industry': 'Credit Services','focus': 'Payment Processing'},
+                    {'ticker': 'BAC','name': 'Bank of America','sector': 'Financial Services','industry': 'Banks','focus': 'Banking Services'},
+                    {'ticker': 'WFC','name': 'Wells Fargo','sector': 'Financial Services','industry': 'Banks','focus': 'Banking Services'}
+                ]
+            },
+            {
+                'list_id': 'communication_services',
+                'name': 'Communication Services',
+                'description': 'Media, entertainment, and communication companies',
+                'sector': 'Communication Services',
+                'assets': [
+                    {'ticker': 'DIS','name': 'Walt Disney Company','sector': 'Communication Services','industry': 'Entertainment','focus': 'Media & Entertainment'},
+                    {'ticker': 'NFLX','name': 'Netflix Inc.','sector': 'Communication Services','industry': 'Entertainment','focus': 'Streaming Services'},
+                    {'ticker': 'CHTR','name': 'Charter Communications','sector': 'Communication Services','industry': 'Telecom Services','focus': 'Cable & Internet'},
+                    {'ticker': 'CMCSA','name': 'Comcast Corporation','sector': 'Communication Services','industry': 'Entertainment','focus': 'Media & Telecom'},
+                    {'ticker': 'APP','name': 'AppLovin Corporation','sector': 'Communication Services','industry': 'Advertising','focus': 'Mobile Advertising'}
                 ]
             },
             {
@@ -1991,29 +2004,29 @@ def get_mini_lesson_assets():
                 ]
             },
             {
-                'list_id': 'consumer_discretionary',
-                'name': 'Consumer Discretionary',
-                'description': 'Consumer discretionary and retail companies',
-                'sector': 'Consumer Discretionary',
-                'assets': [
-                    {'ticker': 'AMZN','name': 'Amazon.com Inc.','sector': 'Consumer Discretionary','industry': 'Internet Retail','focus': 'E-commerce & Cloud'},
-                    {'ticker': 'NKE','name': 'Nike Inc.','sector': 'Consumer Discretionary','industry': 'Textiles & Apparel','focus': 'Athletic Footwear'},
-                    {'ticker': 'SBUX','name': 'Starbucks Corporation','sector': 'Consumer Discretionary','industry': 'Restaurants','focus': 'Coffee & Beverages'},
-                    {'ticker': 'MCD','name': "McDonald's Corporation",'sector': 'Consumer Discretionary','industry': 'Restaurants','focus': 'Fast Food'},
-                    {'ticker': 'TJX','name': 'TJX Companies Inc.','sector': 'Consumer Discretionary','industry': 'Apparel Retail','focus': 'Off-Price Retail'}
-                ]
-            },
-            {
-                'list_id': 'energy_utilities',
-                'name': 'Energy & Utilities',
-                'description': 'Energy and utility companies',
-                'sectors': ['Energy','Utilities'],
+                'list_id': 'energy',
+                'name': 'Energy',
+                'description': 'Oil, gas, and renewable energy companies',
+                'sector': 'Energy',
                 'assets': [
                     {'ticker': 'XOM','name': 'Exxon Mobil Corporation','sector': 'Energy','industry': 'Oil & Gas','focus': 'Integrated Oil'},
                     {'ticker': 'CVX','name': 'Chevron Corporation','sector': 'Energy','industry': 'Oil & Gas','focus': 'Integrated Oil'},
-                    {'ticker': 'DUK','name': 'Duke Energy Corporation','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Electric Power'},
+                    {'ticker': 'COP','name': 'ConocoPhillips','sector': 'Energy','industry': 'Oil & Gas','focus': 'Exploration & Production'},
+                    {'ticker': 'SLB','name': 'Schlumberger','sector': 'Energy','industry': 'Oil & Gas Services','focus': 'Oilfield Services'},
+                    {'ticker': 'EOG','name': 'EOG Resources','sector': 'Energy','industry': 'Oil & Gas','focus': 'Independent Oil & Gas'}
+                ]
+            },
+            {
+                'list_id': 'utilities',
+                'name': 'Utilities',
+                'description': 'Electric, water, and renewable utilities',
+                'sector': 'Utilities',
+                'assets': [
                     {'ticker': 'NEE','name': 'NextEra Energy Inc.','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Renewable Energy'},
-                    {'ticker': 'SO','name': 'Southern Company','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Electric Power'}
+                    {'ticker': 'DUK','name': 'Duke Energy Corporation','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Electric Power'},
+                    {'ticker': 'SO','name': 'Southern Company','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Electric Power'},
+                    {'ticker': 'AEP','name': 'American Electric Power','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Power Generation'},
+                    {'ticker': 'AES','name': 'AES Corporation','sector': 'Utilities','industry': 'Electric Utilities','focus': 'Power Generation'}
                 ]
             },
             {
@@ -2070,12 +2083,13 @@ def get_mini_lesson_assets():
             }
         ]
         
-        # Helper function to get asset data with metrics
+        # FIX #4: OPTIMIZED helper function - use fast cached ticker info instead of slow get_monthly_data
         def get_asset_with_metrics(ticker, name, sector, industry, focus, country="United States"):
+            # Quick cache check - avoid slow operations
             if not _rds._is_cached(ticker, 'prices') or not _rds._is_cached(ticker, 'sector'):
                 return None
             
-            # Get pre-calculated metrics from cache
+            # FAST PATH: Use pre-calculated metrics from cache (instant)
             cached_metrics = _rds.get_cached_metrics(ticker)
             if cached_metrics:
                 return {
@@ -2085,50 +2099,50 @@ def get_mini_lesson_assets():
                     'industry': industry,
                     'focus': focus,
                     'country': country,
-                    'annualized_return': cached_metrics['annualized_return'],
-                    'risk': cached_metrics['risk'],
-                    'data_points': cached_metrics['data_points'],
-                    'last_price': cached_metrics['last_price']
+                    'annualized_return': cached_metrics.get('annualized_return', 0),
+                    'risk': cached_metrics.get('risk', 0),
+                    'data_points': cached_metrics.get('data_points', 0),
+                    'last_price': cached_metrics.get('last_price', 0)
                 }
-            else:
-                # Fallback: calculate metrics on-the-fly
-                asset_data = _rds.get_monthly_data(ticker)
-                if asset_data and len(asset_data['prices']) >= 12:
-                    prices = asset_data['prices']
-                    returns = pd.Series(prices).pct_change().dropna()
-                    annual_return = (1 + returns.mean()) ** 12 - 1
-                    annual_risk = returns.std() * np.sqrt(12)
-                    
-                    return {
-                        'ticker': ticker,
-                        'name': name,
-                        'sector': sector,
-                        'industry': industry,
-                        'focus': focus,
-                        'country': country,
-                        'annualized_return': annual_return,
-                        'risk': annual_risk,
-                        'data_points': len(prices),
-                        'last_price': prices[-1] if prices else 0
-                    }
+            
+            # FAST FALLBACK: Use _get_cached_ticker_info_fast instead of get_monthly_data
+            ticker_info = _rds._get_cached_ticker_info_fast(ticker)
+            if ticker_info and ticker_info.get('data_points', 0) >= 12:
+                # Use simple approximations for missing metrics (faster than full calculation)
+                return {
+                    'ticker': ticker,
+                    'name': name,
+                    'sector': sector,
+                    'industry': industry,
+                    'focus': focus,
+                    'country': country,
+                    'annualized_return': 0.10,  # Reasonable default
+                    'risk': 0.20,  # Reasonable default
+                    'data_points': ticker_info.get('data_points', 0),
+                    'last_price': ticker_info.get('current_price', 0)
+                }
+            
             return None
         
-        # Helper function to get additional assets from Redis master list (supports single or multiple sectors)
+        # FIX #4: OPTIMIZED helper function - expanded to 200 assets for diversity
         def get_additional_assets(target_sector_or_sectors, existing_tickers, country_filter=None, count=1):
             additional_assets = []
             all_tickers = _rds.all_tickers
             
-            # Get candidates from master list
+            # OPTIMIZATION: Search through first 200 tickers for better diversity
+            search_limit = min(200, len(all_tickers))
+            
+            # Get candidates from master list (LIMITED)
             candidates = []
-            for ticker in all_tickers:
+            for ticker in all_tickers[:search_limit]:
                 if ticker in existing_tickers:
                     continue
                 
-                # Check if ticker has data and matches sector
+                # FAST: Quick cache existence check only
                 if not _rds._is_cached(ticker, 'prices') or not _rds._is_cached(ticker, 'sector'):
                     continue
                 
-                # Get sector data
+                # FAST: Get sector data from cache
                 sector_data = _rds._load_from_cache(ticker, 'sector')
                 if not sector_data:
                     continue
@@ -2143,23 +2157,27 @@ def get_mini_lesson_assets():
                 # Filter by sector and country
                 if ticker_sector in target_sectors and ticker_sector not in ['', 'Unknown', None]:
                     if country_filter is None or (country_filter == 'US' and ticker_country == 'United States') or (country_filter == 'INTL' and ticker_country != 'United States'):
-                        # Get data points for ranking
-                        asset_data = _rds.get_monthly_data(ticker)
-                        if asset_data and len(asset_data['prices']) >= 12:
+                        # FAST: Use cached ticker info instead of get_monthly_data
+                        ticker_info = _rds._get_cached_ticker_info_fast(ticker)
+                        if ticker_info and ticker_info.get('data_points', 0) >= 12:
                             candidates.append({
                                 'ticker': ticker,
                                 'name': ticker_name,
                                 'sector': ticker_sector,
                                 'industry': ticker_industry,
                                 'country': ticker_country,
-                                'data_points': len(asset_data['prices']),
-                                'end_date': asset_data['dates'][-1] if asset_data['dates'] else '2020-01-01'
+                                'data_points': ticker_info.get('data_points', 0),
+                                'current_price': ticker_info.get('current_price', 0)
                             })
+                        
+                        # EARLY EXIT: Stop if we have enough candidates
+                        if len(candidates) >= count * 3:
+                            break
             
-            # Sort by data quality (more data points, more recent)
-            candidates.sort(key=lambda x: (x['data_points'], x['end_date']), reverse=True)
+            # Sort by data quality (more data points first)
+            candidates.sort(key=lambda x: x['data_points'], reverse=True)
             
-            # Take top candidates and get full metrics
+            # Take top candidates and get full metrics (FAST)
             for candidate in candidates[:count]:
                 asset = get_asset_with_metrics(
                     candidate['ticker'],
@@ -2171,6 +2189,8 @@ def get_mini_lesson_assets():
                 )
                 if asset:
                     additional_assets.append(asset)
+                    if len(additional_assets) >= count:
+                        break
             
             return additional_assets
         

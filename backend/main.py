@@ -95,36 +95,12 @@ async def lifespan(app: FastAPI):
         
         logger.info(f"📊 Total portfolios in Redis: {total_portfolios}")
         
-        # Only generate if we have less than 60 total portfolios (5 profiles × 12 portfolios)
+        # FIX #1: Temporarily disable portfolio generation to allow immediate server binding
         if total_portfolios < 60:
-            logger.warning(f"⚠️ Insufficient portfolios in Redis ({total_portfolios}/60) - generating missing portfolios...")
-            
-            if profiles_needing_generation:
-                logger.info(f"🚀 Generating portfolios for {len(profiles_needing_generation)} risk profiles...")
-                
-                # Create tasks for parallel portfolio generation
-                portfolio_tasks = []
-                for risk_profile in profiles_needing_generation:
-                    task = asyncio.create_task(enhanced_generator.generate_portfolio_bucket_async(risk_profile))
-                    portfolio_tasks.append((risk_profile, task))
-                
-                # Wait for all portfolios to be generated
-                for risk_profile, task in portfolio_tasks:
-                    try:
-                        portfolios = await task
-                        if portfolios and len(portfolios) == 12:
-                            storage_success = redis_manager.store_portfolio_bucket(risk_profile, portfolios)
-                            if storage_success:
-                                logger.info(f"✅ Generated and stored {len(portfolios)} portfolios for {risk_profile}")
-                            else:
-                                logger.error(f"❌ Failed to store portfolios for {risk_profile}")
-                        else:
-                            logger.error(f"❌ Failed to generate portfolios for {risk_profile}: got {len(portfolios) if portfolios else 0}")
-                            
-                    except Exception as e:
-                        logger.error(f"❌ Failed to generate portfolios for {risk_profile}: {e}")
-            else:
-                logger.info("ℹ️ All profiles have sufficient portfolios but total count is low - may need data refresh")
+            logger.warning(f"⚠️ Insufficient portfolios in Redis ({total_portfolios}/60)")
+            logger.info("💡 Portfolio generation temporarily disabled for fast startup")
+            logger.info("💡 Use POST /api/portfolio/regenerate to generate portfolios manually")
+            logger.info(f"📋 Profiles needing generation: {', '.join(profiles_needing_generation)}")
         else:
             logger.info("✅ Sufficient portfolios available in Redis - no generation needed")
             
@@ -152,6 +128,9 @@ async def lifespan(app: FastAPI):
         from routers.portfolio import set_redis_manager
         set_redis_manager(redis_manager)
         logger.info("✅ Redis manager set in portfolio router")
+        
+        # Search functionality ready (no index warming needed for basic search)
+        logger.info("✅ Search functionality ready for all cached tickers")
         
         # Yield control back to FastAPI
         yield

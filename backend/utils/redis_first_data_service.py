@@ -258,10 +258,13 @@ class RedisFirstDataService:
     
     def search_tickers(self, query: str, limit: int = 10, filters: Dict = None) -> List[Dict[str, Any]]:
         """
-        Enhanced fuzzy search with smart relevance scoring and filters
+        Comprehensive search through ALL cached tickers with smart pre-filtering
         Returns: List of matching tickers with comprehensive information and relevance scores
         """
         q = query.strip().lower()
+        if not q:
+            return []
+        
         results = []
         
         # Apply filters if provided
@@ -270,39 +273,69 @@ class RedisFirstDataService:
         
         # Get ticker list (cached)
         all_tickers = self.all_tickers
+        logger.info(f"🔍 Searching '{query}' through {len(all_tickers)} cached tickers")
         
+        # SMART PRE-FILTERING: Only check tickers that might match
+        candidate_tickers = []
+        q_upper = q.upper()
+        
+        # Phase 1: Quick ticker symbol matching
         for ticker in all_tickers:
-            # Get comprehensive ticker info
-            ticker_info = self.get_ticker_info(ticker)
-            if not ticker_info:
-                continue
-            
-            # Apply filters
-            if sector_filter and ticker_info.get('sector', '').lower() != sector_filter.lower():
-                continue
+            if q_upper in ticker or ticker.startswith(q_upper):
+                candidate_tickers.append(ticker)
+        
+        # Phase 2: Company name matching (only if we need more candidates)
+        if len(candidate_tickers) < 20:
+            for ticker in all_tickers:
+                if ticker in candidate_tickers:
+                    continue
+                # Quick check using cached sector data
+                sector_data = self._load_from_cache(ticker, 'sector')
+                if sector_data:
+                    company_name = sector_data.get('companyName', '').lower()
+                    if q in company_name:
+                        candidate_tickers.append(ticker)
+        
+        logger.info(f"📋 Pre-filter found {len(candidate_tickers)} candidates")
+        
+        # Process only the candidate tickers (not all 809)
+        for ticker in candidate_tickers:
+            try:
+                # Get comprehensive ticker info
+                ticker_info = self.get_ticker_info(ticker)
+                if not ticker_info:
+                    continue
                 
-            if risk_filter and not self._is_suitable_for_risk_profile(ticker_info, risk_filter):
+                # Apply filters
+                if sector_filter and ticker_info.get('sector', '').lower() != sector_filter.lower():
+                    continue
+                    
+                if risk_filter and not self._is_suitable_for_risk_profile(ticker_info, risk_filter):
+                    continue
+                
+                # Calculate relevance score
+                score = self._calculate_enhanced_relevance_score(q, ticker_info)
+                
+                if score > 0:
+                    results.append({
+                        'ticker': ticker,
+                        'company_name': ticker_info.get('company_name', ''),
+                        'sector': ticker_info.get('sector', ''),
+                        'industry': ticker_info.get('industry', ''),
+                        'relevance_score': score,
+                        'cached': self._is_cached(ticker, 'prices'),
+                        'risk_level': self._calculate_risk_level(ticker_info),
+                        'market_cap': ticker_info.get('market_cap', 'Unknown'),
+                        'last_price': ticker_info.get('current_price', 0),
+                        'data_quality': ticker_info.get('data_quality', 'Unknown')
+                    })
+            except Exception as e:
+                logger.debug(f"Error processing {ticker}: {e}")
                 continue
-            
-            # Calculate relevance score
-            score = self._calculate_enhanced_relevance_score(q, ticker_info)
-            
-            if score > 0:
-                results.append({
-                    'ticker': ticker,
-                    'company_name': ticker_info.get('company_name', ''),
-                    'sector': ticker_info.get('sector', ''),
-                    'industry': ticker_info.get('industry', ''),
-                    'relevance_score': score,
-                    'cached': self._is_cached(ticker, 'prices'),
-                    'risk_level': self._calculate_risk_level(ticker_info),
-                    'market_cap': ticker_info.get('market_cap', 'Unknown'),
-                    'last_price': ticker_info.get('current_price', 0),
-                    'data_quality': ticker_info.get('data_quality', 'Unknown')
-                })
         
         # Sort by relevance score (highest first)
         results.sort(key=lambda x: x['relevance_score'], reverse=True)
+        logger.info(f"✅ Search completed: {len(results)} results found")
         return results[:limit]
     
     def _calculate_enhanced_relevance_score(self, query: str, ticker_info: Dict) -> int:
