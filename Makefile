@@ -5,11 +5,12 @@
 PYTHON_BIN ?= /usr/local/bin/python3.11
 PYTHON_FALLBACK ?= python3
 PYTHON_EXEC := $(shell if [ -x "$(PYTHON_BIN)" ]; then echo "$(PYTHON_BIN)"; else echo "$(PYTHON_FALLBACK)"; fi)
+.ONESHELL:
 CHECK_CACHE_CMD = "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); status = service.get_health_metrics(); print('Redis Status:', status.get('redis_status')); cov = status.get('cache_coverage',{}); print('Price Coverage %:', round(cov.get('price_cache_coverage', 0),1)); print('Fast Startup: No external API calls during startup')"
 CHECK_STATUS_CMD = "from utils.redis_first_data_service import redis_first_data_service as s; inv = s.get_cache_inventory(); print(f'\\nRedis: {inv.get(\"redis\") }'); cov = inv.get('coverage',{}); print(f'Joined tickers: {cov.get(\"joined_tickers\",0)}'); print(f'Prices keys: {cov.get(\"prices\",0)}, Sector keys: {cov.get(\"sector\",0)}, Metrics keys: {cov.get(\"metrics\",0)}'); print(f'TTL sample: {inv.get(\"ttl_sample\", [])[:3]}')"
 
 
-.PHONY: help dev dev-ticker backend frontend ticker-table prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health open-ticker warm-cache activate-ticker-table start-ticker-table check-redis quick-ticker-table enhanced enhanced-quick enhanced-complete backend-enhanced enhanced-table test-enhanced test-enhanced-auto-refresh test-calculations demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status test-search demo-search performance test-performance
+.PHONY: help dev dev-ticker backend frontend ticker-table prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health open-ticker warm-cache activate-ticker-table start-ticker-table check-redis quick-ticker-table enhanced enhanced-quick enhanced-complete backend-enhanced enhanced-table test-enhanced test-enhanced-auto-refresh test-calculations demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status test-search demo-search performance test-performance regenerate-portfolios regenerate-profile verify-portfolios test-systems
 
 # Default target - show help
 help:
@@ -70,6 +71,12 @@ help:
 	@echo "  make test-backend - Run backend tests"
 	@echo "  make test-frontend- Run frontend tests"
 	@echo "  make test-search   - Test enhanced search functionality"
+	@echo "  make test-systems  - 🆕 Run comprehensive system verification tests"
+	@echo ""
+	@echo "📊 Portfolio Management Commands:"
+	@echo "  make regenerate-portfolios - 🆕 Regenerate ALL portfolios for all 5 risk profiles"
+	@echo "  make regenerate-profile    - 🆕 Regenerate portfolios for specific profile (PROFILE=moderate)"
+	@echo "  make verify-portfolios     - 🆕 Verify portfolio counts and status for all profiles"
 	@echo ""
 	@echo "🚀 Production Commands:"
 	@echo "  make prod-build   - Build frontend for production"
@@ -102,7 +109,13 @@ help:
 	@echo "  make enhanced-quick   - Enhanced system with lazy initialization"
 	@echo "  make test-search      - Test enhanced search features"
 	@echo "  make performance      - View performance improvements"
-	@echo "==================================================" 
+	@echo ""
+	@echo "🔧 Portfolio Management (NEW):"
+	@echo "  make regenerate-portfolios               - Regenerate all 60 portfolios (all profiles)"
+	@echo "  make regenerate-profile PROFILE=moderate - Regenerate specific profile (12 portfolios)"
+	@echo "  make verify-portfolios                   - Check portfolio counts and status"
+	@echo "  make test-systems                        - Run system verification tests"
+	@echo "=================================================="
 
 # Check Redis cache status (LIGHTWEIGHT - Lazy Initialization)
 check-cache:
@@ -804,3 +817,92 @@ test-performance:
 	@echo "🧪 Testing startup time and lazy initialization..."
 	@echo "=================================================="
 	@cd backend && $(PYTHON_EXEC) -c "import time; start_time = time.time(); from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); init_time = time.time() - start_time; print(f'✅ RedisFirstDataService initialized in {init_time:.2f} seconds'); print('✅ Lazy initialization working - no external API calls'); print('✅ Stock selection cache will populate on-demand'); print(f'\\n⚡ Performance: {init_time:.2f}s vs 5-10 minutes (old system)'); print(f'🚀 Improvement: {((300-init_time)/300)*100:.1f}% faster startup')"
+
+# 🆕 Run comprehensive system verification tests
+test-systems:
+	@echo "🧪 Running Comprehensive System Verification..."
+	@echo "=================================================="
+	@echo "Testing all 5 core systems + integration"
+	@echo "=================================================="
+	@cd backend && $(PYTHON_EXEC) test_systems_verification.py
+	@echo "=================================================="
+	@echo "✅ System verification complete!"
+
+# 🆕 Regenerate ALL portfolios for all 5 risk profiles
+regenerate-portfolios:
+	@echo "🔄 Regenerating ALL Portfolios..."
+	@echo "=================================================="
+	@echo "This will regenerate 12 portfolios for each risk profile:"
+	@echo "  • very-conservative"
+	@echo "  • conservative"
+	@echo "  • moderate"
+	@echo "  • aggressive"
+	@echo "  • very-aggressive"
+	@echo "Total: 60 portfolios will be generated"
+	@echo "=================================================="
+	@echo ""
+	@echo "⏰ Estimated time: ~40-60 seconds (with parallel generation)"
+	@echo ""
+	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✅ Backend server is running"; \
+		echo ""; \
+		echo "🔄 Triggering portfolio regeneration..."; \
+		curl -X POST -H "Content-Type: application/json" http://localhost:8000/api/portfolio/regenerate 2>/dev/null | python3 -m json.tool || echo "⚠️ Response parsing failed"; \
+		echo ""; \
+		echo "✅ Portfolio regeneration completed!"; \
+		echo ""; \
+		echo "🔍 Verifying results..."; \
+		make verify-portfolios; \
+	else \
+		echo "❌ Backend server not running on port 8000"; \
+		echo ""; \
+		echo "📋 To start the backend:"; \
+		echo "  make backend"; \
+		echo ""; \
+		echo "📋 Or start full system:"; \
+		echo "  make dev"; \
+		echo ""; \
+		echo "💡 Then run: make regenerate-portfolios"; \
+	fi
+
+# 🆕 Regenerate portfolios for specific risk profile
+regenerate-profile:
+	@echo "🔄 Regenerating Portfolios for Specific Profile..."
+	@echo "=================================================="
+	@if [ -z "$(PROFILE)" ]; then \
+		echo "❌ Error: PROFILE not specified"; \
+		echo ""; \
+		echo "Usage:"; \
+		echo "  make regenerate-profile PROFILE=moderate"; \
+		echo ""; \
+		echo "Valid profiles:"; \
+		echo "  • very-conservative"; \
+		echo "  • conservative"; \
+		echo "  • moderate"; \
+		echo "  • aggressive"; \
+		echo "  • very-aggressive"; \
+		exit 1; \
+	fi
+	@echo "Profile: $(PROFILE)"
+	@echo "Portfolios to generate: 12"
+	@echo "=================================================="
+	@echo ""
+	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✅ Backend server is running"; \
+		echo ""; \
+		echo "🔄 Generating 12 portfolios for $(PROFILE)..."; \
+		curl -X POST -H "Content-Type: application/json" "http://localhost:8000/api/portfolio/regenerate?risk_profile=$(PROFILE)" 2>/dev/null | python3 -m json.tool || echo "⚠️ Response parsing failed"; \
+		echo ""; \
+		echo "✅ Portfolio regeneration completed for $(PROFILE)!"; \
+		echo ""; \
+		echo "🔍 Verifying results..."; \
+		make verify-portfolios; \
+	else \
+		echo "❌ Backend server not running on port 8000"; \
+		echo "💡 Start backend first: make backend"; \
+	fi
+
+# 🆕 Verify portfolio counts and status for all profiles
+verify-portfolios:
+	@echo "🔍 Verifying Portfolio Status..."; \
+	cd backend && $(PYTHON_EXEC) scripts/verify_portfolios_cli.py

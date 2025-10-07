@@ -243,6 +243,29 @@ class RedisFirstDataService:
         else:
             logger.error(f"❌ {ticker}: EnhancedDataFetcher unavailable")
             return None
+
+    # FAST helper for mini-lessons and UI: read only cached info without heavy parsing
+    def _get_cached_ticker_info_fast(self, ticker: str) -> Optional[Dict[str, Any]]:
+        try:
+            ticker = ticker.upper()
+            prices = self._load_from_cache(ticker, 'prices')
+            sector = self._load_from_cache(ticker, 'sector')
+            if prices is None or sector is None:
+                return None
+            # prices is a pandas Series
+            current_price = float(prices.iloc[-1]) if hasattr(prices, 'iloc') and len(prices) > 0 else 0.0
+            data_points = int(len(prices)) if hasattr(prices, '__len__') else 0
+            return {
+                'ticker': ticker,
+                'current_price': round(current_price, 4),
+                'data_points': data_points,
+                'company_name': sector.get('companyName', ticker),
+                'sector': sector.get('sector', 'Unknown'),
+                'industry': sector.get('industry', 'Unknown'),
+            }
+        except Exception as e:
+            logger.debug(f"_get_cached_ticker_info_fast failed for {ticker}: {e}")
+            return None
     
     def get_cached_metrics(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Get pre-calculated metrics for a ticker - Redis first"""

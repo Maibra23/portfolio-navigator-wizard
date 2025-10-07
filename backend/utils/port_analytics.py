@@ -697,46 +697,70 @@ class PortfolioAnalytics:
             allocations = portfolio_data.get('allocations', [])
             if not allocations:
                 return self._get_fallback_portfolio_metrics()
-            
+
             # Get real data for each asset
-            asset_returns = []
-            weights = []
-            
+            raw_returns: list[pd.Series] = []
+            raw_weights: list[float] = []
+
             for allocation in allocations:
                 ticker = allocation['symbol']
-                weight = allocation['allocation'] / 100  # Convert percentage to decimal
-                
+                weight = allocation['allocation'] / 100  # percentage to decimal
+
                 # Get pre-calculated metrics from cache first
                 cached_metrics = get_ticker_cached_metrics(ticker)
-                if cached_metrics:
-                    # Use cached metrics for faster calculation
-                    annual_return = cached_metrics['annualized_return']
-                    annual_risk = cached_metrics['risk']
-                    
-                    # Create realistic synthetic returns with proper variance
+                if cached_metrics and cached_metrics.get('annualized_return') is not None and cached_metrics.get('risk') is not None:
+                    annual_return = float(cached_metrics['annualized_return'])
+                    annual_risk = float(cached_metrics['risk'])
+
                     monthly_return = (1 + annual_return) ** (1/12) - 1
                     monthly_risk = annual_risk / (12 ** 0.5)
-                    
-                    # Generate realistic monthly returns with proper variance
-                    np.random.seed(hash(ticker) % 2**32)  # Consistent but different for each ticker
-                    monthly_returns = np.random.normal(monthly_return, monthly_risk, 60)
+
+                    np.random.seed(hash(ticker) % 2**32)
+                    monthly_returns = np.random.normal(monthly_return, max(monthly_risk, 1e-6), 60)
                     returns = pd.Series(monthly_returns)
-                    asset_returns.append(returns)
-                    weights.append(weight)
-                else:
-                    # Fallback: get monthly data and calculate
-                    data = get_ticker_monthly_data(ticker)
-                    if data and data['prices']:
-                        prices = np.array(data['prices'], dtype=float)
+                    raw_returns.append(returns)
+                    raw_weights.append(weight)
+                    continue
+
+                # Fallback: get monthly data and calculate
+                data = get_ticker_monthly_data(ticker)
+                if data and data.get('prices'):
+                    prices = np.array(data['prices'], dtype=float)
+                    if prices.size >= 3:
                         returns = pd.Series(prices).pct_change().dropna()
-                        asset_returns.append(returns)
-                        weights.append(weight)
-                    else:
-                        logger.warning(f"Missing data for {ticker}, using fallback")
-                        return self._get_fallback_portfolio_metrics()
-            
-            if not asset_returns:
+                        raw_returns.append(returns)
+                        raw_weights.append(weight)
+                        continue
+
+                # Warm-and-retry: attempt to fetch data via Redis-first service
+                try:
+                    from utils.redis_first_data_service import redis_first_data_service as _rds
+                    _ = _rds.get_monthly_data(ticker)
+                    _ = _rds.get_ticker_info(ticker)
+                    # Re-attempt loading using helpers
+                    data_retry = get_ticker_monthly_data(ticker)
+                    if data_retry and data_retry.get('prices'):
+                        prices = np.array(data_retry['prices'], dtype=float)
+                        if prices.size >= 3:
+                            returns = pd.Series(prices).pct_change().dropna()
+                            raw_returns.append(returns)
+                            raw_weights.append(weight)
+                            continue
+                except Exception:
+                    pass
+
+                # If still unavailable, skip this ticker (do not synthesize)
+                logger.warning(f"Skipping {ticker}: no cached/sourced data available after warm retry")
+
+            if not raw_returns:
                 return self._get_fallback_portfolio_metrics()
+
+            # Normalize weights of remaining assets to sum to 1
+            total_weight = sum(raw_weights)
+            if total_weight <= 0:
+                return self._get_fallback_portfolio_metrics()
+            weights = [w / total_weight for w in raw_weights]
+            asset_returns = raw_returns
             
             # Align all return series to same length
             min_length = min(len(returns) for returns in asset_returns)

@@ -192,6 +192,7 @@ export const StockSelection = ({
   const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
   const [selectedPortfolioIndex, setSelectedPortfolioIndex] = useState<number | null>(null);
   const [originalRecommendation, setOriginalRecommendation] = useState<PortfolioRecommendation | null>(null);
+  const [hasUserModified, setHasUserModified] = useState<boolean>(false);
   
   // Mini-lesson state
   const [twoAssetAnalysis, setTwoAssetAnalysis] = useState<TwoAssetAnalysis | null>(null);
@@ -227,6 +228,7 @@ export const StockSelection = ({
   const [showWeightEditor, setShowWeightEditor] = useState(false);
   const [totalAllocation, setTotalAllocation] = useState(100);
   const [isValidAllocation, setIsValidAllocation] = useState(true);
+
 
   // Generate recommendations based on risk profile with updated names and descriptions
   const generateRecommendations = (): PortfolioRecommendation[] => {
@@ -348,7 +350,7 @@ export const StockSelection = ({
           }, index: number) => ({
             name: rec.name || `Portfolio ${index + 1}`,
             description: rec.description || 'Diversified portfolio based on your risk profile',
-            allocations: rec.portfolio || [],
+            allocations: (rec.portfolio || []).map(a => ({ ...a, allocation: Math.round((a.allocation || 0) * 100) / 100 })),
             expectedReturn: rec.expectedReturn || 0.1,
             risk: rec.risk || 0.15,
             diversificationScore: rec.diversificationScore || 75
@@ -890,11 +892,13 @@ export const StockSelection = ({
   // NEW: Real-time portfolio metrics calculation and validation
   useEffect(() => {
     if (selectedStocks.length > 0) {
-      // Trigger real-time metrics calculation
-      setTimeout(() => {
+      // Trigger real-time metrics calculation with proper delay
+      const timeoutId = setTimeout(() => {
         calculateRealTimeMetrics();
         validatePortfolio();
-      }, 100);
+      }, 200); // Increased delay to ensure state is updated
+      
+      return () => clearTimeout(timeoutId);
     } else {
       // Reset metrics and validation when no stocks selected
       setPortfolioMetrics(null);
@@ -906,7 +910,7 @@ export const StockSelection = ({
         canProceed: false
       });
     }
-  }, [selectedStocks]);
+  }, [selectedStocks, totalAllocation]); // Added totalAllocation as dependency
 
   const addStock = (stock: StockResult) => {
     // Validation checks
@@ -939,7 +943,13 @@ export const StockSelection = ({
     setSearchTerm('');
     setSearchResults([]);
     
-    // Portfolio metrics update automatically via useEffect
+    setHasUserModified(true);
+    
+    // Force immediate metrics recalculation
+    setTimeout(() => {
+      calculateRealTimeMetrics();
+      validatePortfolio();
+    }, 300);
   };
 
   const removeStock = (symbol: string) => {
@@ -950,9 +960,15 @@ export const StockSelection = ({
       const rebalancedStocks = updatedStocks.map(s => ({ ...s, allocation: equalAllocation }));
       onStocksUpdate(rebalancedStocks);
       
-      // Portfolio metrics update automatically via useEffect
+      setHasUserModified(true);
+      // Force immediate metrics recalculation
+      setTimeout(() => {
+        calculateRealTimeMetrics();
+        validatePortfolio();
+      }, 300);
     } else {
       onStocksUpdate([]);
+      setHasUserModified(true);
     }
   };
 
@@ -961,11 +977,26 @@ export const StockSelection = ({
     setOriginalRecommendation(recommendation);
     onStocksUpdate(recommendation.allocations);
     setHasSelectedPortfolio(true);
+    setHasUserModified(false);
     
     // Initialize allocation tracking
     const total = recommendation.allocations.reduce((sum, stock) => sum + stock.allocation, 0);
     setTotalAllocation(total);
     setIsValidAllocation(Math.abs(total - 100) < 0.1);
+
+    // Mirror recommendation metrics immediately
+    setPortfolioMetrics({
+      expectedReturn: recommendation.expectedReturn,
+      risk: recommendation.risk,
+      diversificationScore: recommendation.diversificationScore,
+      sharpeRatio: 0
+    });
+
+    // Force immediate metrics recalculation
+    setTimeout(() => {
+      calculateRealTimeMetrics();
+      validatePortfolio();
+    }, 300);
   };
 
   // Enhanced allocation update with validation and real-time updates
@@ -980,7 +1011,11 @@ export const StockSelection = ({
     
     onStocksUpdate(updatedStocks);
     
-    // Portfolio metrics update automatically via useEffect
+    // Force immediate metrics recalculation
+    setTimeout(() => {
+      calculateRealTimeMetrics();
+      validatePortfolio();
+    }, 300);
   };
 
   // NEW: Auto-normalization feature with real-time updates
@@ -994,6 +1029,7 @@ export const StockSelection = ({
     onStocksUpdate(normalizedStocks);
     setTotalAllocation(100);
     setIsValidAllocation(true);
+    setHasUserModified(true);
     
     // Trigger real-time metrics update
     setTimeout(() => {
@@ -1048,23 +1084,45 @@ export const StockSelection = ({
 
   // NEW: Real-time portfolio metrics calculation
   const calculateRealTimeMetrics = useCallback(async () => {
-    if (selectedStocks.length === 0) return;
+    if (selectedStocks.length === 0) {
+      console.log('No stocks selected, skipping metrics calculation');
+      return;
+    }
+
+    // Mirror selected recommendation metrics until user modifies allocations
+    if (originalRecommendation && !hasUserModified) {
+      setPortfolioMetrics({
+        expectedReturn: originalRecommendation.expectedReturn,
+        risk: originalRecommendation.risk,
+        diversificationScore: originalRecommendation.diversificationScore,
+        sharpeRatio: 0
+      });
+      return;
+    }
+
+    console.log('Calculating real-time metrics for portfolio:', selectedStocks.map(s => `${s.symbol}:${s.allocation}%`));
     
     setIsLoadingMetrics(true);
     setError(null);
     
     try {
+      const requestBody = {
+        allocations: selectedStocks,
+        riskProfile: riskProfile
+      };
+      
+      console.log('Sending metrics calculation request:', requestBody);
+      
       const response = await fetch('/api/portfolio/calculate-metrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          allocations: selectedStocks,
-          riskProfile: riskProfile
-        })
+        body: JSON.stringify(requestBody)
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Metrics calculation response:', data);
+        
         setPortfolioMetrics({
           expectedReturn: data.expectedReturn,
           risk: data.risk,
@@ -1080,8 +1138,16 @@ export const StockSelection = ({
           warnings: data.validation.warnings,
           canProceed: data.validation.canProceed
         });
+        
+        console.log('Metrics updated successfully:', {
+          expectedReturn: data.expectedReturn,
+          risk: data.risk,
+          diversificationScore: data.diversificationScore
+        });
       } else {
-        throw new Error('Failed to calculate metrics');
+        const errorText = await response.text();
+        console.error('Metrics calculation failed:', response.status, errorText);
+        throw new Error(`Failed to calculate metrics: ${response.status} ${errorText}`);
       }
     } catch (error) {
       console.error('Real-time calculation failed:', error);
@@ -1092,7 +1158,20 @@ export const StockSelection = ({
     } finally {
       setIsLoadingMetrics(false);
     }
-  }, [selectedStocks, riskProfile]);
+  }, [selectedStocks, riskProfile, originalRecommendation, hasUserModified]);
+
+  // Auto-recompute metrics whenever selectedStocks change
+  useEffect(() => {
+    if (selectedStocks && selectedStocks.length > 0) {
+      // Use the existing calculateRealTimeMetrics function with a small delay
+      const timeoutId = setTimeout(() => {
+        calculateRealTimeMetrics();
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setPortfolioMetrics(null);
+    }
+  }, [selectedStocks, calculateRealTimeMetrics]);
 
   // NEW: Fallback calculation when API fails
   const calculateFallbackMetrics = useCallback(() => {
@@ -2082,18 +2161,29 @@ export const StockSelection = ({
               )}
 
               {/* Portfolio Metrics Section - Enhanced UX Design */}
-              {hasSelectedPortfolio && selectedStocks.length > 0 && portfolioMetrics && (
+              {hasSelectedPortfolio && selectedStocks.length > 0 && (
                 <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border-0 shadow-lg">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl flex items-center gap-3 text-slate-800">
                       <BarChart3 className="h-6 w-6 text-blue-600" />
                       Your Portfolio Performance
+                      {isLoadingMetrics && (
+                        <div className="ml-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        </div>
+                      )}
                     </CardTitle>
                     <p className="text-slate-600">
-                      Real-time metrics based on your current allocation and market data
+                      {isLoadingMetrics ? 'Calculating metrics...' : 'Real-time metrics based on your current allocation and market data'}
                     </p>
                   </CardHeader>
                   <CardContent>
+                    {isLoadingMetrics ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        <span className="ml-3 text-slate-600">Calculating portfolio metrics...</span>
+                      </div>
+                    ) : portfolioMetrics ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {/* Expected Return */}
                       <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 border border-emerald-200">
@@ -2146,6 +2236,14 @@ export const StockSelection = ({
                         </div>
                       </div>
                     </div>
+                    ) : (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="text-center">
+                          <div className="text-slate-500 mb-2">No metrics available</div>
+                          <div className="text-sm text-slate-400">Please wait for calculation to complete</div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Continue Button */}
                     <div className="mt-6 text-center">

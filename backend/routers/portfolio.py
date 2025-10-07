@@ -3,7 +3,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 import logging
+import math
 import json
+import hashlib
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -11,13 +13,13 @@ import gzip
 import redis
 from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.port_analytics import PortfolioAnalytics
-from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
 from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_stock_selector import PortfolioStockSelector
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from datetime import datetime, timedelta
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,41 @@ def set_redis_manager(manager):
     """Set Redis manager from main application"""
     global redis_manager
     redis_manager = manager
+
+def _sanitize_number(value: Any, default: Optional[float] = None) -> Optional[float]:
+    """Return a JSON-safe float (no NaN/Inf)."""
+    try:
+        if value is None:
+            return default
+        v = float(value)
+        if math.isnan(v) or math.isinf(v):
+            return default
+        return v
+    except Exception:
+        return default
+
+@router.get("/top-pick/{risk_profile}")
+def get_top_pick(risk_profile: str):
+    """Return the precomputed Top Pick for a given risk profile or compute if missing."""
+    try:
+        r = _rds.redis_client
+        key = f"portfolio:top_pick:{risk_profile}"
+        raw = r.get(key)
+        if raw:
+            return JSONResponse({"status": "ok", "risk_profile": risk_profile, "top_pick": json.loads(raw)})
+        # Compute now from a fresh generation
+        pa = PortfolioAnalytics()
+        eg = EnhancedPortfolioGenerator(_rds, pa)
+        portfolios = eg.generate_portfolio_bucket(risk_profile, use_parallel=True)
+        # Score by expectedReturn (fallback to risk-adjusted if needed)
+        def score(p: Dict[str, Any]) -> float:
+            return float(p.get('expectedReturn', 0.0))
+        top = max(portfolios, key=score)
+        r.setex(key, eg.PORTFOLIO_TTL_DAYS * 24 * 3600, json.dumps(top))
+        return JSONResponse({"status": "ok", "risk_profile": risk_profile, "top_pick": top})
+    except Exception as e:
+        logger.error(f"Top pick endpoint error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get top pick")
 
 # New model for portfolio metrics calculation
 class PortfolioMetricsRequest(BaseModel):
@@ -78,13 +115,78 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
         if not allocations:
             raise HTTPException(status_code=400, detail="Portfolio allocations required")
         
-        # Calculate metrics using cached data
-        portfolio_data = {
-            'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
-        }
-        
-        # Calculate portfolio metrics
-        metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+        # Try to return metrics identical to precomputed ones by using the same cache key as generator
+        cached_metrics = None
+        try:
+            # Build cache key: risk_profile|SYMBOL:ALLOCATION(1-decimal)|... -> md5
+            rounded_parts = []
+            for a in sorted(({ 'symbol': a.symbol, 'allocation': a.allocation } for a in allocations), key=lambda x: x['symbol']):
+                try:
+                    rounded_alloc = float(f"{float(a['allocation']):.1f}")
+                except Exception:
+                    rounded_alloc = 0.0
+                rounded_parts.append(f"{a['symbol']}:{rounded_alloc:.1f}")
+            key_raw = f"{risk_profile}|" + "|".join(rounded_parts)
+            cache_key = f"portfolio:metrics:{hashlib.md5(key_raw.encode()).hexdigest()}"
+            # Read from Redis
+            r = _rds.redis_client
+            if r is not None:
+                raw = r.get(cache_key)
+                if raw:
+                    cached_metrics = json.loads(raw)
+        except Exception:
+            cached_metrics = None
+
+        if cached_metrics is not None:
+            # Use cached metrics (already in analytics format: expected_return, risk, diversification_score)
+            metrics = cached_metrics
+        else:
+            # Warm cache for all symbols in allocations to ensure consistent metrics
+            try:
+                symbols = list({a.symbol for a in allocations if getattr(a, 'symbol', None)})
+                if symbols:
+                    try:
+                        # Try smart refresh for missing symbols (no external if FAST_STARTUP enforced)
+                        _ = _rds.smart_refresh_tickers(symbols)
+                    except Exception:
+                        pass
+                    # Force-load into Redis cache via Redis-first getters
+                    for s in symbols:
+                        try:
+                            _ = _rds.get_monthly_data(s)
+                            _ = _rds.get_ticker_info(s)
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            # Calculate metrics using cached data (after warm)
+            portfolio_data = {
+                'allocations': [{'symbol': a.symbol, 'allocation': a.allocation} for a in allocations]
+            }
+            
+            # Calculate portfolio metrics
+            metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+
+            # Store computed metrics under the same cache key for future alignment
+            try:
+                if 'cache_key' not in locals():
+                    # Ensure cache_key exists (recompute if needed)
+                    rounded_parts = []
+                    for a in sorted(({ 'symbol': a.symbol, 'allocation': a.allocation } for a in allocations), key=lambda x: x['symbol']):
+                        try:
+                            rounded_alloc = float(f"{float(a['allocation']):.1f}")
+                        except Exception:
+                            rounded_alloc = 0.0
+                        rounded_parts.append(f"{a['symbol']}:{rounded_alloc:.1f}")
+                    key_raw = f"{risk_profile}|" + "|".join(rounded_parts)
+                    cache_key = f"portfolio:metrics:{hashlib.md5(key_raw.encode()).hexdigest()}"
+                ttl_days = getattr(redis_manager, 'PORTFOLIO_TTL_DAYS', 28) if redis_manager else 28
+                _rds.redis_client.setex(cache_key, ttl_days * 24 * 3600, json.dumps(metrics))
+            except Exception:
+                pass
+
+        # Use analytics result as-is to match recommendation pipeline
         
         # Calculate validation data
         total_allocation = sum(a.allocation for a in allocations)
@@ -108,9 +210,9 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
         can_proceed = stock_count >= 3
         
         return PortfolioMetricsResponse(
-            expectedReturn=metrics.get('expected_return', 0.0),
-            risk=metrics.get('risk', 0.0),
-            diversificationScore=metrics.get('diversification_score', 0.0),
+            expectedReturn=float(metrics.get('expected_return', 0.0)),
+            risk=float(metrics.get('risk', 0.0)),
+            diversificationScore=float(metrics.get('diversification_score', 0.0)),
             sharpeRatio=0.0,  # Always 0 as requested
             totalAllocation=total_allocation,
             stockCount=stock_count,
@@ -582,21 +684,84 @@ def get_portfolio_recommendations(risk_profile: str):
         # Get portfolios from enhanced system
         portfolios = redis_manager.get_portfolio_recommendations(risk_profile, count=3)
         
-        if not portfolios:
-            logger.warning(f"⚠️ No portfolios available for {risk_profile}, falling back to static portfolios")
-            return _get_static_portfolio_recommendations(risk_profile)
-        
-        # Convert to response format
-        responses = []
-        for portfolio in portfolios:
+        # If none or too few portfolios are in Redis, or bucket is partially missing, auto-regenerate ONLY missing ones
+        bucket_count = redis_manager.get_portfolio_count(risk_profile)
+        if (not portfolios or len(portfolios) < 3) or (bucket_count < redis_manager.PORTFOLIOS_PER_PROFILE):
             try:
+                logger.info(f"🔄 Auto-regeneration: ensuring portfolios exist for {risk_profile} (missing-only)")
+                _ensure_missing_portfolios_generated(risk_profile)
+                # Re-fetch after ensuring
+                portfolios = redis_manager.get_portfolio_recommendations(risk_profile, count=3)
+            except Exception as e:
+                logger.warning(f"⚠️ Auto-regeneration failed for {risk_profile}: {e}")
+                if not portfolios:
+                    logger.warning(f"⚠️ No portfolios available for {risk_profile}, falling back to static portfolios")
+                    return _get_static_portfolio_recommendations(risk_profile)
+        
+        # Light randomization to reshuffle candidates per request
+        try:
+            import random
+            random.seed(datetime.now().timestamp())
+            random.shuffle(portfolios)
+        except Exception:
+            pass
+        
+        # Warm cache for all tickers in the recommendations to ensure consistent metrics downstream
+        try:
+            symbols_to_warm = set()
+            for p in portfolios:
+                for a in p.get('allocations', []):
+                    s = a.get('symbol')
+                    if s:
+                        symbols_to_warm.add(s)
+            for sym in symbols_to_warm:
+                try:
+                    # These calls are Redis-first; EnhancedDataFetcher is lazy and fast-startup aware
+                    _ = _rds.get_monthly_data(sym)
+                    _ = _rds.get_ticker_info(sym)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Order portfolios by expectedReturn (desc) and convert to response format
+        # Top Pick first
+        try:
+            portfolios.sort(key=lambda p: (_sanitize_number(p.get('expectedReturn'), -1.0)), reverse=True)
+        except Exception:
+            pass
+
+        responses = []
+        for idx, portfolio in enumerate(portfolios):
+            try:
+                safe_expected = _sanitize_number(portfolio.get('expectedReturn'), 0.0)
+                safe_risk = _sanitize_number(portfolio.get('risk'), 0.0)
+                safe_div = _sanitize_number(portfolio.get('diversificationScore'), 0.0)
+                # Round allocations to 2 decimals
+                allocs = []
+                for a in portfolio.get('allocations', []):
+                    try:
+                        rounded_alloc = round(float(a.get('allocation', 0.0)), 2)
+                    except Exception:
+                        rounded_alloc = 0.0
+                    allocs.append({
+                        'symbol': a.get('symbol'),
+                        'allocation': rounded_alloc,
+                        'name': a.get('name', ''),
+                        'assetType': a.get('assetType', 'stock'),
+                        'sector': a.get('sector', a.get('Sector', 'Unknown'))
+                    })
+
+                # Keep original name; frontend shows Top Pick badge
+                name = portfolio.get('name', '')
+
                 response = PortfolioResponse(
-                    portfolio=portfolio['allocations'],
-                    name=portfolio['name'],
-                    description=portfolio['description'],
-                    expectedReturn=portfolio['expectedReturn'],
-                    risk=portfolio['risk'],
-                    diversificationScore=portfolio['diversificationScore']
+                    portfolio=allocs,
+                    name=name,
+                    description=portfolio.get('description', ''),
+                    expectedReturn=safe_expected,
+                    risk=safe_risk,
+                    diversificationScore=safe_div
                 )
                 responses.append(response)
             except Exception as e:
@@ -614,6 +779,68 @@ def get_portfolio_recommendations(risk_profile: str):
         logger.error(f"Error getting enhanced portfolio recommendations: {e}")
         logger.info("🔄 Falling back to static portfolio recommendations")
         return _get_static_portfolio_recommendations(risk_profile)
+
+# Helper: Ensure missing portfolios are generated without overwriting existing ones
+def _ensure_missing_portfolios_generated(risk_profile: str) -> None:
+    try:
+        # Determine which portfolio slots are missing
+        missing_ids = []
+        bucket_prefix = f"portfolio_bucket:{risk_profile}:"
+        for i in range(redis_manager.PORTFOLIOS_PER_PROFILE):
+            key = f"{bucket_prefix}{i}"
+            exists = redis_manager.redis_client.exists(key) if redis_manager and redis_manager.redis_client else 0
+            if not exists:
+                missing_ids.append(i)
+        if not missing_ids:
+            logger.info(f"✅ No missing portfolios for {risk_profile}")
+            return
+
+        # Generate a full bucket (fast, shared-stock-data path), then store only missing ones
+        from utils.redis_first_data_service import redis_first_data_service
+        from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+        from utils.port_analytics import PortfolioAnalytics
+
+        generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+        generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+
+        # Index generated portfolios by variation_id
+        vid_to_port = {p.get('variation_id', idx): p for idx, p in enumerate(generated)}
+
+        # Store only missing variation ids with proper TTL, without touching existing ones
+        for vid in missing_ids:
+            p = vid_to_port.get(vid)
+            if not p:
+                continue
+            try:
+                key = f"{bucket_prefix}{vid}"
+                redis_manager.redis_client.setex(
+                    key,
+                    redis_manager.PORTFOLIO_TTL_SECONDS,
+                    json.dumps(p, default=str)
+                )
+                logger.info(f"🧩 Filled missing portfolio slot {vid} for {risk_profile}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed storing portfolio {vid} for {risk_profile}: {e}")
+
+        # Update metadata TTL if present
+        try:
+            meta_key = f"portfolio_bucket:{risk_profile}:metadata"
+            metadata = {
+                'risk_profile': risk_profile,
+                'portfolio_count': redis_manager.get_portfolio_count(risk_profile),
+                'generated_at': datetime.now().isoformat(),
+                'ttl_days': redis_manager.PORTFOLIO_TTL_DAYS,
+                'last_updated': datetime.now().isoformat()
+            }
+            redis_manager.redis_client.setex(
+                meta_key,
+                redis_manager.PORTFOLIO_TTL_SECONDS,
+                json.dumps(metadata, default=str)
+            )
+        except Exception as e:
+            logger.debug(f"Metadata update skipped for {risk_profile}: {e}")
+    except Exception as e:
+        logger.debug(f"_ensure_missing_portfolios_generated error: {e}")
 
 # NEW: Dynamic Portfolio Generation Endpoint
 @router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
@@ -1705,7 +1932,7 @@ async def regenerate_all_portfolios():
         # Initialize services
         redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
         portfolio_manager = RedisPortfolioManager(redis_client)
-        portfolio_generator = EnhancedPortfolioGenerator(_rds, portfolio_manager)
+        portfolio_generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics)
         
         risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         total_portfolios = 0
@@ -2157,8 +2384,18 @@ def get_mini_lesson_assets():
                 # Filter by sector and country
                 if ticker_sector in target_sectors and ticker_sector not in ['', 'Unknown', None]:
                     if country_filter is None or (country_filter == 'US' and ticker_country == 'United States') or (country_filter == 'INTL' and ticker_country != 'United States'):
-                        # FAST: Use cached ticker info instead of get_monthly_data
-                        ticker_info = _rds._get_cached_ticker_info_fast(ticker)
+                        # FAST: Use cached ticker info if available, otherwise fall back to get_ticker_info
+                        ticker_info = None
+                        try:
+                            if hasattr(_rds, '_get_cached_ticker_info_fast'):
+                                ticker_info = _rds._get_cached_ticker_info_fast(ticker)
+                        except Exception:
+                            ticker_info = None
+                        if not ticker_info:
+                            try:
+                                ticker_info = _rds.get_ticker_info(ticker)
+                            except Exception:
+                                ticker_info = None
                         if ticker_info and ticker_info.get('data_points', 0) >= 12:
                             candidates.append({
                                 'ticker': ticker,

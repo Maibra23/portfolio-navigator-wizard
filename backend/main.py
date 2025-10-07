@@ -15,8 +15,7 @@ from datetime import datetime
 # Import existing routers
 from routers import portfolio, cookie_demo, strategy_buckets
 
-# Import enhanced portfolio system
-from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+# Import enhanced portfolio system (avoid hard import of generator at module load)
 from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
@@ -52,9 +51,14 @@ async def lifespan(app: FastAPI):
         # Initialize portfolio analytics
         portfolio_analytics = PortfolioAnalytics()
         
-        # Initialize enhanced portfolio generator with Redis-first service
+        # Initialize enhanced portfolio generator with Redis-first service (best-effort)
         global enhanced_generator
-        enhanced_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_analytics)
+        try:
+            from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+            enhanced_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_analytics)
+        except Exception as e:
+            enhanced_generator = None
+            logger.warning(f"⚠️ Skipping EnhancedPortfolioGenerator init due to error: {e}")
         
         # Initialize Redis portfolio manager with Redis connection
         global redis_manager
@@ -67,9 +71,13 @@ async def lifespan(app: FastAPI):
         
         # Initialize auto-regeneration service
         global auto_regeneration_service
-        auto_regeneration_service = PortfolioAutoRegenerationService(
-            redis_first_data_service, enhanced_generator, redis_manager
-        )
+        try:
+            auto_regeneration_service = PortfolioAutoRegenerationService(
+                redis_first_data_service, enhanced_generator, redis_manager
+            )
+        except Exception as e:
+            auto_regeneration_service = None
+            logger.warning(f"⚠️ Auto-regeneration service disabled: {e}")
         
         # Auto refresh service removed - using Redis TTL for automatic expiration
         logger.info("✅ Using Redis TTL for automatic data expiration (28 days)")

@@ -10,8 +10,8 @@ import time
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from .enhanced_portfolio_generator import EnhancedPortfolioGenerator
 from .redis_portfolio_manager import RedisPortfolioManager
+from .volatility_weighted_sector import invalidate_volatility_sector_weights_cache
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class PortfolioAutoRegenerationService:
     Replaces previous portfolios with new ones for better stochastic variation
     """
     
-    def __init__(self, data_service, enhanced_generator: EnhancedPortfolioGenerator,
+    def __init__(self, data_service, enhanced_generator: Any,
                  redis_manager: RedisPortfolioManager):
         """
         Initialize Portfolio Auto Regeneration Service
@@ -154,6 +154,14 @@ class PortfolioAutoRegenerationService:
             
             if not storage_success:
                 raise Exception("Failed to store new portfolios in Redis")
+            
+            # Invalidate sector weights cache so next access recomputes with fresh data
+            try:
+                redis_client = getattr(self.data_service, 'redis_client', None) or getattr(self.data_service, 'r', None)
+                if redis_client:
+                    invalidate_volatility_sector_weights_cache(redis_client, risk_profile)
+            except Exception as e:
+                logger.debug(f"Sector weights cache invalidation skipped: {e}")
             
             # Update statistics
             self.regeneration_stats['total_regenerations'] += 1
