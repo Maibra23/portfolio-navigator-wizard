@@ -1,0 +1,649 @@
+{
+  "recommendation_switching": {
+    "very-conservative": [
+      {
+        "recommendation_index": 0,
+        "name": "Stability First Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.12007852938024488,
+          "risk": 0.08090296834623756,
+          "diversificationScore": 91.2
+        },
+        "live_metrics": {
+          "expectedReturn": 0.09883552409390206,
+          "risk": 0.10472237254189436,
+          "diversificationScore": 93.3,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.02124300528634282,
+          "risk": 0.0238194041956568,
+          "diversificationScore": 2.0999999999999943
+        }
+      },
+      {
+        "recommendation_index": 1,
+        "name": "Wealth Preservation Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.08686270589028622,
+          "risk": 0.075236624255359,
+          "diversificationScore": 96.0
+        },
+        "live_metrics": {
+          "expectedReturn": 0.11164519457724653,
+          "risk": 0.08598641845217556,
+          "diversificationScore": 90.0,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": false
+        },
+        "differences": {
+          "expectedReturn": 0.024782488686960313,
+          "risk": 0.010749794196816556,
+          "diversificationScore": 6.0
+        }
+      },
+      {
+        "recommendation_index": 2,
+        "name": "Low-Volatility Core Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.08215170721739407,
+          "risk": 0.10680885635961204,
+          "diversificationScore": 88.8
+        },
+        "live_metrics": {
+          "expectedReturn": 0.027151568549204974,
+          "risk": 0.06016396814089482,
+          "diversificationScore": 90.9,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.05500013866818909,
+          "risk": 0.04664488821871722,
+          "diversificationScore": 2.1000000000000085
+        }
+      }
+    ],
+    "conservative": [
+      {
+        "recommendation_index": 0,
+        "name": "Stable Appreciation Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.04589665762337569,
+          "risk": 0.10318913063500917,
+          "diversificationScore": 90.0
+        },
+        "live_metrics": {
+          "expectedReturn": 0.047371916726251406,
+          "risk": 0.12656483165645666,
+          "diversificationScore": 92.2,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": true,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.0014752591028757145,
+          "risk": 0.02337570102144748,
+          "diversificationScore": 2.200000000000003
+        }
+      }
+    ],
+    "moderate": [
+      {
+        "recommendation_index": 0,
+        "name": "Growth & Income Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.13777186675758157,
+          "risk": 0.14247619630006578,
+          "diversificationScore": 87.2
+        },
+        "live_metrics": {
+          "expectedReturn": 0.06303467413797059,
+          "risk": 0.11240119040295411,
+          "diversificationScore": 92.6,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": false
+        },
+        "differences": {
+          "expectedReturn": 0.07473719261961098,
+          "risk": 0.030075005897111665,
+          "diversificationScore": 5.3999999999999915
+        }
+      },
+      {
+        "recommendation_index": 1,
+        "name": "Diversified Opportunity Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.11483580955835193,
+          "risk": 0.0983067679445631,
+          "diversificationScore": 87.1
+        },
+        "live_metrics": {
+          "expectedReturn": 0.2203351848571904,
+          "risk": 0.11903335387502705,
+          "diversificationScore": 97.5,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": false
+        },
+        "differences": {
+          "expectedReturn": 0.10549937529883846,
+          "risk": 0.020726585930463948,
+          "diversificationScore": 10.400000000000006
+        }
+      },
+      {
+        "recommendation_index": 2,
+        "name": "Multi-Strategy Core Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.10286758077762781,
+          "risk": 0.17104123522785308,
+          "diversificationScore": 85.5
+        },
+        "live_metrics": {
+          "expectedReturn": 0.07451523939895166,
+          "risk": 0.10992074989180126,
+          "diversificationScore": 93.7,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 4,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": false
+        },
+        "differences": {
+          "expectedReturn": 0.02835234137867615,
+          "risk": 0.06112048533605183,
+          "diversificationScore": 8.200000000000003
+        }
+      }
+    ],
+    "aggressive": [
+      {
+        "recommendation_index": 0,
+        "name": "Capital Appreciation Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.279775793436297,
+          "risk": 0.16230935396447893,
+          "diversificationScore": 86.8
+        },
+        "live_metrics": {
+          "expectedReturn": 0.1445995025962803,
+          "risk": 0.23433961109377394,
+          "diversificationScore": 87.0,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 3,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.1351762908400167,
+          "risk": 0.072030257129295,
+          "diversificationScore": 0.20000000000000284
+        }
+      },
+      {
+        "recommendation_index": 1,
+        "name": "Growth-Driven Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.23303560604904194,
+          "risk": 0.28068782334978165,
+          "diversificationScore": 92.7
+        },
+        "live_metrics": {
+          "expectedReturn": 0.5212462886842302,
+          "risk": 0.25911674891299175,
+          "diversificationScore": 90.7,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 3,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.28821068263518823,
+          "risk": 0.021571074436789905,
+          "diversificationScore": 2.0
+        }
+      },
+      {
+        "recommendation_index": 2,
+        "name": "Growth Maximizer Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.2265852464295568,
+          "risk": 0.2244496030302905,
+          "diversificationScore": 86.7
+        },
+        "live_metrics": {
+          "expectedReturn": 0.03749760553035486,
+          "risk": 0.18556552591075556,
+          "diversificationScore": 90.8,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 3,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.18908764089920194,
+          "risk": 0.03888407711953493,
+          "diversificationScore": 4.099999999999994
+        }
+      }
+    ],
+    "very-aggressive": [
+      {
+        "recommendation_index": 0,
+        "name": "Momentum Maximizer Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.7362277712869001,
+          "risk": 0.4285139220952947,
+          "diversificationScore": 85.2
+        },
+        "live_metrics": {
+          "expectedReturn": 0.15223016585252291,
+          "risk": 0.30965065063430414,
+          "diversificationScore": 92.9,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 3,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": false
+        },
+        "differences": {
+          "expectedReturn": 0.5839976054343772,
+          "risk": 0.11886327146099057,
+          "diversificationScore": 7.700000000000003
+        }
+      },
+      {
+        "recommendation_index": 1,
+        "name": "High-Conviction Equity Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.682096912614653,
+          "risk": 0.2677864557130723,
+          "diversificationScore": 88.8
+        },
+        "live_metrics": {
+          "expectedReturn": 0.5584730719395332,
+          "risk": 0.35690257368656125,
+          "diversificationScore": 83.4,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 3,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": false
+        },
+        "differences": {
+          "expectedReturn": 0.12362384067511978,
+          "risk": 0.08911611797348895,
+          "diversificationScore": 5.3999999999999915
+        }
+      },
+      {
+        "recommendation_index": 2,
+        "name": "Peak Performance Portfolio",
+        "recommendation_metrics": {
+          "expectedReturn": 0.4018062565238474,
+          "risk": 0.3019972399594294,
+          "diversificationScore": 96.6
+        },
+        "live_metrics": {
+          "expectedReturn": 0.8685826470523308,
+          "risk": 0.3149122218696068,
+          "diversificationScore": 92.9,
+          "sharpeRatio": 0.0,
+          "totalAllocation": 100.0,
+          "stockCount": 3,
+          "validation": {
+            "isValid": true,
+            "canProceed": true,
+            "warnings": []
+          }
+        },
+        "matches": {
+          "expectedReturn": false,
+          "risk": false,
+          "diversificationScore": true
+        },
+        "differences": {
+          "expectedReturn": 0.4667763905284834,
+          "risk": 0.012914981910177425,
+          "diversificationScore": 3.6999999999999886
+        }
+      }
+    ]
+  },
+  "weight_editing": {
+    "weight_modification": {
+      "success": true,
+      "base_allocations": [
+        {
+          "symbol": "KHC",
+          "allocation": 26.0,
+          "name": "The Kraft Heinz Company",
+          "assetType": "stock"
+        },
+        {
+          "symbol": "WST",
+          "allocation": 26.0,
+          "name": "West Pharmaceutical Services, Inc.",
+          "assetType": "stock"
+        },
+        {
+          "symbol": "JYSK.CO",
+          "allocation": 26.0,
+          "name": "Jyske Bank A/S",
+          "assetType": "stock"
+        },
+        {
+          "symbol": "PSON.L",
+          "allocation": 22.0,
+          "name": "Pearson plc",
+          "assetType": "stock"
+        }
+      ],
+      "modified_allocations": [
+        {
+          "symbol": "KHC",
+          "allocation": 31.0
+        },
+        {
+          "symbol": "WST",
+          "allocation": 23.0
+        },
+        {
+          "symbol": "JYSK.CO",
+          "allocation": 24.0
+        },
+        {
+          "symbol": "PSON.L",
+          "allocation": 22.0
+        }
+      ],
+      "modified_metrics": {
+        "expectedReturn": 0.11941202632513703,
+        "risk": 0.14662292232900692,
+        "diversificationScore": 87.3,
+        "sharpeRatio": 0.0,
+        "totalAllocation": 100.0,
+        "stockCount": 4,
+        "validation": {
+          "isValid": true,
+          "canProceed": true,
+          "warnings": []
+        }
+      }
+    },
+    "add_stock": {
+      "success": true,
+      "new_symbol": "AAPL",
+      "allocations_with_new_stock": [
+        {
+          "symbol": "KHC",
+          "allocation": 22.25
+        },
+        {
+          "symbol": "WST",
+          "allocation": 22.25
+        },
+        {
+          "symbol": "JYSK.CO",
+          "allocation": 22.25
+        },
+        {
+          "symbol": "PSON.L",
+          "allocation": 18.25
+        },
+        {
+          "symbol": "AAPL",
+          "allocation": 15
+        }
+      ],
+      "metrics_with_new_stock": {
+        "expectedReturn": 0.14325960104224333,
+        "risk": 0.1280696601650769,
+        "diversificationScore": 87.1,
+        "sharpeRatio": 0.0,
+        "totalAllocation": 100.0,
+        "stockCount": 5,
+        "validation": {
+          "isValid": true,
+          "canProceed": true,
+          "warnings": []
+        }
+      }
+    },
+    "remove_stock": {
+      "success": true,
+      "removed_symbol": "PSON.L",
+      "allocations_after_removal": [
+        {
+          "symbol": "KHC",
+          "allocation": 33.333333333333336
+        },
+        {
+          "symbol": "WST",
+          "allocation": 33.333333333333336
+        },
+        {
+          "symbol": "JYSK.CO",
+          "allocation": 33.333333333333336
+        }
+      ],
+      "metrics_after_removal": {
+        "expectedReturn": 0.17935463163459553,
+        "risk": 0.18107213821827947,
+        "diversificationScore": 81.4,
+        "sharpeRatio": 0.0,
+        "totalAllocation": 100.0,
+        "stockCount": 3,
+        "validation": {
+          "isValid": true,
+          "canProceed": true,
+          "warnings": []
+        }
+      }
+    }
+  },
+  "repeated_switching": {
+    "switch_count": 10,
+    "aligned_count": 0,
+    "success_rate": 0.0,
+    "switch_results": [
+      {
+        "switch_number": 1,
+        "recommendation_index": 0,
+        "recommendation_name": "Growth & Income Portfolio",
+        "expected_return_diff": 0.07473719261961098,
+        "risk_diff": 0.030075005897111665,
+        "aligned": false
+      },
+      {
+        "switch_number": 2,
+        "recommendation_index": 1,
+        "recommendation_name": "Diversified Opportunity Portfolio",
+        "expected_return_diff": 0.10549937529883846,
+        "risk_diff": 0.020726585930463948,
+        "aligned": false
+      },
+      {
+        "switch_number": 3,
+        "recommendation_index": 0,
+        "recommendation_name": "Growth & Income Portfolio",
+        "expected_return_diff": 0.07473719261961098,
+        "risk_diff": 0.030075005897111665,
+        "aligned": false
+      },
+      {
+        "switch_number": 4,
+        "recommendation_index": 1,
+        "recommendation_name": "Diversified Opportunity Portfolio",
+        "expected_return_diff": 0.10549937529883846,
+        "risk_diff": 0.020726585930463948,
+        "aligned": false
+      },
+      {
+        "switch_number": 5,
+        "recommendation_index": 0,
+        "recommendation_name": "Growth & Income Portfolio",
+        "expected_return_diff": 0.07473719261961098,
+        "risk_diff": 0.030075005897111665,
+        "aligned": false
+      },
+      {
+        "switch_number": 6,
+        "recommendation_index": 1,
+        "recommendation_name": "Diversified Opportunity Portfolio",
+        "expected_return_diff": 0.10549937529883846,
+        "risk_diff": 0.020726585930463948,
+        "aligned": false
+      },
+      {
+        "switch_number": 7,
+        "recommendation_index": 0,
+        "recommendation_name": "Growth & Income Portfolio",
+        "expected_return_diff": 0.07473719261961098,
+        "risk_diff": 0.030075005897111665,
+        "aligned": false
+      },
+      {
+        "switch_number": 8,
+        "recommendation_index": 1,
+        "recommendation_name": "Diversified Opportunity Portfolio",
+        "expected_return_diff": 0.10549937529883846,
+        "risk_diff": 0.020726585930463948,
+        "aligned": false
+      },
+      {
+        "switch_number": 9,
+        "recommendation_index": 0,
+        "recommendation_name": "Growth & Income Portfolio",
+        "expected_return_diff": 0.07473719261961098,
+        "risk_diff": 0.030075005897111665,
+        "aligned": false
+      },
+      {
+        "switch_number": 10,
+        "recommendation_index": 1,
+        "recommendation_name": "Diversified Opportunity Portfolio",
+        "expected_return_diff": 0.10549937529883846,
+        "risk_diff": 0.020726585930463948,
+        "aligned": false
+      }
+    ]
+  }
+}

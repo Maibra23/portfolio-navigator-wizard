@@ -1,0 +1,45 @@
+{
+  "timestamp": "2025-10-07T13:34:26.703887",
+  "total_generation_time": 323.87275218963623,
+  "generation_results": {
+    "very-conservative": {
+      "success": true,
+      "portfolio_count": 12,
+      "generation_time": 67.99,
+      "avg_time_per_portfolio": 5.666
+    },
+    "conservative": {
+      "success": true,
+      "portfolio_count": 12,
+      "generation_time": 66.61,
+      "avg_time_per_portfolio": 5.551
+    },
+    "moderate": {
+      "success": true,
+      "portfolio_count": 12,
+      "generation_time": 65.29,
+      "avg_time_per_portfolio": 5.441
+    },
+    "aggressive": {
+      "success": true,
+      "portfolio_count": 12,
+      "generation_time": 62.39,
+      "avg_time_per_portfolio": 5.199
+    },
+    "very-aggressive": {
+      "success": true,
+      "portfolio_count": 12,
+      "generation_time": 61.59,
+      "avg_time_per_portfolio": 5.132
+    }
+  },
+  "successful_profiles": [
+    "very-conservative",
+    "conservative",
+    "moderate",
+    "aggressive",
+    "very-aggressive"
+  ],
+  "failed_profiles": [],
+  "total_portfolios": 60
+}

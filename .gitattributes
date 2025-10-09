@@ -1,0 +1,5 @@
+# Prevent OneDrive from syncing git lock files
+*.lock binary
+.git/index binary
+.git/objects/** binary
+

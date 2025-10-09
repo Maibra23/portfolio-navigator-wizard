@@ -1,0 +1,49 @@
+{
+  "scanned": 60,
+  "replaced_count": 7,
+  "replaced": [
+    {
+      "risk_profile": "very-conservative",
+      "slot": 8,
+      "old_expectedReturn": 0.13790890512516718,
+      "new_expectedReturn": 0.11700412738169508
+    },
+    {
+      "risk_profile": "very-conservative",
+      "slot": 9,
+      "old_expectedReturn": 0.16130189440641374,
+      "new_expectedReturn": 0.1166205960690565
+    },
+    {
+      "risk_profile": "very-conservative",
+      "slot": 10,
+      "old_expectedReturn": 0.18045964829063377,
+      "new_expectedReturn": 0.11597642259835461
+    },
+    {
+      "risk_profile": "very-conservative",
+      "slot": 11,
+      "old_expectedReturn": 0.1263789695416817,
+      "new_expectedReturn": 0.11597642259835461
+    },
+    {
+      "risk_profile": "conservative",
+      "slot": 6,
+      "old_expectedReturn": 0.2125215604096269,
+      "new_expectedReturn": 0.10991086359516489
+    },
+    {
+      "risk_profile": "conservative",
+      "slot": 7,
+      "old_expectedReturn": 0.22392614118393395,
+      "new_expectedReturn": 0.09667765104214632
+    },
+    {
+      "risk_profile": "conservative",
+      "slot": 10,
+      "old_expectedReturn": 0.23202867470997246,
+      "new_expectedReturn": 0.08777536503542849
+    }
+  ],
+  "timestamp": "2025-10-07T12:44:35.094031"
+}
