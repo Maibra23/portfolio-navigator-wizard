@@ -228,6 +228,9 @@ export const StockSelection = ({
   const [showWeightEditor, setShowWeightEditor] = useState(false);
   const [totalAllocation, setTotalAllocation] = useState(100);
   const [isValidAllocation, setIsValidAllocation] = useState(true);
+  
+  // FIX #1: AbortController for cancelling pending metrics requests
+  const [metricsAbortController, setMetricsAbortController] = useState<AbortController | null>(null);
 
 
   // Generate recommendations based on risk profile with updated names and descriptions
@@ -857,6 +860,15 @@ export const StockSelection = ({
   }, []);
 
   useEffect(() => {
+    // FIX: Clear results IMMEDIATELY when search term is empty (no debounce)
+    if (!searchTerm.trim()) {
+      setSearchResults([]);  // Clear results instantly
+      setIsLoading(false);   // Clear loading state
+      setError(null);        // Clear any errors
+      return;
+    }
+    
+    // Only debounce when there's actual search text
     const timeoutId = setTimeout(() => {
       searchStocks(searchTerm);
     }, 300);
@@ -892,11 +904,11 @@ export const StockSelection = ({
   // NEW: Real-time portfolio metrics calculation and validation
   useEffect(() => {
     if (selectedStocks.length > 0) {
-      // Trigger real-time metrics calculation with proper delay
+      // FIX #1: Increased debounce delay for smoother UX
       const timeoutId = setTimeout(() => {
         calculateRealTimeMetrics();
         validatePortfolio();
-      }, 200); // Increased delay to ensure state is updated
+      }, 800); // Increased from 200ms to 800ms for better debouncing
       
       return () => clearTimeout(timeoutId);
     } else {
@@ -940,16 +952,21 @@ export const StockSelection = ({
     }));
     
     onStocksUpdate(normalizedStocks);
-    setSearchTerm('');
-    setSearchResults([]);
+    
+    // FIX #3: Clear search state in correct order
+    setSearchResults([]);  // 1. Clear results FIRST (immediate)
+    setSearchTerm('');     // 2. Then clear search term (prevents useEffect trigger)
+    setError(null);        // 3. Clear any error messages
     
     setHasUserModified(true);
     
-    // Force immediate metrics recalculation
-    setTimeout(() => {
-      calculateRealTimeMetrics();
-      validatePortfolio();
-    }, 300);
+    // FIX #3: Remove focus from input field
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    
+    // REMOVED: Explicit setTimeout call - useEffect (lines 902-922) will handle this automatically
+    // This prevents double-triggering and glitches
   };
 
   const removeStock = (symbol: string) => {
@@ -961,11 +978,7 @@ export const StockSelection = ({
       onStocksUpdate(rebalancedStocks);
       
       setHasUserModified(true);
-      // Force immediate metrics recalculation
-      setTimeout(() => {
-        calculateRealTimeMetrics();
-        validatePortfolio();
-      }, 300);
+      // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
     } else {
       onStocksUpdate([]);
       setHasUserModified(true);
@@ -984,6 +997,9 @@ export const StockSelection = ({
     setTotalAllocation(total);
     setIsValidAllocation(Math.abs(total - 100) < 0.1);
 
+    // FIX #2: Show loading state briefly for smooth transition
+    setIsLoadingMetrics(true);
+    
     // Mirror recommendation metrics immediately
     setPortfolioMetrics({
       expectedReturn: recommendation.expectedReturn,
@@ -992,11 +1008,13 @@ export const StockSelection = ({
       sharpeRatio: 0
     });
 
-    // Force immediate metrics recalculation
+    // FIX #2: Clear loading state to display metrics
     setTimeout(() => {
-      calculateRealTimeMetrics();
-      validatePortfolio();
-    }, 300);
+      setIsLoadingMetrics(false);
+    }, 100);
+
+    // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
+    // The useEffect on lines 902-922 will trigger when selectedStocks changes
   };
 
   // Enhanced allocation update with validation and real-time updates
@@ -1011,11 +1029,7 @@ export const StockSelection = ({
     
     onStocksUpdate(updatedStocks);
     
-    // Force immediate metrics recalculation
-    setTimeout(() => {
-      calculateRealTimeMetrics();
-      validatePortfolio();
-    }, 300);
+    // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
   };
 
   // NEW: Auto-normalization feature with real-time updates
@@ -1031,11 +1045,7 @@ export const StockSelection = ({
     setIsValidAllocation(true);
     setHasUserModified(true);
     
-    // Trigger real-time metrics update
-    setTimeout(() => {
-      calculateRealTimeMetrics();
-      validatePortfolio();
-    }, 100);
+    // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
   };
 
   // NEW: Reset to original function
@@ -1089,6 +1099,12 @@ export const StockSelection = ({
       return;
     }
 
+    // FIX #1: Cancel any pending metrics request
+    if (metricsAbortController) {
+      metricsAbortController.abort();
+      console.log('Cancelled previous metrics calculation');
+    }
+
     // Mirror selected recommendation metrics until user modifies allocations
     if (originalRecommendation && !hasUserModified) {
       setPortfolioMetrics({
@@ -1106,6 +1122,10 @@ export const StockSelection = ({
     setError(null);
     
     try {
+      // FIX #1: Create new abort controller for this request
+      const controller = new AbortController();
+      setMetricsAbortController(controller);
+      
       const requestBody = {
         allocations: selectedStocks,
         riskProfile: riskProfile
@@ -1116,7 +1136,8 @@ export const StockSelection = ({
       const response = await fetch('/api/portfolio/calculate-metrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: controller.signal  // FIX #1: Add abort signal
       });
       
       if (response.ok) {
@@ -1149,7 +1170,13 @@ export const StockSelection = ({
         console.error('Metrics calculation failed:', response.status, errorText);
         throw new Error(`Failed to calculate metrics: ${response.status} ${errorText}`);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // FIX #1: Handle abort errors gracefully
+      if (error.name === 'AbortError') {
+        console.log('Metrics calculation cancelled (new request initiated)');
+        return; // Don't show error or update state for cancelled requests
+      }
+      
       console.error('Real-time calculation failed:', error);
       setError('Failed to calculate portfolio metrics. Using fallback calculations.');
       
@@ -1157,21 +1184,12 @@ export const StockSelection = ({
       calculateFallbackMetrics();
     } finally {
       setIsLoadingMetrics(false);
+      setMetricsAbortController(null); // FIX #1: Clear abort controller
     }
-  }, [selectedStocks, riskProfile, originalRecommendation, hasUserModified]);
+  }, [selectedStocks, riskProfile, originalRecommendation, hasUserModified, metricsAbortController]);
 
-  // Auto-recompute metrics whenever selectedStocks change
-  useEffect(() => {
-    if (selectedStocks && selectedStocks.length > 0) {
-      // Use the existing calculateRealTimeMetrics function with a small delay
-      const timeoutId = setTimeout(() => {
-        calculateRealTimeMetrics();
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    } else {
-      setPortfolioMetrics(null);
-    }
-  }, [selectedStocks, calculateRealTimeMetrics]);
+  // REMOVED: Duplicate useEffect that was causing glitches
+  // The useEffect on lines 902-922 already handles selectedStocks changes with proper debouncing
 
   // NEW: Fallback calculation when API fails
   const calculateFallbackMetrics = useCallback(() => {
@@ -1603,7 +1621,7 @@ export const StockSelection = ({
                         </div>
                         
                         {/* Preset Buttons */}
-                        <div className="flex gap-2 flex-wrap">
+                        <div className="flex gap-2 flex-wrap justify-center">
                           <Button 
                             variant="outline" 
                             size="sm"
@@ -1873,7 +1891,7 @@ export const StockSelection = ({
                       </div>
 
                       {/* Search Results */}
-                      {searchResults.length > 0 && (
+                      {searchTerm.trim() && searchResults.length > 0 && (
                         <div className="space-y-2">
                           <h4 className="text-sm font-medium">Search Results:</h4>
                           {searchResults.map((stock) => (
@@ -2333,7 +2351,7 @@ export const StockSelection = ({
                       </Alert>
                     )}
 
-                    {searchResults.length > 0 && (
+                    {searchTerm.trim() && searchResults.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="font-medium">Search Results</h4>
                         {searchResults.map((stock) => (
