@@ -168,23 +168,23 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
         # Calculate portfolio metrics
         metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
 
-            # Store computed metrics under the same cache key for future alignment
-            try:
-                if 'cache_key' not in locals():
-                    # Ensure cache_key exists (recompute if needed)
-                    rounded_parts = []
-                    for a in sorted(({ 'symbol': a.symbol, 'allocation': a.allocation } for a in allocations), key=lambda x: x['symbol']):
-                        try:
-                            rounded_alloc = float(f"{float(a['allocation']):.1f}")
-                        except Exception:
-                            rounded_alloc = 0.0
-                        rounded_parts.append(f"{a['symbol']}:{rounded_alloc:.1f}")
-                    key_raw = f"{risk_profile}|" + "|".join(rounded_parts)
-                    cache_key = f"portfolio:metrics:{hashlib.md5(key_raw.encode()).hexdigest()}"
-                ttl_days = getattr(redis_manager, 'PORTFOLIO_TTL_DAYS', 28) if redis_manager else 28
-                _rds.redis_client.setex(cache_key, ttl_days * 24 * 3600, json.dumps(metrics))
-            except Exception:
-                pass
+        # Store computed metrics under the same cache key for future alignment
+        try:
+            if 'cache_key' not in locals():
+                # Ensure cache_key exists (recompute if needed)
+                rounded_parts = []
+                for a in sorted(({ 'symbol': a.symbol, 'allocation': a.allocation } for a in allocations), key=lambda x: x['symbol']):
+                    try:
+                        rounded_alloc = float(f"{float(a['allocation']):.1f}")
+                    except Exception:
+                        rounded_alloc = 0.0
+                    rounded_parts.append(f"{a['symbol']}:{rounded_alloc:.1f}")
+                key_raw = f"{risk_profile}|" + "|".join(rounded_parts)
+                cache_key = f"portfolio:metrics:{hashlib.md5(key_raw.encode()).hexdigest()}"
+            ttl_days = getattr(redis_manager, 'PORTFOLIO_TTL_DAYS', 28) if redis_manager else 28
+            _rds.redis_client.setex(cache_key, ttl_days * 24 * 3600, json.dumps(metrics))
+        except Exception:
+            pass
 
         # Use analytics result as-is to match recommendation pipeline
         
@@ -2388,7 +2388,7 @@ def get_mini_lesson_assets():
                         ticker_info = None
                         try:
                             if hasattr(_rds, '_get_cached_ticker_info_fast'):
-                        ticker_info = _rds._get_cached_ticker_info_fast(ticker)
+                                ticker_info = _rds._get_cached_ticker_info_fast(ticker)
                         except Exception:
                             ticker_info = None
                         if not ticker_info:
