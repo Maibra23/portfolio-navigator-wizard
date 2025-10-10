@@ -68,17 +68,28 @@ export const StockSelection = ({ onNext, onPrev, onStocksUpdate, selectedStocks 
       }
 
       const data = await response.json();
-      const stocks = data.quotes || [];
-      
-      setSearchResults(stocks.filter((stock: any) => 
-        stock.quoteType === 'EQUITY' && stock.symbol && stock.shortname
-      ).map((stock: any) => ({
-        symbol: stock.symbol,
-        shortname: stock.shortname,
-        longname: stock.longname,
-        typeDisp: stock.typeDisp,
-        exchange: stock.exchange
-      })));
+      const stocks: unknown[] = data.quotes || [];
+
+      type YahooQuote = {
+        quoteType?: string;
+        symbol?: string;
+        shortname?: string;
+        longname?: string;
+        typeDisp?: string;
+        exchange?: string;
+      };
+
+      const typedResults: StockResult[] = (stocks as YahooQuote[])
+        .filter((stock) => stock.quoteType === 'EQUITY' && !!stock.symbol && !!stock.shortname)
+        .map((stock) => ({
+          symbol: stock.symbol as string,
+          shortname: stock.shortname as string,
+          longname: stock.longname,
+          typeDisp: stock.typeDisp,
+          exchange: stock.exchange,
+        }));
+
+      setSearchResults(typedResults);
     } catch (err) {
       setError('Unable to fetch stock data. Please try entering symbols manually.');
       setSearchResults([]);
