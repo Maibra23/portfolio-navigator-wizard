@@ -38,8 +38,4 @@ backend/.env.example
 # Temporary OneDrive sync issues
 backend/.server.pid
 frontend/bun.lockb
-frontend/src/components/ui/avatar.tsx
-frontend/src/components/ui/radio-group.tsx
-frontend/src/components/ui/toaster.tsx
-frontend/src/components/ui/toggle-group.tsx
 
