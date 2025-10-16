@@ -72,63 +72,35 @@ class PortfolioStockSelector:
             'very-aggressive': (0.38, 1.00)       # 38%+ annual volatility (adjusted: 103→120 stocks)
         }
         
-        # Portfolio size by risk profile
-        self.PORTFOLIO_SIZE = {
-            'very-conservative': 4,  # More stocks for diversification
-            'conservative': 4,        # More stocks for stability
-            'moderate': 4,            # Balanced approach
-            'aggressive': 3,          # Focused growth
-            'very-aggressive': 3      # Concentrated growth
+        # Variable stock count ranges by risk profile (replaces fixed sizes)
+        self.STOCK_COUNT_RANGES = {
+            'very-conservative': (3, 5),    # 3-5 stocks for diversification
+            'conservative': (3, 5),         # 3-5 stocks for stability
+            'moderate': (3, 5),             # 3-5 stocks for balanced approach
+            'aggressive': (3, 4),           # 3-4 stocks for focused growth
+            'very-aggressive': (3, 4)       # 3-4 stocks for concentrated growth
         }
         
-        # Sector allocation weights by risk profile - EXPANDED TO ALL 11 SECTORS
-        self.SECTOR_WEIGHTS = {
-            'very-conservative': {
-                'healthcare': 0.25,      # Stable, defensive
-                'consumer_staples': 0.20, # Essential goods
-                'utilities': 0.15,        # Regulated, stable
-                'financial': 0.15,        # Conservative banks
-                'real_estate': 0.10,      # Stable income
-                'materials': 0.10,        # Basic materials
-                'industrial': 0.05        # Infrastructure
-            },
-            'conservative': {
-                'healthcare': 0.20,      # Stable growth
-                'consumer_staples': 0.18, # Reliable income
-                'technology': 0.15,      # Blue chip tech
-                'financial': 0.15,       # Established banks
-                'industrial': 0.12,      # Infrastructure
-                'utilities': 0.10,       # Regulated stability
-                'real_estate': 0.10      # Income generation
-            },
-            'moderate': {
-                'technology': 0.30,      # Growth + stability (INCREASED)
-                'communication': 0.20,   # Innovation (INCREASED)
-                'healthcare': 0.15,      # Balanced growth
-                'financial': 0.12,       # Diversified exposure
-                'consumer_discretionary': 0.10, # Cyclical growth
-                'industrial': 0.08,      # Economic exposure
-                'materials': 0.03,       # Commodity exposure
-                'utilities': 0.02        # Stability
-            },
-            'aggressive': {
-                'technology': 0.35,      # High growth (INCREASED)
-                'communication': 0.25,   # Innovation (INCREASED)
-                'consumer_discretionary': 0.15, # Growth potential
-                'healthcare': 0.10,      # Growth healthcare
-                'industrial': 0.08,      # Economic growth
-                'financial': 0.05,       # Financial growth
-                'energy': 0.02           # Energy growth
-            },
-            'very-aggressive': {
-                'technology': 0.40,      # Maximum growth (INCREASED)
-                'communication': 0.25,   # Disruptive tech (INCREASED)
-                'consumer_discretionary': 0.15, # High momentum
-                'healthcare': 0.08,      # Biotech growth
-                'industrial': 0.07,      # Innovation
-                'financial': 0.05        # Fintech
-            }
+        # Preferred sectors by risk profile (optional guidance, not strict weights)
+        self.PREFERRED_SECTORS = {
+            'very-conservative': ['healthcare', 'utilities', 'consumer_staples'],
+            'conservative': ['healthcare', 'technology', 'financial'],
+            'moderate': ['technology', 'communication', 'healthcare'],
+            'aggressive': ['technology', 'communication', 'consumer_discretionary'],
+            'very-aggressive': ['technology', 'communication', 'healthcare']
         }
+    
+    def get_variable_stock_count(self, risk_profile: str, portfolio_index: int) -> int:
+        """Get variable stock count within the range for this risk profile"""
+        import random
+        
+        # Use portfolio index as seed for consistent results
+        random.seed(portfolio_index + hash(risk_profile))
+        
+        count_range = self.STOCK_COUNT_RANGES.get(risk_profile, (3, 5))
+        count = random.randint(count_range[0], count_range[1])
+        
+        return count
     
     def select_stocks_for_risk_profile(self, risk_profile: str) -> List[Dict]:
         """
@@ -450,10 +422,16 @@ class PortfolioStockSelector:
             else:
                 return None
             
-            # Parse sector data
+            # Parse sector data with enhanced validation
             sector_info = {}
             if sector_data:
                 sector_info = json.loads(sector_data.decode())
+            
+            # ENHANCED: Ensure sector is not Unknown - apply inference if needed
+            if not sector_info.get('sector') or sector_info.get('sector') == 'Unknown':
+                inferred_sector = self._infer_sector_from_ticker(ticker)
+                sector_info['sector'] = inferred_sector
+                logger.debug(f"✅ {ticker}: Applied sector inference: {inferred_sector}")
             
             # Parse metrics data
             metrics_info = {}
@@ -469,7 +447,9 @@ class PortfolioStockSelector:
                 'company_name': company_name,
                 'sector': sector_info.get('sector', 'Unknown'),
                 'industry': sector_info.get('industry', 'Unknown'),
-                'volatility': metrics_info.get('annualized_volatility', volatility),
+                'volatility': metrics_info.get('risk', volatility),  # FIXED: Use 'risk' key from Redis
+                'annualized_return': metrics_info.get('annualized_return', annual_return),  # FIXED: Use correct key
+                'annual_return': metrics_info.get('annualized_return', annual_return),  # Keep both for compatibility
                 'return': metrics_info.get('annualized_return', annual_return),
                 'price': current_price,
                 'data_quality': metrics_info.get('data_quality', 'cached'),
@@ -524,6 +504,86 @@ class PortfolioStockSelector:
         
         return available_stocks
     
+    def _infer_sector_from_ticker(self, ticker: str) -> str:
+        """Infer sector from ticker symbol when Redis data is missing"""
+        ticker = ticker.upper()
+        
+        # Known sector mappings for common tickers (EXPANDED)
+        sector_mappings = {
+            # Technology
+            'AAPL': 'Technology', 'MSFT': 'Technology', 'GOOGL': 'Technology', 'GOOG': 'Technology',
+            'AMZN': 'Technology', 'META': 'Technology', 'NVDA': 'Technology', 'TSLA': 'Technology',
+            'NFLX': 'Technology', 'ADBE': 'Technology', 'CRM': 'Technology', 'ORCL': 'Technology',
+            'INTC': 'Technology', 'AMD': 'Technology', 'QCOM': 'Technology', 'AVGO': 'Technology',
+            'ADP': 'Technology', 'TRMB': 'Technology',
+            
+            # Financial Services
+            'JPM': 'Financial Services', 'BAC': 'Financial Services', 'WFC': 'Financial Services',
+            'GS': 'Financial Services', 'MS': 'Financial Services', 'C': 'Financial Services',
+            'AXP': 'Financial Services', 'V': 'Financial Services', 'MA': 'Financial Services',
+            
+            # Healthcare
+            'JNJ': 'Healthcare', 'PFE': 'Healthcare', 'UNH': 'Healthcare', 'ABBV': 'Healthcare',
+            'MRK': 'Healthcare', 'TMO': 'Healthcare', 'ABT': 'Healthcare', 'DHR': 'Healthcare',
+            
+            # Consumer Discretionary
+            'HD': 'Consumer Discretionary', 'MCD': 'Consumer Discretionary', 'NKE': 'Consumer Discretionary',
+            'SBUX': 'Consumer Discretionary', 'LOW': 'Consumer Discretionary', 'TJX': 'Consumer Discretionary',
+            'RCL': 'Consumer Discretionary', 'MELI': 'Consumer Discretionary', 'APTV': 'Consumer Discretionary',
+            'HWDN.L': 'Consumer Discretionary', 'CZR': 'Consumer Discretionary',
+            
+            # Consumer Staples
+            'PG': 'Consumer Staples', 'KO': 'Consumer Staples', 'PEP': 'Consumer Staples',
+            'WMT': 'Consumer Staples', 'CL': 'Consumer Staples', 'KMB': 'Consumer Staples',
+            
+            # Energy
+            'XOM': 'Energy', 'CVX': 'Energy', 'COP': 'Energy', 'EOG': 'Energy', 'CTRA': 'Energy',
+            
+            # Industrials
+            'BA': 'Industrials', 'CAT': 'Industrials', 'GE': 'Industrials', 'MMM': 'Industrials',
+            'HON': 'Industrials', 'UPS': 'Industrials', 'RTX': 'Industrials', 'ITW': 'Industrials',
+            'IR': 'Industrials', 'PCAR': 'Industrials',
+            
+            # Utilities
+            'NEE': 'Utilities', 'DUK': 'Utilities', 'SO': 'Utilities', 'AEP': 'Utilities', 'FE': 'Utilities',
+            
+            # Communication Services
+            'VZ': 'Communication Services', 'T': 'Communication Services', 'CMCSA': 'Communication Services',
+            'DIS': 'Communication Services', 'GOOG': 'Communication Services', 'GOOGL': 'Communication Services',
+            'CHTR': 'Communication Services', 'ROL': 'Communication Services',
+            
+            # Materials
+            'LIN': 'Materials', 'APD': 'Materials', 'SHW': 'Materials', 'ECL': 'Materials', 'ALB': 'Materials',
+            
+            # Real Estate
+            'AMT': 'Real Estate', 'PLD': 'Real Estate', 'CCI': 'Real Estate', 'EQIX': 'Real Estate',
+            
+            # ETFs - Map to diversified categories
+            'VXUS': 'Diversified ETF', 'ITOT': 'Diversified ETF', 'SPY': 'Diversified ETF', 'QQQ': 'Technology ETF',
+            'VTI': 'Diversified ETF', 'VEA': 'Diversified ETF', 'VWO': 'Diversified ETF', 'AGG': 'Fixed Income ETF',
+            'BND': 'Fixed Income ETF', 'TLT': 'Fixed Income ETF', 'IEF': 'Fixed Income ETF',
+            
+            # International tickers - Map to appropriate sectors
+            'RBREW.CO': 'Consumer Staples', 'ASML': 'Technology', 'TSM': 'Technology', 'SAP': 'Technology',
+            'UL': 'Consumer Staples', 'NVO': 'Healthcare', 'TM': 'Consumer Discretionary',
+            
+            # Additional common tickers
+            'BABA': 'Technology', 'PDD': 'Technology', 'JD': 'Technology', 'NTES': 'Technology',
+            'YMMD': 'Technology', 'TME': 'Technology', 'WB': 'Technology', 'VIPS': 'Consumer Discretionary'
+        }
+        
+        # Check direct mapping
+        if ticker in sector_mappings:
+            return sector_mappings[ticker]
+        
+        # Try to infer from ticker patterns
+        if ticker.endswith('.BR') or ticker.endswith('.AS') or ticker.endswith('.CO'):
+            # European tickers - try to get from Redis with different key format
+            return 'Unknown'  # Will be handled by enhanced data fetcher
+        
+        # Default fallback
+        return 'Unknown'
+    
     def _process_stock_batch(self, batch_tickers: List[str]) -> List[Dict]:
         """Process a batch of tickers efficiently"""
         batch_stocks = []
@@ -548,7 +608,7 @@ class PortfolioStockSelector:
                 returns = price_series.pct_change().dropna()
                 volatility = returns.std() * np.sqrt(12)  # Monthly to annual
                 
-                # Get company info
+                # Get company info (sector enhancement already applied in parsing)
                 company_name = sector_info.get('company_name', ticker)
                 sector = sector_info.get('sector', 'Unknown')
                 industry = sector_info.get('industry', 'Unknown')

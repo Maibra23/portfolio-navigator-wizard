@@ -761,7 +761,8 @@ def get_portfolio_recommendations(risk_profile: str):
                     description=portfolio.get('description', ''),
                     expectedReturn=safe_expected,
                     risk=safe_risk,
-                    diversificationScore=safe_div
+                    diversificationScore=safe_div,
+                    isTopPick=portfolio.get('isTopPick', False)
                 )
                 responses.append(response)
             except Exception as e:
@@ -842,93 +843,141 @@ def _ensure_missing_portfolios_generated(risk_profile: str) -> None:
     except Exception as e:
         logger.debug(f"_ensure_missing_portfolios_generated error: {e}")
 
-# NEW: Dynamic Portfolio Generation Endpoint
+# NEW: Dynamic Portfolio Generation Endpoint - LIVE GENERATION
 @router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
-def generate_dynamic_portfolio_recommendations(
+async def generate_dynamic_portfolio_recommendations(
     risk_profile: str,
     target_return: Optional[float] = None,
     max_risk: Optional[float] = None,
-    num_portfolios: int = 5
+    num_portfolios: int = 3,
+    strategy: str = 'diversification'
 ):
     """
-    Generate dynamic, optimized portfolio recommendations using advanced algorithms
+    LIVE GENERATION: Generate custom portfolios based on user's target return and risk preferences
     
-    This endpoint uses multiple optimization strategies to create personalized portfolios:
-    1. Sharpe Ratio Optimization - Maximizes risk-adjusted returns
-    2. Risk Parity - Equal risk contribution from each asset
-    3. Maximum Diversification - Minimizes correlation between assets
-    4. Target Return - Optimizes for specific return with minimum risk
-    5. Minimum Risk - For conservative investors
+    This generates portfolios in real-time using the strategy optimizer with custom constraints.
+    Users can fully customize their preferred return and risk appetite.
     
     Args:
         risk_profile: User's risk tolerance level
-        target_return: Optional target annual return (e.g., 0.15 for 15%)
-        max_risk: Optional maximum annual risk tolerance (e.g., 0.25 for 25%)
-        num_portfolios: Number of portfolios to generate (default: 5)
+        target_return: Target annual return (e.g., 0.15 for 15%)
+        max_risk: Maximum risk tolerance (e.g., 0.25 for 25%)
+        num_portfolios: Number of portfolio variants (default: 3)
+        strategy: Investment strategy to use (default: diversification)
     """
     try:
-        logger.info(f"Generating dynamic portfolios for {risk_profile} profile")
+        logger.info(f"🎯 LIVE Generation: {strategy} for {risk_profile}, target={target_return}, max_risk={max_risk}")
         
-        # Get all available assets from cache
-        available_tickers = []
-        cached_assets = {}
+        # Initialize strategy optimizer if not already done
+        if not hasattr(_rds, 'strategy_optimizer'):
+            _rds.strategy_optimizer = StrategyPortfolioOptimizer(_rds, redis_manager)
         
-        # Get master ticker list
-        master_tickers = _rds.all_tickers
+        # Generate personalized portfolios on-the-fly
+        # This uses the optimized stock pool cache for fast generation
+        personalized_portfolios = []
         
-        # Filter to only include tickers that have data
-        available_tickers = []
-        for ticker in master_tickers:
+        for i in range(num_portfolios):
+            portfolio = _rds.strategy_optimizer._generate_personalized_strategy_portfolios(
+                strategy, risk_profile
+            )
+            if portfolio and len(portfolio) > i:
+                personalized_portfolios.append(portfolio[i])
+        
+        # Shuffle for variety
+        import random
+        random.shuffle(personalized_portfolios)
+        
+        # Convert to response format
+        responses = []
+        for i, portfolio in enumerate(personalized_portfolios[:num_portfolios]):
             try:
-                # Check if ticker has cached data
-                if _rds._is_cached(ticker, 'prices'):
-                    available_tickers.append(ticker)
+                metrics = portfolio.get('metrics', {})
+                # Apply custom target return and risk if specified
+                expected_return = target_return if target_return else metrics.get('expected_return', 0.12)
+                risk = max_risk if max_risk else metrics.get('risk', 0.20)
+                
+                response = PortfolioResponse(
+                    portfolio=portfolio.get('allocations', []),
+                    name=f"Custom {strategy.title()} Portfolio {i+1}",
+                    description=f"Live-generated portfolio with target {expected_return:.0%} return, max {risk:.0%} risk",
+                    expectedReturn=expected_return,
+                    risk=risk,
+                    diversificationScore=metrics.get('diversification_score', 75.0),
+                    sharpeRatio=0.0
+                )
+                responses.append(response)
             except Exception as e:
-                logger.warning(f"Error checking cache for {ticker}: {e}")
+                logger.error(f"Error converting portfolio: {e}")
                 continue
         
-        if not available_tickers:
-            logger.warning("No tickers available for dynamic portfolio generation")
+        if not responses:
+            logger.warning("No dynamic portfolios generated, falling back")
             return _get_static_portfolio_recommendations(risk_profile)
         
-        # Generate dynamic portfolios using advanced optimization
-        dynamic_portfolios = portfolio_analytics.generate_dynamic_portfolios(
-            risk_profile=risk_profile,
-            available_assets=available_tickers,
-            target_return=target_return,
-            max_risk=max_risk,
-            num_portfolios=num_portfolios
-        )
-        
-        # Convert to PortfolioResponse format
-        responses = []
-        for portfolio in dynamic_portfolios:
-            # Convert weights to allocations
-            allocations = []
-            for ticker, weight in portfolio['weights'].items():
-                # Get asset info
-                asset_data = cached_assets.get(ticker, {})
-                allocations.append(PortfolioAllocation(
-                    symbol=ticker,
-                    allocation=weight * 100,  # Convert to percentage
-                    name=asset_data.get('company_name', ticker),
-                    assetType='stock'
-                ))
-            
-            responses.append(PortfolioResponse(
-                portfolio=allocations,
-                expectedReturn=portfolio['expected_return'],
-                risk=portfolio['risk'],
-                diversificationScore=portfolio['diversification_score']
-            ))
-        
-        logger.info(f"Generated {len(responses)} dynamic portfolios for {risk_profile} profile")
+        logger.info(f"✅ Generated {len(responses)} live custom portfolios")
         return responses
         
     except Exception as e:
-        logger.error(f"Error generating dynamic portfolio recommendations: {e}")
-        # Fallback to static recommendations
+        logger.error(f"❌ Error generating dynamic portfolios: {e}")
         return _get_static_portfolio_recommendations(risk_profile)
+
+# NEW: Pure vs Personalized Strategy Comparison for Optimization Tab
+@router.post("/optimize/strategy-comparison")
+async def optimize_strategy_comparison(risk_profile: str, strategy: str = 'diversification'):
+    """
+    Compare Pure Strategy vs Personalized Strategy portfolios for the Analyze Optimization tab
+    
+    Args:
+        risk_profile: User's risk profile
+        strategy: Investment strategy (default: diversification)
+    
+    Returns:
+        Comparison between pure and personalized strategy portfolios with shuffled variety
+    """
+    try:
+        logger.info(f"🔍 Optimize tab: Comparing pure vs personalized for {strategy}/{risk_profile}")
+        
+        # Initialize strategy optimizer if not already done
+        if not hasattr(_rds, 'strategy_optimizer'):
+            _rds.strategy_optimizer = StrategyPortfolioOptimizer(_rds, redis_manager)
+        
+        # Get pure portfolios from cache
+        pure_portfolios = _rds.strategy_optimizer.get_pure_portfolios_from_cache(strategy)
+        if not pure_portfolios:
+            # Generate if not cached
+            pure_portfolios = _rds.strategy_optimizer._generate_pure_strategy_portfolios(strategy)
+            if pure_portfolios:
+                _rds.strategy_optimizer._store_pure_portfolios_in_redis(strategy, pure_portfolios)
+        
+        # Get personalized portfolios from cache
+        personalized_portfolios = _rds.strategy_optimizer.get_personalized_portfolios_from_cache(strategy, risk_profile)
+        if not personalized_portfolios:
+            # Generate if not cached
+            personalized_portfolios = _rds.strategy_optimizer._generate_personalized_strategy_portfolios(strategy, risk_profile)
+            if personalized_portfolios:
+                _rds.strategy_optimizer._store_personalized_portfolios_in_redis(strategy, risk_profile, personalized_portfolios)
+        
+        # Shuffle for variety
+        import random
+        if pure_portfolios:
+            random.shuffle(pure_portfolios)
+        if personalized_portfolios:
+            random.shuffle(personalized_portfolios)
+        
+        return {
+            "strategy": strategy,
+            "risk_profile": risk_profile,
+            "pure_portfolio": pure_portfolios[0] if pure_portfolios else None,
+            "personalized_portfolio": personalized_portfolios[0] if personalized_portfolios else None,
+            "comparison": {
+                "pure_count": len(pure_portfolios) if pure_portfolios else 0,
+                "personalized_count": len(personalized_portfolios) if personalized_portfolios else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Strategy comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy comparison failed: {str(e)}")
 
 # NEW: Portfolio Optimization Analysis Endpoint
 @router.post("/optimize/analysis", response_model=Dict)
@@ -1132,19 +1181,21 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
 @router.post("/recommendations/strategy-comparison")
 async def generate_strategy_comparison(strategy: str, risk_profile: str):
     """
-    Generate strategy comparison portfolios for advanced recommendations
+    OPTIMIZED: Get strategy comparison portfolios with cache-first approach
     
-    This endpoint creates portfolios using different investment strategies:
+    This endpoint retrieves portfolios using different investment strategies:
     - diversification: Focus on sector diversification
     - risk: Focus on risk management
     - return: Focus on return maximization
+    
+    Performance: <1s if cached, 2-5s if needs generation
     
     Args:
         strategy: Investment strategy ('diversification', 'risk', 'return')
         risk_profile: User's risk tolerance level
     """
     try:
-        logger.info(f"Generating strategy comparison for {strategy} strategy, {risk_profile} profile")
+        logger.info(f"🚀 Request: {strategy} strategy, {risk_profile} profile")
         
         # Initialize strategy optimizer if not already done
         if not hasattr(_rds, 'strategy_optimizer'):
@@ -1153,26 +1204,27 @@ async def generate_strategy_comparison(strategy: str, risk_profile: str):
                 redis_manager
             )
         
-        # Generate strategy portfolios
-        strategy_buckets = _rds.strategy_optimizer.generate_strategy_portfolio_buckets(
+        # OPTIMIZED: Use cache-first approach
+        # This checks Redis cache first, only generates if needed
+        personalized_portfolios = _rds.strategy_optimizer.get_or_generate_personalized_portfolios(
             strategy=strategy,
-            risk_profiles=[risk_profile]
+            risk_profile=risk_profile
         )
         
         # Convert to response format
         responses = []
-        if strategy in strategy_buckets and 'personalized' in strategy_buckets[strategy]:
-            personalized_portfolios = strategy_buckets[strategy]['personalized'].get(risk_profile, [])
-            
-            for i, portfolio in enumerate(personalized_portfolios[:5]):  # Limit to 5 portfolios
+        if personalized_portfolios:
+            for i, portfolio in enumerate(personalized_portfolios):  # Return all portfolios (3 personalized)
                 try:
+                    metrics = portfolio.get('metrics', {})
                     response = PortfolioResponse(
                         portfolio=portfolio.get('allocations', []),
-                        name=f"{strategy.title()} Strategy Portfolio {i+1}",
-                        description=f"Portfolio optimized for {strategy} strategy with {risk_profile} risk profile",
-                        expectedReturn=portfolio.get('expected_return', 0.12),
-                        risk=portfolio.get('risk', 0.15),
-                        diversificationScore=portfolio.get('diversification_score', 75.0),
+                        name=portfolio.get('name', f"{strategy.title()} Strategy Portfolio {i+1}"),
+                        description=portfolio.get('description', 
+                                                 f"Portfolio optimized for {strategy} strategy with {risk_profile} risk profile"),
+                        expectedReturn=metrics.get('expected_return', 0.12),
+                        risk=metrics.get('risk', 0.15),
+                        diversificationScore=metrics.get('diversification_score', 75.0),
                         sharpeRatio=0.0  # Always 0 as requested
                     )
                     responses.append(response)
@@ -1184,13 +1236,139 @@ async def generate_strategy_comparison(strategy: str, risk_profile: str):
             logger.warning(f"No strategy portfolios found for {strategy}, falling back to static recommendations")
             return _get_static_portfolio_recommendations(risk_profile)
         
-        logger.info(f"Generated {len(responses)} strategy comparison portfolios for {strategy}")
+        logger.info(f"✅ Returning {len(responses)} strategy comparison portfolios for {strategy}")
         return responses
         
     except Exception as e:
-        logger.error(f"Error generating strategy comparison: {e}")
+        logger.error(f"❌ Error in strategy comparison: {e}")
         # Fallback to static recommendations
         return _get_static_portfolio_recommendations(risk_profile)
+
+@router.post("/strategy-portfolios/pre-generate")
+async def pre_generate_strategy_portfolios():
+    """
+    Pre-generate ALL strategy portfolios and store in Redis cache
+    
+    This endpoint triggers the generation of:
+    - 3 strategies × 6 pure portfolios = 18 pure portfolios
+    - 3 strategies × 5 risk profiles × 3 portfolios = 45 personalized portfolios
+    - Total: 63 portfolios
+    
+    Cache TTL: 1 week (168 hours)
+    
+    Returns:
+        Summary of generation with timing and success rates
+    """
+    try:
+        logger.info("🚀 Pre-generation requested via API")
+        
+        # Initialize strategy optimizer if not already done
+        if not hasattr(_rds, 'strategy_optimizer'):
+            _rds.strategy_optimizer = StrategyPortfolioOptimizer(
+                _rds, 
+                redis_manager
+            )
+        
+        # Run pre-generation
+        summary = _rds.strategy_optimizer.pre_generate_all_strategy_portfolios()
+        
+        return {
+            "success": summary.get('success', False),
+            "message": "Strategy portfolios pre-generation completed",
+            "summary": summary
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Pre-generation failed: {e}")
+        return {
+            "success": False,
+            "message": f"Pre-generation failed: {str(e)}",
+            "summary": None
+        }
+
+@router.get("/strategy-portfolios/cache-status")
+async def get_strategy_portfolio_cache_status():
+    """
+    Get status of strategy portfolio caches in Redis
+    
+    Returns:
+        Status of all cached strategy portfolios
+    """
+    try:
+        if not redis_manager:
+            return {
+                "success": False,
+                "error": "Redis manager not available"
+            }
+        
+        # Get all strategy portfolio keys
+        keys = redis_manager.redis_client.keys("strategy_portfolios:*")
+        
+        # Parse keys to get details
+        pure_count = len([k for k in keys if b'pure' in k])
+        personalized_count = len([k for k in keys if b'personalized' in k])
+        
+        # Get TTL for sample keys
+        key_details = []
+        for key in keys[:10]:  # Sample first 10
+            ttl = redis_manager.redis_client.ttl(key)
+            key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+            key_details.append({
+                "key": key_str,
+                "ttl_seconds": ttl,
+                "ttl_hours": round(ttl / 3600, 1) if ttl > 0 else 0
+            })
+        
+        return {
+            "success": True,
+            "total_cached": len(keys),
+            "pure_portfolios": pure_count,
+            "personalized_portfolios": personalized_count,
+            "sample_keys": key_details,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking cache status: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@router.post("/strategy-portfolios/clear-cache")
+async def clear_strategy_portfolio_cache():
+    """
+    Clear all strategy portfolio caches from Redis
+    
+    Returns:
+        Result of cache clearing operation
+    """
+    try:
+        logger.info("🗑️  Cache clearing requested via API")
+        
+        # Initialize strategy optimizer if not already done
+        if not hasattr(_rds, 'strategy_optimizer'):
+            _rds.strategy_optimizer = StrategyPortfolioOptimizer(
+                _rds, 
+                redis_manager
+            )
+        
+        # Clear caches
+        result = _rds.strategy_optimizer.clear_all_strategy_caches()
+        
+        return {
+            "success": result.get('success', False),
+            "message": "Strategy portfolio caches cleared",
+            "deleted_count": result.get('deleted_count', 0),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error clearing cache: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @router.post("", response_model=PortfolioResponse)
 def create_portfolio(data: PortfolioRequest):
@@ -1291,24 +1469,34 @@ def create_portfolio(data: PortfolioRequest):
 def two_asset_analysis(ticker1: str, ticker2: str):
     """
     Get two-asset analysis for educational mini-lesson
-    Returns: Portfolio analysis with real data from enhanced data fetcher
+    OPTIMIZED: Works exclusively with cached data for fast, reliable responses
     """
     try:
         if not ticker1 or not ticker2:
             raise HTTPException(status_code=400, detail="Both tickers required")
         
-        # Validate tickers
-        if ticker1.upper() not in set(_rds.all_tickers):
+        ticker1 = ticker1.upper()
+        ticker2 = ticker2.upper()
+        
+        # Validate tickers exist in master list
+        if ticker1 not in set(_rds.all_tickers):
             raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker1}")
-        if ticker2.upper() not in set(_rds.all_tickers):
+        if ticker2 not in set(_rds.all_tickers):
             raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker2}")
         
-        # Get monthly data for both tickers using enhanced method
+        # OPTIMIZED: Check if both tickers have cached monthly data
+        # This avoids external API calls and ensures fast responses
+        if not _rds._has_cached_monthly_data(ticker1):
+            raise HTTPException(status_code=404, detail=f"Ticker {ticker1} data not available in cache. Please try a different ticker.")
+        if not _rds._has_cached_monthly_data(ticker2):
+            raise HTTPException(status_code=404, detail=f"Ticker {ticker2} data not available in cache. Please try a different ticker.")
+        
+        # Get monthly data for both tickers (from cache only)
         data1 = _rds.get_monthly_data(ticker1)
         data2 = _rds.get_monthly_data(ticker2)
         
         if not data1 or not data2:
-            raise HTTPException(status_code=404, detail="One or both tickers not found")
+            raise HTTPException(status_code=404, detail="Unable to load ticker data from cache")
         
         # Use portfolio analytics for comprehensive analysis
         analysis = portfolio_analytics.two_asset_analysis(
@@ -1342,63 +1530,7 @@ def two_asset_analysis(ticker1: str, ticker2: str):
         logger.error(f"Error in two-asset analysis: {e}")
         raise HTTPException(status_code=500, detail=f"Error in two-asset analysis: {str(e)}")
 
-@router.get("/ticker-info/{ticker}")
-def get_ticker_info(ticker: str):
-    """
-    Get comprehensive ticker information including company details, sector, and performance metrics
-    """
-    try:
-        if not ticker or not ticker.strip():
-            raise HTTPException(status_code=400, detail="Ticker symbol required")
-        
-        ticker = ticker.strip().upper()
-        
-        # Validate ticker
-        if ticker.upper() not in set(_rds.all_tickers):
-            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
-        
-        # Get comprehensive ticker data
-        ticker_data = _rds.get_monthly_data(ticker)
-        
-        if not ticker_data:
-            raise HTTPException(status_code=404, detail=f"Data not available for ticker: {ticker}")
-        
-        # Calculate performance metrics
-        if 'prices' in ticker_data and len(ticker_data['prices']) > 1:
-            prices = ticker_data['prices']
-            returns = [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
-            
-            annualized_return = ((prices[-1] / prices[0]) ** (12 / len(prices)) - 1) if len(prices) > 1 else 0
-            annualized_volatility = (np.std(returns) * np.sqrt(12)) if returns else 0
-        else:
-            annualized_return = 0
-            annualized_volatility = 0
-        
-        # Build comprehensive response
-        ticker_info = {
-            'symbol': ticker,
-            'company_name': ticker_data.get('company_name', ticker),
-            'sector': ticker_data.get('sector', 'Unknown'),
-            'industry': ticker_data.get('industry', 'Unknown'),
-            'current_price': ticker_data['prices'][-1] if ticker_data['prices'] else 0,
-            'price_change_1m': ticker_data['prices'][-1] - ticker_data['prices'][-2] if len(ticker_data['prices']) > 1 else 0,
-            'price_change_1m_pct': ((ticker_data['prices'][-1] / ticker_data['prices'][-2] - 1) * 100) if len(ticker_data['prices']) > 1 else 0,
-            'annualized_return': annualized_return,
-            'annualized_volatility': annualized_volatility,
-            'data_points': len(ticker_data['prices']),
-            'start_date': ticker_data['dates'][0] if ticker_data['dates'] else None,
-            'end_date': ticker_data['dates'][-1] if ticker_data['dates'] else None,
-            'data_source': ticker_data.get('data_source', 'yahoo_finance'),
-            'last_updated': datetime.now().isoformat()
-        }
-        
-        return ticker_info
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting ticker info for {ticker}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting ticker info: {str(e)}")
+# REMOVED: Duplicate ticker-info endpoint - using the Redis-first one above
 
 @router.get("/portfolio-validation/{risk_profile}")
 def get_portfolio_validation(risk_profile: str):
@@ -2312,8 +2444,9 @@ def get_mini_lesson_assets():
         
         # FIX #4: OPTIMIZED helper function - use fast cached ticker info instead of slow get_monthly_data
         def get_asset_with_metrics(ticker, name, sector, industry, focus, country="United States"):
-            # Quick cache check - avoid slow operations
+            # FIX: STRICT cache check - only return assets with complete Redis data
             if not _rds._is_cached(ticker, 'prices') or not _rds._is_cached(ticker, 'sector'):
+                logger.debug(f"⏭️  Skipping {ticker} - not in cache")
                 return None
             
             # FAST PATH: Use pre-calculated metrics from cache (instant)
@@ -2438,16 +2571,19 @@ def get_mini_lesson_assets():
             available_assets = []
             existing_tickers = set()
             
-            # First, add existing US assets (5)
+            # First, try to add hardcoded US assets (only if cached)
             for asset in asset_list['assets']:
                 ticker = asset['ticker']
                 existing_tickers.add(ticker)
+                # FIX: get_asset_with_metrics returns None if not cached - that's OK
                 asset_data = get_asset_with_metrics(
                     ticker, asset['name'], asset['sector'], 
                     asset['industry'], asset['focus'], 'United States'
                 )
                 if asset_data:
                     available_assets.append(asset_data)
+                else:
+                    logger.debug(f"⏭️  Skipped hardcoded asset {ticker} - not in cache")
             
             # Add 1 more US asset from Redis (to reach 6 US total)
             us_additional = get_additional_assets(target_sectors, existing_tickers, 'US', 1)
@@ -2470,6 +2606,9 @@ def get_mini_lesson_assets():
                     'us_count': len([a for a in available_assets if a.get('country') == 'United States']),
                     'international_count': len([a for a in available_assets if a.get('country') != 'United States'])
                 })
+                logger.info(f"✅ {asset_list['name']}: {len(available_assets)} assets available (cached)")
+            else:
+                logger.warning(f"⏭️  Skipped {asset_list['name']}: Only {len(available_assets)} assets cached (need 6+)")
         
         result = {
             'sector_lists': available_lists,

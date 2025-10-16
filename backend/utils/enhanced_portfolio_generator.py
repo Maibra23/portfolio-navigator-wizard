@@ -13,7 +13,9 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from .portfolio_stock_selector import PortfolioStockSelector
+from .enhanced_stock_selector import EnhancedStockSelector
 from .port_analytics import PortfolioAnalytics
+from .enhanced_portfolio_config import EnhancedPortfolioConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +28,34 @@ class EnhancedPortfolioGenerator:
     def __init__(self, data_service, portfolio_analytics: PortfolioAnalytics):
         self.data_service = data_service  # Can be RedisFirstDataService or EnhancedDataFetcher
         self.portfolio_analytics = portfolio_analytics
-        self.PORTFOLIOS_PER_PROFILE = 12
+        self.PORTFOLIOS_PER_PROFILE = 12  # Backend expects 12 portfolios per risk profile
         self.PORTFOLIO_TTL_DAYS = 7  # Shorter than data TTL (28 days)
         self.redis_client = data_service.redis_client if hasattr(data_service, 'redis_client') else data_service.r
 
         # Global uniqueness tracking - TTL longer than portfolio TTL to prevent cross-profile duplicates
         self.GLOBAL_SIGNATURE_TTL = 14  # 14 days to cover portfolio lifecycle
-        # Increase attempts to lower duplicate probability without large perf hit
-        self.MAX_RETRY_ATTEMPTS = 6  # previously 3
+        # Reduce attempts for faster generation
+        self.MAX_RETRY_ATTEMPTS = 1  # Reduced from 6 to 1 for speed
         
         # Uniqueness disabled globally (can re-enable via code change)
         self.dedup_bypass = True
+        
+        # Quality control configuration - OPTIMIZED for speed
+        self.MAX_QUALITY_RETRIES = 1  # Reduced from 10 to 1 for faster generation
+        
+        # Load realistic quality control ranges from enhanced config
+        from .enhanced_portfolio_config import EnhancedPortfolioConfig
+        config = EnhancedPortfolioConfig()
+        self.TARGET_RANGES = config.ENHANCED_QUALITY_CONTROL
+        
+        # Load return target gradation from enhanced config
+        self.RETURN_TARGET_GRADATION = config.RETURN_TARGET_GRADATION
+        
+        # Load diversification variation from enhanced config
+        self.DIVERSIFICATION_VARIATION = config.DIVERSIFICATION_VARIATION
+        
+        # Load stock count ranges from enhanced config
+        self.STOCK_COUNT_RANGES = config.STOCK_COUNT_RANGES
         
         # Portfolio names for each risk profile
         self.PORTFOLIO_NAMES = {
@@ -187,7 +206,7 @@ class EnhancedPortfolioGenerator:
         }
     
     def generate_portfolio_bucket(self, risk_profile: str, use_parallel: bool = True) -> List[Dict]:
-        """Generate 12 unique portfolios for a specific risk profile efficiently with shared stock data
+        """Generate 9 unique portfolios for a specific risk profile with ticker exclusion
         
         Args:
             risk_profile: Risk profile to generate portfolios for
@@ -198,8 +217,8 @@ class EnhancedPortfolioGenerator:
         
         logger.info(f"🚀 Generating {self.PORTFOLIOS_PER_PROFILE} portfolios for {risk_profile} risk profile...")
         
-        # Initialize stock selector ONCE for all portfolios
-        stock_selector = PortfolioStockSelector(self.data_service)
+        # Initialize enhanced stock selector ONCE for all portfolios
+        stock_selector = EnhancedStockSelector(self.data_service)
         
         # Get stock data ONCE for all portfolios (will use cache after first call)
         logger.info(f"📊 Fetching stock data for {risk_profile} (shared across all portfolios)...")
@@ -216,67 +235,176 @@ class EnhancedPortfolioGenerator:
         except Exception as e:
             logger.debug(f"Pool validation skipped: {e}")
         
-        # Choose generation method
-        if use_parallel:
-            portfolios = self._generate_portfolios_parallel(risk_profile, stock_selector, available_stocks)
-        else:
-            portfolios = self._generate_portfolios_sequential(risk_profile, stock_selector)
-        
-        # Uniqueness disabled; keep all portfolios
-        unique_portfolios = portfolios
-
-        # Enforce unique ticker cap across the 12 portfolios (aim for >=20 unique tickers)
-        try:
-            unique_portfolios = self._enforce_unique_ticker_cap(unique_portfolios, available_stocks, risk_profile, min_unique=20)
-        except Exception as e:
-            logger.debug(f"Unique ticker cap enforcement skipped: {e}")
+        # Generate portfolios with ticker exclusion
+        portfolios = self._generate_portfolios_with_ticker_exclusion(risk_profile, stock_selector, available_stocks)
         
         # Precompute and store overlap matrix for session-level diversity
         try:
-            self._compute_and_store_overlap_matrix(unique_portfolios, risk_profile)
+            self._compute_and_store_overlap_matrix(portfolios, risk_profile)
         except Exception as e:
             logger.debug(f"Overlap matrix computation skipped: {e}")
         
         total_time = time.time() - start_time
-        logger.info(f"✅ Successfully generated {len(unique_portfolios)} unique portfolios for {risk_profile} in {total_time:.2f}s")
-        logger.info(f"📊 Performance: {total_time/len(unique_portfolios):.3f}s per portfolio (with shared stock data)")
+        logger.info(f"✅ Successfully generated {len(portfolios)} unique portfolios for {risk_profile} in {total_time:.2f}s")
+        logger.info(f"📊 Performance: {total_time/len(portfolios):.3f}s per portfolio (with ticker exclusion)")
+
+        # Store portfolios in Redis using the standard format
+        try:
+            from .redis_portfolio_manager import RedisPortfolioManager
+            portfolio_manager = RedisPortfolioManager(self.redis_client)
+            storage_success = portfolio_manager.store_portfolio_bucket(risk_profile, portfolios)
+            if storage_success:
+                logger.info(f"✅ Successfully stored {len(portfolios)} portfolios for {risk_profile} in Redis")
+            else:
+                logger.warning(f"⚠️ Failed to store portfolios for {risk_profile} in Redis")
+        except Exception as e:
+            logger.error(f"❌ Error storing portfolios for {risk_profile}: {e}")
 
         # Store Top Pick for quick retrieval by API (expectedReturn-based)
         try:
             def _score(p):
                 return float(p.get('expectedReturn', 0.0))
-            top = max(unique_portfolios, key=_score)
+            top = max(portfolios, key=_score)
             cache_key = f"portfolio:top_pick:{risk_profile}"
             self.redis_client.setex(cache_key, self.PORTFOLIO_TTL_DAYS * 24 * 3600, json.dumps(top))
         except Exception as e:
             logger.debug(f"Top pick store skipped: {e}")
-        return unique_portfolios
+        return portfolios
+    
+    def _generate_portfolios_with_ticker_exclusion(self, risk_profile: str, stock_selector, available_stocks: List[Dict]) -> List[Dict]:
+        """Generate portfolios with ticker exclusion to prevent reuse across portfolios"""
+        logger.info(f"🎯 Generating portfolios with ticker exclusion for {risk_profile}...")
+        
+        portfolios = []
+        used_tickers = set()  # Track tickers used across all portfolios
+        config = EnhancedPortfolioConfig()
+        
+        for portfolio_index in range(self.PORTFOLIOS_PER_PROFILE):
+            logger.info(f"📊 Generating portfolio {portfolio_index + 1}/{self.PORTFOLIOS_PER_PROFILE}")
+            
+            try:
+                # Get return target for this portfolio using adaptive targeting
+                return_target = config.get_adaptive_return_target(risk_profile, available_stocks, portfolio_index)
+                
+                # Allow controlled ticker reuse (max 1 portfolio per ticker for first 6, then allow reuse)
+                ticker_usage_count = {}
+                for ticker in used_tickers:
+                    ticker_usage_count[ticker] = ticker_usage_count.get(ticker, 0) + 1
+                
+                # For first 6 portfolios: strict no reuse, for last 3: allow limited reuse
+                max_reuse = 1 if portfolio_index < 6 else 2
+                
+                # Filter out heavily used tickers
+                available_tickers = []
+                for stock in available_stocks:
+                    ticker = stock.get('symbol', stock.get('ticker'))
+                    usage_count = ticker_usage_count.get(ticker, 0)
+                    if usage_count < max_reuse:
+                        available_tickers.append(stock)
+                
+                if len(available_tickers) < 3:  # Need at least 3 stocks per portfolio
+                    logger.warning(f"⚠️ Insufficient available tickers for portfolio {portfolio_index + 1}, expanding pool")
+                    # Expand to all stocks but prefer less used ones
+                    available_tickers = sorted(available_stocks, 
+                                             key=lambda s: ticker_usage_count.get(s.get('symbol', s.get('ticker')), 0))
+                
+                # Generate portfolio with available tickers
+                portfolio = self._generate_single_portfolio_with_exclusion(
+                    risk_profile, portfolio_index, stock_selector, 
+                    available_tickers, return_target
+                )
+                
+                if portfolio:
+                    portfolios.append(portfolio)
+                    
+                    # Track used tickers
+                    portfolio_tickers = [alloc['symbol'] for alloc in portfolio.get('allocations', [])]
+                    used_tickers.update(portfolio_tickers)
+                    
+                    logger.info(f"✅ Portfolio {portfolio_index + 1}: {len(portfolio_tickers)} stocks, {len(used_tickers)} total used")
+                else:
+                    logger.warning(f"❌ Failed to generate portfolio {portfolio_index + 1}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error generating portfolio {portfolio_index + 1}: {e}")
+                continue
+        
+        logger.info(f"🎯 Ticker exclusion summary: {len(used_tickers)} unique tickers used across {len(portfolios)} portfolios")
+        return portfolios
+    
+    def _generate_single_portfolio_with_exclusion(self, risk_profile: str, portfolio_index: int, 
+                                                stock_selector, available_stocks: List[Dict], 
+                                                return_target: float) -> Optional[Dict]:
+        """Generate a single portfolio with ticker exclusion"""
+        try:
+            # Get portfolio size range
+            portfolio_size_range = EnhancedPortfolioConfig().STOCK_COUNT_RANGES.get(risk_profile, (3, 5))
+            min_size, max_size = portfolio_size_range
+            portfolio_size = min_size + (portfolio_index % (max_size - min_size + 1))
+            
+            # Select stocks for this portfolio (get raw stock data, not allocations)
+            selected_stocks = stock_selector._select_stocks_with_targeting(
+                stocks=available_stocks,
+                risk_profile=risk_profile,
+                portfolio_size=portfolio_size,
+                return_target=return_target,  # Already in decimal format from config
+                diversification_target=None
+            )
+            
+            if not selected_stocks:
+                logger.warning(f"⚠️ No stocks selected for portfolio {portfolio_index + 1}")
+                return None
+            
+            # Create allocations using the new 15-template system
+            allocations = stock_selector._create_simple_allocations(selected_stocks)
+            
+            if not allocations:
+                logger.warning(f"⚠️ No allocations created for portfolio {portfolio_index + 1}")
+                return None
+            
+            # Calculate real-time metrics first
+            temp_portfolio_data = {'allocations': allocations}
+            metrics = self.portfolio_analytics.calculate_real_portfolio_metrics(temp_portfolio_data)
+            
+            # Create portfolio with proper naming using the enhanced method
+            portfolio_data = self._create_portfolio_dict_enhanced(
+                risk_profile=risk_profile,
+                variation_id=portfolio_index,
+                allocations=allocations,
+                metrics=metrics
+            )
+            
+            return portfolio_data
+            
+        except Exception as e:
+            logger.error(f"❌ Error in single portfolio generation: {e}")
+            return None
     
     def _generate_portfolios_parallel(self, risk_profile: str, stock_selector, available_stocks: List[Dict] = None) -> List[Dict]:
-        """Generate portfolios in parallel using ThreadPoolExecutor (3-4x faster)"""
+        """Generate portfolios in parallel using ThreadPoolExecutor with enhanced targeting"""
         import concurrent.futures
 
         logger.info(f"⚡ Using parallel generation for {self.PORTFOLIOS_PER_PROFILE} portfolios...")
 
         portfolios = []
-        max_workers = 4  # Process 4 portfolios at a time
+        max_workers = 2  # Process 2 portfolios at a time for speed
 
         def generate_single(variation_id):
-            """Worker function for parallel generation with global uniqueness"""
+            """Worker function for parallel generation with enhanced targeting"""
             import time
             for attempt in range(self.MAX_RETRY_ATTEMPTS):
                 try:
                     t0 = time.time()
-                    variation_seed = self._generate_variation_seed(risk_profile, variation_id)
-                    portfolio = self._generate_single_portfolio_deterministic(
+                    
+                    # Generate portfolio using the enhanced method
+                    portfolio = self._regenerate_portfolio_with_quality_control(
                         risk_profile=risk_profile,
-                        variation_seed=variation_seed + attempt,  # Add attempt offset
                         variation_id=variation_id,
                         stock_selector=stock_selector,
                         available_stocks=available_stocks
                     )
                     logger.debug(f"⏱️ gen_single_t={(time.time()-t0):.3f}s var={variation_id} att={attempt}")
-                        return portfolio
+                    return portfolio
                 except Exception as e:
                     logger.error(f"❌ Failed to generate portfolio {variation_id + 1}: {e}")
                     break
@@ -311,21 +439,205 @@ class EnhancedPortfolioGenerator:
         logger.info(f"⚡ Parallel generation complete: {len(portfolios)} portfolios")
         return portfolios
     
+    def get_return_target(self, risk_profile: str, portfolio_index: int) -> float:
+        """Get flexible return target within the acceptable range"""
+        import random
+        
+        # Use portfolio index as seed for consistent results
+        random.seed(portfolio_index + hash(risk_profile))
+        
+        # Flexible return target ranges (7% above base targets, but realistic)
+        return_ranges = {
+            'very-conservative': (0.07, 0.12),    # 7-12% (realistic for conservative stocks)
+            'conservative': (0.08, 0.13),         # 8-13% (realistic for conservative stocks)
+            'moderate': (0.10, 0.15),             # 10-15% (realistic for moderate stocks)
+            'aggressive': (0.12, 0.18),           # 12-18% (realistic for aggressive stocks)
+            'very-aggressive': (0.15, 0.22)       # 15-22% (realistic for very aggressive stocks)
+        }
+        
+        target_range = return_ranges.get(risk_profile, (0.10, 0.20))
+        target = random.uniform(target_range[0], target_range[1])
+        
+        return target
+    
+    def get_diversification_score(self, risk_profile: str, portfolio_index: int) -> float:
+        """Get diversification score with variation within profile"""
+        import random
+        
+        # Use portfolio index as seed for consistent results
+        random.seed(portfolio_index + hash(risk_profile))
+        
+        div_range = self.DIVERSIFICATION_VARIATION.get(risk_profile, (75.0, 100.0))
+        score = random.uniform(div_range[0], div_range[1])
+        
+        # Round to 1 decimal place
+        return round(score, 1)
+    
+    def get_stock_count(self, risk_profile: str, portfolio_index: int) -> int:
+        """Get variable stock count within the range for this risk profile"""
+        import random
+        
+        # Use portfolio index as seed for consistent results
+        random.seed(portfolio_index + hash(risk_profile) + 42)  # Different seed
+        
+        # Variable stock count ranges
+        count_ranges = {
+            'very-conservative': (3, 5),    # 3-5 stocks for diversification
+            'conservative': (3, 5),         # 3-5 stocks for stability
+            'moderate': (3, 5),             # 3-5 stocks for balanced approach
+            'aggressive': (3, 4),           # 3-4 stocks for focused growth
+            'very-aggressive': (3, 4)       # 3-4 stocks for concentrated growth
+        }
+        
+        count_range = count_ranges.get(risk_profile, (3, 5))
+        count = random.randint(count_range[0], count_range[1])
+        
+        return count
+    
+    def _generate_single_portfolio_enhanced(self, risk_profile: str, variation_id: int, 
+                                         stock_selector: EnhancedStockSelector, 
+                                         available_stocks: List[Dict] = None,
+                                         return_target: float = None,
+                                         diversification_target: float = None,
+                                         stock_count: int = None) -> Dict:
+        """Generate a single portfolio with enhanced targeting"""
+        
+        for attempt in range(self.MAX_QUALITY_RETRIES):
+            try:
+                # Generate stock allocations with enhanced targeting
+                allocations = stock_selector.select_stocks_for_portfolio(
+                    risk_profile=risk_profile,
+                    portfolio_size=stock_count,
+                    available_stocks=available_stocks,
+                    diversification_target=diversification_target,
+                    return_target=return_target
+                )
+                
+                if not allocations:
+                    logger.warning(f"    Attempt {attempt + 1}: No allocations generated")
+                    continue
+                
+                # Calculate portfolio metrics
+                metrics = self.portfolio_analytics.calculate_real_portfolio_metrics({
+                    'allocations': allocations
+                })
+                
+                # Check if portfolio meets enhanced quality criteria
+                if self._meets_enhanced_quality_criteria(risk_profile, metrics, return_target):
+                    portfolio = self._create_portfolio_dict_enhanced(
+                        risk_profile, variation_id, allocations, metrics
+                    )
+                    return portfolio
+                else:
+                    logger.debug(f"    Attempt {attempt + 1}: Quality criteria not met")
+                    
+            except Exception as e:
+                logger.error(f"    Attempt {attempt + 1} failed: {e}")
+                continue
+        
+        # Fallback portfolio if all attempts fail
+        logger.warning(f"  Using fallback portfolio for {risk_profile} #{variation_id + 1}")
+        return self._generate_fallback_portfolio(risk_profile, variation_id)
+    
+    def _meets_enhanced_quality_criteria(self, risk_profile: str, metrics: Dict, return_target: float) -> bool:
+        """Check if portfolio meets enhanced quality criteria"""
+        try:
+            expected_return = metrics.get('expected_return', 0)
+            risk = metrics.get('risk', 0)
+            diversification = metrics.get('diversification_score', 0)
+            
+            # Get enhanced targets for this risk profile
+            targets = self.TARGET_RANGES.get(risk_profile, {})
+            
+            # Check return range
+            return_range = targets.get('return_range', (0.05, 0.15))
+            if not (return_range[0] <= expected_return <= return_range[1]):
+                logger.debug(f"    Return {expected_return:.3f} outside range {return_range}")
+                return False
+            
+            # Check if return is close to target (within 1% tolerance)
+            if return_target and abs(expected_return - return_target) > 0.01:
+                logger.debug(f"    Return {expected_return:.3f} too far from target {return_target:.3f}")
+                return False
+            
+            # Check risk range
+            risk_range = targets.get('risk_range', (0.10, 0.30))
+            if not (risk_range[0] <= risk <= risk_range[1]):
+                logger.debug(f"    Risk {risk:.3f} outside range {risk_range}")
+                return False
+            
+            # Check diversification range
+            div_range = (targets.get('min_diversification', 70), targets.get('max_diversification', 100))
+            if not (div_range[0] <= diversification <= div_range[1]):
+                logger.debug(f"    Diversification {diversification:.1f} outside range {div_range}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking quality criteria: {e}")
+            return False
+    
+    def _create_portfolio_dict_enhanced(self, risk_profile: str, variation_id: int, 
+                                     allocations: List[Dict], metrics: Dict) -> Dict:
+        """Create portfolio dictionary with enhanced structure"""
+        
+        # Get portfolio name and description
+        portfolio_names = self.PORTFOLIO_NAMES.get(risk_profile, [f"Portfolio {variation_id + 1}"])
+        portfolio_descriptions = self.PORTFOLIO_DESCRIPTIONS.get(risk_profile, ["Balanced portfolio strategy."])
+        
+        name = portfolio_names[variation_id % len(portfolio_names)]
+        description = portfolio_descriptions[variation_id % len(portfolio_descriptions)]
+        
+        # Ensure all metrics are JSON-compliant
+        expected_return = self._sanitize_metric_value(metrics.get('expected_return', 0.10), 0.10)
+        risk = self._sanitize_metric_value(metrics.get('risk', 0.15), 0.15)
+        diversification_score = self._sanitize_metric_value(metrics.get('diversification_score', 75.0), 75.0)
+        
+        portfolio = {
+            'allocations': allocations,
+            'name': name,
+            'description': description,
+            'symbol_set': [a['symbol'] for a in allocations],
+            'expectedReturn': expected_return,
+            'risk': risk,
+            'diversificationScore': diversification_score,
+            'sectorBreakdown': metrics.get('sector_breakdown', {}),
+            'variation_id': variation_id,
+            'risk_profile': risk_profile,
+            'generated_at': datetime.now().isoformat(),
+            'version': 'enhanced_v2'
+        }
+        
+        return portfolio
+    
+    def _sanitize_metric_value(self, value: float, default_value: float) -> float:
+        """Ensure metric values are JSON-compliant"""
+        import math
+        
+        # Check for NaN, inf, or -inf
+        if math.isnan(value) or math.isinf(value):
+            logger.warning(f"Invalid metric value detected: {value}, using default: {default_value}")
+            return default_value
+        
+        # Ensure the value is a finite number
+        if not isinstance(value, (int, float)):
+            logger.warning(f"Non-numeric metric value detected: {type(value)}, using default: {default_value}")
+            return default_value
+            
+        return float(value)
+    
     def _generate_portfolios_sequential(self, risk_profile: str, stock_selector) -> List[Dict]:
-        """Generate portfolios sequentially (original method) with global uniqueness"""
+        """Generate portfolios sequentially (original method) with global uniqueness and quality control"""
         portfolios = []
 
         for variation_id in range(self.PORTFOLIOS_PER_PROFILE):
             try:
-                # Generate deterministic seed
-                variation_seed = self._generate_variation_seed(risk_profile, variation_id)
-
-                # Generate single portfolio using shared stock selector
-                portfolio = self._generate_single_portfolio_deterministic(
+                # Generate portfolio with quality control
+                portfolio = self._regenerate_portfolio_with_quality_control(
                     risk_profile=risk_profile,
-                    variation_seed=variation_seed,
                     variation_id=variation_id,
-                    stock_selector=stock_selector  # Pass the shared selector
+                    stock_selector=stock_selector
                 )
 
                 portfolios.append(portfolio)
@@ -337,24 +649,26 @@ class EnhancedPortfolioGenerator:
                 fallback = self._generate_fallback_portfolio(risk_profile, variation_id)
                 portfolios.append(fallback)
 
+        # Verify overall portfolio set quality and regenerate if needed
+        if not self._verify_portfolio_set_quality(portfolios, risk_profile):
+            logger.warning(f"Portfolio set for {risk_profile} failed variance check, regenerating worst performers...")
+            portfolios = self._regenerate_worst_portfolios(portfolios, risk_profile, stock_selector)
+
         return portfolios
     
     async def generate_portfolio_bucket_async(self, risk_profile: str) -> List[Dict]:
-        """Generate 12 unique portfolios for a specific risk profile (async version for parallel processing)"""
+        """Generate 12 unique portfolios for a specific risk profile with quality control (async version)"""
         logger.info(f"🚀 Generating {self.PORTFOLIOS_PER_PROFILE} portfolios for {risk_profile} risk profile (async)...")
         
         portfolios = []
         
         for variation_id in range(self.PORTFOLIOS_PER_PROFILE):
             try:
-                # Generate deterministic seed
-                variation_seed = self._generate_variation_seed(risk_profile, variation_id)
-                
-                # Generate single portfolio
-                portfolio = self._generate_single_portfolio_deterministic(
+                # Generate portfolio with quality control
+                portfolio = self._regenerate_portfolio_with_quality_control(
                     risk_profile=risk_profile,
-                    variation_seed=variation_seed,
-                    variation_id=variation_id
+                    variation_id=variation_id,
+                    stock_selector=None  # Will create new selector in the method
                 )
                 
                 portfolios.append(portfolio)
@@ -365,6 +679,14 @@ class EnhancedPortfolioGenerator:
                 # Generate fallback portfolio
                 fallback = self._generate_fallback_portfolio(risk_profile, variation_id)
                 portfolios.append(fallback)
+        
+        # Verify overall portfolio set quality and regenerate if needed
+        if not self._verify_portfolio_set_quality(portfolios, risk_profile):
+            logger.warning(f"Portfolio set for {risk_profile} failed variance check, regenerating worst performers...")
+            # Create a stock selector for regeneration
+            from utils.portfolio_stock_selector import PortfolioStockSelector
+            stock_selector = PortfolioStockSelector(self.data_service)
+            portfolios = self._regenerate_worst_portfolios(portfolios, risk_profile, stock_selector)
         
         logger.info(f"✅ Successfully generated {len(portfolios)} portfolios for {risk_profile} (async)")
         return portfolios
@@ -397,7 +719,7 @@ class EnhancedPortfolioGenerator:
 
         # Use shared stock selector if provided, otherwise create new one
         if stock_selector is None:
-            stock_selector = PortfolioStockSelector(self.data_service)
+            stock_selector = EnhancedStockSelector(self.data_service)
 
         # Try to generate unique portfolio with enhanced retry logic
         for attempt in range(self.MAX_RETRY_ATTEMPTS * 2):  # Double retry attempts
@@ -407,31 +729,47 @@ class EnhancedPortfolioGenerator:
             enhanced_seed = variation_seed + (attempt * 1000) + (variation_id * 100)
             random.seed(enhanced_seed)
 
-            # Use pre-fetched data if available, otherwise fall back to original method
+            # Get targeting parameters from enhanced config
+            from .enhanced_portfolio_config import EnhancedPortfolioConfig
+            config = EnhancedPortfolioConfig()
+            
+            # Get specific targets for this portfolio using adaptive targeting
+            return_target = config.get_adaptive_return_target(risk_profile, available_stocks, variation_id)
+            diversification_target = config.get_diversification_score(risk_profile, variation_id)
+            stock_count = config.get_stock_count(risk_profile, variation_id)
+            
+            # Use enhanced stock selection with targeting
             if available_stocks is not None:
-                allocations = stock_selector.select_stocks_for_risk_profile_deterministic_with_data(
-                    risk_profile, enhanced_seed, variation_id, available_stocks, fast_mode=True
+                allocations = stock_selector.select_stocks_for_portfolio(
+                    risk_profile=risk_profile,
+                    portfolio_size=stock_count,
+                    available_stocks=available_stocks,
+                    diversification_target=diversification_target,
+                    return_target=return_target
                 )
             else:
-                allocations = stock_selector.select_stocks_for_risk_profile_deterministic(
-                    risk_profile, enhanced_seed, variation_id, fast_mode=True
+                allocations = stock_selector.select_stocks_for_portfolio(
+                    risk_profile=risk_profile,
+                    portfolio_size=stock_count,
+                    diversification_target=diversification_target,
+                    return_target=return_target
                 )
             sel_time = time.time() - phase_start
 
             logger.debug(f"⏱️ select_t={sel_time:.3f}s rp={risk_profile} var={variation_id} att={attempt}")
-                break
+            break
 
         # Calculate portfolio metrics with caching
         metrics = self._get_cached_metrics(allocations, risk_profile)
         if not metrics:
-        try:
-            metrics = self.portfolio_analytics.calculate_real_portfolio_metrics({
-                'allocations': allocations
-            })
+            try:
+                metrics = self.portfolio_analytics.calculate_real_portfolio_metrics({
+                    'allocations': allocations
+                })
                 self._cache_metrics(allocations, risk_profile, metrics)
-        except Exception as e:
-            logger.warning(f"Failed to calculate metrics for {risk_profile}-{variation_id}: {e}")
-            metrics = self._get_fallback_metrics(risk_profile)
+            except Exception as e:
+                logger.warning(f"Failed to calculate metrics for {risk_profile}-{variation_id}: {e}")
+                metrics = self._get_fallback_metrics(risk_profile)
 
         # Calculate data dependency hash
         data_dependency_hash = self._calculate_data_dependency_hash()
@@ -551,7 +889,7 @@ class EnhancedPortfolioGenerator:
 
     def _is_allocation_unique(self, allocations: List[Dict], risk_profile: str, variation_id: int) -> bool:
         """Uniqueness disabled: always accept."""
-            return True
+        return True
 
     def _mark_allocation_as_used_scoped(self, allocations: List[Dict], risk_profile: str, variation_id: int):
         """Uniqueness disabled: no-op."""
@@ -610,6 +948,15 @@ class EnhancedPortfolioGenerator:
             by_sector = {}
             for s in pool:
                 sec = s.get('sector', 'Unknown')
+                
+                # ENHANCED: Apply sector inference if Unknown
+                if sec == 'Unknown':
+                    from .portfolio_stock_selector import PortfolioStockSelector
+                    selector = PortfolioStockSelector()
+                    sec = selector._infer_sector_from_ticker(s['symbol'])
+                    s['sector'] = sec  # Update the stock data
+                    logger.debug(f"✅ {s['symbol']}: Applied sector inference: {sec}")
+                
                 by_sector.setdefault(sec, []).append(s)
             # Iterate portfolios, try to swap the most frequent symbols first
             sorted_symbols = [sym for sym, _ in freq.most_common()]
@@ -731,3 +1078,265 @@ class EnhancedPortfolioGenerator:
             'generated_at': datetime.now().isoformat(),
             'data_dependency_hash': 'fallback_hash'
         }
+    
+    def _verify_portfolio_quality(self, portfolio: Dict, risk_profile: str, existing_portfolios: List[Dict] = None) -> bool:
+        """Verify if a single portfolio meets quality criteria with graduated quality control"""
+        try:
+            expected_return = portfolio.get('expectedReturn', 0)
+            risk = portfolio.get('risk', 0)
+            diversification = portfolio.get('diversificationScore', 0)
+            
+            targets = self.TARGET_RANGES.get(risk_profile, {})
+            if not targets:
+                logger.warning(f"No target ranges defined for {risk_profile}")
+                return True  # Skip verification if no targets defined
+            
+            # Graduated quality control - check if portfolio is within acceptable ranges
+            quality_score = self._calculate_quality_score(portfolio, risk_profile, targets)
+            
+            # Accept portfolio if quality score is above threshold - OPTIMIZED for adaptive targeting
+            if quality_score >= 0.4:  # 40% quality threshold (reduced from 60% for adaptive targeting)
+                logger.debug(f"Portfolio quality score: {quality_score:.2f} - ACCEPTED")
+                return True
+            else:
+                logger.debug(f"Portfolio quality score: {quality_score:.2f} - REJECTED")
+                return False
+            
+        except Exception as e:
+            logger.error(f"Error verifying portfolio quality: {e}")
+            return True  # Allow portfolio if verification fails
+    
+    def _calculate_quality_score(self, portfolio: Dict, risk_profile: str, targets: Dict) -> float:
+        """Calculate quality score using graduated quality control (0.0 to 1.0)"""
+        try:
+            expected_return = portfolio.get('expectedReturn', 0)
+            risk = portfolio.get('risk', 0)
+            diversification = portfolio.get('diversificationScore', 0)
+            
+            # Initialize score components
+            return_score = 0.0
+            risk_score = 0.0
+            div_score = 0.0
+            
+            # Calculate return score (0.0 to 1.0) - OPTIMIZED with 22.75% threshold
+            return_range = targets.get('return_range', (0, 1))
+            return_min, return_max = return_range
+            
+            # Use 22.75% threshold based on dataset distribution analysis (1.5-sigma)
+            ADAPTIVE_THRESHOLD = 0.2275  # 22.75% threshold
+            
+            # Calculate deviation from target range
+            if expected_return < return_min:
+                deviation = return_min - expected_return
+                target_value = return_min
+            elif expected_return > return_max:
+                deviation = expected_return - return_max
+                target_value = return_max
+            else:
+                # Within range - perfect score
+                return_score = 1.0
+                deviation = 0
+            
+            if deviation > 0:
+                # Calculate penalty based on adaptive threshold
+                penalty_ratio = deviation / (target_value * ADAPTIVE_THRESHOLD)
+                return_score = max(0.0, 1.0 - penalty_ratio * 0.8)  # 80% penalty rate for adaptive threshold
+            else:
+                return_score = 1.0
+            
+            # Calculate risk score (0.0 to 1.0)
+            risk_range = targets.get('risk_range', (0, 1))
+            risk_min, risk_max = risk_range
+            
+            if risk_min <= risk <= risk_max:
+                risk_score = 1.0
+            else:
+                if risk < risk_min:
+                    penalty = (risk_min - risk) / max(0.1, risk_min)
+                else:
+                    penalty = (risk - risk_max) / max(0.1, risk_max)
+                risk_score = max(0.0, 1.0 - penalty * 0.3)  # 30% penalty rate
+            
+            # NO DIVERSIFICATION SCORING - let diversification vary naturally
+            div_score = 1.0  # Always give full score for diversification
+            
+            # Weighted average (return and risk only, no diversification limits)
+            total_score = (return_score * 0.7 + risk_score * 0.3)
+            
+            return min(1.0, max(0.0, total_score))
+            
+        except Exception as e:
+            logger.error(f"Error calculating quality score: {e}")
+            return 0.5  # Default to 50% if calculation fails
+    
+    def _is_portfolio_unique(self, portfolio: Dict, existing_portfolios: List[Dict]) -> bool:
+        """Check if a portfolio is unique compared to existing portfolios"""
+        try:
+            current_symbols = set(a['symbol'] for a in portfolio.get('allocations', []))
+            current_return = round(portfolio.get('expectedReturn', 0), 3)
+            current_risk = round(portfolio.get('risk', 0), 3)
+            current_div = round(portfolio.get('diversificationScore', 0), 1)
+            
+            for existing in existing_portfolios:
+                existing_symbols = set(a['symbol'] for a in existing.get('allocations', []))
+                existing_return = round(existing.get('expectedReturn', 0), 3)
+                existing_risk = round(existing.get('risk', 0), 3)
+                existing_div = round(existing.get('diversificationScore', 0), 1)
+                
+                # Check if identical stock selection
+                if current_symbols == existing_symbols:
+                    logger.debug(f"Portfolio has identical stock selection: {current_symbols}")
+                    return False
+                
+                # Check if identical metrics (very close values)
+                if (abs(current_return - existing_return) < 0.001 and 
+                    abs(current_risk - existing_risk) < 0.001 and 
+                    abs(current_div - existing_div) < 0.1):
+                    logger.debug(f"Portfolio has identical metrics: return={current_return}, risk={current_risk}, div={current_div}")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking portfolio uniqueness: {e}")
+            return True  # Allow portfolio if uniqueness check fails
+    
+    def _verify_portfolio_set_quality(self, portfolios: List[Dict], risk_profile: str) -> bool:
+        """Verify if a set of portfolios meets variance criteria"""
+        try:
+            if len(portfolios) < 2:
+                return True  # Single portfolio or empty set is always valid
+            
+            expected_returns = [p.get('expectedReturn', 0) for p in portfolios]
+            risks = [p.get('risk', 0) for p in portfolios]
+            
+            # Calculate variance (standard deviation)
+            import statistics
+            return_variance = statistics.stdev(expected_returns) if len(expected_returns) > 1 else 0
+            risk_variance = statistics.stdev(risks) if len(risks) > 1 else 0
+            
+            targets = self.TARGET_RANGES.get(risk_profile, {})
+            max_return_variance = targets.get('max_return_variance', 0.02)
+            max_risk_variance = targets.get('max_risk_variance', 0.03)
+            
+            # Check variance criteria
+            return_variance_ok = return_variance <= max_return_variance
+            risk_variance_ok = risk_variance <= max_risk_variance
+            
+            if not return_variance_ok:
+                logger.debug(f"Return variance {return_variance:.3f} exceeds limit {max_return_variance:.3f} for {risk_profile}")
+            if not risk_variance_ok:
+                logger.debug(f"Risk variance {risk_variance:.3f} exceeds limit {max_risk_variance:.3f} for {risk_profile}")
+            
+            logger.info(f"Quality check for {risk_profile}: return_variance={return_variance:.3f} (limit={max_return_variance:.3f}), risk_variance={risk_variance:.3f} (limit={max_risk_variance:.3f})")
+            
+            return return_variance_ok and risk_variance_ok
+            
+        except Exception as e:
+            logger.error(f"Error verifying portfolio set quality: {e}")
+            return True  # Allow portfolios if verification fails
+    
+    def _regenerate_portfolio_with_quality_control(self, risk_profile: str, variation_id: int, stock_selector, available_stocks: List[Dict] = None) -> Dict:
+        """Generate a single portfolio with quality control and retry logic"""
+        for quality_attempt in range(self.MAX_QUALITY_RETRIES):
+            try:
+                # Generate deterministic seed with quality attempt variation
+                variation_seed = self._generate_variation_seed(risk_profile, variation_id)
+                enhanced_seed = variation_seed + (quality_attempt * 10000) + (variation_id * 1000)
+                
+                # Generate portfolio
+                portfolio = self._generate_single_portfolio_deterministic(
+                    risk_profile=risk_profile,
+                    variation_seed=enhanced_seed,
+                    variation_id=variation_id,
+                    stock_selector=stock_selector,
+                    available_stocks=available_stocks
+                )
+                
+                # Verify quality (no existing portfolios for single portfolio generation)
+                if self._verify_portfolio_quality(portfolio, risk_profile):
+                    logger.debug(f"✅ Portfolio {variation_id + 1} passed quality check on attempt {quality_attempt + 1}")
+                    return portfolio
+                else:
+                    logger.debug(f"🔄 Portfolio {variation_id + 1} failed quality check, retrying (attempt {quality_attempt + 1}/{self.MAX_QUALITY_RETRIES})")
+                    
+            except Exception as e:
+                logger.warning(f"Error generating portfolio {variation_id + 1} on quality attempt {quality_attempt + 1}: {e}")
+        
+        # If all quality attempts fail, return fallback
+        logger.warning(f"All quality attempts failed for portfolio {variation_id + 1}, using fallback")
+        return self._generate_fallback_portfolio(risk_profile, variation_id)
+    
+    def _regenerate_worst_portfolios(self, portfolios: List[Dict], risk_profile: str, stock_selector) -> List[Dict]:
+        """Regenerate portfolios that are outliers to improve variance"""
+        try:
+            if len(portfolios) < 3:
+                return portfolios  # Not enough portfolios to identify outliers
+            
+            # Calculate metrics for all portfolios
+            expected_returns = [p.get('expectedReturn', 0) for p in portfolios]
+            risks = [p.get('risk', 0) for p in portfolios]
+            
+            # Calculate mean and standard deviation
+            import statistics
+            mean_return = statistics.mean(expected_returns)
+            mean_risk = statistics.mean(risks)
+            std_return = statistics.stdev(expected_returns) if len(expected_returns) > 1 else 0
+            std_risk = statistics.stdev(risks) if len(risks) > 1 else 0
+            
+            # Identify outliers (portfolios more than 1.5 standard deviations from mean)
+            outliers = []
+            for i, (ret, risk) in enumerate(zip(expected_returns, risks)):
+                return_outlier = abs(ret - mean_return) > 1.5 * std_return if std_return > 0 else False
+                risk_outlier = abs(risk - mean_risk) > 1.5 * std_risk if std_risk > 0 else False
+                
+                if return_outlier or risk_outlier:
+                    outliers.append((i, portfolios[i]))
+            
+            logger.info(f"Found {len(outliers)} outlier portfolios in {risk_profile}, regenerating...")
+            
+            # Regenerate outliers
+            for original_index, original_portfolio in outliers:
+                variation_id = original_portfolio.get('variation_id', original_index)
+                
+                # Try to regenerate with different seeds
+                for attempt in range(3):  # 3 attempts per outlier
+                    try:
+                        new_portfolio = self._regenerate_portfolio_with_quality_control(
+                            risk_profile=risk_profile,
+                            variation_id=variation_id,
+                            stock_selector=stock_selector
+                        )
+                        
+                        # Check if new portfolio is better (closer to mean)
+                        new_ret = new_portfolio.get('expectedReturn', 0)
+                        new_risk = new_portfolio.get('risk', 0)
+                        
+                        new_return_distance = abs(new_ret - mean_return)
+                        new_risk_distance = abs(new_risk - mean_risk)
+                        
+                        old_return_distance = abs(expected_returns[original_index] - mean_return)
+                        old_risk_distance = abs(risks[original_index] - mean_risk)
+                        
+                        # Accept if significantly closer to mean
+                        if (new_return_distance < old_return_distance * 0.8 or 
+                            new_risk_distance < old_risk_distance * 0.8):
+                            portfolios[original_index] = new_portfolio
+                            logger.info(f"✅ Replaced outlier portfolio {original_index + 1} with better variant")
+                            break
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to regenerate outlier portfolio {original_index + 1}: {e}")
+                        continue
+            
+            # Final variance check
+            if self._verify_portfolio_set_quality(portfolios, risk_profile):
+                logger.info(f"✅ Portfolio set for {risk_profile} now meets variance criteria after regeneration")
+            else:
+                logger.warning(f"⚠️ Portfolio set for {risk_profile} still has high variance after regeneration")
+            
+            return portfolios
+            
+        except Exception as e:
+            logger.error(f"Error regenerating worst portfolios: {e}")
+            return portfolios  # Return original portfolios if regeneration fails

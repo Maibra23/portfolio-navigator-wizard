@@ -1,5 +1,6 @@
 import pandas as pd
 import yfinance as yf
+from yahooquery import Ticker as YQTicker
 import logging
 import time
 import threading
@@ -25,12 +26,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration - OPTIMIZED for rate limit bypass
-BATCH_SIZE = 15  # Reduced batch size for more frequent delays
+BATCH_SIZE = 20  # Batch size (user requested: 20)
 MAX_WORKERS = 1  # Single worker to avoid concurrent rate limit issues
 RATE_LIMIT_DELAY = 4  # Increased delay between batches for better rate limit compliance
+REQUEST_DELAY = (1.3, 4.0)  # Random delay between 1.3-4 seconds (user requested)
 
 # Alpha Vantage configuration
-ALPHA_VANTAGE_API_KEY = "6S8WYUVEEFPPN9UQ"
+ALPHA_VANTAGE_API_KEY = "YE41R5X7TRKQECRR"
 ALPHA_VANTAGE_RATE_LIMIT = 5  # requests per minute for free tier
 ALPHA_VANTAGE_DELAY = 60 / ALPHA_VANTAGE_RATE_LIMIT  # seconds between requests
 
@@ -43,9 +45,10 @@ END_DATE = datetime.now().replace(day=1)  # Beginning of current month
 START_DATE = END_DATE - timedelta(days=15 * 365)  # 15 years back minimum
 
 # Yahoo Finance rate limiting - OPTIMIZED for rate limit bypass
-YAHOO_REQUEST_DELAY = (1.2, 2.5)  # Random delay between 1.2-2.5 seconds
-MAX_RETRIES = 3  # Reduced retries to avoid triggering blocks
-RETRY_DELAY = 5  # Longer base retry delay
+YAHOO_REQUEST_DELAY = (1.3, 4.0)  # Random delay between 1.3-4 seconds (user requested)
+MAX_RETRIES = 1  # Single retry only (user requested)
+RETRY_DELAY = 5  # Base retry delay (exponential backoff: 5s, then 10s)
+USE_ALPHA_VANTAGE_FALLBACK = False  # Disabled (user requested)
 
 # Daily quota management
 DAILY_REQUEST_LIMIT = 2000
@@ -104,6 +107,43 @@ class EnhancedDataFetcher:
         
         # Auto-warm cache if Redis is available and cache is empty
         self._auto_warm_cache()
+
+    def _validate_and_cache_price_data(self, ticker: str, price_dict: Dict[str, float]) -> bool:
+        """
+        Lightweight validation and safe caching of price data.
+        Only validates and caches data during fetching process.
+        
+        Args:
+            ticker: Ticker symbol
+            price_dict: Price data dictionary
+            
+        Returns:
+            True if caching successful, False otherwise
+        """
+        try:
+            # Lightweight validation - only check essential requirements
+            if not isinstance(price_dict, dict) or len(price_dict) < 12:
+                logger.warning(f"⚠️ {ticker}: Insufficient data for caching")
+                return False
+            
+            # Check for non-numeric values (quick check)
+            for price in list(price_dict.values())[:5]:  # Sample first 5 values
+                if not isinstance(price, (int, float)) or price <= 0:
+                    logger.warning(f"⚠️ {ticker}: Invalid price data detected")
+                    return False
+            
+            # Cache with proper format (single JSON encoding + gzip)
+            key = f'ticker_data:prices:{ticker}'
+            prices_json = json.dumps(price_dict)
+            prices_compressed = gzip.compress(prices_json.encode())
+            self.r.setex(key, 28*24*3600, prices_compressed)
+            
+            logger.debug(f"✅ {ticker}: Data validated and cached safely ({len(price_dict)} points)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ {ticker}: Failed to cache data safely - {e}")
+            return False
 
     def _init_redis(self):
         """Initialize Redis connection with better error handling"""
@@ -314,25 +354,26 @@ class EnhancedDataFetcher:
         return True
 
     def _save_to_cache(self, ticker: str, data: Dict[str, Any]) -> bool:
-        """Save ticker data to cache with compression and auto-calculate metrics"""
+        """Save ticker data to cache with lightweight validation and compression"""
         if not self.r:
             return False
         try:
-            # Save prices
+            # Save prices with lightweight validation
             if 'prices' in data:
-                key = self._get_cache_key(ticker, 'prices')
-                # Convert timezone-aware dates to timezone-naive for storage
                 prices_series = data['prices']
                 if hasattr(prices_series.index, 'tz_localize'):
                     prices_series.index = prices_series.index.tz_localize(None)
                 prices_dict = {str(date): float(price) for date, price in prices_series.items()}
-                compressed = gzip.compress(json.dumps(prices_dict).encode())
-                self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), compressed)
                 
-                # Auto-calculate and save metrics
-                self._calculate_and_save_metrics(ticker, prices_series)
+                # Use lightweight validation for price data
+                if self._validate_and_cache_price_data(ticker, prices_dict):
+                    # Auto-calculate and save metrics
+                    self._calculate_and_save_metrics(ticker, prices_series)
+                else:
+                    logger.warning(f"⚠️ {ticker}: Price data validation failed")
+                    return False
             
-            # Save sector info
+            # Save sector info (no validation needed for sector data)
             if 'sector' in data:
                 key = self._get_cache_key(ticker, 'sector')
                 sector_data = json.dumps(data['sector']).encode()
@@ -465,6 +506,111 @@ class EnhancedDataFetcher:
             logger.error(f"❌ Failed to get all cached metrics: {e}")
             return {}
 
+    def _fetch_ticker_yahooquery(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch ticker data using yahooquery library
+        Uses timestamp_utils for robust date handling across all exchanges
+        """
+        try:
+            # Create yahooquery Ticker object
+            yq_ticker = YQTicker(ticker)
+            
+            # Fetch historical data (monthly for 15 years)
+            # Calculate date range
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=15 * 365)
+            
+            hist_data = yq_ticker.history(
+                start=start_date.strftime('%Y-%m-%d'),
+                end=end_date.strftime('%Y-%m-%d'),
+                interval='1mo',
+                adj_timezone=False
+            )
+            
+            # Check if data is valid
+            if hist_data is None or (isinstance(hist_data, str) and 'error' in hist_data.lower()):
+                logger.warning(f"⚠️ {ticker}: No data returned from yahooquery")
+                return None
+            
+            if isinstance(hist_data, pd.DataFrame) and hist_data.empty:
+                logger.warning(f"⚠️ {ticker}: Empty DataFrame returned")
+                return None
+            
+            # yahooquery returns multi-index for multiple tickers, single index for one ticker
+            if isinstance(hist_data.index, pd.MultiIndex):
+                # Extract data for this specific ticker
+                if ticker in hist_data.index.get_level_values(0):
+                    hist_data = hist_data.xs(ticker, level=0)
+                else:
+                    logger.warning(f"⚠️ {ticker}: Ticker not found in multi-index result")
+                    return None
+            
+            # Extract close prices
+            if 'close' in hist_data.columns:
+                close_data = hist_data['close']
+            elif 'adjclose' in hist_data.columns:
+                close_data = hist_data['adjclose']
+            else:
+                logger.warning(f"⚠️ {ticker}: No close price column found")
+                return None
+            
+            # Remove any NaN values and ensure we have enough data
+            close_data = close_data.dropna()
+            
+            if len(close_data) < 12:
+                logger.warning(f"⚠️ {ticker}: Insufficient data points ({len(close_data)})")
+                return None
+            
+            # Fetch company profile/summary data
+            try:
+                # Get summary detail which includes sector/industry
+                summary = yq_ticker.summary_detail
+                profile = yq_ticker.asset_profile
+                quote_type = yq_ticker.quote_type
+                
+                sector_info = {
+                    'sector': 'Unknown',
+                    'industry': 'Unknown',
+                    'country': 'Unknown',
+                    'exchange': 'Unknown',
+                    'companyName': ticker
+                }
+                
+                # Extract from asset_profile (best source for sector/industry)
+                if isinstance(profile, dict) and ticker in profile:
+                    prof_data = profile[ticker]
+                    if isinstance(prof_data, dict) and 'sector' not in str(prof_data).lower() or True:
+                        sector_info['sector'] = prof_data.get('sector', 'Unknown')
+                        sector_info['industry'] = prof_data.get('industry', 'Unknown')
+                        sector_info['country'] = prof_data.get('country', 'Unknown')
+                        sector_info['companyName'] = prof_data.get('longName', prof_data.get('shortName', ticker))
+                
+                # Fallback to quote_type for exchange info
+                if isinstance(quote_type, dict) and ticker in quote_type:
+                    qt_data = quote_type[ticker]
+                    if isinstance(qt_data, dict):
+                        if sector_info['companyName'] == ticker:
+                            sector_info['companyName'] = qt_data.get('longName', qt_data.get('shortName', ticker))
+                        if sector_info['exchange'] == 'Unknown':
+                            sector_info['exchange'] = qt_data.get('exchange', 'Unknown')
+                
+            except Exception as e:
+                logger.debug(f"Could not fetch company info for {ticker}: {e}")
+                # Use basic info from historical data metadata if available
+                sector_info = {
+                    'sector': 'Unknown',
+                    'industry': 'Unknown',
+                    'country': 'Unknown',
+                    'exchange': 'Unknown',
+                    'companyName': ticker
+                }
+            
+            return {'prices': close_data, 'sector': sector_info}
+            
+        except Exception as e:
+            logger.warning(f"⚠️ yahooquery fetch failed for {ticker}: {e}")
+            return None
+
     def _fetch_single_ticker_with_retry(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Fetch data for a single ticker with retry logic and rate limiting"""
         # Validate ticker is in master list
@@ -490,64 +636,29 @@ class EnhancedDataFetcher:
                     self.stats['cached'] += 1
                     return {'prices': cached_prices, 'sector': cached_sector}
 
-                # Adaptive rate limiting based on success rate
-                current_delay = self._get_adaptive_delay()
-                time.sleep(current_delay)
+                # Random delay between requests (user requested: 1.3-4 seconds)
+                delay = random.uniform(REQUEST_DELAY[0], REQUEST_DELAY[1])
+                time.sleep(delay)
                 
                 # Increment daily quota
                 self._increment_daily_quota()
                 
-                # Fetch from yfinance
-                ticker_obj = yf.Ticker(ticker)
+                # MODIFIED: Use yahooquery library (user requested)
+                direct_data = self._fetch_ticker_yahooquery(ticker)
                 
-                # Get historical data
-                hist_data = ticker_obj.history(
-                    start=START_DATE, 
-                    end=END_DATE + timedelta(days=1),  # Include end date
-                    interval='1mo', 
-                    auto_adjust=True,
-                    timeout=10
-                )
-                
-                if hist_data.empty:
-                    logger.warning(f"⚠️  No price data found for {ticker}")
+                if not direct_data:
+                    logger.warning(f"⚠️  No data found for {ticker}")
                     self.stats['errors']['no_data'] += 1
-                    return None
+                    continue  # Retry
 
-                # Extract adjusted close prices
-                close_data = hist_data['Close']
+                # Extract data
+                close_data = direct_data['prices']
+                sector_info = direct_data['sector']
                 
                 # Validate price data
                 if not self._validate_price_data(close_data, ticker):
                     self.stats['errors']['invalid_data'] += 1
-                    return None
-                
-                # Get sector information with company name
-                try:
-                    info = ticker_obj.info
-                    
-                    # Extract company information
-                    sector_info = {
-                        'sector': info.get('sector', 'Unknown'),
-                        'industry': info.get('industry', 'Unknown'),
-                        'country': info.get('country', 'US'),
-                        'exchange': info.get('exchange', 'Unknown'),
-                        'companyName': info.get('longName', ticker)  # Real company name
-                    }
-                    
-                    # REMOVED: Financial metrics fetching for now
-                    # We'll add this back later when needed
-                    
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to fetch company info for {ticker}: {e}")
-                    # Fallback for ETFs or failed info fetch
-                    sector_info = {
-                        'sector': 'ETF' if ticker in self._fetch_top_etfs() else 'Unknown',
-                        'industry': 'Exchange Traded Fund' if ticker in self._fetch_top_etfs() else 'Unknown',
-                        'country': 'US',
-                        'exchange': 'NASDAQ' if ticker in self._fetch_top_etfs() else 'Unknown',
-                        'companyName': ticker  # Use ticker as fallback name
-                    }
+                    continue  # Retry
                 
                 # Prepare data for caching
                 data_to_cache = {
@@ -576,24 +687,14 @@ class EnhancedDataFetcher:
                     logger.error(f"❌ All attempts failed for {ticker}")
                     self.stats['errors'][str(e)] += 1
                     
-                    # Try Alpha Vantage as fallback on final attempt
-                    logger.info(f"🔄 Attempting Alpha Vantage fallback for {ticker}...")
-                    try:
-                        fallback_data = self._fetch_with_alpha_vantage_fallback(ticker)
-                        if fallback_data:
-                            logger.info(f"✅ {ticker}: Alpha Vantage fallback successful")
-                            self.stats['successful'] += 1
-                            return fallback_data
-                        else:
-                            logger.warning(f"⚠️ {ticker}: Alpha Vantage fallback also failed")
-                    except Exception as fallback_error:
-                        logger.error(f"❌ Alpha Vantage fallback error for {ticker}: {fallback_error}")
-                    
+                    # Alpha Vantage fallback DISABLED (user requested)
+                    # Just continue to next ticker
                     return None
 
     def _process_batch(self, batch: List[str]) -> Dict[str, Dict[str, Any]]:
         """Process a batch of tickers - return statement was incorrectly indented"""
         results = {}
+        failed_tickers = []  # Track failures for reporting
         
         logger.info(f"🔄 Processing batch of {len(batch)} tickers...")
         
@@ -605,18 +706,24 @@ class EnhancedDataFetcher:
                 if data is not None:
                     results[ticker] = data
                     self.stats['successful'] += 1
-                    logger.debug(f"  ✅ {ticker} successful")
+                    logger.info(f"  ✅ {ticker} successful")
                 else:
                     self.stats['failed'] += 1
-                    logger.debug(f"  ❌ {ticker} failed")
+                    failed_tickers.append(ticker)
+                    logger.warning(f"  ❌ {ticker} failed")
                 
                 self.stats['total_processed'] += 1
                 
             except Exception as e:
                 logger.error(f"❌ Batch processing error for {ticker}: {e}")
                 self.stats['failed'] += 1
+                failed_tickers.append(ticker)
                 self.stats['total_processed'] += 1
 
+        # Log failed tickers for this batch
+        if failed_tickers:
+            logger.warning(f"Batch failed tickers: {failed_tickers}")
+        
         # Return statement was incorrectly indented inside the for loop
         return results
 
@@ -624,8 +731,10 @@ class EnhancedDataFetcher:
         """Fetch data for all tickers using batch processing with proper rate limiting"""
         logger.info(f"🚀 Starting batch processing of {len(self.all_tickers)} tickers")
         logger.info(f"📊 Configuration: batch_size={batch_size}, workers={MAX_WORKERS}, delay={RATE_LIMIT_DELAY}s")
+        logger.info(f"⚙️  Retry policy: {MAX_RETRIES} attempt(s), Alpha Vantage fallback: {USE_ALPHA_VANTAGE_FALLBACK}")
         
         all_results = {}
+        all_failed_tickers = []  # Track all failed tickers
         total_batches = (len(self.all_tickers) + batch_size - 1) // batch_size
         
         # Process in batches with sequential execution to respect rate limits
@@ -638,6 +747,10 @@ class EnhancedDataFetcher:
             # Process batch (sequential to respect rate limits better)
             batch_results = self._process_batch(batch)
             all_results.update(batch_results)
+            
+            # Track failed tickers
+            batch_failed = [t for t in batch if t not in batch_results]
+            all_failed_tickers.extend(batch_failed)
             
             # Show progress
             success_rate = (self.stats['successful'] / max(self.stats['total_processed'], 1)) * 100
@@ -653,6 +766,19 @@ class EnhancedDataFetcher:
         logger.info(f"🎉 Batch processing completed!")
         logger.info(f"📊 Final stats: {self.stats['successful']} successful, {self.stats['failed']} failed, {self.stats['cached']} cached")
         logger.info(f"📈 Success rate: {final_success_rate:.1f}%")
+        
+        # Save failed tickers list
+        if all_failed_tickers:
+            import json
+            failed_list_path = '../FAILED_TICKERS_LIST.json'
+            with open(failed_list_path, 'w') as f:
+                json.dump({
+                    'failed_count': len(all_failed_tickers),
+                    'failed_tickers': sorted(all_failed_tickers),
+                    'timestamp': datetime.now().isoformat(),
+                    'can_retry_later': True
+                }, f, indent=2)
+            logger.info(f"📝 Failed tickers list saved to: {failed_list_path}")
         
         return all_results
 
@@ -674,7 +800,7 @@ class EnhancedDataFetcher:
 
         # Only fetch from external API if not in cache AND not in FAST_STARTUP mode
         if os.environ.get('FAST_STARTUP', 'true').lower() == 'true':
-            logger.info(f"⏭️ FAST_STARTUP enabled - skipping external fetch for {ticker}")
+            logger.debug(f"⏭️ FAST_STARTUP enabled - skipping external fetch for {ticker}")
             return None
         
         logger.info(f"📥 {ticker} not in cache, fetching from Yahoo Finance...")

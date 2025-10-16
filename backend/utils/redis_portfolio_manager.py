@@ -24,7 +24,7 @@ class RedisPortfolioManager:
         self.redis_client = redis_client
         self.PORTFOLIO_TTL_DAYS = 7  # Shorter than data TTL (28 days)
         self.PORTFOLIO_TTL_SECONDS = self.PORTFOLIO_TTL_DAYS * 24 * 3600
-        self.PORTFOLIOS_PER_PROFILE = 12
+        self.PORTFOLIOS_PER_PROFILE = 12  # Backend expects 12 portfolios per risk profile
         
         if not self.redis_client:
             logger.warning("⚠️ Redis client not available, portfolio caching disabled")
@@ -82,12 +82,13 @@ class RedisPortfolioManager:
             return False
     
     def get_portfolio_recommendations(self, risk_profile: str, count: int = 3) -> List[Dict]:
-        """Get portfolio recommendations from Redis"""
+        """Get portfolio recommendations from Redis with Top Pick as highest return"""
         if not self.redis_client:
             logger.warning("⚠️ Redis not available, cannot retrieve portfolios")
             return []
         
         try:
+            # Use correct key format for recommendation portfolios
             bucket_key = f"portfolio_bucket:{risk_profile}"
             available_portfolios = []
             
@@ -110,8 +111,26 @@ class RedisPortfolioManager:
                 logger.warning(f"⚠️ Only {len(available_portfolios)} portfolios available for {risk_profile}, need {count}")
                 return available_portfolios
             
-            # Select random portfolios deterministically
-            selected_portfolios = self._select_random_portfolios(available_portfolios, count)
+            # Add rotation logic: use time-based seed for consistent rotation
+            import time
+            rotation_seed = int(time.time() // 300) % len(available_portfolios)  # Rotate every 5 minutes
+            
+            # Sort portfolios by expected return (highest first) for Top Pick selection
+            available_portfolios.sort(key=lambda p: p.get('expectedReturn', 0), reverse=True)
+            
+            # Rotate the portfolio selection
+            rotated_portfolios = available_portfolios[rotation_seed:] + available_portfolios[:rotation_seed]
+            
+            # Return top portfolios with Top Pick being the highest return
+            selected_portfolios = rotated_portfolios[:count]
+            
+            # Mark the first portfolio (highest return) as Top Pick
+            if selected_portfolios:
+                selected_portfolios[0]['isTopPick'] = True
+                # Clean up any existing "Top Pick -" prefix from the name
+                portfolio_name = selected_portfolios[0].get('name', 'Portfolio')
+                if portfolio_name.startswith('Top Pick - '):
+                    selected_portfolios[0]['name'] = portfolio_name.replace('Top Pick - ', '')
             
             logger.info(f"✅ Retrieved {len(selected_portfolios)} portfolio recommendations for {risk_profile}")
             return selected_portfolios
@@ -169,6 +188,7 @@ class RedisPortfolioManager:
         
         try:
             count = 0
+            # Check for actual portfolio recommendation keys (not metrics keys)
             bucket_key = f"portfolio_bucket:{risk_profile}"
             
             for i in range(self.PORTFOLIOS_PER_PROFILE):

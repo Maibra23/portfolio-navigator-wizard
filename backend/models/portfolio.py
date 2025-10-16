@@ -19,6 +19,7 @@ class PortfolioResponse(BaseModel):
     expectedReturn: float
     risk: float
     diversificationScore: float
+    isTopPick: Optional[bool] = False  # Add Top Pick flag
 
 # New models for enhanced portfolio system
 class PortfolioValidation(BaseModel):

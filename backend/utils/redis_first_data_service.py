@@ -117,7 +117,33 @@ class RedisFirstDataService:
                 raw = self.redis_client.get(key)
                 
                 if data_type == 'prices':
-                    data_dict = json.loads(gzip.decompress(raw).decode())
+                    # ENHANCED: Robust gzip decompression with fallback handling
+                    try:
+                        # First try to decompress as gzipped data
+                        decompressed_data = gzip.decompress(raw).decode()
+                        data_dict = json.loads(decompressed_data)
+                        logger.debug(f"✅ {ticker}: Successfully decompressed gzipped price data")
+                    except (gzip.BadGzipFile, OSError) as gzip_error:
+                        # If gzip fails, try direct JSON parsing (for non-gzipped data)
+                        logger.debug(f"⚠️ {ticker}: Gzip decompression failed ({gzip_error}), trying direct JSON parsing")
+                        try:
+                            # Try direct JSON parsing for non-gzipped data
+                            data_dict = json.loads(raw.decode())
+                            logger.debug(f"✅ {ticker}: Successfully parsed non-gzipped price data")
+                        except json.JSONDecodeError as json_error:
+                            # If both fail, try parsing as double-encoded JSON (some cached data might be double-encoded)
+                            logger.debug(f"⚠️ {ticker}: Direct JSON parsing failed ({json_error}), trying double-encoded JSON")
+                            try:
+                                inner_json = json.loads(raw.decode())
+                                data_dict = json.loads(inner_json)
+                                logger.debug(f"✅ {ticker}: Successfully parsed double-encoded JSON price data")
+                            except Exception as double_error:
+                                logger.error(f"❌ Failed to load {ticker} prices from cache: All parsing methods failed - gzip: {gzip_error}, json: {json_error}, double-json: {double_error}")
+                                return None
+                    except Exception as e:
+                        logger.error(f"❌ Failed to load {ticker} prices from cache: {e}")
+                        return None
+                    
                     # Convert back to Series
                     data = pd.Series(data_dict)
                     # ENHANCED: Use robust timestamp parsing for all formats
@@ -150,10 +176,24 @@ class RedisFirstDataService:
                         logger.error(f"❌ Failed to parse timestamps for {ticker}: {e}")
                         return None
                 else:  # sector, metrics, or other metadata
-                    return json.loads(raw.decode())
+                    try:
+                        return json.loads(raw.decode())
+                    except json.JSONDecodeError as e:
+                        logger.error(f"❌ Failed to load {ticker} {data_type} from cache: JSON decode error - {e}")
+                        return None
         except Exception as e:
             logger.error(f"❌ Failed to load {ticker} {data_type} from cache: {e}")
         return None
+    
+    def _has_cached_monthly_data(self, ticker: str) -> bool:
+        """
+        Check if ticker has complete monthly data in cache (prices + sector)
+        Returns: True if both prices and sector are cached, False otherwise
+        """
+        ticker = ticker.upper()
+        has_prices = self._is_cached(ticker, 'prices')
+        has_sector = self._is_cached(ticker, 'sector')
+        return bool(has_prices and has_sector)
     
     def get_monthly_data(self, ticker: str) -> Optional[Dict[str, Any]]:
         """
@@ -281,8 +321,9 @@ class RedisFirstDataService:
     
     def search_tickers(self, query: str, limit: int = 10, filters: Dict = None) -> List[Dict[str, Any]]:
         """
-        Comprehensive search through ALL cached tickers with smart pre-filtering
+        Comprehensive search through ONLY cached tickers with smart pre-filtering
         Returns: List of matching tickers with comprehensive information and relevance scores
+        NOTE: Only returns tickers that have complete data in Redis cache
         """
         q = query.strip().lower()
         if not q:
@@ -294,22 +335,24 @@ class RedisFirstDataService:
         sector_filter = filters.get('sector', None) if filters else None
         risk_filter = filters.get('risk_profile', None) if filters else None
         
-        # Get ticker list (cached)
+        # Search through ALL cached tickers (complete data in Redis)
         all_tickers = self.all_tickers
-        logger.info(f"🔍 Searching '{query}' through {len(all_tickers)} cached tickers")
+        cached_tickers = [t for t in all_tickers if self._is_cached(t, 'prices') and self._is_cached(t, 'sector')]
         
-        # SMART PRE-FILTERING: Only check tickers that might match
+        logger.info(f"🔍 Searching '{query}' through {len(cached_tickers)} cached tickers (out of {len(all_tickers)} total)")
+        
+        # SMART PRE-FILTERING: Only check tickers that might match AND are cached
         candidate_tickers = []
         q_upper = q.upper()
         
-        # Phase 1: Quick ticker symbol matching
-        for ticker in all_tickers:
+        # Phase 1: Quick ticker symbol matching (CACHED ONLY)
+        for ticker in cached_tickers:
             if q_upper in ticker or ticker.startswith(q_upper):
                 candidate_tickers.append(ticker)
         
         # Phase 2: Company name matching (only if we need more candidates)
         if len(candidate_tickers) < 20:
-            for ticker in all_tickers:
+            for ticker in cached_tickers:
                 if ticker in candidate_tickers:
                     continue
                 # Quick check using cached sector data
@@ -319,7 +362,7 @@ class RedisFirstDataService:
                     if q in company_name:
                         candidate_tickers.append(ticker)
         
-        logger.info(f"📋 Pre-filter found {len(candidate_tickers)} candidates")
+        logger.info(f"📋 Pre-filter found {len(candidate_tickers)} cached candidates")
         
         # Process only the candidate tickers (not all 809)
         for ticker in candidate_tickers:

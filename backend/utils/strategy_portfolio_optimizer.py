@@ -22,7 +22,14 @@ from .redis_portfolio_manager import RedisPortfolioManager
 logger = logging.getLogger(__name__)
 
 class StrategyPortfolioOptimizer:
-    """Generates strategy-specific portfolios with Pure vs Personalized variants"""
+    """Generates strategy-specific portfolios with Pure vs Personalized variants
+    
+    Optimized version with:
+    - Stock pool caching (loads all tickers once)
+    - Pre-generation support
+    - Redis storage and retrieval
+    - Fast cache-first operation
+    """
     
     def __init__(self, data_service=None, redis_manager=None):
         self.data_service = data_service
@@ -46,7 +53,12 @@ class StrategyPortfolioOptimizer:
             'very-aggressive': {'max_volatility': 1.0, 'max_single_stock_weight': 0.50, 'min_sectors': 3}
         }
         
-        self.PORTFOLIOS_PER_STRATEGY = 5
+        self.PORTFOLIOS_PER_STRATEGY = 6  # Generate 6 portfolios per strategy for better variety
+        
+        # Stock pool caching - loads all stocks once
+        self._stock_pool_cache = None
+        self._cache_timestamp = None
+        self._cache_ttl_seconds = 3600  # 1 hour TTL
     
     def generate_strategy_portfolio_buckets(self, strategy: str, risk_profiles: List[str] = None) -> Dict:
         """Generate complete strategy portfolio buckets for all risk profiles"""
@@ -716,17 +728,46 @@ class StrategyPortfolioOptimizer:
         }
     
     def _get_available_stocks(self) -> List[Dict]:
-        """Get available stocks with metrics from the data service - Redis only"""
+        """Get available stocks with metrics from the data service - Redis only
+        
+        OPTIMIZED: Uses in-memory cache to avoid loading all stocks repeatedly.
+        Cache is refreshed every hour or on-demand.
+        """
         if not self.stock_selector:
             logger.error("❌ Stock selector not initialized")
             return []
         
         try:
-            # Use Redis-only method to get stocks
-            return self._get_stocks_from_redis_only()
+            # Check if cache is valid
+            if self._is_stock_pool_cache_valid():
+                logger.info(f"✅ Using cached stock pool ({len(self._stock_pool_cache)} stocks)")
+                return self._stock_pool_cache
+            
+            # Cache miss or expired - refresh
+            logger.info("🔄 Refreshing stock pool cache...")
+            self._stock_pool_cache = self._get_stocks_from_redis_only()
+            self._cache_timestamp = datetime.now()
+            logger.info(f"✅ Stock pool cache refreshed ({len(self._stock_pool_cache)} stocks)")
+            
+            return self._stock_pool_cache
         except Exception as e:
             logger.error(f"❌ Error getting available stocks: {e}")
             return []
+    
+    def _is_stock_pool_cache_valid(self) -> bool:
+        """Check if the stock pool cache is still valid"""
+        if self._stock_pool_cache is None or self._cache_timestamp is None:
+            return False
+        
+        # Check TTL
+        cache_age = (datetime.now() - self._cache_timestamp).total_seconds()
+        return cache_age < self._cache_ttl_seconds
+    
+    def invalidate_stock_pool_cache(self):
+        """Manually invalidate the stock pool cache"""
+        logger.info("🗑️  Invalidating stock pool cache")
+        self._stock_pool_cache = None
+        self._cache_timestamp = None
     
     def _get_stocks_from_redis_only(self) -> List[Dict]:
         """Get stocks using only Redis cached data - no external API calls"""
@@ -845,6 +886,414 @@ class StrategyPortfolioOptimizer:
         except Exception as e:
             logger.error(f"❌ Error getting stocks from Redis: {e}")
             return []
+    
+    # ============================================================================
+    # PRE-GENERATION AND REDIS STORAGE METHODS
+    # ============================================================================
+    
+    def pre_generate_all_strategy_portfolios(self) -> Dict:
+        """Pre-generate ALL strategy portfolios and store in Redis
+        
+        This generates:
+        - 3 strategies × 6 pure portfolios = 18 pure portfolios
+        - 3 strategies × 5 risk profiles × 3 portfolios = 45 personalized portfolios
+        - Total: 63 portfolios
+        
+        Returns:
+            Summary of generation with timing and success rates
+        """
+        logger.info("🚀 Starting pre-generation of ALL strategy portfolios...")
+        start_time = datetime.now()
+        
+        summary = {
+            'start_time': start_time.isoformat(),
+            'strategies': {},
+            'total_portfolios_generated': 0,
+            'total_portfolios_stored': 0,
+            'errors': []
+        }
+        
+        try:
+            # Pre-load stock pool once for all portfolios
+            logger.info("📊 Pre-loading stock pool...")
+            self._get_available_stocks()  # This will cache it
+            logger.info(f"✅ Stock pool loaded: {len(self._stock_pool_cache)} stocks")
+            
+            # Generate for each strategy
+            for strategy in self.STRATEGIES.keys():
+                logger.info(f"\n{'='*60}")
+                logger.info(f"Generating portfolios for '{strategy}' strategy")
+                logger.info(f"{'='*60}")
+                
+                strategy_start = datetime.now()
+                strategy_result = self._pre_generate_strategy(strategy)
+                strategy_elapsed = (datetime.now() - strategy_start).total_seconds()
+                
+                strategy_result['elapsed_seconds'] = strategy_elapsed
+                summary['strategies'][strategy] = strategy_result
+                summary['total_portfolios_generated'] += strategy_result['portfolios_generated']
+                summary['total_portfolios_stored'] += strategy_result['portfolios_stored']
+                
+                logger.info(f"✅ {strategy}: {strategy_result['portfolios_generated']} generated, "
+                           f"{strategy_result['portfolios_stored']} stored in {strategy_elapsed:.1f}s")
+            
+            # Calculate final timing
+            total_elapsed = (datetime.now() - start_time).total_seconds()
+            summary['end_time'] = datetime.now().isoformat()
+            summary['total_elapsed_seconds'] = total_elapsed
+            summary['success'] = True
+            
+            logger.info(f"\n{'='*60}")
+            logger.info(f"🎉 PRE-GENERATION COMPLETE!")
+            logger.info(f"{'='*60}")
+            logger.info(f"Total Portfolios Generated: {summary['total_portfolios_generated']}")
+            logger.info(f"Total Portfolios Stored: {summary['total_portfolios_stored']}")
+            logger.info(f"Total Time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} minutes)")
+            logger.info(f"Average per Portfolio: {total_elapsed/summary['total_portfolios_generated']:.2f}s")
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"❌ Pre-generation failed: {e}")
+            summary['success'] = False
+            summary['errors'].append(str(e))
+            return summary
+    
+    def _pre_generate_strategy(self, strategy: str) -> Dict:
+        """Pre-generate all portfolios for a single strategy"""
+        result = {
+            'strategy': strategy,
+            'portfolios_generated': 0,
+            'portfolios_stored': 0,
+            'pure_count': 0,
+            'personalized_count': 0,
+            'errors': []
+        }
+        
+        try:
+            # Generate Pure portfolios
+            logger.info(f"  Generating Pure {strategy} portfolios...")
+            pure_portfolios = self._generate_pure_strategy_portfolios(strategy)
+            result['pure_count'] = len(pure_portfolios)
+            result['portfolios_generated'] += len(pure_portfolios)
+            
+            # Store Pure portfolios in Redis
+            if pure_portfolios:
+                stored = self._store_pure_portfolios_in_redis(strategy, pure_portfolios)
+                result['portfolios_stored'] += stored
+                logger.info(f"  ✅ Pure: {len(pure_portfolios)} generated, {stored} stored")
+            
+            # Generate Personalized portfolios for each risk profile
+            logger.info(f"  Generating Personalized {strategy} portfolios...")
+            for risk_profile in self.RISK_PROFILE_CONSTRAINTS.keys():
+                try:
+                    personalized = self._generate_personalized_strategy_portfolios(strategy, risk_profile)
+                    result['personalized_count'] += len(personalized)
+                    result['portfolios_generated'] += len(personalized)
+                    
+                    if personalized:
+                        stored = self._store_personalized_portfolios_in_redis(
+                            strategy, risk_profile, personalized
+                        )
+                        result['portfolios_stored'] += stored
+                        logger.info(f"  ✅ {risk_profile}: {len(personalized)} generated, {stored} stored")
+                        
+                except Exception as e:
+                    logger.error(f"  ❌ Error with {risk_profile}: {e}")
+                    result['errors'].append(f"{risk_profile}: {str(e)}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error pre-generating {strategy}: {e}")
+            result['errors'].append(str(e))
+            return result
+    
+    def _store_pure_portfolios_in_redis(self, strategy: str, portfolios: List[Dict]) -> int:
+        """Store Pure strategy portfolios in Redis"""
+        if not self.redis_manager:
+            logger.warning("⚠️  Redis manager not available, skipping storage")
+            return 0
+        
+        stored_count = 0
+        redis_key = f"strategy_portfolios:pure:{strategy}"
+        
+        try:
+            # Store as JSON with 1-week TTL
+            import json
+            portfolio_data = {
+                'strategy': strategy,
+                'type': 'pure',
+                'portfolios': portfolios,
+                'generated_at': datetime.now().isoformat(),
+                'count': len(portfolios)
+            }
+            
+            self.redis_manager.redis_client.setex(
+                redis_key,
+                604800,  # 1 week (7 days)
+                json.dumps(portfolio_data)
+            )
+            stored_count = len(portfolios)
+            logger.debug(f"✅ Stored {stored_count} pure {strategy} portfolios in Redis: {redis_key}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error storing pure portfolios in Redis: {e}")
+        
+        return stored_count
+    
+    def _store_personalized_portfolios_in_redis(self, strategy: str, risk_profile: str, 
+                                                portfolios: List[Dict]) -> int:
+        """Store Personalized strategy portfolios in Redis"""
+        if not self.redis_manager:
+            logger.warning("⚠️  Redis manager not available, skipping storage")
+            return 0
+        
+        stored_count = 0
+        redis_key = f"strategy_portfolios:personalized:{strategy}:{risk_profile}"
+        
+        try:
+            # Store as JSON with 1-week TTL
+            import json
+            portfolio_data = {
+                'strategy': strategy,
+                'risk_profile': risk_profile,
+                'type': 'personalized',
+                'portfolios': portfolios,
+                'generated_at': datetime.now().isoformat(),
+                'count': len(portfolios)
+            }
+            
+            self.redis_manager.redis_client.setex(
+                redis_key,
+                604800,  # 1 week (7 days)
+                json.dumps(portfolio_data)
+            )
+            stored_count = len(portfolios)
+            logger.debug(f"✅ Stored {stored_count} personalized {strategy}/{risk_profile} "
+                        f"portfolios in Redis: {redis_key}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error storing personalized portfolios in Redis: {e}")
+        
+        return stored_count
+    
+    def get_pure_portfolios_from_cache(self, strategy: str) -> Optional[List[Dict]]:
+        """Retrieve Pure strategy portfolios from Redis cache
+        
+        Args:
+            strategy: Strategy name (diversification, risk, return)
+            
+        Returns:
+            List of portfolios if found, None if not in cache
+        """
+        if not self.redis_manager:
+            return None
+        
+        redis_key = f"strategy_portfolios:pure:{strategy}"
+        
+        try:
+            import json
+            cached_data = self.redis_manager.redis_client.get(redis_key)
+            
+            if cached_data:
+                portfolio_data = json.loads(cached_data)
+                logger.info(f"✅ Retrieved {portfolio_data['count']} pure {strategy} portfolios from cache")
+                return portfolio_data['portfolios']
+            else:
+                logger.debug(f"⚠️  No cached pure portfolios found for {strategy}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error retrieving pure portfolios from cache: {e}")
+            return None
+    
+    def get_personalized_portfolios_from_cache(self, strategy: str, risk_profile: str) -> Optional[List[Dict]]:
+        """Retrieve Personalized strategy portfolios from Redis cache
+        
+        Args:
+            strategy: Strategy name (diversification, risk, return)
+            risk_profile: Risk profile name
+            
+        Returns:
+            List of portfolios if found, None if not in cache
+        """
+        if not self.redis_manager:
+            return None
+        
+        redis_key = f"strategy_portfolios:personalized:{strategy}:{risk_profile}"
+        
+        try:
+            import json
+            cached_data = self.redis_manager.redis_client.get(redis_key)
+            
+            if cached_data:
+                portfolio_data = json.loads(cached_data)
+                logger.info(f"✅ Retrieved {portfolio_data['count']} personalized {strategy}/{risk_profile} "
+                           f"portfolios from cache")
+                return portfolio_data['portfolios']
+            else:
+                logger.debug(f"⚠️  No cached personalized portfolios found for {strategy}/{risk_profile}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error retrieving personalized portfolios from cache: {e}")
+            return None
+    
+    def get_or_generate_personalized_portfolios(self, strategy: str, risk_profile: str) -> List[Dict]:
+        """Get personalized portfolios from cache or generate if not cached
+        
+        This is the main method to use for retrieving portfolios.
+        It implements a cache-first approach for optimal performance.
+        
+        Args:
+            strategy: Strategy name (diversification, risk, return)
+            risk_profile: Risk profile name
+            
+        Returns:
+            List of portfolios (from cache or newly generated)
+        """
+        # Try cache first
+        cached_portfolios = self.get_personalized_portfolios_from_cache(strategy, risk_profile)
+        
+        if cached_portfolios:
+            logger.info(f"🚀 Fast path: Using cached portfolios for {strategy}/{risk_profile}")
+            return cached_portfolios
+        
+        # Cache miss - generate
+        logger.info(f"🔄 Cache miss: Generating portfolios for {strategy}/{risk_profile}")
+        portfolios = self._generate_personalized_strategy_portfolios(strategy, risk_profile)
+        
+        # Store for future requests
+        if portfolios:
+            self._store_personalized_portfolios_in_redis(strategy, risk_profile, portfolios)
+        
+        return portfolios
+    
+    def clear_all_strategy_caches(self) -> Dict:
+        """Clear all strategy portfolio caches from Redis"""
+        if not self.redis_manager:
+            return {'success': False, 'error': 'Redis manager not available'}
+        
+        try:
+            # Find all strategy portfolio keys
+            keys = self.redis_manager.redis_client.keys("strategy_portfolios:*")
+            
+            if keys:
+                deleted = self.redis_manager.redis_client.delete(*keys)
+                logger.info(f"🗑️  Cleared {deleted} strategy portfolio caches from Redis")
+                return {'success': True, 'deleted_count': deleted}
+            else:
+                logger.info("ℹ️  No strategy portfolio caches to clear")
+                return {'success': True, 'deleted_count': 0}
+                
+        except Exception as e:
+            logger.error(f"❌ Error clearing strategy caches: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def get_cache_status_detailed(self) -> Dict:
+        """Get detailed cache status including TTL information
+        
+        Returns:
+            Detailed cache status with TTL info for display during startup
+        """
+        if not self.redis_manager:
+            return {'success': False, 'error': 'Redis manager not available'}
+        
+        try:
+            # Get all strategy portfolio keys
+            keys = self.redis_manager.redis_client.keys("strategy_portfolios:*")
+            
+            if not keys:
+                return {
+                    'success': True,
+                    'total_cached': 0,
+                    'pure_portfolios': 0,
+                    'personalized_portfolios': 0,
+                    'needs_generation': True,
+                    'message': 'No cached portfolios found'
+                }
+            
+            # Count by type
+            pure_count = len([k for k in keys if b'pure' in k])
+            personalized_count = len([k for k in keys if b'personalized' in k])
+            
+            # Get TTL information
+            ttls = []
+            for key in keys:
+                ttl = self.redis_manager.redis_client.ttl(key)
+                if ttl > 0:
+                    ttls.append(ttl)
+            
+            if ttls:
+                min_ttl_seconds = min(ttls)
+                max_ttl_seconds = max(ttls)
+                avg_ttl_seconds = sum(ttls) / len(ttls)
+                
+                min_ttl_hours = min_ttl_seconds / 3600
+                max_ttl_hours = max_ttl_seconds / 3600
+                avg_ttl_hours = avg_ttl_seconds / 3600
+            else:
+                min_ttl_hours = max_ttl_hours = avg_ttl_hours = 0
+            
+            # Determine if refresh is needed (when oldest TTL < 24 hours)
+            needs_refresh = min_ttl_hours < 24
+            
+            return {
+                'success': True,
+                'total_cached': len(keys),
+                'pure_portfolios': pure_count,
+                'personalized_portfolios': personalized_count,
+                'min_ttl_hours': round(min_ttl_hours, 1),
+                'max_ttl_hours': round(max_ttl_hours, 1),
+                'avg_ttl_hours': round(avg_ttl_hours, 1),
+                'needs_refresh': needs_refresh,
+                'needs_generation': False,
+                'message': 'Portfolios cached and available'
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting cache status: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def display_cache_status(self):
+        """Display strategy portfolio cache status in a formatted way"""
+        status = self.get_cache_status_detailed()
+        
+        if not status.get('success'):
+            logger.warning(f"⚠️  Cache status unavailable: {status.get('error')}")
+            return
+        
+        logger.info("=" * 80)
+        logger.info("STRATEGY PORTFOLIO CACHE STATUS")
+        logger.info("=" * 80)
+        
+        if status['total_cached'] == 0:
+            logger.info("📊 Status: NO CACHED PORTFOLIOS")
+            logger.info("⚠️  First-time setup - generation required")
+        else:
+            logger.info(f"📊 Total Cached: {status['total_cached']} portfolio bundles")
+            logger.info(f"   • Pure Strategies: {status['pure_portfolios']} bundles "
+                       f"({status['pure_portfolios'] * self.PORTFOLIOS_PER_STRATEGY} portfolios)")
+            logger.info(f"   • Personalized: {status['personalized_portfolios']} bundles "
+                       f"({status['personalized_portfolios'] * 3} portfolios)")
+            logger.info(f"⏱️  TTL Status:")
+            logger.info(f"   • Minimum: {status['min_ttl_hours']:.1f} hours remaining")
+            logger.info(f"   • Maximum: {status['max_ttl_hours']:.1f} hours remaining")
+            logger.info(f"   • Average: {status['avg_ttl_hours']:.1f} hours remaining")
+            
+            if status['needs_refresh']:
+                logger.info(f"🔄 Refresh Status: NEEDED (TTL < 24 hours)")
+            else:
+                logger.info(f"✅ Refresh Status: Not needed (TTL > 24 hours)")
+        
+        logger.info(f"💾 Storage: Redis (in-memory cache)")
+        logger.info(f"📅 TTL Policy: 1 week (168 hours)")
+        logger.info("=" * 80)
+    
+    # ============================================================================
+    # END OF PRE-GENERATION AND REDIS STORAGE METHODS
+    # ============================================================================
     
     def check_redis_data_sufficiency(self) -> Dict[str, any]:
         """Check if we have sufficient Redis data for strategy portfolio generation"""

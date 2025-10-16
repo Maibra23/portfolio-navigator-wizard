@@ -179,6 +179,20 @@ export const StockSelection = ({
   });
   const [selectedOptimizationStrategy, setSelectedOptimizationStrategy] = useState<string>('all');
   
+  // Initialize optimization parameters based on risk profile
+  useEffect(() => {
+    const riskProfileParams: Record<string, { targetReturn: number; maxRisk: number }> = {
+      'very-conservative': { targetReturn: 0.06, maxRisk: 0.12 },
+      'conservative': { targetReturn: 0.08, maxRisk: 0.16 },
+      'moderate': { targetReturn: 0.12, maxRisk: 0.22 },
+      'aggressive': { targetReturn: 0.16, maxRisk: 0.28 },
+      'very-aggressive': { targetReturn: 0.20, maxRisk: 0.35 }
+    };
+    
+    const params = riskProfileParams[riskProfile] || { targetReturn: 0.15, maxRisk: 0.25 };
+    setOptimizationParams(params);
+  }, [riskProfile]);
+  
   // NEW: Dynamic Portfolio State Management
   const [portfolioValidation, setPortfolioValidation] = useState<PortfolioValidation>({
     isValid: false,
@@ -977,7 +991,7 @@ export const StockSelection = ({
       const rebalancedStocks = updatedStocks.map(s => ({ ...s, allocation: equalAllocation }));
       onStocksUpdate(rebalancedStocks);
       
-      setHasUserModified(true);
+
       // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
     } else {
       onStocksUpdate([]);
@@ -1839,7 +1853,7 @@ export const StockSelection = ({
               )}
 
               {/* Advanced Options Button - Small and at the bottom */}
-              {!hasSelectedPortfolio && (
+              {!hasSelectedPortfolio && activeTab === 'recommendations' && (
                 <div className="text-center mt-6">
                   <Button
                     variant="outline"
@@ -1856,8 +1870,8 @@ export const StockSelection = ({
                 </div>
               )}
 
-              {/* Portfolio Customization Section - Only show after selection */}
-              {hasSelectedPortfolio && selectedStocks.length > 0 && (
+              {/* Portfolio Customization Section - Only show after selection AND on recommendations tab */}
+              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
               <Card>
                 <CardHeader>
                     <CardTitle className="text-lg">Customize Your Portfolio</CardTitle>
@@ -2179,7 +2193,7 @@ export const StockSelection = ({
               )}
 
               {/* Portfolio Metrics Section - Enhanced UX Design */}
-              {hasSelectedPortfolio && selectedStocks.length > 0 && (
+              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
                 <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border-0 shadow-lg">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl flex items-center gap-3 text-slate-800">

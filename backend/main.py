@@ -69,6 +69,47 @@ async def lifespan(app: FastAPI):
         strategy_optimizer = StrategyPortfolioOptimizer(redis_first_data_service, redis_manager)
         logger.info("✅ Strategy portfolio optimizer initialized")
         
+        # Strategy Portfolio Management (Option 4: Hybrid Approach)
+        # Check cache and generate/refresh as needed
+        logger.info("🚀 Checking strategy portfolio cache...")
+        try:
+            cache_status = strategy_optimizer.get_cache_status_detailed()
+            
+            if cache_status.get('success'):
+                strategy_optimizer.display_cache_status()
+                
+                if cache_status['needs_generation']:
+                    # No cache - initial generation (blocks startup, but only first time)
+                    logger.warning("⚠️  No cached strategy portfolios - performing initial generation")
+                    logger.info("⏱️  This is a one-time setup (~3-4 minutes)")
+                    strategy_optimizer.pre_generate_all_strategy_portfolios()
+                    logger.info("✅ Initial strategy portfolios generated and cached")
+                    strategy_optimizer.display_cache_status()
+                    
+                elif cache_status['needs_refresh']:
+                    # Cache expiring soon - schedule background refresh
+                    logger.info("🔄 Cache TTL < 24 hours - scheduling background refresh")
+                    import asyncio
+                    async def background_refresh():
+                        try:
+                            logger.info("🔄 Background refresh started...")
+                            strategy_optimizer.pre_generate_all_strategy_portfolios()
+                            logger.info("✅ Background refresh completed")
+                        except Exception as e:
+                            logger.error(f"❌ Background refresh failed: {e}")
+                    
+                    asyncio.create_task(background_refresh())
+                    logger.info("✅ Strategy portfolios available (background refresh scheduled)")
+                else:
+                    # Good cache - no action needed
+                    logger.info("✅ Strategy portfolios cached and fresh (no refresh needed)")
+            else:
+                logger.warning(f"⚠️  Could not check strategy cache: {cache_status.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"❌ Strategy portfolio cache check failed: {e}")
+            logger.info("💡 Portfolios will be generated on-demand if needed")
+        
         # Initialize auto-regeneration service
         global auto_regeneration_service
         try:
