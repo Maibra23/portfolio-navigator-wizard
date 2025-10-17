@@ -3,7 +3,7 @@ const API_BASE_URL = '';
 
 export const API_ENDPOINTS = {
   // Portfolio endpoints
-  TICKER_SEARCH: (query: string, limit: number = 10) => `${API_BASE_URL}/api/portfolio/ticker/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+  TICKER_SEARCH: (query: string, limit: number = 10) => `${API_BASE_URL}/api/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=${limit}`,
   TWO_ASSET_ANALYSIS: (ticker1: string, ticker2: string) => `${API_BASE_URL}/api/portfolio/two-asset-analysis?ticker1=${ticker1}&ticker2=${ticker2}`,
   RECOMMENDATIONS: (riskProfile: string) => `${API_BASE_URL}/api/portfolio/recommendations/${riskProfile}`,
   
@@ -43,7 +43,7 @@ export const API_ENDPOINTS = {
   
   // Legacy endpoints (keep for backward compatibility)
   TICKERS: `${API_BASE_URL}/api/portfolio/tickers`,
-  TICKER_INFO: (ticker: string) => `${API_BASE_URL}/api/portfolio/ticker/${ticker}/info`,
+  TICKER_INFO: (ticker: string) => `${API_BASE_URL}/api/portfolio/ticker-info/${encodeURIComponent(ticker)}`,
   MINI_LESSON_ANALYSIS: (testCaseId: number) => `${API_BASE_URL}/api/portfolio/mini-lesson/analysis/${testCaseId}`,
   RISK_RETURN_ANALYSIS: `${API_BASE_URL}/api/portfolio/analytics/risk-return-analysis`,
   SECTOR_DISTRIBUTION: `${API_BASE_URL}/api/portfolio/sector-distribution`,
