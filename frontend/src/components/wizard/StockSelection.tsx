@@ -207,6 +207,13 @@ export const StockSelection = ({
   const [selectedPortfolioIndex, setSelectedPortfolioIndex] = useState<number | null>(null);
   const [originalRecommendation, setOriginalRecommendation] = useState<PortfolioRecommendation | null>(null);
   const [hasUserModified, setHasUserModified] = useState<boolean>(false);
+  // Added: track original symbols, allocation history snapshots, and last removed original
+  const [originalSymbols, setOriginalSymbols] = useState<Set<string>>(new Set());
+  const [allocationHistory, setAllocationHistory] = useState<PortfolioAllocation[][]>([]);
+  const [historyMarkers, setHistoryMarkers] = useState<("add" | "normalize")[]>([]);
+  const [lastRemovedOriginal, setLastRemovedOriginal] = useState<{ symbol: string; allocation: number } | null>(null);
+  // Configurable default weight for new additions
+  const DEFAULT_ADD_WEIGHT = 5;
   
   // Mini-lesson state
   const [twoAssetAnalysis, setTwoAssetAnalysis] = useState<TwoAssetAnalysis | null>(null);
@@ -950,22 +957,40 @@ export const StockSelection = ({
       return;
     }
     
-    // Add stock with smart weight distribution
-    const newStock: PortfolioAllocation = {
-      symbol: stock.symbol,
-      allocation: 100 / (selectedStocks.length + 1),
-      name: stock.longname || stock.shortname,
-      assetType: stock.assetType || 'stock'
-    };
-    
-    // Update portfolio and normalize weights
-    const updatedStocks = [...selectedStocks, newStock];
-    const normalizedStocks = updatedStocks.map(s => ({
-      ...s,
-      allocation: 100 / updatedStocks.length
-    }));
-    
-    onStocksUpdate(normalizedStocks);
+    // Snapshot before change for possible restoration on delete of added ticker
+    setAllocationHistory(prev => [...prev, selectedStocks.map(s => ({ ...s }))]);
+    setHistoryMarkers(prev => [...prev, "add"]);
+
+    let updatedStocks: PortfolioAllocation[] = [];
+    if (lastRemovedOriginal && lastRemovedOriginal.allocation > 0) {
+      // Replacement: assign removed original's weight to new ticker
+      const newStock: PortfolioAllocation = {
+        symbol: stock.symbol,
+        allocation: lastRemovedOriginal.allocation,
+        name: stock.longname || stock.shortname,
+        assetType: stock.assetType || 'stock'
+      };
+      updatedStocks = [...selectedStocks, newStock];
+      setLastRemovedOriginal(null);
+    } else {
+      // Default add: small weight, deduct proportionally
+      const defaultWeight = DEFAULT_ADD_WEIGHT; // % configurable
+      const sumOthers = selectedStocks.reduce((sum, s) => sum + s.allocation, 0);
+      const factor = sumOthers > 0 ? (sumOthers - defaultWeight) / sumOthers : 0;
+      const resizedOthers = selectedStocks.map(s => ({ ...s, allocation: Math.max(0, s.allocation * factor) }));
+      const newStock: PortfolioAllocation = {
+        symbol: stock.symbol,
+        allocation: defaultWeight,
+        name: stock.longname || stock.shortname,
+        assetType: stock.assetType || 'stock'
+      };
+      updatedStocks = [...resizedOthers, newStock];
+    }
+
+    // Normalize to 100%
+    const total = updatedStocks.reduce((sum, s) => sum + s.allocation, 0);
+    const normalized = total > 0 ? updatedStocks.map(s => ({ ...s, allocation: (s.allocation / total) * 100 })) : updatedStocks;
+    onStocksUpdate(normalized);
     
     // FIX #3: Clear search state in correct order
     setSearchResults([]);  // 1. Clear results FIRST (immediate)
@@ -984,19 +1009,44 @@ export const StockSelection = ({
   };
 
   const removeStock = (symbol: string) => {
-    const updatedStocks = selectedStocks.filter(s => s.symbol !== symbol);
-    if (updatedStocks.length > 0) {
-      // Rebalance weights after removal
-      const equalAllocation = 100 / updatedStocks.length;
-      const rebalancedStocks = updatedStocks.map(s => ({ ...s, allocation: equalAllocation }));
-      onStocksUpdate(rebalancedStocks);
-      
-
-      // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
-    } else {
-      onStocksUpdate([]);
-      setHasUserModified(true);
+    const isOriginal = originalSymbols.has(symbol);
+    if (!isOriginal) {
+      // Deleting an added ticker: restore previous snapshot if available
+      if (allocationHistory.length > 0) {
+        setAllocationHistory(prev => {
+          const copy = [...prev];
+          const markers = [...historyMarkers];
+          // Pop until we find the last 'add' snapshot (skip 'normalize' snapshots)
+          while (copy.length > 0 && markers.length > 0) {
+            const snap = copy.pop() || [];
+            const m = markers.pop();
+            if (m === "add") {
+              onStocksUpdate(snap);
+              break;
+            }
+          }
+          setHistoryMarkers(markers);
+          return copy;
+        });
+        return;
+      }
+      // Fallback: remove and equal-rebalance
+      const updatedStocks = selectedStocks.filter(s => s.symbol !== symbol);
+      if (updatedStocks.length > 0) {
+        const equalAllocation = 100 / updatedStocks.length;
+        const rebalancedStocks = updatedStocks.map(s => ({ ...s, allocation: equalAllocation }));
+        onStocksUpdate(rebalancedStocks);
+      } else {
+        onStocksUpdate([]);
+        setHasUserModified(true);
+      }
+      return;
     }
+    // Removing an original ticker: record its weight for replacement and keep others unchanged
+    const removed = selectedStocks.find(s => s.symbol === symbol);
+    setLastRemovedOriginal(removed ? { symbol, allocation: removed.allocation } : { symbol, allocation: 0 });
+    const remaining = selectedStocks.filter(s => s.symbol !== symbol);
+    onStocksUpdate(remaining);
   };
 
   const acceptRecommendation = (recommendation: PortfolioRecommendation, index: number) => {
@@ -1005,6 +1055,10 @@ export const StockSelection = ({
     onStocksUpdate(recommendation.allocations);
     setHasSelectedPortfolio(true);
     setHasUserModified(false);
+    // Initialize tracking for restoration logic
+    setOriginalSymbols(new Set((recommendation.allocations || []).map(a => a.symbol)));
+    setAllocationHistory([]);
+    setLastRemovedOriginal(null);
     
     // Initialize allocation tracking
     const total = recommendation.allocations.reduce((sum, stock) => sum + stock.allocation, 0);
@@ -1048,6 +1102,11 @@ export const StockSelection = ({
 
   // NEW: Auto-normalization feature with real-time updates
   const normalizeWeights = () => {
+    // Snapshot before normalization (marked as 'normalize' so delete-added skips it)
+    setAllocationHistory(prev => [...prev, selectedStocks.map(s => ({ ...s }))]);
+    setHistoryMarkers(prev => [...prev, "normalize"]);
+    // Clear reserved replacement weight to avoid stale inheritance
+    setLastRemovedOriginal(null);
     const total = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
     const normalizedStocks = selectedStocks.map(stock => ({
       ...stock,
@@ -1068,6 +1127,9 @@ export const StockSelection = ({
       onStocksUpdate(originalRecommendation.allocations);
       setTotalAllocation(100);
       setIsValidAllocation(true);
+      setOriginalSymbols(new Set((originalRecommendation.allocations || []).map(a => a.symbol)));
+      setAllocationHistory([]);
+      setLastRemovedOriginal(null);
     }
   };
 
@@ -1906,7 +1968,7 @@ export const StockSelection = ({
 
                       {/* Search Results */}
                       {searchTerm.trim() && searchResults.length > 0 && (
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-2">
                           <h4 className="text-sm font-medium">Search Results:</h4>
                           {searchResults.map((stock) => (
                             <div
@@ -2366,7 +2428,7 @@ export const StockSelection = ({
                     )}
 
                     {searchTerm.trim() && searchResults.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
                         <h4 className="font-medium">Search Results</h4>
                         {searchResults.map((stock) => (
                           <div
