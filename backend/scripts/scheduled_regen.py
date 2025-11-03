@@ -4,6 +4,7 @@ Scheduled regeneration entrypoint.
 - Generates 12 portfolios per risk profile
 - Stores run stats (unique tickers, sector counts, timestamp) in Redis
 - Intended to be invoked by cron/systemd timer every 7 days
+- TTL set to 14 days for Redis storage
 """
 
 import os
@@ -46,7 +47,7 @@ def generate_and_store_stats(profile: str):
     # Store stats in Redis with same TTL as portfolios
     r = redis_first_data_service.redis_client
     key = f"portfolio:stats:{profile}"
-    ttl = 7 * 24 * 3600
+    ttl = 14 * 24 * 3600
     r.setex(key, ttl, json.dumps(stats))
 
     # Compute and store Top Pick by expected return for quick frontend access

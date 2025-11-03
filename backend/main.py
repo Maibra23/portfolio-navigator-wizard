@@ -79,12 +79,20 @@ async def lifespan(app: FastAPI):
                 strategy_optimizer.display_cache_status()
                 
                 if cache_status['needs_generation']:
-                    # No cache - initial generation (blocks startup, but only first time)
-                    logger.warning("⚠️  No cached strategy portfolios - performing initial generation")
-                    logger.info("⏱️  This is a one-time setup (~3-4 minutes)")
-                    strategy_optimizer.pre_generate_all_strategy_portfolios()
-                    logger.info("✅ Initial strategy portfolios generated and cached")
-                    strategy_optimizer.display_cache_status()
+                    # No cache - schedule initial generation in the background to avoid blocking startup
+                    logger.warning("⚠️  No cached strategy portfolios - scheduling initial background generation")
+                    logger.info("⏱️  Background setup will take ~3-4 minutes; API stays responsive")
+                    import asyncio
+                    async def background_initial_generation():
+                        try:
+                            logger.info("🚀 Background initial strategy pre-generation started...")
+                            strategy_optimizer.pre_generate_all_strategy_portfolios()
+                            logger.info("✅ Background initial generation completed")
+                            strategy_optimizer.display_cache_status()
+                        except Exception as e:
+                            logger.error(f"❌ Background initial generation failed: {e}")
+                    asyncio.create_task(background_initial_generation())
+                    logger.info("✅ API will serve using on-demand generation and fallbacks until cache is ready")
                     
                 elif cache_status['needs_refresh']:
                     # Cache expiring soon - schedule background refresh

@@ -78,6 +78,9 @@ interface PortfolioRecommendation {
   expectedReturn: number;
   risk: number;
   diversificationScore: number;
+  strategy?: string;
+  rank?: number;
+  score?: number;
 }
 
 interface PortfolioMetrics {
@@ -170,28 +173,10 @@ export const StockSelection = ({
   const [sectorRecommendations, setSectorRecommendations] = useState<SectorRecommendation[]>([]);
   const [showDiversification, setShowDiversification] = useState(false);
   
-  // NEW: Dynamic Portfolio Generation State
-  const [dynamicPortfolios, setDynamicPortfolios] = useState<PortfolioRecommendation[]>([]);
-  const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
-  const [optimizationParams, setOptimizationParams] = useState({
-    targetReturn: 0.15,
-    maxRisk: 0.25
-  });
-  const [selectedOptimizationStrategy, setSelectedOptimizationStrategy] = useState<string>('all');
-  
-  // Initialize optimization parameters based on risk profile
-  useEffect(() => {
-    const riskProfileParams: Record<string, { targetReturn: number; maxRisk: number }> = {
-      'very-conservative': { targetReturn: 0.06, maxRisk: 0.12 },
-      'conservative': { targetReturn: 0.08, maxRisk: 0.16 },
-      'moderate': { targetReturn: 0.12, maxRisk: 0.22 },
-      'aggressive': { targetReturn: 0.16, maxRisk: 0.28 },
-      'very-aggressive': { targetReturn: 0.20, maxRisk: 0.35 }
-    };
-    
-    const params = riskProfileParams[riskProfile] || { targetReturn: 0.15, maxRisk: 0.25 };
-    setOptimizationParams(params);
-  }, [riskProfile]);
+  // NEW: Pure Strategy Portfolio Generation State
+  const [strategyPortfolios, setStrategyPortfolios] = useState<PortfolioRecommendation[]>([]);
+  const [isLoadingStrategy, setIsLoadingStrategy] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<string>('diversification');
   
   // NEW: Dynamic Portfolio State Management
   const [portfolioValidation, setPortfolioValidation] = useState<PortfolioValidation>({
@@ -1068,6 +1053,11 @@ export const StockSelection = ({
     // FIX #2: Show loading state briefly for smooth transition
     setIsLoadingMetrics(true);
     
+    // If we're in the dynamic-generation tab, navigate to visual charts
+    if (activeTab === 'dynamic-generation') {
+      setActiveTab('full-customization');
+    }
+    
     // Mirror recommendation metrics immediately
     setPortfolioMetrics({
       expectedReturn: recommendation.expectedReturn,
@@ -1362,21 +1352,19 @@ export const StockSelection = ({
     }
   };
 
-  // NEW: Generate dynamic portfolios using advanced optimization
-  const generateDynamicPortfolios = async () => {
-    setIsLoadingDynamic(true);
+  // NEW: Generate pure strategy portfolios
+  const generateStrategyPortfolios = async () => {
+    setIsLoadingStrategy(true);
     setError(null);
     
     try {
-      // Prepare optimization parameters
+      // Prepare strategy parameters
       const params = new URLSearchParams({
         risk_profile: riskProfile,
-        target_return: optimizationParams.targetReturn.toString(),
-        max_risk: optimizationParams.maxRisk.toString(),
-        num_portfolios: '5'
+        strategy: selectedStrategy
       });
       
-      const response = await fetch(`/api/portfolio/recommendations/dynamic?${params}`, {
+      const response = await fetch(`/api/portfolio/recommendations/strategy-pure?${params}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -1391,35 +1379,35 @@ export const StockSelection = ({
           risk?: number;
           diversificationScore?: number;
           strategy?: string;
-          rank?: number;
-          score?: number;
+          name?: string;
+          description?: string;
         }, index: number) => ({
-          name: `Dynamic Portfolio ${index + 1}`,
-          description: `AI-optimized portfolio using ${portfolio.strategy || 'advanced algorithms'}`,
+          name: portfolio.name || `${selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Strategy Portfolio ${index + 1}`,
+          description: portfolio.description || `Pure ${selectedStrategy} strategy portfolio optimized for your risk profile`,
           allocations: portfolio.portfolio || [],
           expectedReturn: portfolio.expectedReturn || 0.15,
           risk: portfolio.risk || 0.20,
           diversificationScore: portfolio.diversificationScore || 75,
-          strategy: portfolio.strategy || 'Optimization',
-          rank: portfolio.rank || index + 1,
-          score: portfolio.score || 0
+          strategy: portfolio.strategy || selectedStrategy,
+          rank: index + 1,
+          score: 0
         }));
         
-        setDynamicPortfolios(transformedPortfolios);
-        setSuccessMessage(`Generated ${transformedPortfolios.length} dynamic portfolios!`);
+        setStrategyPortfolios(transformedPortfolios);
+        setSuccessMessage(`Generated ${transformedPortfolios.length} ${selectedStrategy} strategy portfolios!`);
         setTimeout(() => setSuccessMessage(null), 3000);
       } else {
-        throw new Error('Failed to generate dynamic portfolios');
+        throw new Error('Failed to generate strategy portfolios');
       }
     } catch (error) {
-      console.error('Error generating dynamic portfolios:', error);
-      setError('Failed to generate dynamic portfolios. Using fallback recommendations.');
+      console.error('Error generating strategy portfolios:', error);
+      setError('Failed to generate strategy portfolios. Using fallback recommendations.');
       
       // Fallback to static recommendations
       const fallbackPortfolios = generateRecommendations();
-      setDynamicPortfolios(fallbackPortfolios);
+      setStrategyPortfolios(fallbackPortfolios);
     } finally {
-      setIsLoadingDynamic(false);
+      setIsLoadingStrategy(false);
     }
   };
 
@@ -1436,9 +1424,7 @@ export const StockSelection = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           current_portfolio: selectedStocks,
-          risk_profile: riskProfile,
-          target_return: optimizationParams.targetReturn,
-          max_risk: optimizationParams.maxRisk
+          risk_profile: riskProfile
         })
       });
       
@@ -2502,77 +2488,71 @@ export const StockSelection = ({
               </Card>
             </TabsContent>
 
-            {/* Dynamic Generation Tab - Hidden by default, accessible via Advanced Options */}
+            {/* Pure Strategy Generation Tab - Hidden by default, accessible via Advanced Options */}
             {activeTab === 'dynamic-generation' && (
               <TabsContent value="dynamic-generation" className="space-y-6">
                 <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold mb-2">Dynamic Portfolio Generation</h3>
+                  <h3 className="text-xl font-semibold mb-2">Pure Strategy Portfolio Generation</h3>
                   <p className="text-muted-foreground">
-                    Generate custom portfolios based on your risk profile and desired return/risk trade-offs using advanced optimization algorithms.
+                    Explore different investment strategies in their purest form. Each strategy is optimized using real market data and proven algorithms.
                   </p>
                 </div>
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Optimization Parameters</CardTitle>
+                    <CardTitle className="text-lg">Investment Strategy Selection</CardTitle>
                     <p className="text-muted-foreground">
-                      Adjust these parameters to generate portfolios that meet your investment goals.
+                      Choose an investment strategy to see how it performs with your risk profile.
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-4">
                       <div>
-                        <label htmlFor="targetReturn" className="block text-sm font-medium text-gray-700 mb-1">Target Expected Return (%)</label>
-                        <Slider
-                          id="targetReturn"
-                          value={[optimizationParams.targetReturn * 100]}
-                          onValueChange={(value) => setOptimizationParams(prev => ({ ...prev, targetReturn: value[0] / 100 }))}
-                          min={0}
-                          max={30}
-                          step={0.1}
-                          className="w-full"
-                        />
-                        <span className="text-sm text-gray-600 mt-1">
-                          {optimizationParams.targetReturn * 100}%
-                        </span>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Investment Strategy</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div 
+                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                              selectedStrategy === 'diversification' 
+                                ? 'border-primary bg-primary/5 ring-2 ring-primary' 
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => setSelectedStrategy('diversification')}
+                          >
+                            <h4 className="font-medium text-sm mb-1">Diversification Strategy</h4>
+                            <p className="text-xs text-muted-foreground">Low correlation, balanced sector exposure</p>
                       </div>
-                      <div>
-                        <label htmlFor="maxRisk" className="block text-sm font-medium text-gray-700 mb-1">Maximum Risk (%)</label>
-                        <Slider
-                          id="maxRisk"
-                          value={[optimizationParams.maxRisk * 100]}
-                          onValueChange={(value) => setOptimizationParams(prev => ({ ...prev, maxRisk: value[0] / 100 }))}
-                          min={0}
-                          max={40}
-                          step={0.1}
-                          className="w-full"
-                        />
-                        <span className="text-sm text-gray-600 mt-1">
-                          {optimizationParams.maxRisk * 100}%
-                        </span>
+                          <div 
+                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                              selectedStrategy === 'risk' 
+                                ? 'border-primary bg-primary/5 ring-2 ring-primary' 
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => setSelectedStrategy('risk')}
+                          >
+                            <h4 className="font-medium text-sm mb-1">Risk Minimization</h4>
+                            <p className="text-xs text-muted-foreground">Low volatility, defensive positioning</p>
                       </div>
+                          <div 
+                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                              selectedStrategy === 'return' 
+                                ? 'border-primary bg-primary/5 ring-2 ring-primary' 
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => setSelectedStrategy('return')}
+                          >
+                            <h4 className="font-medium text-sm mb-1">Return Maximization</h4>
+                            <p className="text-xs text-muted-foreground">High expected return, growth focus</p>
+                          </div>
+                        </div>
                     </div>
 
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Optimization Strategy</label>
-                      <select
-                        value={selectedOptimizationStrategy}
-                        onChange={(e) => setSelectedOptimizationStrategy(e.target.value)}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm"
-                      >
-                        <option value="all">Maximize Diversification (All Assets)</option>
-                        <option value="risk">Minimize Risk (All Assets)</option>
-                        <option value="return">Maximize Return (All Assets)</option>
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex gap-4">
                       <Button
-                        onClick={() => generateDynamicPortfolios()}
-                        disabled={isLoadingDynamic}
-                        className="w-full"
-                      >
-                        {isLoadingDynamic ? (
+                          onClick={() => generateStrategyPortfolios()}
+                          disabled={isLoadingStrategy}
+                          className="flex-1"
+                        >
+                          {isLoadingStrategy ? (
                           <>
                             <svg className="animate-spin h-5 w-5 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -2582,7 +2562,7 @@ export const StockSelection = ({
                           </>
                         ) : (
                           <>
-                            Generate Dynamic Portfolios
+                              Generate {selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Portfolios
                             <ArrowRight className="ml-2 h-4 w-4" />
                           </>
                         )}
@@ -2592,24 +2572,24 @@ export const StockSelection = ({
                         onClick={() => analyzePortfolioOptimization()}
                         disabled={selectedStocks.length === 0}
                         variant="outline"
-                        className="w-full"
                       >
                         <BarChart3 className="mr-2 h-4 w-4" />
-                        Analyze Optimization
+                          Analyze Current Portfolio
                       </Button>
+                      </div>
                     </div>
 
-                    {/* Dynamic Portfolios Display */}
-                    {isLoadingDynamic ? (
+                    {/* Strategy Portfolios Display */}
+                    {isLoadingStrategy ? (
                         <div className="text-center py-8">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                        <p className="mt-2 text-muted-foreground">Generating dynamic portfolios...</p>
+                        <p className="mt-2 text-muted-foreground">Generating {selectedStrategy} strategy portfolios...</p>
                         </div>
-                      ) : dynamicPortfolios.length > 0 ? (
+                      ) : strategyPortfolios.length > 0 ? (
                         <div className="mt-6">
-                        <h4 className="text-lg font-medium mb-4">Generated Dynamic Portfolios</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          {dynamicPortfolios.map((portfolio, index) => (
+                        <h4 className="text-lg font-medium mb-4">Generated {selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Strategy Portfolios</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {strategyPortfolios.map((portfolio, index) => (
                           <Card
                               key={index}
                               className={`relative overflow-hidden transition-all duration-200 cursor-pointer ${
@@ -2633,10 +2613,15 @@ export const StockSelection = ({
                               <div className="flex items-center justify-between">
                                   <CardTitle className="text-lg">{portfolio.name}</CardTitle>
                                   <Badge variant={index === 0 ? "default" : "secondary"}>
-                                    {index === 0 ? "Top Pick" : "Alternative " + (index + 1)}
+                                    {index === 0 ? "Top Pick" : "Variant " + (index + 1)}
                                   </Badge>
                               </div>
                                 <p className="text-sm text-muted-foreground">{portfolio.description}</p>
+                                <div className="mt-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {(portfolio.strategy || selectedStrategy)?.charAt(0).toUpperCase() + (portfolio.strategy || selectedStrategy)?.slice(1)} Strategy
+                                  </Badge>
+                                </div>
                             </CardHeader>
                             <CardContent className="space-y-4">
                               <div className="grid grid-cols-2 gap-4 text-sm">

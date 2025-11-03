@@ -230,7 +230,7 @@ class StrategyPortfolioOptimizer:
             if 'volatility' in df.columns:
                 df = df[df['volatility'] <= 0.8]
             
-            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id)
+            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, 3, 'diversification')
             return selected_stocks
             
         except Exception as e:
@@ -252,7 +252,7 @@ class StrategyPortfolioOptimizer:
             )
             
             df = df.sort_values(['defensive_score', 'volatility'], ascending=[False, True])
-            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id)
+            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, 3, 'risk')
             
             return selected_stocks
             
@@ -275,7 +275,7 @@ class StrategyPortfolioOptimizer:
             )
             
             df = df.sort_values(['growth_score', 'expected_return'], ascending=[False, False])
-            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id)
+            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, 3, 'return')
             
             return selected_stocks
             
@@ -294,7 +294,7 @@ class StrategyPortfolioOptimizer:
                 df = df[df['volatility'] <= max_vol]
             
             min_sectors = risk_constraints['min_sectors']
-            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, min_sectors)
+            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, min_sectors, 'diversification')
             
             return selected_stocks
             
@@ -319,7 +319,7 @@ class StrategyPortfolioOptimizer:
             
             df = df.sort_values(['defensive_score', 'volatility'], ascending=[False, True])
             min_sectors = risk_constraints['min_sectors']
-            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, min_sectors)
+            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, min_sectors, 'risk')
             
             return selected_stocks
             
@@ -348,7 +348,7 @@ class StrategyPortfolioOptimizer:
             
             df = df.sort_values(['growth_score', 'expected_return'], ascending=[False, False])
             min_sectors = risk_constraints['min_sectors']
-            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, min_sectors)
+            selected_stocks = self._select_diversified_stocks_by_sector(df, 5, portfolio_id, min_sectors, 'return')
             
             return selected_stocks
             
@@ -373,14 +373,19 @@ class StrategyPortfolioOptimizer:
             logger.error(f"❌ Error applying risk profile constraints: {e}")
             return stocks
     
-    def _select_diversified_stocks_by_sector(self, df: pd.DataFrame, count: int, portfolio_id: int, min_sectors: int = 3) -> List[Dict]:
+    def _select_diversified_stocks_by_sector(self, df: pd.DataFrame, count: int, portfolio_id: int, min_sectors: int = 3, strategy: str = 'diversification') -> List[Dict]:
         """Select stocks ensuring sector diversity"""
         if len(df) < count:
             return df.to_dict('records')
         
         try:
+            # Use portfolio_id as seed for deterministic but diverse selection
             random.seed(portfolio_id)
+            
+            # Shuffle sectors to get variety across portfolios
             sectors = df['sector'].unique()
+            sectors = list(sectors)
+            random.shuffle(sectors)
             if len(sectors) < min_sectors:
                 min_sectors = len(sectors)
             
@@ -390,17 +395,25 @@ class StrategyPortfolioOptimizer:
             for sector in sectors[:min_sectors]:
                 sector_stocks = df[df['sector'] == sector]
                 if len(sector_stocks) > 0:
-                    sector_stocks = sector_stocks.head(sectors_per_stock)
-                    selected_stocks.extend(sector_stocks.to_dict('records'))
+                    # Shuffle and select to get variety
+                    sector_list = sector_stocks.to_dict('records')
+                    random.shuffle(sector_list)
+                    selected_stocks.extend(sector_list[:sectors_per_stock])
             
             if len(selected_stocks) < count:
-                remaining_stocks = df[~df.index.isin([stock.get('index', i) for i, stock in enumerate(selected_stocks)])]
+                # Get symbols of already selected stocks
+                selected_symbols = [stock.get('symbol', '') for stock in selected_stocks]
+                # Filter out already selected stocks
+                remaining_stocks = df[~df['symbol'].isin(selected_symbols)]
                 additional_needed = count - len(selected_stocks)
-                additional_stocks = remaining_stocks.head(additional_needed)
-                selected_stocks.extend(additional_stocks.to_dict('records'))
+                if len(remaining_stocks) > 0:
+                    remaining_list = remaining_stocks.to_dict('records')
+                    random.shuffle(remaining_list)
+                    selected_stocks.extend(remaining_list[:additional_needed])
             
             selected_stocks = selected_stocks[:count]
-            logger.debug(f"✅ Selected {len(selected_stocks)} stocks from {min_sectors} sectors")
+            stock_symbols = [s.get('symbol', 'UNKNOWN') for s in selected_stocks]
+            logger.info(f"✅ Selected {len(selected_stocks)} stocks from {min_sectors} sectors: {stock_symbols}")
             return selected_stocks
             
         except Exception as e:

@@ -6,3 +6,5 @@ Do not create any txt file or Rmd file when you summarize, unless i say otherwis
 All new changes to a specific system must be independently tested and verified before being integrated into the overall system
 
 Always delete and remove debug files or test files when you achieve there purpose. 
+
+Never delete or remove data from redis. Any intention to delete or remove content will need my approval. 

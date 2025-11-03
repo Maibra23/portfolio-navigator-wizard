@@ -19,7 +19,12 @@ from alpha_vantage.timeseries import TimeSeries
 import os
 from .redis_first_data_service import redis_first_data_service as _rds
 
-from .timestamp_utils import normalize_timestamp
+from .timestamp_utils import normalize_timestamp, normalize_ticker_format, suggest_ticker_alternatives
+# Handle both relative and absolute imports
+try:
+    from ..config.settings import config
+except ImportError:
+    from config.settings import config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -37,8 +42,8 @@ ALPHA_VANTAGE_RATE_LIMIT = 5  # requests per minute for free tier
 ALPHA_VANTAGE_DELAY = 60 / ALPHA_VANTAGE_RATE_LIMIT  # seconds between requests
 
 # Cache configuration  
-CACHE_TTL_DAYS = 28  # FIXED: 4 weeks as requested
-CACHE_TTL_HOURS = CACHE_TTL_DAYS * 24  # 672 hours
+CACHE_TTL_DAYS = 90  # FIXED: 3 months as requested
+CACHE_TTL_HOURS = CACHE_TTL_DAYS * 24  # 2160 hours
 
 # Data period configuration - FIXED: 15 years minimum
 END_DATE = datetime.now().replace(day=1)  # Beginning of current month
@@ -82,12 +87,38 @@ class EnhancedDataFetcher:
         })
 
         # Get all tickers from Redis master list (canonical)
+        # Support validated master list feature flag
+        self.use_validated_master_list = config.use_validated_master_list
+        
         try:
+            if self.use_validated_master_list:
+                # Load validated master list (only tickers confirmed to work)
+                logger.info("📋 Using validated master list (USE_VALIDATED_MASTER_LIST=True)")
+                validated_key = "master_ticker_list_validated"
+                if self.r:
+                    validated_data = self.r.get(validated_key)
+                    if validated_data:
+                        try:
+                            self.all_tickers = json.loads(validated_data.decode())
+                            logger.info(f"✅ Loaded {len(self.all_tickers)} validated tickers from Redis")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to parse validated list, falling back to full list: {e}")
+                            self.all_tickers = list(_rds.all_tickers) if _rds.all_tickers else []
+                    else:
+                        logger.warning(f"⚠️ Validated master list not found in Redis, falling back to full list")
+                        self.all_tickers = list(_rds.all_tickers) if _rds.all_tickers else []
+                else:
+                    logger.warning(f"⚠️ Redis unavailable, cannot load validated list, falling back to full list")
+                    self.all_tickers = list(_rds.all_tickers) if _rds.all_tickers else []
+            else:
+                # Use current inference path with full master list
+                logger.info("📋 Using full master list with inference path (USE_VALIDATED_MASTER_LIST=False)")
             master = _rds.all_tickers
             if not master:
                 master = _rds.list_cached_tickers()
             self.all_tickers = list(master) if master else []
-        except Exception:
+        except Exception as e:
+            logger.warning(f"⚠️ Error loading ticker list: {e}")
             self.all_tickers = []
         
         # Track processing statistics
@@ -96,7 +127,9 @@ class EnhancedDataFetcher:
             'successful': 0,
             'failed': 0,
             'cached': 0,
-            'errors': defaultdict(int)
+            'errors': defaultdict(int),
+            'throttled': 0,
+            'stopped_due_to_throttling': False
         }
         
         # Daily quota tracking
@@ -183,19 +216,20 @@ class EnhancedDataFetcher:
             logger.info(f"📊 Daily requests: {self.daily_requests}/{DAILY_REQUEST_LIMIT}")
 
     def _is_rate_limit_error(self, error: Exception) -> bool:
-        """Detect if error is related to rate limiting"""
+        """Detect if error is related to rate limiting or throttling"""
         error_str = str(error).lower()
         rate_limit_indicators = [
             'rate limit', 'too many requests', '429', 'quota exceeded',
-            'expecting value: line 1 column 1', 'timeout', 'connection'
+            'expecting value: line 1 column 1', 'timeout', 'connection',
+            '403', '999', 'throttled', 'throttling', 'blocked', 'forbidden'
         ]
         return any(indicator in error_str for indicator in rate_limit_indicators)
 
     def _calculate_rate_limit_wait(self, attempt: int) -> int:
         """Calculate wait time for rate limit errors with exponential backoff"""
-        base_wait = 30  # Base 30 seconds
+        base_wait = 60  # Base 60 seconds for throttling
         exponential_wait = base_wait * (2 ** attempt)  # Exponential backoff
-        max_wait = 300  # Maximum 5 minutes
+        max_wait = 600  # Maximum 10 minutes for severe throttling
         return min(exponential_wait, max_wait)
 
     def _get_random_delay(self) -> float:
@@ -613,8 +647,15 @@ class EnhancedDataFetcher:
 
     def _fetch_single_ticker_with_retry(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Fetch data for a single ticker with retry logic and rate limiting"""
-        # Validate ticker is in master list
-        if ticker not in self.all_tickers:
+        # NEW: Normalize ticker format first using timestamp_utils
+        original_ticker = ticker
+        ticker = normalize_ticker_format(ticker)
+        
+        if ticker != original_ticker:
+            logger.info(f"🔄 Normalized ticker: {original_ticker} → {ticker}")
+        
+        # Validate ticker is in master list unless allowed during this run
+        if ticker not in self.all_tickers and not getattr(self, '_allow_out_of_master', False):
             logger.warning(f"⚠️ Ticker {ticker} not in master list - skipping fetch")
             return None
             
@@ -674,10 +715,18 @@ class EnhancedDataFetcher:
             except Exception as e:
                 logger.warning(f"⚠️  Attempt {attempt + 1} failed for {ticker}: {e}")
                 
-                # Intelligent error handling for rate limiting
+                # Intelligent error handling for rate limiting and throttling
                 if self._is_rate_limit_error(e):
+                    self.stats['throttled'] += 1
                     wait_time = self._calculate_rate_limit_wait(attempt)
-                    logger.warning(f"🔄 Rate limit detected for {ticker}, waiting {wait_time}s...")
+                    logger.warning(f"🔄 Rate limit/throttling detected for {ticker}, waiting {wait_time}s...")
+                    
+                    # Check if we're getting heavily throttled
+                    if self.stats['throttled'] >= 10:  # Stop after 10 throttling events
+                        logger.error(f"❌ Heavy throttling detected ({self.stats['throttled']} events). Stopping fetch process.")
+                        self.stats['stopped_due_to_throttling'] = True
+                        return None
+                    
                     time.sleep(wait_time)
                     continue
                 
@@ -700,6 +749,11 @@ class EnhancedDataFetcher:
         
         for i, ticker in enumerate(batch, 1):
             try:
+                # Check if we should stop due to throttling
+                if self.stats['stopped_due_to_throttling']:
+                    logger.error(f"🛑 Stopping batch processing due to throttling")
+                    break
+                
                 logger.debug(f"  [{i}/{len(batch)}] Processing {ticker}...")
                 
                 data = self._fetch_single_ticker_with_retry(ticker)
@@ -727,26 +781,66 @@ class EnhancedDataFetcher:
         # Return statement was incorrectly indented inside the for loop
         return results
 
-    def fetch_all_data(self, batch_size: int = BATCH_SIZE) -> Dict[str, Dict[str, Any]]:
-        """Fetch data for all tickers using batch processing with proper rate limiting"""
-        logger.info(f"🚀 Starting batch processing of {len(self.all_tickers)} tickers")
+    def fetch_all_data(self, batch_size: int = BATCH_SIZE, include_failed_tickers: bool = False) -> Dict[str, Dict[str, Any]]:
+        """
+        Fetch data for all tickers using batch processing with proper rate limiting
+        
+        Args:
+            batch_size: Number of tickers per batch
+            include_failed_tickers: If True, include normalized failed tickers from CSV files in fetch queue
+        """
+        # When include_failed_tickers=True, ONLY fetch normalized failed tickers (skip validated ones)
+        if include_failed_tickers:
+            logger.info("📋 Fetching ONLY normalized failed tickers (skipping already validated/cached)...")
+            normalized_failed = self._collect_and_normalize_failed_tickers()
+            if normalized_failed:
+                # Filter out tickers that are already cached
+                tickers_to_fetch = []
+                for ticker in normalized_failed:
+                    # Skip if already cached (both prices and sector)
+                    if self._is_cached(ticker, 'prices') and self._is_cached(ticker, 'sector'):
+                        logger.debug(f"⏭️  {ticker} already cached, skipping")
+                        continue
+                    tickers_to_fetch.append(ticker)
+                logger.info(f"✅ {len(tickers_to_fetch)} normalized failed tickers to fetch (filtered out {len(normalized_failed) - len(tickers_to_fetch)} already cached)")
+            else:
+                logger.info("ℹ️  No normalized failed tickers to fetch")
+                tickers_to_fetch = []
+        else:
+            # Normal mode: fetch all tickers from master list
+            tickers_to_fetch = list(self.all_tickers)
+
+        # Check if there are any tickers to fetch
+        if not tickers_to_fetch:
+            logger.info("ℹ️  No tickers to fetch (all already cached or no failed tickers found)")
+            return {}
+        
+        # Allow out-of-master tickers during this run only if we included normalized failed set
+        self._allow_out_of_master = bool(include_failed_tickers)
+        
+        logger.info(f"🚀 Starting batch processing of {len(tickers_to_fetch)} tickers")
         logger.info(f"📊 Configuration: batch_size={batch_size}, workers={MAX_WORKERS}, delay={RATE_LIMIT_DELAY}s")
         logger.info(f"⚙️  Retry policy: {MAX_RETRIES} attempt(s), Alpha Vantage fallback: {USE_ALPHA_VANTAGE_FALLBACK}")
         
         all_results = {}
         all_failed_tickers = []  # Track all failed tickers
-        total_batches = (len(self.all_tickers) + batch_size - 1) // batch_size
+        total_batches = (len(tickers_to_fetch) + batch_size - 1) // batch_size
         
         # Process in batches with sequential execution to respect rate limits
-        for i in range(0, len(self.all_tickers), batch_size):
+        for i in range(0, len(tickers_to_fetch), batch_size):
             batch_num = i // batch_size + 1
-            batch = self.all_tickers[i:i + batch_size]
+            batch = tickers_to_fetch[i:i + batch_size]
             
             logger.info(f"📦 Processing batch {batch_num}/{total_batches}: {len(batch)} tickers")
             
             # Process batch (sequential to respect rate limits better)
             batch_results = self._process_batch(batch)
             all_results.update(batch_results)
+            
+            # Check if we should stop due to throttling
+            if self.stats['stopped_due_to_throttling']:
+                logger.error(f"🛑 Stopping fetch process due to throttling")
+                break
             
             # Track failed tickers
             batch_failed = [t for t in batch if t not in batch_results]
@@ -755,10 +849,10 @@ class EnhancedDataFetcher:
             # Show progress
             success_rate = (self.stats['successful'] / max(self.stats['total_processed'], 1)) * 100
             logger.info(f"  📈 Batch {batch_num} completed: {len(batch_results)} successful")
-            logger.info(f"  📊 Overall progress: {self.stats['total_processed']}/{len(self.all_tickers)} ({success_rate:.1f}% success)")
+            logger.info(f"  📊 Overall progress: {self.stats['total_processed']}/{len(tickers_to_fetch)} ({success_rate:.1f}% success)")
             
             # Rate limiting between batches (except for last batch)
-            if i + batch_size < len(self.all_tickers):
+            if i + batch_size < len(tickers_to_fetch):
                 logger.info(f"⏳ Waiting {RATE_LIMIT_DELAY}s between batches...")
                 time.sleep(RATE_LIMIT_DELAY)
         
@@ -780,7 +874,155 @@ class EnhancedDataFetcher:
                 }, f, indent=2)
             logger.info(f"📝 Failed tickers list saved to: {failed_list_path}")
         
+        # Publish validated master list at end of run (from successfully cached tickers)
+        self._publish_validated_master_list()
+        
+        # Reset allowance flag after run
+        if hasattr(self, '_allow_out_of_master'):
+            try:
+                delattr(self, '_allow_out_of_master')
+            except Exception:
+                pass
+        
         return all_results
+
+    def _publish_validated_master_list(self):
+        """
+        Publish validated master list at end of fetch run.
+        Builds list from all successfully cached tickers (have both prices and sector).
+        Saves to Redis and CSV backup for safety.
+        """
+        if not self.r:
+            logger.warning("⚠️ Redis unavailable - cannot publish validated master list")
+            return
+        
+        try:
+            logger.info("📋 Building validated master list from cached tickers...")
+            
+            # Find all tickers that have both prices and sector cached (successfully fetched)
+            price_keys = self.r.keys("ticker_data:prices:*")
+            sector_keys = self.r.keys("ticker_data:sector:*")
+            
+            # Extract ticker symbols from keys
+            price_tickers = set()
+            for key in price_keys:
+                try:
+                    ticker = key.decode().replace("ticker_data:prices:", "")
+                    price_tickers.add(ticker)
+                except:
+                    pass
+            
+            sector_tickers = set()
+            for key in sector_keys:
+                try:
+                    ticker = key.decode().replace("ticker_data:sector:", "")
+                    sector_tickers.add(ticker)
+                except:
+                    pass
+            
+            # Validated tickers are those with both prices AND sector (successfully fetched)
+            validated_tickers = sorted(list(price_tickers & sector_tickers))
+            
+            if not validated_tickers:
+                logger.warning("⚠️ No validated tickers found (no tickers with both prices and sector cached)")
+                return
+            
+            logger.info(f"✅ Found {len(validated_tickers)} validated tickers")
+            
+            # Save to Redis
+            validated_key = "master_ticker_list_validated"
+            validated_json = json.dumps(validated_tickers)
+            # Set TTL to 365 days (validated list persists long-term)
+            self.r.setex(validated_key, 365*24*3600, validated_json.encode())
+            logger.info(f"✅ Saved {len(validated_tickers)} validated tickers to Redis key: {validated_key}")
+            
+            # Save CSV backup with timestamp
+            backup_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'reports')
+            os.makedirs(backup_dir, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            csv_path = os.path.join(backup_dir, f'fetchable_master_list_validated_{timestamp}.csv')
+            
+            import csv
+            with open(csv_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['ticker', 'validated_date'])
+                for ticker in validated_tickers:
+                    writer.writerow([ticker, datetime.now().isoformat()])
+            
+            logger.info(f"✅ Saved CSV backup to: {csv_path}")
+            
+            # Also save a "latest" version without timestamp for easy access
+            latest_path = os.path.join(backup_dir, 'fetchable_master_list_validated_latest.csv')
+            with open(latest_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['ticker', 'validated_date'])
+                for ticker in validated_tickers:
+                    writer.writerow([ticker, datetime.now().isoformat()])
+            
+            logger.info(f"✅ Saved latest CSV backup to: {latest_path}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to publish validated master list: {e}")
+
+    def _collect_and_normalize_failed_tickers(self) -> List[str]:
+        """
+        Collect failed tickers from classification CSV files and normalize them.
+        Returns list of normalized ticker symbols ready for fetching.
+        """
+        script_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts')
+        reports_dir = os.path.join(script_dir, 'reports')
+        
+        csv_files = [
+            'classified_after_lookup.csv',
+            'failed_tickers_classification.csv',
+            'unknown_remaining.csv'
+        ]
+        
+        all_failed = set()
+        
+        # Load all failed tickers from CSV files
+        for csv_file in csv_files:
+            csv_path = os.path.join(reports_dir, csv_file)
+            if not os.path.exists(csv_path):
+                logger.debug(f"CSV file not found: {csv_path}, skipping")
+                continue
+            
+            try:
+                import csv as csv_module
+                with open(csv_path, 'r') as f:
+                    reader = csv_module.DictReader(f)
+                    for row in reader:
+                        ticker = row.get('ticker', '').strip()
+                        if ticker:
+                            all_failed.add(ticker)
+            except Exception as e:
+                logger.warning(f"Error reading {csv_file}: {e}")
+        
+        logger.info(f"📂 Loaded {len(all_failed)} unique failed tickers from CSV files")
+        
+        # Normalize each ticker
+        normalized_tickers = []
+        normalized_set = set()
+        validated_set = set(self.all_tickers) if hasattr(self, 'all_tickers') else set()
+        
+        for ticker in all_failed:
+            normalized = normalize_ticker_format(ticker)
+            
+            # Skip if already validated
+            if normalized in validated_set:
+                logger.debug(f"⏭️  {normalized} already in validated list, skipping")
+                continue
+            
+            # Add to normalized list (deduplicate)
+            if normalized not in normalized_set:
+                normalized_tickers.append(normalized)
+                normalized_set.add(normalized)
+                if normalized != ticker:
+                    logger.debug(f"🔄 Normalized: {ticker} → {normalized}")
+        
+        logger.info(f"✅ Normalized to {len(normalized_tickers)} unique tickers (after filtering already validated)")
+        
+        return normalized_tickers
 
     def get_ticker_data(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Get data for a specific ticker - CACHE FIRST approach"""
@@ -798,9 +1040,9 @@ class EnhancedDataFetcher:
             logger.debug(f"✅ {ticker} served from cache")
             return {'prices': cached_prices, 'sector': cached_sector}
 
-        # Only fetch from external API if not in cache AND not in FAST_STARTUP mode
-        if os.environ.get('FAST_STARTUP', 'true').lower() == 'true':
-            logger.debug(f"⏭️ FAST_STARTUP enabled - skipping external fetch for {ticker}")
+        # Only fetch from external API if not in cache AND manual regeneration is approved
+        if os.environ.get('MANUAL_REGENERATION_REQUIRED', 'true').lower() == 'true':
+            logger.warning(f"⚠️ MANUAL_REGENERATION_REQUIRED enabled - expired ticker {ticker} needs manual approval for regeneration")
             return None
         
         logger.info(f"📥 {ticker} not in cache, fetching from Yahoo Finance...")
@@ -928,6 +1170,8 @@ class EnhancedDataFetcher:
             'successful': self.stats['successful'],
             'failed': self.stats['failed'],
             'cached': self.stats['cached'],
+            'throttled': self.stats['throttled'],
+            'stopped_due_to_throttling': self.stats['stopped_due_to_throttling'],
             'errors': dict(self.stats['errors']),
             'success_rate': self.stats['successful'] / max(self.stats['total_processed'], 1) * 100,
             'cache_ttl_days': CACHE_TTL_DAYS,
@@ -1704,6 +1948,89 @@ class EnhancedDataFetcher:
         except Exception as e:
             logger.error(f"❌ Error in specific ticker refresh: {e}")
             return None
+
+    def check_expired_tickers(self) -> List[str]:
+        """
+        Check for tickers with expired cache and require manual approval for regeneration
+        Returns list of expired tickers that need manual approval
+        """
+        expired_tickers = []
+        
+        if not self.r:
+            logger.warning("⚠️ Redis not available for expired ticker check")
+            return expired_tickers
+        
+        try:
+            for ticker in self.all_tickers:
+                key = self._get_cache_key(ticker, 'prices')
+                if self.r.exists(key):
+                    ttl = self.r.ttl(key)
+                    if ttl == -1:  # No expiration set
+                        logger.warning(f"⚠️ {ticker}: No TTL set - needs manual review")
+                        expired_tickers.append(ticker)
+                    elif ttl == -2:  # Key doesn't exist
+                        logger.info(f"ℹ️ {ticker}: Not in cache - needs manual approval for regeneration")
+                        expired_tickers.append(ticker)
+                    elif ttl < 3600:  # Less than 1 hour remaining
+                        logger.warning(f"⚠️ {ticker}: Cache expires in {ttl} seconds - needs manual approval for regeneration")
+                        expired_tickers.append(ticker)
+            
+            if expired_tickers:
+                logger.warning(f"⚠️ Found {len(expired_tickers)} tickers requiring manual approval for regeneration")
+                logger.warning(f"🔧 Set MANUAL_REGENERATION_REQUIRED=false to allow automatic regeneration")
+            else:
+                logger.info("✅ No expired tickers found - all caches are valid")
+                
+        except Exception as e:
+            logger.error(f"❌ Error checking expired tickers: {e}")
+        
+        return expired_tickers
+
+    def manual_regeneration_approval(self, tickers: List[str]) -> Dict[str, Any]:
+        """
+        Manually approve regeneration for specific expired tickers
+        This method should be called by developers to approve regeneration
+        """
+        if not tickers:
+            logger.info("ℹ️ No tickers provided for manual regeneration")
+            return {"approved": 0, "message": "No tickers provided"}
+        
+        logger.info(f"🔧 Manual regeneration approved for {len(tickers)} tickers")
+        logger.info(f"📋 Approved tickers: {tickers}")
+        
+        # Temporarily disable manual regeneration requirement
+        os.environ['MANUAL_REGENERATION_REQUIRED'] = 'false'
+        
+        try:
+            # Process approved tickers
+            results = {}
+            for ticker in tickers:
+                if ticker in self.all_tickers:
+                    data = self._fetch_single_ticker_with_retry(ticker)
+                    if data:
+                        results[ticker] = "Success"
+                        logger.info(f"✅ {ticker}: Manual regeneration successful")
+                    else:
+                        results[ticker] = "Failed"
+                        logger.warning(f"❌ {ticker}: Manual regeneration failed")
+                else:
+                    results[ticker] = "Not in master list"
+                    logger.warning(f"⚠️ {ticker}: Not in master list")
+            
+            # Re-enable manual regeneration requirement
+            os.environ['MANUAL_REGENERATION_REQUIRED'] = 'true'
+            
+            return {
+                "approved": len(tickers),
+                "results": results,
+                "message": f"Manual regeneration completed for {len(tickers)} tickers"
+            }
+            
+        except Exception as e:
+            # Re-enable manual regeneration requirement even if error occurs
+            os.environ['MANUAL_REGENERATION_REQUIRED'] = 'true'
+            logger.error(f"❌ Error during manual regeneration: {e}")
+            return {"approved": 0, "error": str(e), "message": "Manual regeneration failed"}
 
 # Global instance
 enhanced_data_fetcher = EnhancedDataFetcher() 

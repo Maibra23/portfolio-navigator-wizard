@@ -657,15 +657,23 @@ def refresh_tickers():
     Refresh ticker lists from sources
     """
     try:
+        # Invalidate cached ticker list to force reload from Redis
+        _rds.invalidate_ticker_list_cache()
+        
         # Redis-first: report current master coverage from Redis (no external fetch)
         inv = _rds.get_cache_inventory()
         total = inv.get('coverage', {}).get('joined_tickers', 0)
+        
+        # Verify the ticker list was reloaded
+        ticker_count = len(_rds.all_tickers)
+        
         return {
-                "status": "success",
+            "status": "success",
             "message": "Ticker master list refreshed from Redis",
             "total_tickers": total,
+            "cached_ticker_count": ticker_count,
             "source": "redis"
-            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error refreshing tickers: {str(e)}")
 
@@ -919,6 +927,87 @@ async def generate_dynamic_portfolio_recommendations(
         
     except Exception as e:
         logger.error(f"❌ Error generating dynamic portfolios: {e}")
+        return _get_static_portfolio_recommendations(risk_profile)
+
+# NEW: Pure Strategy Portfolio Generation Endpoint
+@router.post("/recommendations/strategy-pure", response_model=List[PortfolioResponse])
+async def generate_pure_strategy_portfolios(
+    risk_profile: str,
+    strategy: str
+):
+    """
+    Generate pure strategy portfolios using real market data
+    
+    This endpoint generates 5 pure strategy portfolios for the selected strategy,
+    using real market data and proven optimization algorithms. No parameter constraints
+    are applied - each strategy is shown in its purest form.
+    
+    Args:
+        risk_profile: User's risk profile (for filtering and display)
+        strategy: Investment strategy ('diversification', 'risk', 'return')
+    
+    Returns:
+        List of 5 pure strategy portfolios with real market data
+    """
+    try:
+        logger.info(f"🎯 Pure Strategy Generation: {strategy} for {risk_profile}")
+        
+        # Initialize strategy optimizer if not already done
+        if not hasattr(_rds, 'strategy_optimizer'):
+            _rds.strategy_optimizer = StrategyPortfolioOptimizer(_rds, redis_manager)
+        
+        # Get pure strategy portfolios from cache or generate
+        pure_portfolios = _rds.strategy_optimizer.get_pure_portfolios_from_cache(strategy)
+        if not pure_portfolios:
+            logger.info(f"🔄 Cache miss: Generating pure {strategy} portfolios")
+            pure_portfolios = _rds.strategy_optimizer._generate_pure_strategy_portfolios(strategy)
+            if pure_portfolios:
+                _rds.strategy_optimizer._store_pure_portfolios_in_redis(strategy, pure_portfolios)
+        
+        if not pure_portfolios:
+            logger.warning(f"No pure portfolios available for {strategy}, falling back to static")
+            return _get_static_portfolio_recommendations(risk_profile)
+        
+        # Take first 2 portfolios and convert to response format
+        responses = []
+        for i, portfolio in enumerate(pure_portfolios[:2]):
+            try:
+                metrics = portfolio.get('metrics', {})
+                allocations = []
+                
+                # Convert allocations to PortfolioAllocation format
+                for allocation in portfolio.get('allocations', []):
+                    allocations.append(PortfolioAllocation(
+                        symbol=allocation.get('symbol', ''),
+                        allocation=allocation.get('allocation', 0),
+                        name=allocation.get('name', allocation.get('symbol', '')),
+                        assetType=allocation.get('assetType', 'stock')
+                    ))
+                
+                response = PortfolioResponse(
+                    portfolio=allocations,
+                    name=portfolio.get('name', f"Pure {strategy.title()} Portfolio {i+1}"),
+                    description=portfolio.get('description', f"Pure {strategy} strategy portfolio optimized using real market data"),
+                    expectedReturn=metrics.get('expected_return', 0.12),
+                    risk=metrics.get('risk', 0.15),
+                    diversificationScore=metrics.get('diversification_score', 75.0),
+                    sharpeRatio=0.0  # Always 0 as requested
+                )
+                responses.append(response)
+                
+            except Exception as e:
+                logger.error(f"Error converting pure portfolio {i}: {e}")
+                continue
+        
+        if not responses:
+            logger.warning(f"No valid pure portfolios for {strategy}, falling back to static")
+            return _get_static_portfolio_recommendations(risk_profile)
+        
+        logger.info(f"✅ Generated {len(responses)} pure {strategy} strategy portfolios")
+        return responses
+        
+    except Exception as e:
+        logger.error(f"❌ Error generating pure strategy portfolios: {e}")
         return _get_static_portfolio_recommendations(risk_profile)
 
 # NEW: Pure vs Personalized Strategy Comparison for Optimization Tab

@@ -51,6 +51,11 @@ class APIConfig:
         self.log_level = os.getenv('LOG_LEVEL', 'INFO')
         self.enable_debug_logs = os.getenv('ENABLE_DEBUG_LOGS', 'false').lower() == 'true'
     
+        # Validated Master List Configuration
+        # When True: Use pre-validated master list (only tickers confirmed to work with Yahoo)
+        # When False: Use current inference path with full master list + normalization
+        self.use_validated_master_list = os.getenv('USE_VALIDATED_MASTER_LIST', 'false').lower() == 'true'
+    
     def get_cache_config(self) -> dict:
         """Get cache configuration as dictionary"""
         return {

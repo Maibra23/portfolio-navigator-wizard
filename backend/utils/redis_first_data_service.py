@@ -71,29 +71,43 @@ class RedisFirstDataService:
                 cached_tickers = self.redis_client.get(ticker_key)
                 if cached_tickers:
                     try:
-                        self._ticker_list = json.loads(cached_tickers.decode())
-                        logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache")
-                        return self._ticker_list
+                        # Try decompression first (new format)
+                        try:
+                            import gzip
+                            decompressed = gzip.decompress(cached_tickers)
+                            self._ticker_list = json.loads(decompressed.decode())
+                            logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache (compressed)")
+                            return self._ticker_list
+                        except Exception:
+                            # Fallback to uncompressed (old format)
+                            self._ticker_list = json.loads(cached_tickers.decode())
+                            logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache (uncompressed)")
+                            return self._ticker_list
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to load cached tickers: {e}")
                 
-            # Fallback to EnhancedDataFetcher
-            if self.enhanced_data_fetcher:
-                self._ticker_list = self.enhanced_data_fetcher.all_tickers
-                # Cache the ticker list
-                if self.redis_client and self._ticker_list:
-                    try:
-                        self.redis_client.setex(
-                            ticker_key, 
-                            timedelta(hours=24),  # Cache for 24 hours
-                            json.dumps(self._ticker_list).encode()
-                        )
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to cache ticker list: {e}")
-            else:
-                self._ticker_list = []
+                # Fallback to EnhancedDataFetcher
+                if self.enhanced_data_fetcher:
+                    self._ticker_list = self.enhanced_data_fetcher.all_tickers
+                    # Cache the ticker list
+                    if self.redis_client and self._ticker_list:
+                        try:
+                            self.redis_client.setex(
+                                ticker_key, 
+                                timedelta(hours=24),  # Cache for 24 hours
+                                json.dumps(self._ticker_list).encode()
+                            )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to cache ticker list: {e}")
+                else:
+                    self._ticker_list = []
         
         return self._ticker_list
+    
+    def invalidate_ticker_list_cache(self):
+        """Invalidate the cached ticker list to force reload"""
+        self._ticker_list = None
+        logger.info("🗑️ Ticker list cache invalidated")
     
     def _get_cache_key(self, ticker: str, data_type: str = 'prices') -> str:
         """Generate cache key for ticker data"""
@@ -177,7 +191,14 @@ class RedisFirstDataService:
                         return None
                 else:  # sector, metrics, or other metadata
                     try:
-                        return json.loads(raw.decode())
+                        decoded = json.loads(raw.decode())
+                        # Handle case where value is just a string like "Unknown" instead of a dict
+                        if isinstance(decoded, str):
+                            # Convert simple string values to dict
+                            if data_type == 'sector':
+                                return {'sector': decoded, 'industry': 'Unknown', 'country': 'Unknown', 'companyName': ticker}
+                            return decoded
+                        return decoded
                     except json.JSONDecodeError as e:
                         logger.error(f"❌ Failed to load {ticker} {data_type} from cache: JSON decode error - {e}")
                         return None
