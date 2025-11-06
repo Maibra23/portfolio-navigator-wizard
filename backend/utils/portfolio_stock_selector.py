@@ -427,19 +427,28 @@ class PortfolioStockSelector:
             if sector_data:
                 sector_info = json.loads(sector_data.decode())
             
-            # ENHANCED: Ensure sector is not Unknown - apply inference if needed
-            if not sector_info.get('sector') or sector_info.get('sector') == 'Unknown':
+            # FILTER: Exclude ETFs and Unknown sectors
+            sector = sector_info.get('sector', 'Unknown')
+            if not sector or sector == 'Unknown':
+                # Try inference, but still exclude if remains Unknown
                 inferred_sector = self._infer_sector_from_ticker(ticker)
+                sector = inferred_sector
                 sector_info['sector'] = inferred_sector
                 logger.debug(f"✅ {ticker}: Applied sector inference: {inferred_sector}")
+            
+            # Exclude ETFs and Unknown sectors
+            company_name = sector_info.get('companyName', ticker)
+            etf_indicators = ['ETF', 'Fund', 'Trust', 'Index', 'Diversified ETF']
+            is_etf = any(indicator in str(company_name) for indicator in etf_indicators) or 'ETF' in str(sector)
+            
+            if is_etf or sector == 'Unknown':
+                logger.debug(f"❌ {ticker}: Excluded (ETF={is_etf}, sector={sector})")
+                return None
             
             # Parse metrics data
             metrics_info = {}
             if metrics_data:
                 metrics_info = json.loads(metrics_data.decode())
-            
-            # Build stock data with CONSISTENT keys (fixes the KeyError)
-            company_name = sector_info.get('companyName', ticker)
             stock_data = {
                 'symbol': ticker,  # FIXED: Use 'symbol' instead of 'ticker' for consistency
                 'ticker': ticker,  # Keep both for compatibility

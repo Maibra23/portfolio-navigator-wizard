@@ -66,25 +66,42 @@ class RedisFirstDataService:
         """Get all tickers (cached)"""
         if self._ticker_list is None:
             if self.redis_client:
-                # Try to get from Redis first
-                ticker_key = "master_ticker_list"
-                cached_tickers = self.redis_client.get(ticker_key)
-                if cached_tickers:
-                    try:
-                        # Try decompression first (new format)
+                # Try multiple Redis keys in order of preference
+                ticker_keys = [
+                    "master_ticker_list",           # Primary key
+                    "master_ticker_list_validated", # Validated list (fallback)
+                    "ticker_list:master"            # Alternative key (fallback)
+                ]
+                
+                for ticker_key in ticker_keys:
+                    cached_tickers = self.redis_client.get(ticker_key)
+                    if cached_tickers:
                         try:
-                            import gzip
-                            decompressed = gzip.decompress(cached_tickers)
-                            self._ticker_list = json.loads(decompressed.decode())
-                            logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache (compressed)")
-                            return self._ticker_list
-                        except Exception:
-                            # Fallback to uncompressed (old format)
-                            self._ticker_list = json.loads(cached_tickers.decode())
-                            logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache (uncompressed)")
-                            return self._ticker_list
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to load cached tickers: {e}")
+                            # Try decompression first (new format)
+                            try:
+                                import gzip
+                                decompressed = gzip.decompress(cached_tickers)
+                                self._ticker_list = json.loads(decompressed.decode())
+                                logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache ({ticker_key}, compressed)")
+                                return self._ticker_list
+                            except Exception:
+                                # Fallback to uncompressed (old format)
+                                self._ticker_list = json.loads(cached_tickers.decode())
+                                logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache ({ticker_key}, uncompressed)")
+                                return self._ticker_list
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to load cached tickers from {ticker_key}: {e}")
+                            continue
+                
+                # If no Redis key found, try to get from cached tickers in Redis
+                try:
+                    cached_tickers_list = self.list_cached_tickers()
+                    if cached_tickers_list and len(cached_tickers_list) > 0:
+                        self._ticker_list = cached_tickers_list
+                        logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from cached ticker data")
+                        return self._ticker_list
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load from cached tickers: {e}")
                 
                 # Fallback to EnhancedDataFetcher
                 if self.enhanced_data_fetcher:
@@ -93,7 +110,7 @@ class RedisFirstDataService:
                     if self.redis_client and self._ticker_list:
                         try:
                             self.redis_client.setex(
-                                ticker_key, 
+                                "master_ticker_list", 
                                 timedelta(hours=24),  # Cache for 24 hours
                                 json.dumps(self._ticker_list).encode()
                             )
@@ -685,16 +702,39 @@ class RedisFirstDataService:
         except Exception as e:
             logger.error(f"Error clearing cache: {e}")
     
+
+    def preview_expired_data(self):
+        """Return a preview of how many tickers are expired/incomplete without refreshing."""
+        if not self.enhanced_data_fetcher:
+            return { 'expired_count': 0, 'tickers': [] }
+        try:
+            return self.enhanced_data_fetcher.preview_expired_data()
+        except Exception as e:
+            logger.error(f"Error previewing expired data: {e}")
+            return { 'expired_count': 0, 'tickers': [], 'error': str(e) }
+
     def force_refresh_expired_data(self):
         """Force refresh of expired data using EnhancedDataFetcher"""
         if not self.enhanced_data_fetcher:
             logger.warning("EnhancedDataFetcher not available - cannot refresh data")
-            return
+            return {
+                'expired_before': 0,
+                'expired_after': 0,
+                'refreshed_count': 0,
+                'success': False
+            }
         
         try:
-            self.enhanced_data_fetcher.force_refresh_expired_data()
+            return self.enhanced_data_fetcher.force_refresh_expired_data()
         except Exception as e:
             logger.error(f"Error refreshing expired data: {e}")
+            return {
+                'expired_before': 0,
+                'expired_after': 0,
+                'refreshed_count': 0,
+                'success': False,
+                'error': str(e)
+            }
     
     def smart_monthly_refresh(self):
         """Smart monthly refresh using EnhancedDataFetcher"""

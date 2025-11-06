@@ -276,8 +276,12 @@ class EnhancedPortfolioGenerator:
         logger.info(f"🎯 Generating portfolios with ticker exclusion for {risk_profile}...")
         
         portfolios = []
-        used_tickers = set()  # Track tickers used across all portfolios
+        ticker_usage_count = {}  # Track ticker usage count across all portfolios (not just set)
         config = EnhancedPortfolioConfig()
+        
+        # NEW: Enforce composition uniqueness within this risk profile
+        used_compositions = set()
+        MAX_RETRIES_PER_PORTFOLIO = 5
         
         for portfolio_index in range(self.PORTFOLIOS_PER_PROFILE):
             logger.info(f"📊 Generating portfolio {portfolio_index + 1}/{self.PORTFOLIOS_PER_PROFILE}")
@@ -286,12 +290,7 @@ class EnhancedPortfolioGenerator:
                 # Get return target for this portfolio using adaptive targeting
                 return_target = config.get_adaptive_return_target(risk_profile, available_stocks, portfolio_index)
                 
-                # Allow controlled ticker reuse (max 1 portfolio per ticker for first 6, then allow reuse)
-                ticker_usage_count = {}
-                for ticker in used_tickers:
-                    ticker_usage_count[ticker] = ticker_usage_count.get(ticker, 0) + 1
-                
-                # For first 6 portfolios: strict no reuse, for last 3: allow limited reuse
+                # For first 6 portfolios: strict no reuse (max 1 use), for last 6: allow limited reuse (max 2 uses)
                 max_reuse = 1 if portfolio_index < 6 else 2
                 
                 # Filter out heavily used tickers
@@ -308,28 +307,91 @@ class EnhancedPortfolioGenerator:
                     available_tickers = sorted(available_stocks, 
                                              key=lambda s: ticker_usage_count.get(s.get('symbol', s.get('ticker')), 0))
                 
-                # Generate portfolio with available tickers
-                portfolio = self._generate_single_portfolio_with_exclusion(
-                    risk_profile, portfolio_index, stock_selector, 
-                    available_tickers, return_target
-                )
+                # Generate portfolio with retries to enforce unique composition
+                retry = 0
+                generated = False
+                while retry < MAX_RETRIES_PER_PORTFOLIO and not generated:
+                    # Slightly perturb return target on retries to promote variety
+                    adj_return_target = return_target * (1.0 + (retry * 0.02)) if retry > 0 else return_target
+                    
+                    portfolio = self._generate_single_portfolio_with_exclusion(
+                        risk_profile, portfolio_index, stock_selector, 
+                        available_tickers, adj_return_target
+                    )
+                    
+                    if not portfolio:
+                        retry += 1
+                        continue
+                    
+                    # Build composition signature (tickers only, sorted)
+                    try:
+                        comp = tuple(sorted([alloc['symbol'] for alloc in portfolio.get('allocations', [])]))
+                    except Exception:
+                        comp = None
+                    
+                    # Accept only if composition not seen before
+                    if comp and comp not in used_compositions:
+                        used_compositions.add(comp)
+                        portfolios.append(portfolio)
+                        
+                        # Track used tickers and update usage counts
+                        for ticker in comp:
+                            ticker_usage_count[ticker] = ticker_usage_count.get(ticker, 0) + 1
+                        
+                        unique_tickers = len(ticker_usage_count)
+                        logger.info(f"✅ Portfolio {portfolio_index + 1}: {len(comp)} stocks, composition unique, {unique_tickers} unique tickers used so far")
+                        generated = True
+                    else:
+                        logger.warning(f"🔁 Duplicate composition detected on attempt {retry + 1} for portfolio {portfolio_index + 1}; retrying...")
+                        retry += 1
                 
-                if portfolio:
-                    portfolios.append(portfolio)
-                    
-                    # Track used tickers
-                    portfolio_tickers = [alloc['symbol'] for alloc in portfolio.get('allocations', [])]
-                    used_tickers.update(portfolio_tickers)
-                    
-                    logger.info(f"✅ Portfolio {portfolio_index + 1}: {len(portfolio_tickers)} stocks, {len(used_tickers)} total used")
-                else:
-                    logger.warning(f"❌ Failed to generate portfolio {portfolio_index + 1}")
+                if not generated:
+                    logger.error(f"❌ Failed to generate unique composition for portfolio {portfolio_index + 1} after {MAX_RETRIES_PER_PORTFOLIO} retries; accepting last generated portfolio but adjusting composition if possible")
+                    if portfolio:
+                        # Last resort: accept but try to mutate one symbol if pool allows
+                        try:
+                            current_allocs = portfolio.get('allocations', [])
+                            current_symbols = set(a['symbol'] for a in current_allocs)
+                            # Attempt to swap one symbol with a less-used alternative from same sector
+                            by_sector = {}
+                            for s in available_tickers:
+                                by_sector.setdefault(s.get('sector', 'Unknown'), []).append(s)
+                            mutated = False
+                            new_allocs = []
+                            for alloc in current_allocs:
+                                sym = alloc['symbol']
+                                if not mutated:
+                                    sec = alloc.get('sector', 'Unknown')
+                                    candidates = [c for c in by_sector.get(sec, []) if c.get('symbol') not in current_symbols]
+                                    if candidates:
+                                        repl = candidates.pop()
+                                        alloc = {
+                                            'symbol': repl.get('symbol'),
+                                            'allocation': alloc['allocation'],
+                                            'name': repl.get('name', repl.get('symbol')),
+                                            'assetType': 'stock',
+                                            'sector': repl.get('sector', 'Unknown'),
+                                            'volatility': repl.get('volatility', alloc.get('volatility'))
+                                        }
+                                        mutated = True
+                                new_allocs.append(alloc)
+                            if mutated:
+                                portfolio['allocations'] = new_allocs
+                                comp = tuple(sorted([a['symbol'] for a in new_allocs]))
+                                used_compositions.add(comp)
+                        except Exception:
+                            pass
+                        portfolios.append(portfolio)
+                    else:
+                        logger.warning(f"⚠️ No portfolio generated for index {portfolio_index + 1}")
                     
             except Exception as e:
                 logger.error(f"❌ Error generating portfolio {portfolio_index + 1}: {e}")
                 continue
         
-        logger.info(f"🎯 Ticker exclusion summary: {len(used_tickers)} unique tickers used across {len(portfolios)} portfolios")
+        unique_tickers = len(ticker_usage_count)
+        max_reuse_actual = max(ticker_usage_count.values()) if ticker_usage_count else 0
+        logger.info(f"🎯 Ticker exclusion summary: {unique_tickers} unique tickers used across {len(portfolios)} portfolios (max reuse: {max_reuse_actual})")
         return portfolios
     
     def _generate_single_portfolio_with_exclusion(self, risk_profile: str, portfolio_index: int, 
@@ -355,8 +417,8 @@ class EnhancedPortfolioGenerator:
                 logger.warning(f"⚠️ No stocks selected for portfolio {portfolio_index + 1}")
                 return None
             
-            # Create allocations using the new 15-template system
-            allocations = stock_selector._create_simple_allocations(selected_stocks)
+            # Create allocations using random weight generation
+            allocations = stock_selector._create_simple_allocations(selected_stocks, portfolio_index)
             
             if not allocations:
                 logger.warning(f"⚠️ No allocations created for portfolio {portfolio_index + 1}")

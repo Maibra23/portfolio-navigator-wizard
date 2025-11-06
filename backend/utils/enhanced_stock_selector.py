@@ -242,7 +242,7 @@ class EnhancedStockSelector(PortfolioStockSelector):
         except Exception as e:
             logger.error(f"❌ Dynamic allocation creation failed: {e}")
             # Fallback to simple equal weights
-            return self._create_simple_allocations(selected_stocks)
+            return self._create_simple_allocations(selected_stocks, portfolio_index)
     
     def _prioritize_stocks_by_return_potential(self, stocks: List[Dict], 
                                              risk_profile: str, return_target: float) -> List[Dict]:
@@ -517,82 +517,86 @@ class EnhancedStockSelector(PortfolioStockSelector):
         logger.warning(f"⚠️ Using fallback portfolio: {[a['symbol'] for a in allocations]}")
         return allocations
     
-    def _create_simple_allocations(self, selected_stocks: List[Dict]) -> List[Dict]:
-        """Create varied allocations using 15 diverse allocation templates"""
+    def _create_simple_allocations(self, selected_stocks: List[Dict], portfolio_index: int = None) -> List[Dict]:
+        """Create allocations using expanded template system with 15-20 templates per stock count"""
         if not selected_stocks:
             return []
         
         import random
-        
-        # 15 diverse allocation templates for different stock counts
-        ALLOCATION_TEMPLATES = {
-            3: [
-                # Balanced patterns
-                [35, 35, 30], [40, 30, 30], [30, 40, 30],
-                # Concentrated patterns
-                [50, 30, 20], [45, 35, 20], [40, 40, 20],
-                # Growth-focused patterns
-                [60, 25, 15], [55, 30, 15], [50, 35, 15],
-                # Conservative patterns
-                [40, 30, 30], [35, 35, 30], [30, 35, 35],
-                # Specialized patterns
-                [45, 30, 25], [40, 35, 25], [35, 40, 25]
-            ],
-            4: [
-                # Equal weight variations
-                [25, 25, 25, 25], [30, 25, 25, 20], [25, 30, 25, 20],
-                # Balanced concentrated
-                [35, 25, 25, 15], [30, 30, 25, 15], [25, 30, 30, 15],
-                # Growth-focused
-                [40, 25, 20, 15], [35, 30, 20, 15], [30, 35, 20, 15],
-                # Conservative spread
-                [30, 25, 25, 20], [25, 30, 25, 20], [25, 25, 30, 20],
-                # Specialized
-                [35, 30, 20, 15], [30, 35, 20, 15], [25, 35, 25, 15]
-            ],
-            5: [
-                # Equal weight
-                [20, 20, 20, 20, 20], [25, 20, 20, 20, 15], [20, 25, 20, 20, 15],
-                # Balanced
-                [30, 20, 20, 15, 15], [25, 25, 20, 15, 15], [20, 25, 25, 15, 15],
-                # Concentrated
-                [35, 20, 15, 15, 15], [30, 25, 15, 15, 15], [25, 30, 15, 15, 15],
-                # Growth-focused
-                [40, 20, 15, 15, 10], [35, 25, 15, 15, 10], [30, 30, 15, 15, 10],
-                # Conservative
-                [25, 20, 20, 20, 15], [20, 25, 20, 20, 15], [20, 20, 25, 20, 15]
-            ],
-            6: [
-                # Equal weight
-                [17, 17, 17, 17, 16, 16], [20, 17, 17, 17, 15, 14], [17, 20, 17, 17, 15, 14],
-                # Balanced
-                [25, 17, 17, 15, 13, 13], [20, 20, 17, 15, 14, 14], [17, 20, 20, 15, 14, 14],
-                # Concentrated
-                [30, 17, 15, 15, 13, 10], [25, 20, 15, 15, 13, 12], [20, 25, 15, 15, 13, 12],
-                # Growth-focused
-                [35, 17, 15, 13, 12, 8], [30, 20, 15, 13, 12, 10], [25, 25, 15, 13, 12, 10],
-                # Conservative
-                [22, 18, 18, 18, 12, 12], [20, 20, 18, 18, 12, 12], [18, 20, 20, 18, 12, 12]
-            ]
-        }
+        import time
         
         num_stocks = len(selected_stocks)
         
-        # Select appropriate template
-        if num_stocks in ALLOCATION_TEMPLATES:
-            weights = random.choice(ALLOCATION_TEMPLATES[num_stocks])
-        else:
-            # Fallback for other stock counts
+        # Expanded allocation templates for 3 and 4 stock portfolios
+        ALLOCATION_TEMPLATES = {
+            3: [
+                # Equal weight variations
+                [33, 33, 34], [34, 33, 33], [33, 34, 33], [33.3, 33.3, 33.4],
+                # Balanced patterns
+                [35, 35, 30], [40, 30, 30], [30, 40, 30], [38, 32, 30], [32, 38, 30],
+                # Concentrated patterns
+                [50, 30, 20], [45, 35, 20], [40, 40, 20], [48, 28, 24], [42, 38, 20],
+                # Growth-focused patterns
+                [60, 25, 15], [55, 30, 15], [50, 35, 15], [58, 28, 14], [52, 32, 16],
+                # Conservative patterns
+                [36, 32, 32], [34, 34, 32], [32, 36, 32],
+                # Specialized patterns
+                [45, 30, 25], [40, 35, 25], [35, 40, 25], [43, 32, 25], [37, 38, 25]
+            ],
+            4: [
+                # Equal weight variations
+                [25, 25, 25, 25], [26, 25, 25, 24], [25, 26, 25, 24], [25, 25, 26, 24],
+                # Balanced concentrated
+                [35, 25, 25, 15], [30, 30, 25, 15], [25, 30, 30, 15], [32, 28, 25, 15], [28, 32, 25, 15],
+                # Growth-focused
+                [40, 25, 20, 15], [35, 30, 20, 15], [30, 35, 20, 15], [38, 27, 20, 15], [33, 32, 20, 15],
+                # Conservative spread
+                [30, 25, 25, 20], [25, 30, 25, 20], [25, 25, 30, 20], [28, 27, 25, 20], [27, 28, 25, 20],
+                # Specialized
+                [35, 30, 20, 15], [30, 35, 20, 15], [25, 35, 25, 15], [33, 32, 20, 15], [28, 37, 20, 15],
+                # High concentration
+                [45, 20, 18, 17], [50, 20, 15, 15], [42, 22, 18, 18], [48, 18, 17, 17]
+            ]
+        }
+        
+        # Only support 3 and 4 stock portfolios
+        if num_stocks not in [3, 4]:
+            # Fallback to equal weight for unexpected stock counts
             base_weight = 100.0 / num_stocks
-            weights = []
-            for i in range(num_stocks):
-                variation = random.uniform(-3, 3)  # ±3% variation
-                weight = max(5, min(50, base_weight + variation))  # Keep between 5% and 50%
-                weights.append(round(weight, 1))
+            weights = [round(base_weight, 1) for _ in range(num_stocks)]
+            # Adjust last weight to ensure sum is 100
+            total = sum(weights[:-1])
+            weights[-1] = round(100.0 - total, 1)
+        else:
+            # Use portfolio_index and current time for truly random selection
+            if portfolio_index is not None:
+                # Create unique seed based on portfolio index and current time
+                seed_value = int(time.time() * 1000000) + (portfolio_index * 12345) + num_stocks * 789
+                random.seed(seed_value)
             
-            # Normalize to sum to 100%
+            # Select random template from expanded pool
+            templates = ALLOCATION_TEMPLATES.get(num_stocks, [])
+            if templates:
+                weights = list(random.choice(templates))
+            else:
+                # Fallback to equal weight if no templates available
+                base_weight = 100.0 / num_stocks
+                weights = [round(base_weight, 1) for _ in range(num_stocks)]
+            
+            # Normalize to sum to exactly 100%
             total = sum(weights)
-            weights = [round(w * 100 / total, 1) for w in weights]
+            if abs(total - 100.0) > 0.1:
+                # Adjust weights proportionally
+                factor = 100.0 / total
+                weights = [round(w * factor, 1) for w in weights]
+            
+            # Final adjustment to ensure exact sum
+            total = sum(weights)
+            diff = 100.0 - total
+            if abs(diff) > 0.01:
+                # Add/subtract from largest weight to fix rounding
+                max_idx = weights.index(max(weights))
+                weights[max_idx] = round(weights[max_idx] + diff, 1)
         
         # Create allocations
         allocations = []

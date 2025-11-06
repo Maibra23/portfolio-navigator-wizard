@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 
 # Import existing routers
-from routers import portfolio, cookie_demo, strategy_buckets
+from routers import portfolio, strategy_buckets
 
 # Import enhanced portfolio system (avoid hard import of generator at module load)
 from utils.redis_portfolio_manager import RedisPortfolioManager
@@ -230,7 +230,6 @@ app.add_middleware(
 
 # Include existing routers
 app.include_router(portfolio.router, tags=["portfolio"])
-app.include_router(cookie_demo.router, tags=["cookie"])
 app.include_router(strategy_buckets.router, prefix="/api/strategy-buckets", tags=["strategy-buckets"])
 
 # Health check endpoint

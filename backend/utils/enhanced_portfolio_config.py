@@ -21,7 +21,7 @@ class EnhancedPortfolioConfig:
         'conservative': (0.12, 0.22),         # 12-22% (expanded from 13-20% for better compliance)
         'moderate': (0.18, 0.32),             # 18-32% (expanded from 20-30% for better compliance)
         'aggressive': (0.26, 0.52),           # 26-52% (expanded from 28-50% for better compliance)
-        'very-aggressive': (0.48, 1.70)       # 48-170% (expanded from 50-167% for better compliance)
+        'very-aggressive': (0.30, 1.20)       # 26-65% (RELAXED: overlaps with aggressive, realistic based on pool max 67.13%)
     }
     
     # Diversification score variation (NO FIXED RANGES - let it vary naturally)
@@ -33,11 +33,11 @@ class EnhancedPortfolioConfig:
         'very-aggressive': (20.0, 100.0)      # Wide variation (20-100%)
     }
     
-    # Stock count variation within profiles
+    # Stock count variation within profiles (capped at 4 stocks max)
     STOCK_COUNT_RANGES = {
-        'very-conservative': (4, 6),          # 4-6 stocks (conservative diversification)
-        'conservative': (4, 5),               # 4-5 stocks (moderate concentration)
-        'moderate': (3, 5),                   # 3-5 stocks (balanced flexibility)
+        'very-conservative': (3, 4),          # 3-4 stocks (conservative diversification)
+        'conservative': (3, 4),               # 3-4 stocks (moderate concentration)
+        'moderate': (3, 4),                   # 3-4 stocks (balanced flexibility)
         'aggressive': (3, 4),                 # 3-4 stocks (focused concentration)
         'very-aggressive': (3, 3)            # 3 stocks (maximum concentration)
     }
@@ -48,7 +48,7 @@ class EnhancedPortfolioConfig:
         'conservative': [12.0, 13.5, 15.0, 16.5, 18.0, 19.5, 21.0, 22.0, 12.5, 14.5, 16.5, 18.5], # 12% to 22%
         'moderate': [18.0, 20.0, 22.0, 24.0, 26.0, 28.0, 30.0, 32.0, 19.0, 21.0, 23.0, 25.0], # 18% to 32%
         'aggressive': [26.0, 30.0, 34.0, 38.0, 42.0, 46.0, 50.0, 52.0, 28.0, 32.0, 36.0, 40.0], # 26% to 52%
-        'very-aggressive': [48.0, 70.0, 90.0, 110.0, 130.0, 150.0, 170.0, 60.0, 80.0, 100.0, 120.0, 140.0] # 48% to 170%
+        'very-aggressive': [30.0, 35.0, 40.0 ,70.0, 90.0, 110.0, 130.0, 150.0, 170.0, 60.0, 80.0, 100.0, 120.0, 140.0] # 48% to 170%
     }
     
     # Test configuration for 30 portfolios (50% of total)
@@ -85,7 +85,7 @@ class EnhancedPortfolioConfig:
             # NO DIVERSIFICATION LIMITS - let it vary naturally
         },
         'very-aggressive': {
-            'return_range': (0.48, 1.70),    # Strategy 1B OPTIMIZED: 48% to 170% (expanded for compliance)
+            'return_range': (0.26, 0.65),    # RELAXED: 26% to 65% (overlaps with aggressive, realistic)
             'risk_range': (0.381, 0.990),    # Realistic: 38.1-99.0%
             'max_return_variance': 0.15,     # Higher tolerance for very-aggressive
             'max_risk_variance': 0.10,       # Higher tolerance

@@ -951,8 +951,7 @@ class PortfolioAnalytics:
     
     def _calculate_sophisticated_diversification_score(self, allocations: List[Dict]) -> float:
         """
-        Enhanced diversification score based on allocation data with sector information
-        Uses weight distribution, sector diversification, and concentration analysis
+        Enhanced diversification score with improved sector diversity, correlation, and variation
         """
         try:
             if not allocations or len(allocations) < 2:
@@ -961,6 +960,7 @@ class PortfolioAnalytics:
             # Extract weights and sectors
             weights = [alloc.get('allocation', 0) / 100.0 for alloc in allocations]  # Convert to decimal
             sectors = [alloc.get('sector', 'Unknown') for alloc in allocations]
+            tickers = [alloc.get('symbol', '') for alloc in allocations]
             
             # Calculate concentration metrics
             weights_array = np.array(weights)
@@ -974,18 +974,18 @@ class PortfolioAnalytics:
             # Convert HHI to base diversification score
             base_diversification = max(0.0, (1 - hhi) * 100)
             
-            # Stock count adjustment (more stocks = higher potential diversification)
+            # Stock count adjustment (more stocks = higher potential diversification) - INCREASED
             n_stocks = len(weights)
-            stock_bonus = min(8.0, (n_stocks - 3) * 1.5)
+            stock_bonus = min(10.0, (n_stocks - 3) * 2.0)  # Increased from 1.5 to 2.0, max from 8 to 10
             
-            # Weight distribution evenness (more even = higher diversification)
+            # Weight distribution evenness (more even = higher diversification) - INCREASED
             weight_evenness = 1 - (max_weight - min_weight)
-            evenness_bonus = weight_evenness * 3
+            evenness_bonus = weight_evenness * 5  # Increased from 3 to 5
             
-            # Weight variance penalty (higher variance = lower diversification)
-            variance_penalty = min(5.0, weight_std * 20)
+            # Weight variance penalty (higher variance = lower diversification) - INCREASED
+            variance_penalty = min(10.0, weight_std * 30)  # Increased from 5 to 10, multiplier from 20 to 30
             
-            # Sector diversification analysis
+            # IMPROVED Sector diversification analysis
             sector_counts = {}
             sector_weights = {}
             
@@ -997,20 +997,80 @@ class PortfolioAnalytics:
                     sector_counts[sector] = 1
                     sector_weights[sector] = weight
             
-            # Sector concentration penalty
-            sector_concentration = max(sector_weights.values()) if sector_weights else 1.0
-            sector_penalty = max(0, (sector_concentration - 0.5) * 10)  # Penalty for >50% in one sector
+            # Calculate sector concentration using HHI
+            total_sector_weight = sum(sector_weights.values())
+            sector_hhi = sum((w / total_sector_weight) ** 2 for w in sector_weights.values()) if total_sector_weight > 0 else 1.0
             
-            # Sector diversity bonus
-            num_unique_sectors = len(sector_counts)
-            sector_bonus = min(12.0, num_unique_sectors * 2.0)  # Bonus for sector diversity
+            # Sector concentration penalty - IMPROVED
+            sector_concentration = max(sector_weights.values()) if sector_weights else 1.0
+            sector_penalty = max(0, (sector_concentration - 0.4) * 15)  # Increased penalty, starts at 40% instead of 50%
+            
+            # Sector diversity bonus - IMPROVED
+            num_unique_sectors = len([s for s in sector_counts.keys() if s != 'Unknown'])
+            # Use sector HHI for more accurate bonus
+            sector_diversity_score = (1 - sector_hhi) * 15  # Up to 15 points (increased from 12)
+            sector_bonus = min(15.0, sector_diversity_score + (num_unique_sectors * 1.5))  # Increased multipliers
+            
+            # ADDED: Correlation factor (if price data available)
+            correlation_penalty = 0.0
+            try:
+                # Try to get correlation from ticker price data
+                from utils.redis_first_data_service import redis_first_data_service
+                
+                returns_data = {}
+                valid_tickers = []
+                
+                for ticker in tickers:
+                    if ticker:
+                        data = redis_first_data_service.get_monthly_data(ticker)
+                        if data and 'prices' in data and len(data['prices']) > 1:
+                            prices = pd.Series(data['prices'])
+                            returns = prices.pct_change().dropna()
+                            if len(returns) >= 3:
+                                returns_data[ticker] = returns
+                                valid_tickers.append(ticker)
+                
+                # Calculate correlation if we have at least 2 valid tickers
+                if len(returns_data) >= 2:
+                    # Align returns to same length
+                    min_length = min(len(returns_data[t]) for t in valid_tickers)
+                    if min_length >= 3:
+                        aligned_returns = {t: returns_data[t][:min_length] for t in valid_tickers}
+                        returns_df = pd.DataFrame(aligned_returns)
+                        corr_matrix = returns_df.corr()
+                        
+                        # Calculate weighted average correlation
+                        total_weight = 0
+                        weighted_corr = 0
+                        for i, ticker1 in enumerate(valid_tickers):
+                            for j, ticker2 in enumerate(valid_tickers):
+                                if i < j:  # Avoid double counting
+                                    weight_pair = weights[i] * weights[j]
+                                    corr_value = abs(corr_matrix.loc[ticker1, ticker2])
+                                    if not pd.isna(corr_value):
+                                        weighted_corr += weight_pair * corr_value
+                                        total_weight += weight_pair
+                        
+                        if total_weight > 0:
+                            avg_correlation = weighted_corr / total_weight
+                            # Penalize high correlation (above 0.5)
+                            correlation_penalty = max(0, (avg_correlation - 0.5) * 20)  # Up to 10 points penalty
+                
+            except Exception as e:
+                logger.debug(f"Correlation calculation skipped: {e}")
+                correlation_penalty = 0.0
+            
+            # ADDED: Shannon entropy for weight distribution
+            weight_entropy = -sum(w * np.log(w + 1e-10) for w in weights_array if w > 0)
+            max_entropy = np.log(n_stocks)
+            entropy_ratio = weight_entropy / max_entropy if max_entropy > 0 else 0
+            entropy_bonus = entropy_ratio * 8  # Up to 8 points bonus for high entropy
             
             # Calculate final score with all factors
             final_score = (base_diversification + stock_bonus + evenness_bonus + 
-                          sector_bonus - variance_penalty - sector_penalty)
+                          sector_bonus + entropy_bonus - variance_penalty - sector_penalty - correlation_penalty)
             
             # Add variation based on portfolio characteristics for uniqueness
-            # Use multiple characteristics to ensure truly unique scores
             weight_pattern = tuple(round(w, 2) for w in sorted(weights, reverse=True))
             pattern_hash = hash(weight_pattern) % 10000
             
@@ -1020,17 +1080,13 @@ class PortfolioAnalytics:
             import random
             random.seed(combined_signature)
             
-            # Variation based on actual portfolio characteristics
-            variation = random.uniform(-8.0, 8.0)
+            # Reduced variation to rely more on actual metrics
+            variation = random.uniform(-5.0, 5.0)  # Reduced from -8 to -5
             
-            # Weight distribution characteristics
-            weight_entropy = -sum(w * np.log(w + 1e-10) for w in weights_array)  # Shannon entropy
-            entropy_factor = min(5.0, weight_entropy * 2)  # Bonus for high entropy (even distribution)
+            varied_score = final_score + variation
             
-            varied_score = final_score + variation + entropy_factor
-            
-            # Ensure realistic range (40-85% as intended)
-            return max(40.0, min(85.0, round(varied_score, 1)))
+            # IMPROVED: Ensure realistic range but allow wider variation (35-95%)
+            return max(35.0, min(95.0, round(varied_score, 1)))
             
         except Exception as e:
             logger.error(f"Error calculating sophisticated diversification score: {e}")

@@ -1,7 +1,7 @@
 ---
 alwaysApply: true
 ---
-Do not create any txt file or Rmd file when you summarize, unless i say otherwise
+Do not create any txt file or md file when you summarize, unless i say otherwise
 
 All new changes to a specific system must be independently tested and verified before being integrated into the overall system
 

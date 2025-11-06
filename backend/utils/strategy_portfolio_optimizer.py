@@ -99,33 +99,45 @@ class StrategyPortfolioOptimizer:
         
         portfolios = []
         strategy_config = self.STRATEGIES[strategy]
+        used_compositions = set()  # Enforce unique ticker compositions within pure set
         
         for portfolio_id in range(self.PORTFOLIOS_PER_STRATEGY):
             try:
-                seed = self._generate_strategy_seed(strategy, portfolio_id, is_pure=True)
-                random.seed(seed)
-                
-                selected_stocks = self._select_stocks_for_strategy_pure(strategy, portfolio_id)
-                if not selected_stocks:
-                    continue
-                
-                allocations = self._create_strategy_allocations(selected_stocks, strategy, is_pure=True)
-                metrics = self._calculate_strategy_portfolio_metrics(allocations, strategy)
-                
-                portfolio = {
-                    'id': f"pure_{strategy}_{portfolio_id}",
-                    'name': f"Pure {strategy_config['name']} Portfolio {portfolio_id + 1}",
-                    'description': f"Unconstrained {strategy_config['description']} portfolio",
-                    'strategy': strategy,
-                    'type': 'pure',
-                    'risk_profile': None,
-                    'allocations': allocations,
-                    'metrics': metrics,
-                    'generated_at': datetime.now().isoformat(),
-                    'constraints_applied': 'none'
-                }
-                
-                portfolios.append(portfolio)
+                # Retry a few times to avoid duplicate compositions
+                success = False
+                for attempt in range(5):
+                    seed = self._generate_strategy_seed(strategy, portfolio_id + attempt * 13, is_pure=True)
+                    random.seed(seed)
+                    
+                    selected_stocks = self._select_stocks_for_strategy_pure(strategy, portfolio_id + attempt)
+                    if not selected_stocks:
+                        continue
+                    
+                    allocations = self._create_strategy_allocations(selected_stocks, strategy, is_pure=True)
+                    # Enforce ETF / Unknown sector filtering defensively
+                    allocations = [a for a in allocations if a.get('sector') not in (None, 'Unknown')]
+                    # Composition key
+                    comp = tuple(sorted(a.get('symbol') for a in allocations))
+                    if comp and comp not in used_compositions and len(comp) >= 2:
+                        used_compositions.add(comp)
+                        metrics = self._calculate_strategy_portfolio_metrics(allocations, strategy)
+                        portfolio = {
+                            'id': f"pure_{strategy}_{portfolio_id}",
+                            'name': f"Pure {strategy_config['name']} Portfolio {portfolio_id + 1}",
+                            'description': f"Unconstrained {strategy_config['description']} portfolio",
+                            'strategy': strategy,
+                            'type': 'pure',
+                            'risk_profile': None,
+                            'allocations': allocations,
+                            'metrics': metrics,
+                            'generated_at': datetime.now().isoformat(),
+                            'constraints_applied': 'none'
+                        }
+                        portfolios.append(portfolio)
+                        success = True
+                        break
+                if not success:
+                    logger.warning(f"⚠️ Could not generate unique composition for pure {strategy} portfolio {portfolio_id}")
                 
             except Exception as e:
                 logger.error(f"❌ Failed to generate Pure Strategy portfolio {portfolio_id}: {e}")
@@ -676,27 +688,83 @@ class StrategyPortfolioOptimizer:
             return self._get_fallback_metrics(strategy)
     
     def _calculate_expected_return(self, allocations: List[Dict], strategy: str) -> float:
-        """Calculate expected return for portfolio"""
+        """Calculate expected return using Redis price data (annualized)."""
         try:
-            if strategy == 'return':
-                return 0.15
-            elif strategy == 'risk':
-                return 0.08
-            else:  # diversification
-                return 0.12
+            if not allocations:
+                return 0.10
+            # Build per-asset annualized returns from cached monthly prices
+            weights = []
+            rets = []
+            for alloc in allocations:
+                symbol = alloc.get('symbol')
+                w = float(alloc.get('allocation', 0.0))
+                if w <= 0 or not symbol:
+                    continue
+                prices = self.data_service._load_from_cache(symbol, 'prices') if hasattr(self.data_service, '_load_from_cache') else None
+                if prices is None or getattr(prices, 'empty', False) or len(prices) < 3:
+                    # fallback: use metrics if available
+                    metrics = self.data_service._load_from_cache(symbol, 'metrics') if hasattr(self.data_service, '_load_from_cache') else None
+                    annual_ret = float(metrics.get('annualized_return', 0.10)) if isinstance(metrics, dict) else 0.10
+                else:
+                    # monthly series -> annualized return over last 12 months (or scale)
+                    import pandas as pd
+                    s = prices
+                    if isinstance(s, list):
+                        s = pd.Series(s)
+                    if len(s) >= 12:
+                        annual_ret = float((s.iloc[-1] / s.iloc[-12]) - 1)
+                    else:
+                        annual_ret = float(((s.iloc[-1] / s.iloc[0]) - 1) * (12 / len(s)))
+                weights.append(w)
+                rets.append(annual_ret)
+            total_w = sum(weights) or 1.0
+            # Normalize if needed
+            weights = [w / total_w for w in weights]
+            portfolio_return = sum(w * r for w, r in zip(weights, rets))
+            return float(portfolio_return)
         except Exception as e:
             logger.error(f"❌ Error calculating expected return: {e}")
             return 0.10
     
     def _calculate_portfolio_risk(self, allocations: List[Dict], strategy: str) -> float:
-        """Calculate portfolio risk (volatility)"""
+        """Calculate portfolio risk using covariance from cached monthly returns (annualized)."""
         try:
-            if strategy == 'risk':
-                return 0.18
-            elif strategy == 'return':
-                return 0.28
-            else:  # diversification
-                return 0.22
+            if not allocations:
+                return 0.20
+            import pandas as pd
+            import numpy as np
+            symbols = []
+            weights = []
+            for alloc in allocations:
+                symbol = alloc.get('symbol')
+                w = float(alloc.get('allocation', 0.0))
+                if w <= 0 or not symbol:
+                    continue
+                symbols.append(symbol)
+                weights.append(w)
+            total_w = sum(weights) or 1.0
+            weights = np.array([w / total_w for w in weights])
+            # Build returns DataFrame
+            returns = {}
+            for sym in symbols:
+                prices = self.data_service._load_from_cache(sym, 'prices') if hasattr(self.data_service, '_load_from_cache') else None
+                if prices is None or getattr(prices, 'empty', False) or len(prices) < 3:
+                    continue
+                s = prices
+                if isinstance(s, list):
+                    s = pd.Series(s)
+                r = s.pct_change().dropna()
+                if len(r) >= 3:
+                    returns[sym] = r
+            if len(returns) < 1:
+                return 0.20
+            # Align by shortest series
+            df = pd.DataFrame(returns)
+            cov_m = df.cov() * 12  # annualize covariance (monthly to annual)
+            # Use per-asset annualized vol from covariance diagonal
+            portfolio_var = float(weights.T @ cov_m.values @ weights)
+            portfolio_vol = float(np.sqrt(max(portfolio_var, 0.0)))
+            return portfolio_vol
         except Exception as e:
             logger.error(f"❌ Error calculating portfolio risk: {e}")
             return 0.20
@@ -715,15 +783,62 @@ class StrategyPortfolioOptimizer:
             return 0.5
     
     def _calculate_diversification_score(self, allocations: List[Dict], strategy: str) -> float:
-        """Calculate diversification score for portfolio"""
+        """Calculate diversification score (0-100) using HHI, sectors, and correlation."""
         try:
-            num_stocks = len(allocations)
-            num_sectors = len(set(alloc.get('sector', 'Unknown') for alloc in allocations))
-            
-            stock_score = min(100, num_stocks * 20)
-            sector_score = min(50, num_sectors * 10)
-            
-            return stock_score + sector_score
+            import numpy as np
+            import pandas as pd
+            if not allocations or len(allocations) < 2:
+                return 50.0
+            weights = np.array([float(a.get('allocation', 0.0)) for a in allocations])
+            total = weights.sum() or 1.0
+            weights = weights / total
+            # HHI-based base diversification
+            hhi = float(np.sum(weights ** 2))
+            base = max(0.0, (1.0 - hhi) * 100.0)
+            # Sector diversity bonus (0-15)
+            sectors = [a.get('sector', 'Unknown') for a in allocations]
+            sector_hhi_map = {}
+            sector_weights = {}
+            for s, w in zip(sectors, weights):
+                if s == 'Unknown':
+                    continue
+                sector_weights[s] = sector_weights.get(s, 0.0) + w
+            if sector_weights:
+                sw = np.array(list(sector_weights.values()))
+                sw = sw / (sw.sum() or 1.0)
+                sector_hhi = float(np.sum(sw ** 2))
+                sector_bonus = (1.0 - sector_hhi) * 15.0
+            else:
+                sector_bonus = 0.0
+            # Correlation penalty (0-10)
+            symbols = [a.get('symbol') for a in allocations]
+            returns = {}
+            for sym in symbols:
+                prices = self.data_service._load_from_cache(sym, 'prices') if hasattr(self.data_service, '_load_from_cache') else None
+                if prices is None or getattr(prices, 'empty', False) or len(prices) < 3:
+                    continue
+                s = prices
+                if isinstance(s, list):
+                    s = pd.Series(s)
+                r = s.pct_change().dropna()
+                if len(r) >= 3:
+                    returns[sym] = r
+            corr_penalty = 0.0
+            if len(returns) >= 2:
+                df = pd.DataFrame(returns)
+                c = df.corr().fillna(0.0)
+                # weighted average absolute correlation
+                wa = 0.0; tw = 0.0
+                for i in range(len(symbols)):
+                    for j in range(i+1, len(symbols)):
+                        wpair = float(weights[i] * weights[j]) if i < len(weights) and j < len(weights) else 0.0
+                        if wpair > 0 and symbols[i] in c.columns and symbols[j] in c.columns:
+                            wa += wpair * abs(float(c.loc[symbols[i], symbols[j]]))
+                            tw += wpair
+                avg_corr = (wa / tw) if tw > 0 else 0.0
+                corr_penalty = max(0.0, (avg_corr - 0.3) * 25.0)  # penalize above 0.3 up to ~17.5
+            score = base + sector_bonus - corr_penalty
+            return float(max(0.0, min(100.0, round(score, 1))))
         except Exception as e:
             logger.error(f"❌ Error calculating diversification score: {e}")
             return 75.0

@@ -8,7 +8,7 @@ import json
 import hashlib
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import gzip
 import redis
 from utils.redis_first_data_service import redis_first_data_service as _rds
@@ -18,7 +18,7 @@ from utils.portfolio_stock_selector import PortfolioStockSelector
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import random
 
 logger = logging.getLogger(__name__)
@@ -974,12 +974,22 @@ async def generate_pure_strategy_portfolios(
             try:
                 metrics = portfolio.get('metrics', {})
                 allocations = []
+                # Convert float weights (0-1) to whole-number percentages summing to 100
+                raw_allocs = portfolio.get('allocations', [])
+                float_weights = [max(0.0, float(a.get('allocation', 0.0))) for a in raw_allocs]
+                total = sum(float_weights) or 1.0
+                percents = [int(round(w / total * 100)) for w in float_weights]
+                diff = 100 - sum(percents)
+                if percents and diff != 0:
+                    # Adjust the largest weight to fix rounding sum
+                    max_idx = percents.index(max(percents))
+                    percents[max_idx] += diff
                 
                 # Convert allocations to PortfolioAllocation format
-                for allocation in portfolio.get('allocations', []):
+                for idx, allocation in enumerate(raw_allocs):
                     allocations.append(PortfolioAllocation(
                         symbol=allocation.get('symbol', ''),
-                        allocation=allocation.get('allocation', 0),
+                        allocation=max(0, percents[idx] if idx < len(percents) else 0),
                         name=allocation.get('name', allocation.get('symbol', '')),
                         assetType=allocation.get('assetType', 'stock')
                     ))
@@ -2011,11 +2021,11 @@ async def refresh_ticker_table():
     """
     try:
         # Force refresh expired data
-        _rds.force_refresh_expired_data()
-        
+        result = _rds.force_refresh_expired_data()
         return {
-            "status": "success",
-            "message": "Ticker table refresh initiated",
+            "status": "success" if result and result.get('success') else "error",
+            "message": "Ticker table refresh completed",
+            "summary": result,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -2230,12 +2240,54 @@ async def get_ticker_table_data():
                     dates = list(price_dict.keys())
                     
                     # Parse sector data
-                    sector_info = json.loads(sector_raw.decode())
+                    try:
+                        sector_info = json.loads(sector_raw.decode())
+                        # Handle case where sector_info is a string instead of dict
+                        if isinstance(sector_info, str):
+                            sector_info = {'sector': sector_info, 'companyName': ticker, 'industry': 'Unknown', 'country': 'Unknown'}
+                    except (json.JSONDecodeError, AttributeError) as e:
+                        logger.debug(f"Sector data parse issue for {ticker}: {e}, using defaults")
+                        sector_info = {'sector': 'Unknown', 'companyName': ticker, 'industry': 'Unknown', 'country': 'Unknown'}
                     
                     # Calculate data points and date range
                     data_points = len(prices)
-                    first_date = dates[0] if dates else "N/A"
-                    last_date = dates[-1] if dates else "N/A"
+                    # Handle dates - might be strings or tuples
+                    first_date_raw = dates[0] if dates else "N/A"
+                    last_date_raw = dates[-1] if dates else "N/A"
+                    
+                    # Extract date string from various formats
+                    def extract_date_str(date_val):
+                        if date_val == "N/A" or date_val is None:
+                            return "N/A"
+                        
+                        # Handle tuple objects
+                        if isinstance(date_val, tuple):
+                            # If tuple, take the second element (date)
+                            date_val = date_val[1] if len(date_val) > 1 else date_val[0]
+                        
+                        # Handle string representation of tuples (e.g., "('APOTEA.ST', datetime.datetime(...))")
+                        if isinstance(date_val, str) and date_val.startswith("(") and "datetime" in date_val:
+                            try:
+                                # Try to extract date from string representation
+                                # Pattern: "('TICKER', datetime.datetime(2025, 10, 27, ...))"
+                                import re
+                                # Extract datetime.datetime(...) or datetime.date(...) part
+                                match = re.search(r'datetime\.(?:datetime|date)\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})', date_val)
+                                if match:
+                                    year, month, day = match.groups()
+                                    return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                            except Exception:
+                                pass
+                        
+                        # Handle datetime/date objects
+                        if isinstance(date_val, (datetime, date)):
+                            # Convert datetime/date objects to string
+                            return date_val.strftime("%Y-%m-%d")
+                        
+                        return str(date_val)
+                    
+                    first_date = extract_date_str(first_date_raw)
+                    last_date = extract_date_str(last_date_raw)
                     last_price = prices[-1] if prices else 0
                     
                     # Calculate return and risk metrics
@@ -2264,30 +2316,51 @@ async def get_ticker_table_data():
                         except Exception as e:
                             logger.warning(f"Error calculating metrics for {ticker}: {e}")
                     
-                    # NEW: Check data freshness
-                    data_freshness = "current"
-                    if last_date != "N/A":
+                    # Check data freshness - properly handle all cases
+                    data_freshness = "unknown"
+                    if last_date and last_date != "N/A":
+                        date_str = None
                         try:
-                            # Handle date format: "2025-07-01 00:00:00-04:00"
-                            if " " in last_date:
-                                # Extract just the date part before the space
-                                date_part = last_date.split(" ")[0]
-                                last_date_obj = datetime.strptime(date_part, "%Y-%m-%d")
-                            else:
-                                last_date_obj = datetime.strptime(last_date, "%Y-%m-%d")
+                            # Handle various date formats
+                            date_str = str(last_date).strip()
                             
-                            days_old = (datetime.now() - last_date_obj).days
-                            if days_old <= 7:
+                            # Extract just the date part (YYYY-MM-DD) from various formats
+                            # Examples: "2025-10-01", "2025-10-22 20:00:01+00:00", "2025-10-22T20:00:01Z"
+                            if " " in date_str:
+                                date_str = date_str.split(" ")[0]
+                            elif "T" in date_str:
+                                date_str = date_str.split("T")[0]
+                            elif "+" in date_str:
+                                date_str = date_str.split("+")[0]
+                            
+                            # Ensure we have a valid date format (YYYY-MM-DD)
+                            if len(date_str) >= 10:
+                                date_str = date_str[:10]
+                            
+                            # Parse date
+                            last_date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                            now = datetime.now()
+                            
+                            # Calculate days difference (handle future dates)
+                            days_diff = (now - last_date_obj).days
+                            
+                            # If date is in the future, mark as very recent (likely timezone issue)
+                            if days_diff < 0:
                                 data_freshness = "very_recent"
-                            elif days_old <= 30:
+                            elif days_diff <= 7:
+                                data_freshness = "very_recent"
+                            elif days_diff <= 30:
                                 data_freshness = "recent"
-                            elif days_old <= 90:
+                            elif days_diff <= 90:
                                 data_freshness = "moderate"
                             else:
                                 data_freshness = "stale"
-                        except Exception as e:
-                            logger.debug(f"Date parsing error for {ticker}: {e}")
+                        except (ValueError, AttributeError, TypeError) as e:
+                            logger.debug(f"Date parsing error for {ticker} (date: {last_date}, extracted: {date_str}): {e}")
                             data_freshness = "unknown"
+                    else:
+                        # No date available
+                        data_freshness = "unknown"
                     
                     ticker_info = {
                         "id": index,  # NEW: ID column
@@ -4069,3 +4142,514 @@ def smart_monthly_refresh():
 
 
 
+# New: Table-friendly portfolios endpoint (all profiles)
+@router.get("/portfolios-table/data")
+async def get_all_portfolios_table_data():
+    """
+    Get all portfolios for all risk profiles in a table-friendly format.
+    Returns flattened list with essential fields for rendering tables.
+    """
+    try:
+        from datetime import datetime
+        if not redis_manager:
+            return {
+                "status": "error",
+                "message": "Portfolio system not available",
+                "portfolios": [],
+                "total_count": 0,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        risk_profiles = [
+            'very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive'
+        ]
+
+        all_rows = []
+        for rp in risk_profiles:
+            # Retrieve up to 12 portfolios per profile
+            portfolios = redis_manager.get_portfolio_recommendations(rp, count=12) or []
+            for idx, p in enumerate(portfolios):
+                allocations = p.get('allocations', []) or []
+                # Top 3 allocation preview
+                top = sorted(allocations, key=lambda a: a.get('allocation', 0), reverse=True)[:3]
+                top_preview = ", ".join([f"{t.get('symbol','?')} ({t.get('allocation',0):.1f}%)" for t in top])
+                row = {
+                    "id": len(all_rows) + 1,
+                    "risk_profile": rp,
+                    "risk_profile_display": rp.replace('-', ' ').title(),
+                    "portfolio_name": p.get('name', f'Portfolio {idx + 1}'),
+                    "variation_id": p.get('variation_id', idx),
+                    "stock_count": len(allocations),
+                    "expected_return": round(p.get('expectedReturn', 0) * 100, 2),
+                    "risk": round(p.get('risk', 0) * 100, 2),
+                    "diversification_score": round(p.get('diversificationScore', 0) or 0, 1),
+                    "top_stocks": top_preview,
+                }
+                all_rows.append(row)
+
+        return {
+            "status": "success",
+            "portfolios": all_rows,
+            "total_count": len(all_rows),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting portfolios table data: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting portfolios table data: {str(e)}")
+
+
+
+
+@router.get("/ticker-table/refresh/preview")
+async def refresh_ticker_table_preview():
+    """Return an estimate of how many tickers would be refreshed and estimated time."""
+    try:
+        # Use the same preview logic as smart-refresh but for full refresh
+        result = _rds.preview_expired_data()
+        expired_count = result.get('expired_count', 0)
+        
+        # Estimate time: roughly 0.5-1 second per ticker (with rate limiting)
+        # More conservative estimate for full refresh
+        estimate_seconds = max(60, expired_count * 1.5)  # At least 1 minute, or 1.5s per ticker
+        if expired_count == 0:
+            estimate_seconds = 30  # Quick check if nothing to refresh
+        
+        return {
+            "status": "success",
+            "expired_count": expired_count,
+            "estimate_seconds": estimate_seconds,
+            "note": "Full refresh updates all expired/incomplete tickers. This may take several minutes depending on the number of tickers needing updates.",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error generating refresh preview: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating refresh preview: {str(e)}")
+
+@router.get("/ticker-table/smart-refresh/preview")
+async def smart_refresh_preview():
+    """Return how many tickers would be refreshed by smart-refresh, without executing it."""
+    try:
+        result = _rds.preview_expired_data()
+        return {
+            "status": "success",
+            "expired_count": result.get('expired_count', 0),
+            "sample": result.get('tickers', []),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error generating smart-refresh preview: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating smart-refresh preview: {str(e)}")
+
+
+@router.get("/regenerate/estimate")
+async def estimate_portfolio_regeneration():
+    """Return an estimated duration for regenerating portfolios."""
+    try:
+        # Heuristic estimate based on strategy optimizer availability
+        est_seconds = 120
+        note = "Typical duration 1–3 minutes depending on cache and rate limits"
+        try:
+            # If strategy optimizer exposes summary stats, adjust estimate
+            if hasattr(_rds, 'strategy_optimizer') and _rds.strategy_optimizer:
+                est_seconds = 90
+        except Exception:
+            pass
+        return {"status": "success", "estimate_seconds": est_seconds, "note": note}
+    except Exception as e:
+        logger.error(f"Error estimating regeneration: {e}")
+        raise HTTPException(status_code=500, detail=f"Error estimating regeneration: {str(e)}")
+
+
+# New: Consolidated HTML with two tabs (Tickers + Portfolios) and search inputs
+@router.get("/consolidated-table")
+async def get_consolidated_table_html():
+    """Serve consolidated HTML page with Tickers and Portfolios tabs and search."""
+    try:
+        from fastapi.responses import HTMLResponse
+        from datetime import datetime
+
+        # Gather data via existing endpoints
+        ticker_payload = await get_ticker_table_data()
+        tickers = ticker_payload.get('tickers', [])
+
+        portfolio_payload = await get_all_portfolios_table_data()
+        portfolios = portfolio_payload.get('portfolios', [])
+
+        html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consolidated Tables - Portfolio Navigator</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #f8f9fa; color: #212529; }}
+    .header {{ background: linear-gradient(135deg, #2c5aa0 0%, #1e3d6f 100%); color: #fff; padding: 24px; text-align: center; }}
+    .header h1 {{ margin: 0 0 6px 0; font-size: 22px; font-weight: 600; }}
+    .header div {{ opacity: 0.9; font-size: 14px; }}
+    .container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
+    .stats {{ display: flex; gap: 16px; margin-bottom: 16px; }}
+    .stat {{ flex: 1; background: #fff; border-radius: 8px; padding: 12px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }}
+    .stat .label {{ color: #6c757d; font-size: 12px; text-transform: uppercase; }}
+    .stat .value {{ color: #2c5aa0; font-weight: 700; font-size: 20px; }}
+    .tabs {{ display: flex; gap: 8px; background: #fff; border-radius: 8px 8px 0 0; border-bottom: 2px solid #e9ecef; padding: 0 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); justify-content: center; }}
+    .tab {{ padding: 12px 18px; background: transparent; border: none; cursor: pointer; color: #6c757d; font-weight: 600; border-bottom: 3px solid transparent; }}
+    .tab.active {{ color: #2c5aa0; border-bottom-color: #2c5aa0; }}
+    .content {{ background: #fff; border-radius: 0 0 8px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: visible; }}
+    .toolbar {{ display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #e9ecef; align-items: center; }}
+    .search {{ flex: 1; }}
+    .search input {{ width: 100%; padding: 10px 12px; border: 1px solid #dee2e6; border-radius: 6px; }}
+    .btn {{ padding: 10px 12px; border-radius: 6px; border: 1px solid #dee2e6; background: #f8f9fa; cursor: pointer; position: relative; }}
+    .btn.primary {{ background: #2c5aa0; color: #fff; border-color: #2c5aa0; }}
+    .btn:hover {{ background: #e9ecef; }}
+    .btn.primary:hover {{ background: #1e3d6f; }}
+    .modal-backdrop {{ position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 2000; }}
+    .modal {{ background: #fff; border-radius: 8px; width: 400px; max-width: 90vw; box-shadow: 0 6px 20px rgba(0,0,0,0.2); }}
+    .modal header {{ padding: 12px 16px; border-bottom: 1px solid #e9ecef; font-weight: 600; }}
+    .modal .body {{ padding: 16px; color: #212529; }}
+    .modal footer {{ padding: 12px 16px; border-top: 1px solid #e9ecef; display: flex; gap: 8px; justify-content: flex-end; }}
+    .btn.secondary {{ background: #fff; color: #212529; }}
+    .table-wrap {{ overflow-x: auto; max-height: 70vh; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+    thead {{ position: sticky; top: 0; background: #f8f9fa; z-index: 1; }}
+    th, td {{ padding: 10px 12px; border-bottom: 1px solid #e9ecef; text-align: left; }}
+    th {{ cursor: pointer; user-select: none; position: relative; }}
+    th:hover {{ background: #e9ecef; }}
+    tbody tr:hover {{ background: #f8f9fa; }}
+    td.col-hover, th.col-hover {{ background: #eef4ff; }}
+    .number {{ text-align: right; font-variant-numeric: tabular-nums; }}
+    .footer {{ color: #6c757d; text-align: center; padding: 14px; font-size: 13px; }}
+    @media (max-width: 768px) {{ .stats {{ flex-direction: column; }} }}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Consolidated Data Tables</h1>
+    <div>All tickers and portfolios from Redis</div>
+  </div>
+  <div class="container">
+    <div class="stats">
+      <div class="stat"><div class="label">Total Tickers</div><div class="value">{len(tickers)}</div></div>
+      <div class="stat"><div class="label">Total Portfolios</div><div class="value">{len(portfolios)}</div></div>
+      <div class="stat"><div class="label">Updated</div><div class="value">{datetime.now().strftime('%Y-%m-%d %H:%M')}</div></div>
+    </div>
+    <div class="tabs">
+      <button id="tab-tickers" class="tab active" onclick="switchTab('tickers')">Tickers</button>
+      <button id="tab-portfolios" class="tab" onclick="switchTab('portfolios')">Portfolios</button>
+    </div>
+    <div class="content">
+             <div id="panel-tickers">
+               <div class="toolbar">
+                 <div class="search"><input id="search-tickers" placeholder="Search tickers or companies..." oninput="searchTickers()" /></div>
+                 <button class="btn" onclick="refreshTickers()" title="Full refresh: Updates all tickers regardless of cache status. Use when data is outdated or missing.">Refresh</button>
+                 <button class="btn" onclick="smartRefreshTickers()" title="Smart refresh: Only updates expired or incomplete tickers. Faster and respects rate limits.">Smart Refresh</button>
+               </div>
+        <div class="table-wrap">
+          <table id="table-tickers"><thead><tr>
+            <th class="sortable" onclick="sortTable('tickers', 0, 'number')">#</th>
+            <th class="sortable" onclick="sortTable('tickers', 1, 'text')">Ticker</th>
+            <th class="sortable" onclick="sortTable('tickers', 2, 'text')">Company</th>
+            <th class="sortable" onclick="sortTable('tickers', 3, 'text')">Sector</th>
+            <th class="sortable" onclick="sortTable('tickers', 4, 'text')">Industry</th>
+            <th class="sortable number" onclick="sortTable('tickers', 5, 'number')">Last Price</th>
+            <th class="sortable number" onclick="sortTable('tickers', 6, 'number')">Return %</th>
+            <th class="sortable number" onclick="sortTable('tickers', 7, 'number')">Risk %</th>
+            <th class="sortable" onclick="sortTable('tickers', 8, 'text')">Freshness</th>
+          </tr></thead><tbody>
+"""
+        for t in tickers:
+            html += f"""
+            <tr>
+              <td>{t.get('id','-')}</td>
+              <td><strong>{t.get('ticker','-')}</strong></td>
+              <td>{t.get('companyName','-')}</td>
+              <td>{t.get('sector','-')}</td>
+              <td>{t.get('industry','-')}</td>
+              <td class=\"number\">{t.get('lastPrice',0):.2f}</td>
+              <td class=\"number\">{t.get('annualizedReturn',0):.2f}%</td>
+              <td class=\"number\">{t.get('annualizedRisk',0):.2f}%</td>
+              <td>{t.get('dataFreshness','unknown').replace('_', ' ').title() if t.get('dataFreshness') != 'error' else 'Unknown'}</td>
+            </tr>
+"""
+        html += """
+          </tbody></table>
+        </div>
+      </div>
+      <div id="panel-portfolios" style="display:none;">
+        <div class="toolbar">
+          <div class="search"><input id="search-portfolios" placeholder="Search portfolios (name, profile, tickers)..." oninput="searchPortfolios()" /></div>
+          <button class="btn" onclick="openRegenModal()" title="Regenerate all portfolios using current strategies.">Regenerate</button>
+        </div>
+        <div class="table-wrap">
+          <table id="table-portfolios"><thead><tr>
+            <th class="sortable" onclick="sortTable('portfolios', 0, 'number')">#</th>
+            <th class="sortable" onclick="sortTable('portfolios', 1, 'text')">Risk Profile</th>
+            <th class="sortable" onclick="sortTable('portfolios', 2, 'text')">Portfolio</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 3, 'number')">Stocks</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 4, 'number')">Return %</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 5, 'number')">Risk %</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 6, 'number')">Diversification</th>
+            <th class="sortable" onclick="sortTable('portfolios', 7, 'text')">Top Stocks</th>
+          </tr></thead><tbody>
+"""
+        for p in portfolios:
+            html += f"""
+            <tr>
+              <td>{p.get('id','-')}</td>
+              <td>{p.get('risk_profile_display','-')}</td>
+              <td><strong>{p.get('portfolio_name','-')}</strong></td>
+              <td class=\"number\">{p.get('stock_count',0)}</td>
+              <td class=\"number\">{p.get('expected_return',0):.2f}%</td>
+              <td class=\"number\">{p.get('risk',0):.2f}%</td>
+              <td class=\"number\">{p.get('diversification_score',0):.1f}</td>
+              <td>{p.get('top_stocks','-')}</td>
+            </tr>
+"""
+        html += """
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+    <div class="footer">Data source: Redis | Use Refresh for full refresh, Smart Refresh for incremental update</div>
+
+    <div id="regenModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenModalTitle" style="display:none;">
+      <div class="modal">
+        <header id="regenModalTitle">Confirm Portfolio Regeneration</header>
+        <div class="body">
+          <div id="regenModalText">Regenerating portfolios may take 1–3 minutes.</div>
+        </div>
+        <footer>
+          <button class="btn secondary" onclick="closeRegenModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedRegen()">Proceed</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="refreshModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="refreshModalTitle" style="display:none;">
+      <div class="modal">
+        <header id="refreshModalTitle">Confirm Full Refresh</header>
+        <div class="body">
+          <div id="refreshModalText">Full refresh will update all expired/incomplete tickers. This may take several minutes.</div>
+        </div>
+        <footer>
+          <button class="btn secondary" onclick="closeRefreshModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedRefresh()">Proceed</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="smartModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="smartModalTitle">
+      <div class="modal">
+        <header id="smartModalTitle">Confirm Smart Refresh</header>
+        <div class="body">
+          <div id="smartModalText">About to refresh N tickers.</div>
+        </div>
+        <footer>
+          <button class="btn secondary" onclick="closeSmartModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedSmartRefresh()">Proceed</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(name) {
+      document.getElementById('panel-tickers').style.display = (name==='tickers')?'block':'none';
+      document.getElementById('panel-portfolios').style.display = (name==='portfolios')?'block':'none';
+      document.getElementById('tab-tickers').classList.toggle('active', name==='tickers');
+      document.getElementById('tab-portfolios').classList.toggle('active', name==='portfolios');
+    }
+
+    // Ticker search: use backend enhanced search when 3+ chars, else client filter
+    let allTickerRows = Array.from(document.querySelectorAll('#table-tickers tbody tr'));
+    async function searchTickers() {
+      const q = document.getElementById('search-tickers').value.trim();
+      if (q.length >= 3) {
+        try {
+          const res = await fetch(`/api/portfolio/search-tickers?q=${encodeURIComponent(q)}&limit=50`);
+          if (res.ok) {
+            const data = await res.json();
+            const results = data || [];
+            // Fast client-side render: hide all rows, show only those matching tickers
+            const set = new Set(results.map(r => (r.ticker || r.symbol || '').toUpperCase()));
+            allTickerRows.forEach(row => {
+              const ticker = (row.children[1]?.innerText || '').toUpperCase();
+              row.style.display = set.size ? (set.has(ticker) ? '' : 'none') : '';
+            });
+            return;
+          }
+        } catch(_) { /* fall back to client filter */ }
+      }
+      // Client-only filter by ticker/company/sector
+      const query = q.toLowerCase();
+      allTickerRows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+      });
+    }
+
+    // Portfolios search: client-side filter by name/profile/top stocks
+    let allPortfolioRows = Array.from(document.querySelectorAll('#table-portfolios tbody tr'));
+    function searchPortfolios() {
+      const q = document.getElementById('search-portfolios').value.trim().toLowerCase();
+      allPortfolioRows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    // Refresh endpoints
+    async function refreshTickers() {
+      try {
+        const res = await fetch('/api/portfolio/ticker-table/refresh/preview');
+        if (res.ok) {
+          const data = await res.json();
+          const n = data.expired_count || 0;
+          const secs = data.estimate_seconds || 120;
+          const note = data.note || '';
+          const el = document.getElementById('refreshModalText');
+          el.textContent = `Full refresh will update ${n} expired/incomplete tickers. Estimated time: ${Math.round(secs/60) || 2} minutes. ${note}`;
+          openRefreshModal();
+          return;
+        }
+      } catch(_) {}
+      // Fallback
+      openRefreshModal();
+    }
+    function openRefreshModal(){ document.getElementById('refreshModal').style.display='flex'; }
+    function closeRefreshModal(){ document.getElementById('refreshModal').style.display='none'; }
+    async function proceedRefresh(){
+      closeRefreshModal();
+      try { await fetch('/api/portfolio/ticker-table/refresh', { method: 'POST' }); } catch(_) {}
+      alert('Full refresh initiated');
+    }
+    async function smartRefreshTickers() {
+      try {
+        const res = await fetch('/api/portfolio/ticker-table/smart-refresh/preview');
+        if (res.ok) {
+          const data = await res.json();
+          const n = data.expired_count || 0;
+          const el = document.getElementById('smartModalText');
+          el.textContent = `About to smart-refresh ${n} tickers.`;
+          openSmartModal();
+          return;
+        }
+      } catch(_) {}
+      // Fallback
+      openSmartModal();
+    }
+    function openSmartModal(){ document.getElementById('smartModal').style.display='flex'; }
+    function closeSmartModal(){ document.getElementById('smartModal').style.display='none'; }
+    async function proceedSmartRefresh(){
+      closeSmartModal();
+      try { await fetch('/api/portfolio/ticker-table/smart-refresh', { method: 'POST' }); } catch(_) {}
+      alert('Smart refresh initiated');
+    }
+
+    // Table sorting functionality
+    let sortState = { tickers: {}, portfolios: {} };
+    
+    function sortTable(tableType, columnIndex, dataType) {
+      const tableId = tableType === 'tickers' ? 'table-tickers' : 'table-portfolios';
+      const table = document.getElementById(tableId);
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const headers = table.querySelectorAll('thead th');
+      
+      // Get current sort direction
+      const currentState = sortState[tableType][columnIndex] || 'none';
+      const newDirection = currentState === 'asc' ? 'desc' : 'asc';
+      
+      // Reset all header classes
+      headers.forEach(h => {
+        h.classList.remove('sort-asc', 'sort-desc');
+        if (h.classList.contains('sortable')) {
+          h.classList.add('sortable');
+        }
+      });
+      
+      // Set new sort direction
+      sortState[tableType] = {};
+      sortState[tableType][columnIndex] = newDirection;
+      headers[columnIndex].classList.remove('sortable');
+      headers[columnIndex].classList.add(newDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+      
+      // Sort rows
+      rows.sort((a, b) => {
+        const aCell = a.cells[columnIndex];
+        const bCell = b.cells[columnIndex];
+        let aVal = aCell ? aCell.textContent.trim() : '';
+        let bVal = bCell ? bCell.textContent.trim() : '';
+        
+        if (dataType === 'number') {
+          // Extract numeric value (remove % and other non-numeric chars)
+          aVal = parseFloat(aVal.replace(/[^0-9.-]/g, '')) || 0;
+          bVal = parseFloat(bVal.replace(/[^0-9.-]/g, '')) || 0;
+        } else {
+          // Text comparison
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+        
+        if (aVal < bVal) return newDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return newDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+      
+      // Re-append sorted rows
+      rows.forEach(row => tbody.appendChild(row));
+    }
+
+    // Column hover highlighting
+    function enableColumnHover(tableId) {
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      table.addEventListener('mouseover', (e) => {
+        const cell = e.target.closest('td, th');
+        if (!cell) return;
+        const idx = cell.cellIndex;
+        Array.from(table.rows).forEach(tr => {
+          const c = tr.cells[idx];
+          if (c) c.classList.add('col-hover');
+        });
+      });
+      table.addEventListener('mouseout', () => {
+        table.querySelectorAll('.col-hover').forEach(el => el.classList.remove('col-hover'));
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      enableColumnHover('table-tickers');
+      enableColumnHover('table-portfolios');
+    });
+
+    async function openRegenModal(){
+      try {
+        const res = await fetch('/api/portfolio/regenerate/estimate');
+        if (res.ok) {
+          const data = await res.json();
+          const secs = data.estimate_seconds || 120;
+          const note = data.note || '';
+          const el = document.getElementById('regenModalText');
+          el.textContent = `Regenerating portfolios may take about ${Math.round(secs/60)||2} minutes. ${note}`;
+        }
+      } catch(_) {}
+      document.getElementById('regenModal').style.display='flex';
+    }
+    function closeRegenModal(){ document.getElementById('regenModal').style.display='none'; }
+    async function proceedRegen(){
+      closeRegenModal();
+      try { await fetch('/api/portfolio/regenerate', { method: 'POST' }); } catch(_) {}
+      alert('Portfolio regeneration started');
+    }
+  </script>
+</body>
+</html>
+"""
+
+        return HTMLResponse(content=html)
+    except Exception as e:
+        logger.error(f"Error serving consolidated table: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to serve consolidated table: {str(e)}")

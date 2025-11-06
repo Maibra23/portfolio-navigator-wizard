@@ -928,7 +928,8 @@ export const StockSelection = ({
         canProceed: false
       });
     }
-  }, [selectedStocks, totalAllocation]); // Added totalAllocation as dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStocks, totalAllocation]); // calculateRealTimeMetrics and validatePortfolio are useCallback functions that depend on selectedStocks, so they're stable
 
   const addStock = (stock: StockResult) => {
     // Validation checks
@@ -1053,10 +1054,8 @@ export const StockSelection = ({
     // FIX #2: Show loading state briefly for smooth transition
     setIsLoadingMetrics(true);
     
-    // If we're in the dynamic-generation tab, navigate to visual charts
-    if (activeTab === 'dynamic-generation') {
-      setActiveTab('full-customization');
-    }
+    // REMOVED: Auto-navigation - navigation now only happens when user presses Continue button
+    // Navigation will be handled by handleNext() when Continue is pressed
     
     // Mirror recommendation metrics immediately
     setPortfolioMetrics({

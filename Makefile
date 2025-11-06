@@ -10,7 +10,7 @@ CHECK_CACHE_CMD = "from utils.redis_first_data_service import RedisFirstDataServ
 CHECK_STATUS_CMD = "from utils.redis_first_data_service import redis_first_data_service as s; inv = s.get_cache_inventory(); print(f'\\nRedis: {inv.get(\"redis\") }'); cov = inv.get('coverage',{}); print(f'Joined tickers: {cov.get(\"joined_tickers\",0)}'); print(f'Prices keys: {cov.get(\"prices\",0)}, Sector keys: {cov.get(\"sector\",0)}, Metrics keys: {cov.get(\"metrics\",0)}'); print(f'TTL sample: {inv.get(\"ttl_sample\", [])[:3]}')"
 
 
-.PHONY: help dev dev-ticker backend frontend ticker-table prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health open-ticker warm-cache activate-ticker-table start-ticker-table check-redis quick-ticker-table enhanced enhanced-quick enhanced-complete backend-enhanced enhanced-table test-enhanced test-enhanced-auto-refresh test-calculations demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status test-search demo-search performance test-performance regenerate-portfolios regenerate-profile verify-portfolios test-systems
+.PHONY: help dev backend frontend prod-build prod-copy test-backend test-frontend full-dev status stop clean install fix-health check-redis enhanced enhanced-quick enhanced-complete backend-enhanced enhanced-table test-enhanced test-enhanced-auto-refresh test-calculations demo-enhanced start-auto-refresh stop-auto-refresh enhanced-status test-search demo-search performance test-performance regenerate-portfolios regenerate-profile verify-portfolios test-systems consolidated-view
 
 # Default target - show help
 help:
@@ -19,18 +19,14 @@ help:
 	@echo ""
 	@echo "📋 Development Commands:"
 	@echo "  make dev          - Start both backend and frontend (FAST startup with lazy stock selection)"
-	@echo "  make dev-ticker   - Start backend + ticker table server"
+	@echo "  make consolidated-view - Start backend and open consolidated (Tickers + Portfolios)"
 	@echo "  make backend      - Start backend only on http://localhost:8000 (FAST startup)"
 	@echo "  make frontend     - Start frontend only on http://localhost:8080"
-	@echo "  make ticker-table - Start ticker table server on http://localhost:8081 (requires backend)"
 	@echo "  make full-dev     - Start with full ticker list (FAST startup with lazy initialization)"
 	@echo "  make fix-health   - Fix health endpoint error (restart backend)"
-	@echo "  make open-ticker  - Open consolidated ticker & portfolio tables in browser"
 	@echo "  make warm-cache   - Pre-warm Redis cache with all required data"
 	@echo "  make check-redis  - 🆕 Check Redis status and provide startup instructions"
-	@echo "  make quick-ticker-table - 🆕 QUICK: Check Redis + start essential ticker table system"
-	@echo "  make start-ticker-table - 🆕 ESSENTIAL: Warm cache + start backend + ticker table server"
-	@echo "  make activate-ticker-table - 🆕 COMPLETE: Warm cache + start all servers for ticker table"
+	@echo "  (deprecated) old ticker table targets removed"
 	@echo ""
 	@echo "🚀 Enhanced Ticker Table Commands (FAST STARTUP):"
 	@echo "  make enhanced          - Start enhanced ticker table system (lazy stock selection)"
@@ -87,8 +83,8 @@ help:
 	@echo "  Backend API: http://localhost:8000"
 	@echo "  API Docs: http://localhost:8000/docs"
 	@echo "  Health Check: http://localhost:8000/health"
-	@echo "  Ticker Table: http://localhost:8081"
-	@echo "  Enhanced Table: http://localhost:8000/api/portfolio/ticker-table/enhanced"
+	@echo "  Consolidated: http://localhost:8000/api/portfolio/consolidated-table"
+	@echo "  Enhanced Table API: http://localhost:8000/api/portfolio/ticker-table/enhanced"
 	@echo "  Enhanced Search: http://localhost:8000/api/portfolio/search-tickers?q=AAPL"
 	@echo ""
 	@echo "🎯 NEW FEATURES HIGHLIGHT:"
@@ -134,25 +130,7 @@ dev: check-cache
 	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 & \
 	cd frontend && npm run dev
 
-# Development with ticker table instead of frontend
-dev-ticker: check-cache
-	@echo "🚀 Starting Portfolio Navigator Wizard (Ticker Table Mode)..."
-	@echo "⚡ Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
-	@echo "📊 Backend: http://localhost:8000"
-	@echo "📊 Ticker Table: http://localhost:8081"
-	@echo "=================================================="
-	@echo "🔄 Starting servers in background..."
-	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 & \
-	echo "✅ Backend server started (PID: $$!)" && \
-	sleep 3 && \
-	cd backend && $(PYTHON_EXEC) ticker_table_server.py > /dev/null 2>&1 & \
-	echo "✅ Ticker table server started (PID: $$!)" && \
-	echo "" && \
-	echo "🎉 Both servers are now running in background!" && \
-	echo "📊 Backend: http://localhost:8000" && \
-	echo "📊 Ticker Table: http://localhost:8081" && \
-	echo "💡 To stop: make stop" && \
-	echo "💡 To check status: make status"
+ 
 
 # Full development: run with all tickers and complete cache (FAST startup with lazy initialization)
 full-dev: check-cache stop
@@ -213,13 +191,7 @@ frontend:
 	@echo "=================================================="
 	cd frontend && npm run dev
 
-# Ticker table server only
-ticker-table:
-	@echo "📊 Starting Ticker Table Server..."
-	@echo "📊 Server: http://localhost:8081"
-	@echo "📊 Requires main backend on http://localhost:8000"
-	@echo "=================================================="
-	@cd backend && $(PYTHON_EXEC) ticker_table_server.py
+ 
 
 # Install all dependencies
 install:
@@ -293,38 +265,7 @@ fix-health:
 	sleep 2
 	make backend
 
-# Open consolidated ticker and portfolio tables in browser
-open-ticker: check-redis
-	@echo "🌐 Opening consolidated ticker and portfolio tables in browser..."
-	@echo "🚀 Starting consolidated table system..."
-	@echo "=================================================="
-	@echo "📊 This will start:"
-	@echo "  1. 📊 Consolidated table server (port 8081) - if not running"
-	@echo "  2. 🌐 Open browser with both ticker and portfolio tables"
-	@echo "=================================================="
-	@echo ""
-	@# Note: Backend server not needed for consolidated table system
-	@echo "ℹ️  Using consolidated table server (no main backend required)"
-	@# Check if consolidated table server is running
-	@if ! curl -s http://localhost:8081/health > /dev/null 2>&1; then \
-		echo "🔄 Starting consolidated table server..."; \
-		cd backend && $(PYTHON_EXEC) consolidated_table_server.py > /dev/null 2>&1 & \
-		echo "✅ Consolidated table server started (PID: $$!)"; \
-		sleep 2; \
-	else \
-		echo "✅ Consolidated table server already running"; \
-	fi
-	@echo ""
-	@echo "🌐 Opening consolidated tables in browser..."
-	@open "http://localhost:8081"
-	@echo "✅ Consolidated ticker and portfolio tables opened in browser!"
-	@echo ""
-	@echo "🎯 CONSOLIDATED TABLE SYSTEM READY!"
-	@echo "=================================================="
-	@echo "📊 Ticker Table: http://localhost:8081 (Tab 1)"
-	@echo "📊 Portfolio Table: http://localhost:8081 (Tab 2)"
-	@echo "📚 API Endpoints: http://localhost:8081/docs"
-	@echo "=================================================="
+ 
 
 # Frontend tests
 test-frontend:
@@ -350,127 +291,9 @@ test-search:
 	@echo "=================================================="
 	@cd backend && $(PYTHON_EXEC) -c "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); print('✅ Enhanced Search Test Results:'); results1 = service.search_tickers('appl', limit=3); print(f'Test 1: Found {len(results1)} results for \"appl\"'); results2 = service.search_tickers('tech', limit=3, filters={'sector': 'Technology'}); print(f'Test 2: Found {len(results2)} Technology sector results'); print('✅ Enhanced search tests completed successfully!')"
 
-# 🆕 COMPLETE: Activate ticker table with cache warming and all necessary servers
-activate-ticker-table: check-cache
-	@echo "🚀 COMPLETE: Activating Ticker Table System (LAZY INITIALIZATION)..."
-	@echo "=================================================="
-	@echo "⚡ Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
-	@echo "🔍 Enhanced Fuzzy Search: Smart search with relevance scoring"
-	@echo "📋 This command will:"
-	@echo "  1. 🔍 Check Redis cache status (LIGHTWEIGHT)"
-	@echo "  2. 🖥️  Start main backend server (port 8000) - FAST startup"
-	@echo "  3. 📊 Start ticker table server (port 8081) - FAST startup"
-	@echo "  4. 🌐 Open ticker table in browser"
-	@echo "  5. 🔍 Enable enhanced fuzzy search capabilities"
-	@echo "=================================================="
-	@echo ""
-	@echo "🔄 Step 1: Checking Redis cache status..."
-	@make check-cache
-	@echo ""
-	@echo "🔄 Step 2: Starting all servers in background..."
-	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
-	@echo "✅ Backend server started (PID: $$!)"
-	@sleep 3
-	@echo "📊 Starting ticker table server on port 8081..."
-	@cd backend && $(PYTHON_EXEC) ticker_table_server.py > /dev/null 2>&1 &
-	@echo "✅ Ticker table server started (PID: $$!)"
-	@sleep 2
-	@echo "🌐 Starting frontend development server on port 8080..."
-	@cd frontend && npm run dev > /dev/null 2>&1 &
-	@echo "✅ Frontend server started (PID: $$!)"
-	@echo ""
-	@echo "🔄 Step 3: Waiting for servers to be ready..."
-	@echo "⏳ Waiting for backend server..."
-	@until curl -s http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done
-	@echo "✅ Backend server ready!"
-	@echo "⏳ Waiting for ticker table server..."
-	@until curl -s http://localhost:8081/health > /dev/null 2>&1; do sleep 1; done
-	@echo "✅ Ticker table server ready!"
-	@echo "⏳ Waiting for frontend server..."
-	@until curl -s http://localhost:8080 > /dev/null 2>&1; do sleep 1; done
-	@echo "✅ Frontend server ready!"
-	@echo ""
-	@echo "🎉 ALL SERVERS ARE NOW RUNNING!"
-	@echo "=================================================="
-	@echo "📊 Main Backend: http://localhost:8000"
-	@echo "📊 Ticker Table: http://localhost:8081"
-	@echo "🌐 Frontend: http://localhost:8080"
-	@echo "📚 API Docs: http://localhost:8000/docs"
-	@echo "=================================================="
-	@echo ""
-	@echo "🔄 Step 4: Opening ticker table in browser..."
-	@sleep 2
-	@open "http://localhost:8081"
-	@echo "✅ Ticker table opened in browser!"
-	@echo ""
-	@echo "🎯 TICKER TABLE SYSTEM FULLY ACTIVATED!"
-	@echo "=================================================="
-	@echo "💡 To stop all servers: make stop"
-	@echo "💡 To check status: make status"
-	@echo "💡 To view logs: Check terminal output above"
-	@echo "==================================================" 
+ 
 
-# 🆕 ESSENTIAL: Warm cache + start backend + ticker table server
-start-ticker-table: check-cache
-	@echo "🚀 ESSENTIAL: Starting Ticker Table System (LAZY INITIALIZATION)..."
-	@echo "=================================================="
-	@echo "⚡ Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
-	@echo "🔍 Enhanced Fuzzy Search: Smart search with relevance scoring"
-	@echo "📋 This command will:"
-	@echo "  1. 🔍 Check Redis cache status (LIGHTWEIGHT)"
-	@echo "  2. 🖥️  Start main backend server (port 8000) - FAST startup"
-	@echo "  3. 📊 Start ticker table server (port 8081) - FAST startup"
-	@echo "  4. 🌐 Open ticker table in browser"
-	@echo "  5. 🔍 Enable enhanced fuzzy search capabilities"
-	@echo "=================================================="
-	@echo ""
-	@echo "🔄 Step 1: Checking Redis cache status..."
-	@make check-cache
-	@echo ""
-	@echo "🔄 Step 2: Starting essential servers in background..."
-	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
-	@echo "✅ Backend server started (PID: $$!)"
-	@sleep 3
-	@echo "📊 Starting ticker table server on port 8081..."
-	@cd backend && $(PYTHON_EXEC) ticker_table_server.py > /dev/null 2>&1 &
-	@echo "✅ Ticker table server started (PID: $$!)"
-	@sleep 2
-	@echo "🌐 Starting frontend development server on port 8080..."
-	@cd frontend && npm run dev > /dev/null 2>&1 &
-	@echo "✅ Frontend server started (PID: $$!)"
-	@echo ""
-	@echo "🔄 Step 3: Waiting for servers to be ready..."
-	@echo "⏳ Waiting for backend server..."
-	@until curl -s http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done
-	@echo "✅ Backend server ready!"
-	@echo "⏳ Waiting for ticker table server..."
-	@until curl -s http://localhost:8081/health > /dev/null 2>&1; do sleep 1; done
-	@echo "✅ Ticker table server ready!"
-	@echo "⏳ Waiting for frontend server..."
-	@until curl -s http://localhost:8080 > /dev/null 2>&1; do sleep 1; done
-	@echo "✅ Frontend server ready!"
-	@echo ""
-	@echo "🎉 ALL SERVERS ARE NOW RUNNING!"
-	@echo "=================================================="
-	@echo "📊 Main Backend: http://localhost:8000"
-	@echo "📊 Ticker Table: http://localhost:8081"
-	@echo "🌐 Frontend: http://localhost:8080"
-	@echo "📚 API Docs: http://localhost:8000/docs"
-	@echo "=================================================="
-	@echo ""
-	@echo "🔄 Step 4: Opening ticker table in browser..."
-	@sleep 2
-	@open "http://localhost:8081"
-	@echo "✅ Ticker table opened in browser!"
-	@echo ""
-	@echo "🎯 TICKER TABLE SYSTEM FULLY ACTIVATED!"
-	@echo "=================================================="
-	@echo "💡 To stop all servers: make stop"
-	@echo "💡 To check status: make status"
-	@echo "💡 To view logs: Check terminal output above"
-	@echo "==================================================" 
+ 
 
 # 🆕 Check Redis status and provide startup instructions
 check-redis:
@@ -495,11 +318,37 @@ check-redis:
 	fi
 	@echo "==================================================" 
 
-# 🆕 QUICK: Check Redis and start essential ticker table system
-quick-ticker-table: check-redis
+ 
+### Consolidated view (Tickers + Portfolios in one HTML page)
+consolidated-view: check-cache
+	@echo "🚀 Starting Consolidated Data Tables..."
+	@echo "=================================================="
+	@echo "📋 This will:"
+	@echo "  1. 🔍 Check Redis cache status"
+	@echo "  2. 🖥️  Start backend server (port 8000)"
+	@echo "  3. 🌐 Open consolidated HTML (Tickers + Portfolios)"
+	@echo "=================================================="
 	@echo ""
-	@echo "🚀 Starting ticker table system..."
-	@make start-ticker-table
+	@echo "🔄 Step 1: Checking Redis cache..."
+	@make check-cache
+	@echo ""
+	@echo "🔄 Step 2: Starting backend server..."
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@echo "✅ Backend server started (PID: $$!)"
+	@echo ""
+	@echo "🔄 Step 3: Waiting for backend to be ready..."
+	@for i in {1..30}; do \
+		if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+			echo "✅ Backend server ready!"; \
+			break; \
+		fi; \
+		echo "  Attempt $$i/30..."; \
+		sleep 2; \
+	done
+	@echo ""
+	@echo "🔄 Step 4: Opening consolidated table..."
+	@open "http://localhost:8000/api/portfolio/consolidated-table"
+	@echo "✅ Consolidated table opened in browser!"
 
 # 🚀 ENHANCED: Start enhanced ticker table system (FAST startup with lazy stock selection)
 enhanced: check-cache

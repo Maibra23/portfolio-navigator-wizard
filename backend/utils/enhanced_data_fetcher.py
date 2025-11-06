@@ -169,7 +169,8 @@ class EnhancedDataFetcher:
             key = f'ticker_data:prices:{ticker}'
             prices_json = json.dumps(price_dict)
             prices_compressed = gzip.compress(prices_json.encode())
-            self.r.setex(key, 28*24*3600, prices_compressed)
+            # Unified TTL to match sector/metrics (90 days via CACHE_TTL_HOURS)
+            self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), prices_compressed)
             
             logger.debug(f"✅ {ticker}: Data validated and cached safely ({len(price_dict)} points)")
             return True
@@ -1333,11 +1334,27 @@ class EnhancedDataFetcher:
         except Exception as e:
             logger.error(f"❌ Background cache warming failed: {e}")
 
+
+    def preview_expired_data(self):
+        """Compute how many tickers would be refreshed without performing any action."""
+        if not self.r:
+            return { 'expired_count': 0, 'tickers': [] }
+        expired_tickers = []
+        for ticker in self.all_tickers:
+            if not self._is_cached(ticker, 'prices') or not self._is_cached(ticker, 'sector'):
+                expired_tickers.append(ticker)
+        return { 'expired_count': len(expired_tickers), 'tickers': expired_tickers[:20] }
+
     def force_refresh_expired_data(self):
         """Force refresh of expired data with incremental month addition"""
         if not self.r:
             logger.warning("❌ Redis unavailable - cannot refresh data")
-            return
+            return {
+                'expired_before': 0,
+                'expired_after': 0,
+                'refreshed_count': 0,
+                'success': False
+            }
         
         logger.info("🔄 Checking for expired data to refresh...")
         
@@ -1365,8 +1382,26 @@ class EnhancedDataFetcher:
                 
                 if i + BATCH_SIZE < len(expired_tickers):
                     time.sleep(RATE_LIMIT_DELAY)
+            # Recompute remaining expired after processing
+            expired_after = []
+            for ticker in self.all_tickers:
+                if not self._is_cached(ticker, 'prices') or not self._is_cached(ticker, 'sector'):
+                    expired_after.append(ticker)
+            refreshed_count = len(expired_tickers) - len(expired_after)
+            return {
+                'expired_before': len(expired_tickers),
+                'expired_after': len(expired_after),
+                'refreshed_count': max(refreshed_count, 0),
+                'success': True
+            }
         else:
             logger.info("✅ No expired data found")
+            return {
+                'expired_before': 0,
+                'expired_after': 0,
+                'refreshed_count': 0,
+                'success': True
+            }
 
     def clear_cache(self) -> None:
         """Clear all cached data"""
