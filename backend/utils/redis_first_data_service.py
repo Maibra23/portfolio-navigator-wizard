@@ -13,8 +13,11 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Union
 from functools import lru_cache
 from .timestamp_utils import normalize_timestamp
+from .logging_utils import get_job_logger
 
 logger = logging.getLogger(__name__)
+smart_refresh_logger = get_job_logger("smart_refresh")
+full_refresh_logger = get_job_logger("full_refresh")
 
 class RedisFirstDataService:
     """
@@ -717,6 +720,7 @@ class RedisFirstDataService:
         """Force refresh of expired data using EnhancedDataFetcher"""
         if not self.enhanced_data_fetcher:
             logger.warning("EnhancedDataFetcher not available - cannot refresh data")
+            full_refresh_logger.error("Full refresh requested but EnhancedDataFetcher unavailable")
             return {
                 'expired_before': 0,
                 'expired_after': 0,
@@ -725,9 +729,13 @@ class RedisFirstDataService:
             }
         
         try:
-            return self.enhanced_data_fetcher.force_refresh_expired_data()
+            full_refresh_logger.info("Full refresh initiated via UI")
+            result = self.enhanced_data_fetcher.force_refresh_expired_data(job_logger=full_refresh_logger)
+            full_refresh_logger.info("Full refresh completed: %s", result)
+            return result
         except Exception as e:
             logger.error(f"Error refreshing expired data: {e}")
+            full_refresh_logger.error("Full refresh failed: %s", e)
             return {
                 'expired_before': 0,
                 'expired_after': 0,
@@ -740,24 +748,33 @@ class RedisFirstDataService:
         """Smart monthly refresh using EnhancedDataFetcher"""
         if not self.enhanced_data_fetcher:
             logger.warning("EnhancedDataFetcher not available - cannot perform monthly refresh")
+            smart_refresh_logger.error("Smart refresh requested but EnhancedDataFetcher unavailable")
             return
         
         try:
-            return self.enhanced_data_fetcher.smart_monthly_refresh()
+            smart_refresh_logger.info("Smart monthly refresh initiated for all tickers")
+            result = self.enhanced_data_fetcher.smart_monthly_refresh(job_logger=smart_refresh_logger)
+            smart_refresh_logger.info("Smart monthly refresh completed: %s", result)
+            return result
         except Exception as e:
             logger.error(f"Error performing monthly refresh: {e}")
+            smart_refresh_logger.error("Smart monthly refresh failed: %s", e)
             return None
     
     def smart_refresh_tickers(self, tickers: List[str]):
         """Smart refresh for specific tickers using EnhancedDataFetcher"""
         if not self.enhanced_data_fetcher:
             logger.warning("EnhancedDataFetcher not available - cannot perform ticker refresh")
+            smart_refresh_logger.error("Smart refresh requested but EnhancedDataFetcher unavailable")
             return None
         
         try:
             logger.info(f"Smart refreshing {len(tickers)} specific tickers")
+            smart_refresh_logger.info("Smart refresh triggered via UI for %s tickers", len(tickers))
+            smart_refresh_logger.info("Tickers: %s", ", ".join(tickers))
             # Use the enhanced data fetcher to refresh specific tickers
-            result = self.enhanced_data_fetcher.refresh_specific_tickers(tickers)
+            result = self.enhanced_data_fetcher.refresh_specific_tickers(tickers, job_logger=smart_refresh_logger)
+            smart_refresh_logger.info("Smart refresh finished with summary: %s", result)
             return {
                 "changed_count": len(tickers),
                 "tickers": tickers,
@@ -765,6 +782,7 @@ class RedisFirstDataService:
             }
         except Exception as e:
             logger.error(f"Error refreshing specific tickers: {e}")
+            smart_refresh_logger.error("Smart refresh failed: %s", e)
             return None
 
 # Global instance for lazy initialization

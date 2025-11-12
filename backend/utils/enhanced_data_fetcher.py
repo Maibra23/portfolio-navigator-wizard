@@ -20,6 +20,7 @@ import os
 from .redis_first_data_service import redis_first_data_service as _rds
 
 from .timestamp_utils import normalize_timestamp, normalize_ticker_format, suggest_ticker_alternatives
+from .logging_utils import get_job_logger
 # Handle both relative and absolute imports
 try:
     from ..config.settings import config
@@ -29,6 +30,7 @@ except ImportError:
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+SMART_REFRESH_LOGGER = get_job_logger("smart_refresh")
 
 # Configuration - OPTIMIZED for rate limit bypass
 BATCH_SIZE = 20  # Batch size (user requested: 20)
@@ -741,12 +743,29 @@ class EnhancedDataFetcher:
                     # Just continue to next ticker
                     return None
 
-    def _process_batch(self, batch: List[str]) -> Dict[str, Dict[str, Any]]:
-        """Process a batch of tickers - return statement was incorrectly indented"""
+    def _process_batch(
+        self,
+        batch: List[str],
+        batch_number: Optional[int] = None,
+        total_batches: Optional[int] = None,
+        job_logger: Optional[logging.Logger] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Process a batch of tickers with detailed progress logging."""
         results = {}
         failed_tickers = []  # Track failures for reporting
         
         logger.info(f"🔄 Processing batch of {len(batch)} tickers...")
+        job_logger = job_logger or SMART_REFRESH_LOGGER
+
+        if batch_number is not None and total_batches is not None:
+            job_logger.info(
+                "Batch %s/%s started (%s tickers)",
+                batch_number,
+                total_batches,
+                len(batch),
+            )
+        else:
+            job_logger.info("Processing batch of %s tickers", len(batch))
         
         for i, ticker in enumerate(batch, 1):
             try:
@@ -756,16 +775,19 @@ class EnhancedDataFetcher:
                     break
                 
                 logger.debug(f"  [{i}/{len(batch)}] Processing {ticker}...")
+                job_logger.info("  [%s/%s] Processing %s", i, len(batch), ticker)
                 
                 data = self._fetch_single_ticker_with_retry(ticker)
                 if data is not None:
                     results[ticker] = data
                     self.stats['successful'] += 1
                     logger.info(f"  ✅ {ticker} successful")
+                    job_logger.info("  ✅ %s successful", ticker)
                 else:
                     self.stats['failed'] += 1
                     failed_tickers.append(ticker)
                     logger.warning(f"  ❌ {ticker} failed")
+                    job_logger.warning("  ❌ %s failed", ticker)
                 
                 self.stats['total_processed'] += 1
                 
@@ -774,10 +796,14 @@ class EnhancedDataFetcher:
                 self.stats['failed'] += 1
                 failed_tickers.append(ticker)
                 self.stats['total_processed'] += 1
+                job_logger.error("  ❌ %s failed with error: %s", ticker, e)
 
         # Log failed tickers for this batch
         if failed_tickers:
             logger.warning(f"Batch failed tickers: {failed_tickers}")
+            job_logger.warning("Batch failures: %s", ", ".join(failed_tickers))
+        else:
+            job_logger.info("Batch completed with no failures")
         
         # Return statement was incorrectly indented inside the for loop
         return results
@@ -835,7 +861,7 @@ class EnhancedDataFetcher:
             logger.info(f"📦 Processing batch {batch_num}/{total_batches}: {len(batch)} tickers")
             
             # Process batch (sequential to respect rate limits better)
-            batch_results = self._process_batch(batch)
+            batch_results = self._process_batch(batch, batch_number=batch_num, total_batches=total_batches)
             all_results.update(batch_results)
             
             # Check if we should stop due to throttling
@@ -851,16 +877,32 @@ class EnhancedDataFetcher:
             success_rate = (self.stats['successful'] / max(self.stats['total_processed'], 1)) * 100
             logger.info(f"  📈 Batch {batch_num} completed: {len(batch_results)} successful")
             logger.info(f"  📊 Overall progress: {self.stats['total_processed']}/{len(tickers_to_fetch)} ({success_rate:.1f}% success)")
+            SMART_REFRESH_LOGGER.info(
+                "Batch %s/%s summary: %s success, %s failed | cumulative success rate %.1f%%",
+                batch_num,
+                total_batches,
+                len(batch_results),
+                len(batch_failed),
+                success_rate,
+            )
             
             # Rate limiting between batches (except for last batch)
             if i + batch_size < len(tickers_to_fetch):
                 logger.info(f"⏳ Waiting {RATE_LIMIT_DELAY}s between batches...")
+                SMART_REFRESH_LOGGER.info("Waiting %ss before next batch", RATE_LIMIT_DELAY)
                 time.sleep(RATE_LIMIT_DELAY)
         
         final_success_rate = (self.stats['successful'] / max(self.stats['total_processed'], 1)) * 100
         logger.info(f"🎉 Batch processing completed!")
         logger.info(f"📊 Final stats: {self.stats['successful']} successful, {self.stats['failed']} failed, {self.stats['cached']} cached")
         logger.info(f"📈 Success rate: {final_success_rate:.1f}%")
+        SMART_REFRESH_LOGGER.info(
+            "Batch processing complete: %s success, %s failed, %s cached | final success rate %.1f%%",
+            self.stats['successful'],
+            self.stats['failed'],
+            self.stats['cached'],
+            final_success_rate,
+        )
         
         # Save failed tickers list
         if all_failed_tickers:
@@ -1338,17 +1380,58 @@ class EnhancedDataFetcher:
     def preview_expired_data(self):
         """Compute how many tickers would be refreshed without performing any action."""
         if not self.r:
-            return { 'expired_count': 0, 'tickers': [] }
-        expired_tickers = []
-        for ticker in self.all_tickers:
-            if not self._is_cached(ticker, 'prices') or not self._is_cached(ticker, 'sector'):
-                expired_tickers.append(ticker)
-        return { 'expired_count': len(expired_tickers), 'tickers': expired_tickers[:20] }
+            return {
+                'expired_count': 0,
+                'tickers': [],
+                'missing_counts': {'prices': 0, 'sector': 0, 'metrics': 0},
+                'missing_samples': {'prices': [], 'sector': [], 'metrics': []},
+                'refresh_candidates': []
+            }
 
-    def force_refresh_expired_data(self):
+        expired_tickers: List[str] = []
+        missing_prices: List[str] = []
+        missing_sector: List[str] = []
+        missing_metrics: List[str] = []
+
+        for ticker in self.all_tickers:
+            has_prices = bool(self._is_cached(ticker, 'prices'))
+            has_sector = bool(self._is_cached(ticker, 'sector'))
+            has_metrics = bool(self._is_cached(ticker, 'metrics'))
+
+            if not has_prices:
+                missing_prices.append(ticker)
+            if not has_sector:
+                missing_sector.append(ticker)
+            if not has_metrics:
+                missing_metrics.append(ticker)
+
+            if not (has_prices and has_sector and has_metrics):
+                expired_tickers.append(ticker)
+
+        return {
+            'expired_count': len(expired_tickers),
+            'tickers': expired_tickers[:20],
+            'missing_counts': {
+                'prices': len(missing_prices),
+                'sector': len(missing_sector),
+                'metrics': len(missing_metrics)
+            },
+            'missing_samples': {
+                'prices': missing_prices[:20],
+                'sector': missing_sector[:20],
+                'metrics': missing_metrics[:20]
+            },
+            # Provide the complete candidate list so callers can target just the gaps
+            'refresh_candidates': expired_tickers
+        }
+
+    def force_refresh_expired_data(self, job_logger: Optional[logging.Logger] = None):
         """Force refresh of expired data with incremental month addition"""
+        job_logger = job_logger or SMART_REFRESH_LOGGER
+
         if not self.r:
             logger.warning("❌ Redis unavailable - cannot refresh data")
+            job_logger.error("Redis unavailable - refresh aborted")
             return {
                 'expired_before': 0,
                 'expired_after': 0,
@@ -1357,15 +1440,41 @@ class EnhancedDataFetcher:
             }
         
         logger.info("🔄 Checking for expired data to refresh...")
-        
+        job_logger.info("Ticker refresh requested")
+
         # Check which tickers have expired or missing data
         expired_tickers = []
+        metrics_computed = []
+
         for ticker in self.all_tickers:
-            if not self._is_cached(ticker, 'prices') or not self._is_cached(ticker, 'sector'):
+            has_prices = bool(self._is_cached(ticker, 'prices'))
+            has_sector = bool(self._is_cached(ticker, 'sector'))
+            has_metrics = bool(self._is_cached(ticker, 'metrics'))
+
+            # If prices and sector exist but metrics are missing, attempt local calculation first
+            if has_prices and has_sector and not has_metrics:
+                try:
+                    cached_prices = self._load_from_cache(ticker, 'prices')
+                    if isinstance(cached_prices, pd.Series) and not cached_prices.empty:
+                        if self._calculate_and_save_metrics(ticker, cached_prices):
+                            metrics_computed.append(ticker)
+                            has_metrics = True
+                            job_logger.info("%s metrics computed locally from cached prices", ticker)
+                except Exception as metrics_error:
+                    logger.warning(f"⚠️ {ticker}: Failed to compute metrics from cache ({metrics_error})")
+                    job_logger.warning(
+                        "%s metrics computation from cache failed: %s", ticker, metrics_error
+                    )
+
+            if not (has_prices and has_sector and has_metrics):
                 expired_tickers.append(ticker)
         
         if expired_tickers:
             logger.info(f"🔄 Found {len(expired_tickers)} tickers needing refresh")
+            job_logger.info(
+                "Found %s tickers requiring external refresh (prices/sector/metrics missing)",
+                len(expired_tickers),
+            )
             
             # Update end date to current month for incremental updates
             global END_DATE
@@ -1373,14 +1482,29 @@ class EnhancedDataFetcher:
             if current_end > END_DATE:
                 END_DATE = current_end
                 logger.info(f"📅 Updated end date to {END_DATE.strftime('%Y-%m-%d')} for incremental update")
+                job_logger.info("Adjusted fetch end date to %s", END_DATE.strftime('%Y-%m-%d'))
             
             # Process expired tickers in small batches
+            total_batches = (len(expired_tickers) + BATCH_SIZE - 1) // BATCH_SIZE
             for i in range(0, len(expired_tickers), BATCH_SIZE):
                 batch = expired_tickers[i:i + BATCH_SIZE]
-                logger.info(f"🔄 Refreshing batch {i//BATCH_SIZE + 1}: {len(batch)} expired tickers")
-                self._process_batch(batch)
+                batch_num = i // BATCH_SIZE + 1
+                logger.info(f"🔄 Refreshing batch {batch_num}: {len(batch)} expired tickers")
+                job_logger.info(
+                    "Refreshing batch %s/%s (%s tickers)",
+                    batch_num,
+                    total_batches,
+                    len(batch),
+                )
+                self._process_batch(
+                    batch,
+                    batch_number=batch_num,
+                    total_batches=total_batches,
+                    job_logger=job_logger,
+                )
                 
                 if i + BATCH_SIZE < len(expired_tickers):
+                    job_logger.info("Waiting %ss between batches", RATE_LIMIT_DELAY)
                     time.sleep(RATE_LIMIT_DELAY)
             # Recompute remaining expired after processing
             expired_after = []
@@ -1388,14 +1512,29 @@ class EnhancedDataFetcher:
                 if not self._is_cached(ticker, 'prices') or not self._is_cached(ticker, 'sector'):
                     expired_after.append(ticker)
             refreshed_count = len(expired_tickers) - len(expired_after)
-            return {
+            result = {
                 'expired_before': len(expired_tickers),
                 'expired_after': len(expired_after),
                 'refreshed_count': max(refreshed_count, 0),
                 'success': True
             }
+            if metrics_computed:
+                result['metrics_computed_from_cache'] = metrics_computed
+                job_logger.info(
+                    "Metrics computed locally for %s tickers: %s",
+                    len(metrics_computed),
+                    ", ".join(metrics_computed),
+                )
+            job_logger.info(
+                "Ticker refresh complete: expired_before=%s expired_after=%s refreshed=%s",
+                result['expired_before'],
+                result['expired_after'],
+                result['refreshed_count'],
+            )
+            return result
         else:
             logger.info("✅ No expired data found")
+            job_logger.info("Ticker refresh complete: no expired data found")
             return {
                 'expired_before': 0,
                 'expired_after': 0,
@@ -1814,18 +1953,22 @@ class EnhancedDataFetcher:
             logger.error(f"❌ Alpha Vantage fallback failed for {ticker}: {e}")
             return None
 
-    def smart_monthly_refresh(self):
+    def smart_monthly_refresh(self, job_logger: Optional[logging.Logger] = None):
         """
         Smart monthly refresh that only fetches the latest month of data
         - Extends time range incrementally (no re-downloading of historical data)
         - Respects TTL and only refreshes when needed
         - Efficient: Only fetches new months, not entire history
         """
+        job_logger = job_logger or SMART_REFRESH_LOGGER
+
         if not self.r:
             logger.warning("❌ Redis unavailable - cannot perform monthly refresh")
+            job_logger.error("Redis unavailable - smart monthly refresh aborted")
             return
         
         logger.info("🔄 Starting smart monthly refresh...")
+        job_logger.info("Smart monthly refresh requested")
         
         # Update end date to current month (incremental extension)
         global END_DATE
@@ -1835,8 +1978,14 @@ class EnhancedDataFetcher:
             old_end = END_DATE
             END_DATE = current_end
             logger.info(f"📅 Extended time range: {old_end.strftime('%Y-%m-%d')} → {END_DATE.strftime('%Y-%m-%d')}")
+            job_logger.info(
+                "Extended time range: %s → %s",
+                old_end.strftime('%Y-%m-%d'),
+                END_DATE.strftime('%Y-%m-%d'),
+            )
         else:
             logger.info("✅ Time range already up to date")
+            job_logger.info("Smart monthly refresh skipped: time range already current")
             return
         
         # Check which tickers need refresh (only those with expired cache or missing latest month)
@@ -1871,9 +2020,11 @@ class EnhancedDataFetcher:
         
         if not tickers_needing_refresh:
             logger.info("✅ All tickers have current month data")
+            job_logger.info("Smart monthly refresh skipped: all tickers current")
             return
         
         logger.info(f"🔄 Found {len(tickers_needing_refresh)} tickers needing refresh")
+        job_logger.info("Refreshing %s tickers for current month data", len(tickers_needing_refresh))
         
         # Process in batches with rate limiting
         success_count = 0
@@ -1885,6 +2036,7 @@ class EnhancedDataFetcher:
             total_batches = (len(tickers_needing_refresh) + BATCH_SIZE - 1) // BATCH_SIZE
             
             logger.info(f"🔄 Processing batch {batch_num}/{total_batches}: {len(batch)} tickers")
+            job_logger.info("Batch %s/%s started (%s tickers)", batch_num, total_batches, len(batch))
             
             for ticker in batch:
                 try:
@@ -1893,12 +2045,15 @@ class EnhancedDataFetcher:
                     if data:
                         success_count += 1
                         logger.debug(f"✅ {ticker}: Monthly refresh successful")
+                        job_logger.info("✅ %s refreshed", ticker)
                     else:
                         error_count += 1
                         logger.warning(f"⚠️ {ticker}: Monthly refresh failed")
+                        job_logger.warning("⚠️ %s refresh failed", ticker)
                 except Exception as e:
                     error_count += 1
                     logger.error(f"❌ Error refreshing {ticker}: {e}")
+                    job_logger.error("❌ %s refresh errored: %s", ticker, e)
                 
                 # Rate limiting between individual tickers
                 time.sleep(self._get_random_delay())
@@ -1906,11 +2061,19 @@ class EnhancedDataFetcher:
             # Rate limiting between batches (except for last batch)
             if i + BATCH_SIZE < len(tickers_needing_refresh):
                 logger.info(f"⏳ Waiting {RATE_LIMIT_DELAY}s between batches...")
+                job_logger.info("Waiting %ss before next batch", RATE_LIMIT_DELAY)
                 time.sleep(RATE_LIMIT_DELAY)
         
         logger.info(f"🎉 Smart monthly refresh completed!")
         logger.info(f"📊 Results: {success_count} successful, {error_count} failed")
         logger.info(f"📅 New time range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
+        job_logger.info(
+            "Smart monthly refresh completed: %s success, %s failed | range %s → %s",
+            success_count,
+            error_count,
+            START_DATE.strftime('%Y-%m-%d'),
+            END_DATE.strftime('%Y-%m-%d'),
+        )
         
         return {
             'status': 'completed',
@@ -1948,12 +2111,16 @@ class EnhancedDataFetcher:
             logger.error(f"Error getting sector cache coverage: {e}")
             return 0.0
     
-    def refresh_specific_tickers(self, tickers: List[str]):
+    def refresh_specific_tickers(self, tickers: List[str], job_logger: Optional[logging.Logger] = None):
         """
         Refresh specific tickers using smart monthly refresh logic
         """
+        job_logger = job_logger or SMART_REFRESH_LOGGER
+
         try:
             logger.info(f"🔄 Refreshing {len(tickers)} specific tickers")
+            job_logger.info("Targeted refresh requested for %s tickers", len(tickers))
+            job_logger.info("Tickers: %s", ", ".join(tickers))
             
             success_count = 0
             error_count = 0
@@ -1965,14 +2132,22 @@ class EnhancedDataFetcher:
                     if data:
                         success_count += 1
                         logger.debug(f"✅ {ticker} refreshed successfully")
+                        job_logger.info("✅ %s refreshed successfully", ticker)
                     else:
                         error_count += 1
                         logger.warning(f"⚠️ {ticker} refresh failed")
+                        job_logger.warning("⚠️ %s refresh failed", ticker)
                 except Exception as e:
                     error_count += 1
                     logger.error(f"❌ Error refreshing {ticker}: {e}")
+                    job_logger.error("❌ %s refresh errored: %s", ticker, e)
             
             logger.info(f"🎉 Specific ticker refresh completed: {success_count} successful, {error_count} failed")
+            job_logger.info(
+                "Targeted refresh completed: %s success, %s failed",
+                success_count,
+                error_count,
+            )
             
             return {
                 "success_count": success_count,
@@ -1982,6 +2157,7 @@ class EnhancedDataFetcher:
             
         except Exception as e:
             logger.error(f"❌ Error in specific ticker refresh: {e}")
+            job_logger.error("Targeted refresh failed with error: %s", e)
             return None
 
     def check_expired_tickers(self) -> List[str]:

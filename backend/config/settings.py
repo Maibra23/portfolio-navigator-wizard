@@ -3,8 +3,11 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from typing import Optional
 from dotenv import load_dotenv
+import logging
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class APIConfig:
     """Class-based configuration for API settings"""
@@ -17,7 +20,11 @@ class APIConfig:
         # Alpha Vantage Configuration
         self.alpha_vantage_key = os.getenv('ALPHA_VANTAGE_API_KEY')
         if not self.alpha_vantage_key:
-            raise ValueError("ALPHA_VANTAGE_API_KEY environment variable is required")
+            self.alpha_vantage_key = os.getenv('ALPHA_VANTAGE_FALLBACK_KEY', 'demo')
+            self.alpha_vantage_key_placeholder = True
+            logger.warning('ALPHA_VANTAGE_API_KEY not set; using placeholder key. Live Alpha Vantage requests may be rate-limited or disabled.')
+        else:
+            self.alpha_vantage_key_placeholder = False
         self.alpha_vantage_base_url = "https://www.alphavantage.co/query"
         
         # Yahoo Finance Configuration
@@ -84,7 +91,7 @@ class APIConfig:
     def validate_config(self) -> bool:
         """Validate configuration settings"""
         try:
-            assert self.alpha_vantage_key, "Alpha Vantage API key is required"
+            # Alpha Vantage key may use placeholder in development
             assert self.minimum_data_years > 0, "Minimum data years must be positive"
             assert self.cache_max_size > 0, "Cache max size must be positive"
             assert self.alpha_vantage_rate_limit > 0, "Alpha Vantage rate limit must be positive"

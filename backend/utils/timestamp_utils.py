@@ -11,10 +11,11 @@ for international stock exchanges.
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
 from typing import Union, Any, Optional, List, Tuple
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -345,22 +346,70 @@ def normalize_timestamp(timestamp: Any) -> str:
     """
     if timestamp is None:
         return None
-        
+
+    def _parse_datetime_string(value: str) -> Optional[str]:
+        match = re.search(r'datetime\.(?:datetime|date)\((.*?)\)', value)
+        if not match:
+            return None
+
+        components = [int(num) for num in re.findall(r'\d+', match.group(1))]
+        if len(components) < 3:
+            return None
+
+        year, month, day = components[:3]
+        time_components = components[3:]
+        hour = time_components[0] if len(time_components) >= 1 else 0
+        minute = time_components[1] if len(time_components) >= 2 else 0
+        second = time_components[2] if len(time_components) >= 3 else 0
+        microsecond = time_components[3] if len(time_components) >= 4 else 0
+        dt = datetime(year, month, day, hour, minute, second, microsecond)
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+
     try:
+        # Handle tuple or list timestamps (e.g., (ticker, date))
+        if isinstance(timestamp, (list, tuple)):
+            for candidate in reversed(timestamp):
+                if candidate is timestamp:
+                    continue
+                normalized = normalize_timestamp(candidate)
+                if normalized:
+                    return normalized
+            return None
+
         # Handle string timestamps
         if isinstance(timestamp, str):
+            stripped_timestamp = timestamp.strip()
+
+            # Handle string representations of tuples with datetime content
+            if stripped_timestamp.startswith("(") and "datetime" in stripped_timestamp:
+                normalized = _parse_datetime_string(stripped_timestamp)
+                if normalized:
+                    return normalized
+                inner = stripped_timestamp[1:-1] if stripped_timestamp.endswith(")") else stripped_timestamp[1:]
+                tuple_parts = [part.strip(" '\"") for part in inner.split(",")]
+                for candidate in reversed(tuple_parts):
+                    normalized = normalize_timestamp(candidate)
+                    if normalized:
+                        return normalized
+
+            # Handle explicit datetime.date(...) or datetime.datetime(...) strings
+            if "datetime." in stripped_timestamp:
+                normalized = _parse_datetime_string(stripped_timestamp)
+                if normalized:
+                    return normalized
+
             # Try parsing as ISO format first
             try:
-                dt = pd.to_datetime(timestamp)
+                dt = pd.to_datetime(stripped_timestamp)
                 return dt.strftime('%Y-%m-%d %H:%M:%S')
             except:
                 # Try parsing as Unix timestamp string
                 try:
-                    ts = float(timestamp)
+                    ts = float(stripped_timestamp)
                     return normalize_timestamp(ts)
                 except:
                     # Try various date formats
-                    dt = pd.to_datetime(timestamp, infer_datetime_format=True)
+                    dt = pd.to_datetime(stripped_timestamp)
                     return dt.strftime('%Y-%m-%d %H:%M:%S')
         
         # Handle numeric timestamps (Unix)
@@ -379,6 +428,11 @@ def normalize_timestamp(timestamp: Any) -> str:
         # Handle datetime objects
         elif isinstance(timestamp, datetime):
             return timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Handle date objects
+        elif isinstance(timestamp, date):
+            dt = datetime.combine(timestamp, datetime.min.time())
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
         
         # Handle numpy datetime64
         elif isinstance(timestamp, np.datetime64):

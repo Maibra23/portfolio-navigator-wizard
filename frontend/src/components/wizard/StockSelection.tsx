@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,8 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { TwoAssetChart } from './TwoAssetChart';
+import { Portfolio3PartVisualization } from './Portfolio3PartVisualization';
+import { VisualizationErrorBoundary } from './VisualizationErrorBoundary';
 
 interface StockSelectionProps {
   onNext: () => void;
@@ -238,6 +241,31 @@ export const StockSelection = ({
   // FIX #1: AbortController for cancelling pending metrics requests
   const [metricsAbortController, setMetricsAbortController] = useState<AbortController | null>(null);
 
+  // Ticker warming function
+  const warmTickers = useCallback(async (tickers: string[]) => {
+    if (!tickers || tickers.length === 0) return;
+    
+    try {
+      const uniqueTickers = Array.from(new Set(tickers.map(t => t.toUpperCase().trim()).filter(Boolean)));
+      if (uniqueTickers.length === 0) return;
+
+      const response = await fetch('/api/portfolio/warm-tickers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickers: uniqueTickers }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`🔥 Warmed ${result.warmed}/${result.total} tickers`);
+      }
+    } catch (error) {
+      console.debug('Ticker warming failed (non-critical):', error);
+    }
+  }, []);
+
+  // Debounced ticker warming ref
+  const warmTickersTimeoutRef = useRef<number | null>(null);
 
   // Generate recommendations based on risk profile with updated names and descriptions
   const generateRecommendations = (): PortfolioRecommendation[] => {
@@ -336,8 +364,59 @@ export const StockSelection = ({
 
   const recommendations = generateRecommendations();
 
+  // Track last loaded risk profile and recommendations to prevent unnecessary refetches
+  const lastLoadedRiskProfileRef = useRef<string | null>(null);
+  const loadedRecommendationsRef = useRef<PortfolioRecommendation[]>([]);
+  // Track customized portfolio state to preserve user modifications
+  const customizedPortfolioRef = useRef<{
+    selectedIndex: number | null;
+    customizedStocks: PortfolioAllocation[];
+    hasUserModified: boolean;
+  } | null>(null);
+
   // Load dynamic recommendations from backend
   useEffect(() => {
+    // Clear customized portfolio if risk profile changed
+    if (lastLoadedRiskProfileRef.current !== null && lastLoadedRiskProfileRef.current !== riskProfile) {
+      customizedPortfolioRef.current = null;
+    }
+    
+    // Only fetch if risk profile changed or we don't have recommendations yet
+    if (lastLoadedRiskProfileRef.current === riskProfile && loadedRecommendationsRef.current.length > 0) {
+      console.log('Skipping refetch - recommendations already loaded for', riskProfile);
+      // Restore the previously loaded recommendations
+      setDynamicRecommendations(loadedRecommendationsRef.current);
+      // Restore customized portfolio state if it exists
+      if (customizedPortfolioRef.current && customizedPortfolioRef.current.selectedIndex !== null) {
+        setSelectedPortfolioIndex(customizedPortfolioRef.current.selectedIndex);
+        setHasUserModified(customizedPortfolioRef.current.hasUserModified);
+        // If portfolio was customized, restore the customized stocks and update the recommendation
+        if (customizedPortfolioRef.current.hasUserModified && customizedPortfolioRef.current.customizedStocks.length > 0) {
+          // Restore customized stocks to parent component
+          onStocksUpdate(customizedPortfolioRef.current.customizedStocks);
+          
+          const updatedRecommendations = [...loadedRecommendationsRef.current];
+          const selectedIdx = customizedPortfolioRef.current.selectedIndex;
+          if (selectedIdx !== null && selectedIdx < updatedRecommendations.length) {
+            // Update the selected recommendation with customized stocks
+            updatedRecommendations[selectedIdx] = {
+              ...updatedRecommendations[selectedIdx],
+              allocations: customizedPortfolioRef.current.customizedStocks,
+            };
+            setDynamicRecommendations(updatedRecommendations);
+          }
+        } else if (customizedPortfolioRef.current.selectedIndex !== null) {
+          // Portfolio was selected but not customized - restore original recommendation stocks
+          const selectedIdx = customizedPortfolioRef.current.selectedIndex;
+          if (selectedIdx < loadedRecommendationsRef.current.length) {
+            const originalRec = loadedRecommendationsRef.current[selectedIdx];
+            onStocksUpdate(originalRec.allocations);
+          }
+        }
+      }
+      return;
+    }
+
     const loadDynamicRecommendations = async () => {
       setIsLoadingRecommendations(true);
       try {
@@ -366,13 +445,40 @@ export const StockSelection = ({
           }));
           
           setDynamicRecommendations(transformedRecommendations);
+          loadedRecommendationsRef.current = transformedRecommendations;
+          lastLoadedRiskProfileRef.current = riskProfile;
+
+          // Warm all tickers from all 3 recommendations
+          const allTickers = new Set<string>();
+          transformedRecommendations.forEach((rec: PortfolioRecommendation) => {
+            rec.allocations?.forEach((alloc: PortfolioAllocation) => {
+              if (alloc.symbol) allTickers.add(alloc.symbol);
+            });
+          });
+          warmTickers(Array.from(allTickers));
         } else {
-          console.warn('Failed to load dynamic recommendations, using static ones');
-          setDynamicRecommendations([]);
+          console.warn('Failed to load dynamic recommendations, preserving existing ones if available');
+          // Don't clear existing recommendations on error - preserve what we have
+          if (loadedRecommendationsRef.current.length === 0) {
+            // Only clear if we never had any recommendations
+            setDynamicRecommendations([]);
+            loadedRecommendationsRef.current = [];
+          } else {
+            // Restore previously loaded recommendations
+            setDynamicRecommendations(loadedRecommendationsRef.current);
+          }
         }
       } catch (error) {
         console.error('Error loading dynamic recommendations:', error);
-        setDynamicRecommendations([]);
+        // Don't clear existing recommendations on error - preserve what we have
+        if (loadedRecommendationsRef.current.length === 0) {
+          // Only clear if we never had any recommendations
+          setDynamicRecommendations([]);
+          loadedRecommendationsRef.current = [];
+        } else {
+          // Restore previously loaded recommendations
+          setDynamicRecommendations(loadedRecommendationsRef.current);
+        }
       } finally {
         setIsLoadingRecommendations(false);
       }
@@ -380,6 +486,29 @@ export const StockSelection = ({
 
     loadDynamicRecommendations();
   }, [riskProfile]);
+
+  // Track customizations to preserve them when navigating back
+  useEffect(() => {
+    // Only track if a portfolio is selected and has been customized
+    if (selectedPortfolioIndex !== null && hasUserModified && selectedStocks.length > 0) {
+      customizedPortfolioRef.current = {
+        selectedIndex: selectedPortfolioIndex,
+        customizedStocks: [...selectedStocks],
+        hasUserModified: true,
+      };
+      console.log('Tracking customized portfolio:', {
+        index: selectedPortfolioIndex,
+        stocks: selectedStocks.map(s => s.symbol),
+      });
+    } else if (selectedPortfolioIndex !== null && !hasUserModified) {
+      // Portfolio selected but not customized - still track the selection
+      customizedPortfolioRef.current = {
+        selectedIndex: selectedPortfolioIndex,
+        customizedStocks: [],
+        hasUserModified: false,
+      };
+    }
+  }, [selectedStocks, selectedPortfolioIndex, hasUserModified]);
 
   // Client cache key for mini-lesson asset lists (v5 includes all 11 sectors)
   const MINI_LESSON_CACHE_KEY = 'mini_lesson_assets_v5';
@@ -430,7 +559,9 @@ export const StockSelection = ({
               // Continue to refresh cache in background
             }
           }
-        } catch {}
+        } catch (storageError) {
+          console.warn('Failed to parse cached mini-lesson assets', storageError);
+        }
       }
 
       // FIX #7: Add retry logic for API connection failures
@@ -450,7 +581,11 @@ export const StockSelection = ({
         const data = await response.json();
         // Save to localStorage for instant reloads
         if (typeof window !== 'undefined') {
-          try { window.localStorage.setItem(MINI_LESSON_CACHE_KEY, JSON.stringify(data)); } catch {}
+          try {
+            window.localStorage.setItem(MINI_LESSON_CACHE_KEY, JSON.stringify(data));
+          } catch (storageError) {
+            console.warn('Failed to persist mini-lesson cache', storageError);
+          }
         }
         
         // FIX #6 + ENHANCEMENT: Create unique sector pairs (no repeating sectors in same cycle)
@@ -760,7 +895,13 @@ export const StockSelection = ({
       } catch (error) {
         console.error('Error loading mini-lesson data:', error);
         // Clear stale client cache and retry pair loading once
-        try { if (typeof window !== 'undefined') window.localStorage.removeItem(MINI_LESSON_CACHE_KEY); } catch {}
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(MINI_LESSON_CACHE_KEY);
+          }
+        } catch (storageError) {
+          console.warn('Failed to clear mini-lesson cache', storageError);
+        }
         setError('Unable to load financial data. Retrying with a fresh list...');
         // Trigger a refresh of pairs
         loadAssetPairs(2);
@@ -989,6 +1130,14 @@ export const StockSelection = ({
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+
+    // Warm the newly added ticker (debounced)
+    if (warmTickersTimeoutRef.current) {
+      window.clearTimeout(warmTickersTimeoutRef.current);
+    }
+    warmTickersTimeoutRef.current = window.setTimeout(() => {
+      warmTickers([stock.symbol]);
+    }, 500);
     
     // REMOVED: Explicit setTimeout call - useEffect (lines 902-922) will handle this automatically
     // This prevents double-triggering and glitches
@@ -1135,6 +1284,10 @@ export const StockSelection = ({
       setActiveTab('recommendations');
     } else if (activeTab === 'recommendations') {
       // From recommendations, go to visual charts
+      if (selectedPortfolioIndex === null || !originalRecommendation || selectedStocks.length === 0) {
+        setError('Please select a recommended portfolio before proceeding.');
+        return;
+      }
       setActiveTab('full-customization');
     } else {
       // From other tabs, call the parent onNext
@@ -1395,6 +1548,15 @@ export const StockSelection = ({
         setStrategyPortfolios(transformedPortfolios);
         setSuccessMessage(`Generated ${transformedPortfolios.length} ${selectedStrategy} strategy portfolios!`);
         setTimeout(() => setSuccessMessage(null), 3000);
+
+        // Warm all tickers from strategy portfolios
+        const allTickers = new Set<string>();
+        transformedPortfolios.forEach((portfolio: PortfolioRecommendation) => {
+          portfolio.allocations?.forEach((alloc: PortfolioAllocation) => {
+            if (alloc.symbol) allTickers.add(alloc.symbol);
+          });
+        });
+        warmTickers(Array.from(allTickers));
       } else {
         throw new Error('Failed to generate strategy portfolios');
       }
@@ -2381,110 +2543,30 @@ export const StockSelection = ({
               <div className="text-center mb-6">
                 <h3 className="text-xl font-semibold mb-2">Visual Charts & Analysis</h3>
                 <p className="text-muted-foreground">
-                  Advanced portfolio visualization with efficient frontier analysis and interactive charts
+                  Interactive visual analytics synchronized with your selected portfolio and benchmarks
                 </p>
               </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Search and Select Assets</CardTitle>
-                  <p className="text-muted-foreground">
-                    Search for stocks and ETFs to build your custom portfolio for efficient frontier analysis (3-5 assets recommended)
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Stock Search */}
-                  <div className="space-y-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Search for stocks and ETFs (e.g., AAPL, MSFT, VOO, QQQ)"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="flex-1"
-                      />
-                      {isLoading && <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>}
-                    </div>
-
-                    {error && (
-                      <Alert variant="destructive">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>{error}</AlertDescription>
-                      </Alert>
-                    )}
-
-                    {searchTerm.trim() && searchResults.length > 0 && (
-                      <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
-                        <h4 className="font-medium">Search Results</h4>
-                        {searchResults.map((stock) => (
-                          <div
-                            key={stock.symbol}
-                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                            onClick={() => addStock(stock)}
-                          >
-                            <div>
-                              <div className="font-medium">{stock.symbol}</div>
-                              <div className="text-sm text-muted-foreground">{stock.shortname}</div>
-                            </div>
-                            <Button size="sm" variant="outline">
-                              Add
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Selected Assets for Full Customization */}
-                  {selectedStocks.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="font-medium">Selected Assets ({selectedStocks.length}/5) - Minimum 3 recommended</h4>
-                      {selectedStocks.map((stock) => (
-                        <div key={stock.symbol} className="flex items-center gap-4 p-4 border rounded-lg">
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <div>
-                                <span className="font-medium">{stock.symbol}</span>
-                                {stock.name && (
-                                  <span className="text-sm text-muted-foreground ml-2">
-                                    {stock.name}
-                                  </span>
-                                )}
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => removeStock(stock.symbol)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Slider
-                                value={[stock.allocation]}
-                                onValueChange={(value) => updateAllocation(stock.symbol, value[0])}
-                                max={100}
-                                min={0}
-                                step={1}
-                                className="flex-1"
-                              />
-                              <span className="text-sm font-medium w-12 text-right">
-                                {stock.allocation.toFixed(1)}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Efficient Frontier Placeholder */}
-                  <div className="text-center py-8 text-muted-foreground">
-                    <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Efficient Frontier analysis will be computed once you select 3-5 assets.</p>
-                    <p className="text-sm mt-2">This will include covariance analysis, optimal weight recommendations, and interactive frontier visualization.</p>
-                  </div>
-                </CardContent>
-              </Card>
+              {selectedStocks.length >= 3 ? (
+                <VisualizationErrorBoundary>
+                  <Portfolio3PartVisualization
+                    selectedStocks={selectedStocks}
+                    riskProfile={riskProfile}
+                    selectedPortfolioIndex={selectedPortfolioIndex}
+                    allRecommendations={dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations}
+                  />
+                </VisualizationErrorBoundary>
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Select a Portfolio to Continue</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-center text-sm text-muted-foreground">
+                    <p>Select a recommended portfolio or build a custom allocation with at least three assets.</p>
+                    <p>Your selections will power the live visualization experience in this tab.</p>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             {/* Pure Strategy Generation Tab - Hidden by default, accessible via Advanced Options */}

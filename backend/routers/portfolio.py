@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
@@ -17,11 +17,13 @@ from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_stock_selector import PortfolioStockSelector
 from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
+from utils.logging_utils import get_job_logger
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from datetime import datetime, timedelta, date
 import random
 
 logger = logging.getLogger(__name__)
+portfolio_regen_logger = get_job_logger("portfolio_regeneration")
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -601,6 +603,51 @@ def warm_cache():
     except Exception as e:
         logger.error(f"Cache warming error: {e}")
         raise HTTPException(status_code=500, detail=f"Cache warming failed: {str(e)}")
+
+@router.post("/warm-tickers")
+def warm_tickers(request: dict):
+    """Warm up ticker data for a list of tickers"""
+    try:
+        tickers = request.get('tickers', [])
+        if not tickers or not isinstance(tickers, list):
+            return {"status": "error", "message": "Invalid tickers list", "warmed": 0, "total": 0}
+        
+        warmed = 0
+        failed = []
+        
+        # Deduplicate and normalize tickers
+        unique_tickers = list(set([str(t).upper().strip() for t in tickers if t and str(t).strip()]))
+        
+        logger.info(f"🔥 Warming {len(unique_tickers)} tickers...")
+        
+        for ticker in unique_tickers:
+            try:
+                # Warm monthly data (Redis-first)
+                _ = _rds.get_monthly_data(ticker)
+                # Warm ticker info (sector, metadata)
+                _ = _rds.get_ticker_info(ticker)
+                # Warm cached metrics if available
+                try:
+                    _ = _rds.get_cached_metrics(ticker)
+                except Exception:
+                    pass  # Metrics are optional
+                warmed += 1
+            except Exception as e:
+                failed.append(ticker)
+                logger.debug(f"Failed to warm {ticker}: {e}")
+                continue
+        
+        logger.info(f"✅ Warmed {warmed}/{len(unique_tickers)} tickers")
+        
+        return {
+            "status": "success",
+            "warmed": warmed,
+            "total": len(unique_tickers),
+            "failed": failed[:10]  # Limit failed list
+        }
+    except Exception as e:
+        logger.error(f"Ticker warming error: {e}")
+        return {"status": "error", "message": str(e), "warmed": 0, "total": 0}
 
 @router.get("/cache-status")
 def get_cache_status():
@@ -2014,6 +2061,11 @@ def get_risk_rating(risk: float) -> str:
     else:
         return "Very High"
 
+
+
+class SmartRefreshRequest(BaseModel):
+    tickers: Optional[List[str]] = None
+
 @router.post("/ticker-table/refresh")
 async def refresh_ticker_table():
     """
@@ -2034,7 +2086,7 @@ async def refresh_ticker_table():
         raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}")
 
 @router.post("/ticker-table/smart-refresh")
-async def smart_monthly_refresh(request: Optional[Dict] = None):
+async def smart_monthly_refresh(request: SmartRefreshRequest = Body(default=SmartRefreshRequest())):
     """
     Smart monthly refresh that only fetches the latest month of data using Redis-first approach
     - Extends time range incrementally (no re-downloading of historical data)
@@ -2044,11 +2096,10 @@ async def smart_monthly_refresh(request: Optional[Dict] = None):
     """
     try:
         # Check if specific tickers were requested
-        target_tickers = None
-        if request and 'tickers' in request:
-            target_tickers = request['tickers']
+        target_tickers = request.tickers if request else None
+        if target_tickers:
             logger.info(f"Smart refresh targeting {len(target_tickers)} specific tickers")
-        
+
         # Perform smart monthly refresh
         if target_tickers:
             # Refresh only specific tickers
@@ -2159,6 +2210,7 @@ async def regenerate_all_portfolios():
         import redis
         
         logger.info("🚀 Starting portfolio regeneration for all risk profiles")
+        portfolio_regen_logger.info("Portfolio regeneration requested from UI")
         
         # Initialize services
         redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
@@ -2172,6 +2224,7 @@ async def regenerate_all_portfolios():
         for risk_profile in risk_profiles:
             try:
                 logger.info(f"🔄 Regenerating portfolios for {risk_profile} profile")
+                portfolio_regen_logger.info("Regenerating risk profile '%s'", risk_profile)
                 
                 # Generate 12 portfolios for this risk profile
                 portfolios = portfolio_generator.generate_portfolio_bucket(risk_profile)
@@ -2184,16 +2237,30 @@ async def regenerate_all_portfolios():
                         total_portfolios += len(portfolios)
                         profiles_generated.append(risk_profile)
                         logger.info(f"✅ Generated {len(portfolios)} portfolios for {risk_profile}")
+                        portfolio_regen_logger.info(
+                            "Stored %s portfolios for %s",
+                            len(portfolios),
+                            risk_profile,
+                        )
                     else:
                         logger.error(f"❌ Failed to store portfolios for {risk_profile}")
+                        portfolio_regen_logger.error("Failed to store portfolios for %s", risk_profile)
                 else:
                     logger.warning(f"⚠️ No portfolios generated for {risk_profile}")
+                    portfolio_regen_logger.warning("No portfolios generated for %s", risk_profile)
                     
             except Exception as e:
                 logger.error(f"❌ Error generating portfolios for {risk_profile}: {e}")
+                portfolio_regen_logger.error("Error generating portfolios for %s: %s", risk_profile, e)
                 continue
         
         logger.info(f"🎉 Portfolio regeneration completed: {total_portfolios} portfolios across {len(profiles_generated)} profiles")
+        portfolio_regen_logger.info(
+            "Portfolio regeneration completed: %s portfolios across %s profiles (%s)",
+            total_portfolios,
+            len(profiles_generated),
+            ", ".join(profiles_generated) or "none",
+        )
         
         return {
             "success": True,
@@ -2205,6 +2272,7 @@ async def regenerate_all_portfolios():
         
     except Exception as e:
         logger.error(f"❌ Error in portfolio regeneration: {e}")
+        portfolio_regen_logger.error("Portfolio regeneration failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Portfolio regeneration failed: {str(e)}")
 
 @router.get("/ticker-table/data")
@@ -4208,6 +4276,7 @@ async def refresh_ticker_table_preview():
         # Use the same preview logic as smart-refresh but for full refresh
         result = _rds.preview_expired_data()
         expired_count = result.get('expired_count', 0)
+        missing_counts = result.get('missing_counts', {})
         
         # Estimate time: roughly 0.5-1 second per ticker (with rate limiting)
         # More conservative estimate for full refresh
@@ -4220,7 +4289,10 @@ async def refresh_ticker_table_preview():
             "expired_count": expired_count,
             "estimate_seconds": estimate_seconds,
             "note": "Full refresh updates all expired/incomplete tickers. This may take several minutes depending on the number of tickers needing updates.",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "missing_counts": missing_counts,
+            "missing_samples": result.get('missing_samples', {}),
+            "refresh_candidates": result.get('refresh_candidates', []),
         }
     except Exception as e:
         logger.error(f"Error generating refresh preview: {e}")
@@ -4235,7 +4307,10 @@ async def smart_refresh_preview():
             "status": "success",
             "expired_count": result.get('expired_count', 0),
             "sample": result.get('tickers', []),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "missing_counts": result.get('missing_counts', {}),
+            "missing_samples": result.get('missing_samples', {}),
+            "refresh_candidates": result.get('refresh_candidates', []),
         }
     except Exception as e:
         logger.error(f"Error generating smart-refresh preview: {e}")
@@ -4259,6 +4334,599 @@ async def estimate_portfolio_regeneration():
     except Exception as e:
         logger.error(f"Error estimating regeneration: {e}")
         raise HTTPException(status_code=500, detail=f"Error estimating regeneration: {str(e)}")
+
+
+# ============================================================================
+# VISUALIZATION ENDPOINTS - Agent 2 Implementation
+# ============================================================================
+
+# Helper utilities for visualization endpoints
+def _build_portfolio_metrics_cache_key(risk_profile: str, allocations: List[Dict]) -> str:
+    """Build cache key for portfolio metrics using md5 hash."""
+    try:
+        rounded_parts = []
+        for a in sorted(allocations, key=lambda x: x.get('symbol', '')):
+            try:
+                rounded_alloc = float(f"{float(a.get('allocation', 0.0)):.1f}")
+            except Exception:
+                rounded_alloc = 0.0
+            rounded_parts.append(f"{a.get('symbol', '')}:{rounded_alloc:.1f}")
+        key_raw = f"{risk_profile}|" + "|".join(rounded_parts)
+        return f"portfolio:metrics:{hashlib.md5(key_raw.encode()).hexdigest()}"
+    except Exception as e:
+        logger.error(f"Error building cache key: {e}")
+        return None
+
+def _load_portfolio_metrics_from_cache(key: str) -> Optional[Dict]:
+    """Load portfolio metrics from Redis cache."""
+    if not key:
+        return None
+    try:
+        r = _rds.redis_client
+        if r is None:
+            return None
+        raw = r.get(key)
+        if raw:
+            return json.loads(raw)
+    except Exception as e:
+        logger.debug(f"Error loading portfolio metrics from cache: {e}")
+    return None
+
+def _store_portfolio_metrics_cache(key: str, metrics: Dict) -> bool:
+    """Store portfolio metrics in Redis cache."""
+    if not key:
+        return False
+    try:
+        r = _rds.redis_client
+        if r is None:
+            return False
+        ttl_days = getattr(redis_manager, 'PORTFOLIO_TTL_DAYS', 28) if redis_manager else 28
+        r.setex(key, ttl_days * 24 * 3600, json.dumps(metrics))
+        return True
+    except Exception as e:
+        logger.debug(f"Error storing portfolio metrics in cache: {e}")
+    return False
+
+def _get_stock_cached_metrics(symbol: str) -> Optional[Dict]:
+    """Get cached metrics for a stock symbol. Returns {returnValue, risk, sector} or None."""
+    try:
+        symbol = symbol.upper()
+        metrics = _rds.get_cached_metrics(symbol)
+        sector_data = _rds._load_from_cache(symbol, 'sector')
+        
+        if metrics is None:
+            return None
+        
+        return {
+            'returnValue': metrics.get('annualized_return'),
+            'risk': metrics.get('risk'),
+            'sector': sector_data.get('sector', 'Unknown') if sector_data else 'Unknown'
+        }
+    except Exception as e:
+        logger.debug(f"Error getting cached metrics for {symbol}: {e}")
+        return None
+
+def _record_warning(warnings: List[str], message: str):
+    """Add a warning message to the warnings list."""
+    if message and message not in warnings:
+        warnings.append(message)
+
+# Pydantic models for visualization endpoints
+class ClusteringAnalysisRequest(BaseModel):
+    selectedPortfolio: List[PortfolioAllocation]
+    allRecommendations: List[Dict]
+    selectedPortfolioIndex: int
+    riskProfile: str
+
+class ScatterPoint(BaseModel):
+    label: str
+    risk: float
+    returnValue: float  # Using returnValue instead of return (reserved keyword)
+    symbol: Optional[str] = None
+    sector: Optional[str] = None
+
+class ClusterInfo(BaseModel):
+    center: Dict[str, float]
+    points: List[int]
+    label: str
+
+class ClusteringAnalysisResponse(BaseModel):
+    points: List[ScatterPoint]
+    clusters: List[ClusterInfo]
+    palette: List[str]
+    warnings: List[str]
+    metadata: Dict[str, Any]
+
+class CorrelationMatrixRequest(BaseModel):
+    tickers: str  # Comma-separated
+    portfolioLabels: Optional[str] = None  # JSON string or comma-separated
+    period: Optional[str] = None
+
+class CorrelationMatrixResponse(BaseModel):
+    tickers: List[str]
+    matrix: List[List[float]]
+    sectorMap: Dict[str, str]
+    portfolioLabels: Optional[List[str]] = None
+    warnings: List[str]
+    missingTickers: List[str]
+    metadata: Dict[str, Any]
+
+class SectorAllocationRequest(BaseModel):
+    tickers: List[str]
+    weights: List[float]
+    portfolioLabel: Optional[str] = None
+
+class SectorInfo(BaseModel):
+    sector: str
+    weight: float
+    color: str
+
+class SectorAllocationResponse(BaseModel):
+    sectors: List[SectorInfo]
+    totalPercent: float
+    warnings: List[str]
+    metadata: Dict[str, Any]
+
+class VisualizationDataRequest(BaseModel):
+    selectedPortfolio: List[PortfolioAllocation]
+    allRecommendations: List[Dict]
+    selectedPortfolioIndex: int
+    riskProfile: str
+    correlationTickers: Optional[str] = None
+    correlationPortfolioLabels: Optional[str] = None
+
+class VisualizationDataResponse(BaseModel):
+    clustering: ClusteringAnalysisResponse
+    correlation: CorrelationMatrixResponse
+    sectorAllocation: SectorAllocationResponse
+    warnings: List[str]
+    metadata: Dict[str, Any]
+
+@router.post("/visualization/clustering-analysis", response_model=ClusteringAnalysisResponse)
+async def clustering_analysis(request: ClusteringAnalysisRequest):
+    """
+    Perform K-means clustering analysis on selected portfolio and benchmark portfolios.
+    Returns scatter points with risk/return coordinates and cluster assignments.
+    """
+    import time
+    from sklearn.cluster import KMeans
+    
+    start_time = time.time()
+    warnings = []
+    points = []
+    cache_hits = 0
+    cache_misses = 0
+    
+    try:
+        selected_portfolio = request.selectedPortfolio
+        all_recommendations = request.allRecommendations
+        selected_portfolio_index = request.selectedPortfolioIndex
+        risk_profile = request.riskProfile
+        
+        # Process selected portfolio
+        selected_allocations = [{'symbol': a.symbol, 'allocation': a.allocation} for a in selected_portfolio]
+        
+        # Check if allocations match original recommendation
+        original_recommendation = None
+        if 0 <= selected_portfolio_index < len(all_recommendations):
+            original_recommendation = all_recommendations[selected_portfolio_index]
+            original_allocs = original_recommendation.get('portfolio', [])
+            if len(original_allocs) == len(selected_allocations):
+                # Check if allocations match (within tolerance)
+                matches = True
+                for orig, sel in zip(original_allocs, selected_allocations):
+                    if orig.get('symbol') != sel.get('symbol') or abs(orig.get('allocation', 0) - sel.get('allocation', 0)) > 0.1:
+                        matches = False
+                        break
+                if matches:
+                    # Reuse recommendation metrics directly
+                    portfolio_metrics = {
+                        'expected_return': original_recommendation.get('expectedReturn', 0.0),
+                        'risk': original_recommendation.get('risk', 0.0)
+                    }
+                    cache_hits += 1
+                else:
+                    # Check portfolio metrics cache
+                    cache_key = _build_portfolio_metrics_cache_key(risk_profile, selected_allocations)
+                    portfolio_metrics = _load_portfolio_metrics_from_cache(cache_key)
+                    if portfolio_metrics:
+                        cache_hits += 1
+                    else:
+                        # Compute metrics
+                        portfolio_data = {'allocations': selected_allocations}
+                        portfolio_metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+                        _store_portfolio_metrics_cache(cache_key, portfolio_metrics)
+                        cache_misses += 1
+            else:
+                # Check portfolio metrics cache
+                cache_key = _build_portfolio_metrics_cache_key(risk_profile, selected_allocations)
+                portfolio_metrics = _load_portfolio_metrics_from_cache(cache_key)
+                if portfolio_metrics:
+                    cache_hits += 1
+                else:
+                    # Compute metrics
+                    portfolio_data = {'allocations': selected_allocations}
+                    portfolio_metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+                    _store_portfolio_metrics_cache(cache_key, portfolio_metrics)
+                    cache_misses += 1
+        else:
+            # Check portfolio metrics cache
+            cache_key = _build_portfolio_metrics_cache_key(risk_profile, selected_allocations)
+            portfolio_metrics = _load_portfolio_metrics_from_cache(cache_key)
+            if portfolio_metrics:
+                cache_hits += 1
+            else:
+                # Compute metrics
+                portfolio_data = {'allocations': selected_allocations}
+                portfolio_metrics = portfolio_analytics.calculate_real_portfolio_metrics(portfolio_data)
+                _store_portfolio_metrics_cache(cache_key, portfolio_metrics)
+                cache_misses += 1
+        
+        # Build scatter point for selected portfolio
+        selected_point = {
+            'label': 'Selected Portfolio',
+            'risk': float(portfolio_metrics.get('risk', 0.0)),
+            'returnValue': float(portfolio_metrics.get('expected_return', 0.0)),
+            'symbol': None,
+            'sector': None
+        }
+        points.append(selected_point)
+        
+        # Process benchmark portfolios (excluding selected index)
+        benchmark_index = 0
+        for idx, recommendation in enumerate(all_recommendations):
+            if idx == selected_portfolio_index:
+                continue
+            
+            benchmark_label = f"Benchmark {benchmark_index + 1}"
+            benchmark_index += 1
+            
+            # Use recommendation-level metrics
+            benchmark_metrics = {
+                'expected_return': recommendation.get('expectedReturn', 0.0),
+                'risk': recommendation.get('risk', 0.0)
+            }
+            
+            # Build scatter point for benchmark
+            benchmark_point = {
+                'label': benchmark_label,
+                'risk': float(benchmark_metrics.get('risk', 0.0)),
+                'returnValue': float(benchmark_metrics.get('expected_return', 0.0)),
+                'symbol': None,
+                'sector': None
+            }
+            points.append(benchmark_point)
+        
+        # Perform K-means clustering on available points
+        if len(points) >= 2:
+            # Prepare data for clustering (risk, returnValue)
+            X = np.array([[p['risk'], p['returnValue']] for p in points])
+            
+            # Determine optimal number of clusters (at least 2, at most number of points)
+            k = min(max(2, len(points) // 2), len(points))
+            
+            # Apply K-means with deterministic seed
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            cluster_labels = kmeans.fit_predict(X)
+            
+            # Build cluster info
+            clusters = []
+            for cluster_id in range(k):
+                cluster_points = [i for i, label in enumerate(cluster_labels) if label == cluster_id]
+                if cluster_points:
+                    cluster_center = {
+                        'risk': float(kmeans.cluster_centers_[cluster_id][0]),
+                        'returnValue': float(kmeans.cluster_centers_[cluster_id][1])
+                    }
+                    clusters.append({
+                        'center': cluster_center,
+                        'points': cluster_points,
+                        'label': f"Cluster {cluster_id + 1}"
+                    })
+        else:
+            clusters = []
+        
+        # Generate color palette
+        palette = ['#2c5aa0', '#1e3d6f', '#4a90e2', '#6ba3d6', '#8bb5c9', '#aac7bc']
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Clustering analysis completed in {elapsed_time:.3f}s (cache hits: {cache_hits}, misses: {cache_misses})")
+        
+        return ClusteringAnalysisResponse(
+            points=[ScatterPoint(**p) for p in points],
+            clusters=[ClusterInfo(**c) for c in clusters],
+            palette=palette,
+            warnings=warnings,
+            metadata={
+                'pointCount': len(points),
+                'clusterCount': len(clusters),
+                'cacheHits': cache_hits,
+                'cacheMisses': cache_misses,
+                'elapsedTime': elapsed_time
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in clustering analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Clustering analysis failed: {str(e)}")
+
+@router.get("/visualization/correlation-matrix", response_model=CorrelationMatrixResponse)
+async def correlation_matrix(
+    tickers: str = Query(..., description="Comma-separated list of ticker symbols"),
+    portfolioLabels: Optional[str] = Query(None, description="JSON string or comma-separated portfolio labels"),
+    period: Optional[str] = Query(None, description="Optional period filter")
+):
+    """
+    Calculate correlation matrix for given tickers using cached price data.
+    """
+    import time
+    
+    start_time = time.time()
+    warnings = []
+    missing_tickers = []
+    
+    try:
+        # Parse and deduplicate tickers
+        ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()]
+        ticker_list = list(dict.fromkeys(ticker_list))  # Preserve order, remove duplicates
+        
+        # Parse portfolio labels
+        portfolio_labels = None
+        if portfolioLabels:
+            try:
+                portfolio_labels = json.loads(portfolioLabels)
+            except:
+                portfolio_labels = [l.strip() for l in portfolioLabels.split(',') if l.strip()]
+        
+        # Load price series from cache
+        price_series_dict = {}
+        for ticker in ticker_list:
+            monthly_data = _rds.get_monthly_data(ticker)
+            if monthly_data and 'prices' in monthly_data and 'dates' in monthly_data:
+                try:
+                    prices = monthly_data['prices']
+                    dates = monthly_data['dates']
+                    # Create pandas Series
+                    price_series = pd.Series(prices, index=pd.to_datetime(dates))
+                    price_series_dict[ticker] = price_series
+                except Exception as e:
+                    _record_warning(warnings, f"Failed to parse price data for {ticker}: {str(e)}")
+                    missing_tickers.append(ticker)
+            else:
+                _record_warning(warnings, f"Price data not found in cache for {ticker}")
+                missing_tickers.append(ticker)
+        
+        # Filter out missing tickers
+        available_tickers = [t for t in ticker_list if t not in missing_tickers]
+        
+        if len(available_tickers) < 2:
+            _record_warning(warnings, f"Insufficient tickers for correlation matrix. Need at least 2, got {len(available_tickers)}")
+            return CorrelationMatrixResponse(
+                tickers=available_tickers,
+                matrix=[],
+                sectorMap={},
+                portfolioLabels=portfolio_labels,
+                warnings=warnings,
+                missingTickers=missing_tickers,
+                metadata={
+                    'dataPoints': 0,
+                    'period': period,
+                    'elapsedTime': time.time() - start_time
+                }
+            )
+        
+        # Create DataFrame of price series
+        df = pd.DataFrame(price_series_dict)
+        
+        # Calculate returns if needed (for correlation)
+        returns_df = df.pct_change().dropna()
+        
+        # Calculate Pearson correlation matrix
+        correlation_matrix = returns_df.corr().values.tolist()
+        
+        # Ensure symmetry and fill diagonal with 1.0
+        n = len(available_tickers)
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    correlation_matrix[i][j] = 1.0
+                else:
+                    # Ensure symmetry
+                    correlation_matrix[i][j] = correlation_matrix[j][i] = (correlation_matrix[i][j] + correlation_matrix[j][i]) / 2
+        
+        # Build sector map
+        sector_map = {}
+        for ticker in available_tickers:
+            sector_data = _rds._load_from_cache(ticker, 'sector')
+            sector_map[ticker] = sector_data.get('sector', 'Unknown') if sector_data else 'Unknown'
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Correlation matrix calculated in {elapsed_time:.3f}s for {len(available_tickers)} tickers")
+        
+        return CorrelationMatrixResponse(
+            tickers=available_tickers,
+            matrix=correlation_matrix,
+            sectorMap=sector_map,
+            portfolioLabels=portfolio_labels,
+            warnings=warnings,
+            missingTickers=missing_tickers,
+            metadata={
+                'dataPoints': len(returns_df),
+                'period': period,
+                'elapsedTime': elapsed_time
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error calculating correlation matrix: {e}")
+        raise HTTPException(status_code=500, detail=f"Correlation matrix calculation failed: {str(e)}")
+
+@router.get("/visualization/sector-allocation", response_model=SectorAllocationResponse)
+async def sector_allocation(
+    tickers: str = Query(..., description="Comma-separated list of ticker symbols"),
+    weights: str = Query(..., description="Comma-separated list of weights (percentages)"),
+    portfolioLabel: Optional[str] = Query(None, description="Optional portfolio label")
+):
+    """
+    Calculate sector allocation breakdown for given tickers and weights.
+    """
+    import time
+    
+    start_time = time.time()
+    warnings = []
+    
+    try:
+        # Parse tickers and weights
+        ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()]
+        weight_list = []
+        for w in weights.split(','):
+            try:
+                weight_list.append(float(w.strip()))
+            except:
+                _record_warning(warnings, f"Invalid weight value: {w}")
+        
+        # Validate arrays length match
+        if len(ticker_list) != len(weight_list):
+            _record_warning(warnings, f"Ticker count ({len(ticker_list)}) does not match weight count ({len(weight_list)})")
+            return SectorAllocationResponse(
+                sectors=[],
+                totalPercent=0.0,
+                warnings=warnings,
+                metadata={'error': True, 'elapsedTime': time.time() - start_time}
+            )
+        
+        # Validate sum of weights
+        total_weight = sum(weight_list)
+        if abs(total_weight - 100.0) > 0.01:
+            _record_warning(warnings, f"Total weight is {total_weight:.2f}%, expected 100%")
+        
+        # Aggregate weights per sector
+        sector_weights = {}
+        for ticker, weight in zip(ticker_list, weight_list):
+            sector_data = _rds._load_from_cache(ticker, 'sector')
+            if sector_data:
+                sector = sector_data.get('sector', 'Unknown Sector')
+            else:
+                _record_warning(warnings, f"Sector data not found for {ticker}, using 'Unknown Sector'")
+                sector = 'Unknown Sector'
+            
+            if sector not in sector_weights:
+                sector_weights[sector] = 0.0
+            sector_weights[sector] += weight
+        
+        # Sort sectors by weight (descending)
+        sorted_sectors = sorted(sector_weights.items(), key=lambda x: x[1], reverse=True)
+        
+        # Generate color palette
+        colors = ['#2c5aa0', '#1e3d6f', '#4a90e2', '#6ba3d6', '#8bb5c9', '#aac7bc', '#c9d9af', '#e8e992']
+        
+        # Build sector info list
+        sectors = []
+        for idx, (sector, weight) in enumerate(sorted_sectors):
+            color = colors[idx % len(colors)]
+            sectors.append({
+                'sector': sector,
+                'weight': round(weight, 2),
+                'color': color
+            })
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Sector allocation calculated in {elapsed_time:.3f}s for {len(ticker_list)} tickers")
+        
+        return SectorAllocationResponse(
+            sectors=[SectorInfo(**s) for s in sectors],
+            totalPercent=round(total_weight, 2),
+            warnings=warnings,
+            metadata={
+                'tickerCount': len(ticker_list),
+                'sectorCount': len(sectors),
+                'elapsedTime': elapsed_time
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error calculating sector allocation: {e}")
+        raise HTTPException(status_code=500, detail=f"Sector allocation calculation failed: {str(e)}")
+
+@router.post("/visualization/data", response_model=VisualizationDataResponse)
+async def visualization_data(request: VisualizationDataRequest):
+    """
+    Consolidated endpoint that returns clustering, correlation, and sector allocation data.
+    """
+    import time
+    
+    start_time = time.time()
+    all_warnings = []
+    
+    try:
+        # Prepare clustering request
+        clustering_request = ClusteringAnalysisRequest(
+            selectedPortfolio=request.selectedPortfolio,
+            allRecommendations=request.allRecommendations,
+            selectedPortfolioIndex=request.selectedPortfolioIndex,
+            riskProfile=request.riskProfile
+        )
+        
+        # Get clustering analysis
+        clustering_response = await clustering_analysis(clustering_request)
+        all_warnings.extend(clustering_response.warnings)
+        
+        # Prepare correlation matrix request
+        if request.correlationTickers:
+            correlation_tickers = request.correlationTickers
+        else:
+            # Extract tickers from selected portfolio
+            correlation_tickers = ','.join([a.symbol for a in request.selectedPortfolio])
+        
+        if correlation_tickers:
+            correlation_response = await correlation_matrix(
+                tickers=correlation_tickers,
+                portfolioLabels=request.correlationPortfolioLabels,
+                period=None
+            )
+            all_warnings.extend(correlation_response.warnings)
+        else:
+            # Create empty correlation response
+            correlation_response = CorrelationMatrixResponse(
+                tickers=[],
+                matrix=[],
+                sectorMap={},
+                portfolioLabels=None,
+                warnings=[],
+                missingTickers=[],
+                metadata={}
+            )
+        
+        # Prepare sector allocation request
+        tickers_list = [a.symbol for a in request.selectedPortfolio]
+        weights_list = [a.allocation for a in request.selectedPortfolio]
+        tickers_str = ','.join(tickers_list)
+        weights_str = ','.join([str(w) for w in weights_list])
+        
+        sector_response = await sector_allocation(
+            tickers=tickers_str,
+            weights=weights_str,
+            portfolioLabel=None
+        )
+        all_warnings.extend(sector_response.warnings)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"Consolidated visualization data generated in {elapsed_time:.3f}s")
+        
+        return VisualizationDataResponse(
+            clustering=clustering_response,
+            correlation=correlation_response,
+            sectorAllocation=sector_response,
+            warnings=all_warnings,
+            metadata={
+                'elapsedTime': elapsed_time,
+                'endpoint': 'consolidated'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating consolidated visualization data: {e}")
+        raise HTTPException(status_code=500, detail=f"Visualization data generation failed: {str(e)}")
 
 
 # New: Consolidated HTML with two tabs (Tickers + Portfolios) and search inputs
@@ -4455,6 +5123,9 @@ async def get_consolidated_table_html():
   </div>
 
   <script>
+    let fullRefreshPreview = null;
+    let smartRefreshPreview = null;
+
     function switchTab(name) {
       document.getElementById('panel-tickers').style.display = (name==='tickers')?'block':'none';
       document.getElementById('panel-portfolios').style.display = (name==='portfolios')?'block':'none';
@@ -4506,11 +5177,18 @@ async def get_consolidated_table_html():
         const res = await fetch('/api/portfolio/ticker-table/refresh/preview');
         if (res.ok) {
           const data = await res.json();
+          fullRefreshPreview = data;
           const n = data.expired_count || 0;
           const secs = data.estimate_seconds || 120;
           const note = data.note || '';
+          const counts = data.missing_counts || {};
+          const details = [];
+          if (counts.prices) { details.push(`${counts.prices} missing prices`); }
+          if (counts.sector) { details.push(`${counts.sector} missing sector entries`); }
+          if (counts.metrics) { details.push(`${counts.metrics} missing metrics`); }
+          const detailText = details.length ? ` (${details.join(', ')})` : '';
           const el = document.getElementById('refreshModalText');
-          el.textContent = `Full refresh will update ${n} expired/incomplete tickers. Estimated time: ${Math.round(secs/60) || 2} minutes. ${note}`;
+          el.textContent = `Full refresh will update ${n} expired/incomplete tickers${detailText}. Estimated time: ${Math.round(secs/60) || 2} minutes. ${note}`;
           openRefreshModal();
           return;
         }
@@ -4530,9 +5208,36 @@ async def get_consolidated_table_html():
         const res = await fetch('/api/portfolio/ticker-table/smart-refresh/preview');
         if (res.ok) {
           const data = await res.json();
+          smartRefreshPreview = data;
           const n = data.expired_count || 0;
+          const counts = data.missing_counts || {};
+          const details = [];
+          if (counts.prices) { details.push(`${counts.prices} missing prices`); }
+          if (counts.sector) { details.push(`${counts.sector} missing sector entries`); }
+          if (counts.metrics) { details.push(`${counts.metrics} missing metrics`); }
+          const note = details.length ? ` (${details.join(', ')})` : '';
+          const samples = data.missing_samples || {};
+          const sampleLines = [];
+          if (samples.prices && samples.prices.length) {
+            sampleLines.push(`Prices: ${samples.prices.slice(0, 5).join(', ')}`);
+          }
+          if (samples.sector && samples.sector.length) {
+            sampleLines.push(`Sector: ${samples.sector.slice(0, 5).join(', ')}`);
+          }
+          if (samples.metrics && samples.metrics.length) {
+            sampleLines.push(`Metrics: ${samples.metrics.slice(0, 5).join(', ')}`);
+          }
           const el = document.getElementById('smartModalText');
-          el.textContent = `About to smart-refresh ${n} tickers.`;
+          const summaryLines = [
+            `<strong>${n}</strong> ticker${n === 1 ? '' : 's'} scheduled for smart refresh${note}.`,
+          ];
+          if (details.length) {
+            summaryLines.push(`Data gaps detected: ${details.join(', ')}.`);
+          }
+          if (sampleLines.length) {
+            summaryLines.push(`Example tickers: ${sampleLines.join(' | ')}.`);
+          }
+          el.innerHTML = summaryLines.join('<br>');
           openSmartModal();
           return;
         }
@@ -4544,7 +5249,20 @@ async def get_consolidated_table_html():
     function closeSmartModal(){ document.getElementById('smartModal').style.display='none'; }
     async function proceedSmartRefresh(){
       closeSmartModal();
-      try { await fetch('/api/portfolio/ticker-table/smart-refresh', { method: 'POST' }); } catch(_) {}
+      try {
+        const candidates = smartRefreshPreview && Array.isArray(smartRefreshPreview.refresh_candidates)
+          ? smartRefreshPreview.refresh_candidates
+          : null;
+        const hasCandidates = candidates && candidates.length > 0;
+        const options = hasCandidates
+          ? {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tickers: candidates })
+            }
+          : { method: 'POST' };
+        await fetch('/api/portfolio/ticker-table/smart-refresh', options);
+      } catch(_) {}
       alert('Smart refresh initiated');
     }
 

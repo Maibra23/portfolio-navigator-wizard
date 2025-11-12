@@ -86,9 +86,9 @@ async def lifespan(app: FastAPI):
                     async def background_initial_generation():
                         try:
                             logger.info("🚀 Background initial strategy pre-generation started...")
-                            strategy_optimizer.pre_generate_all_strategy_portfolios()
+                            await asyncio.to_thread(strategy_optimizer.pre_generate_all_strategy_portfolios)
                             logger.info("✅ Background initial generation completed")
-                            strategy_optimizer.display_cache_status()
+                            await asyncio.to_thread(strategy_optimizer.display_cache_status)
                         except Exception as e:
                             logger.error(f"❌ Background initial generation failed: {e}")
                     asyncio.create_task(background_initial_generation())
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
                     async def background_refresh():
                         try:
                             logger.info("🔄 Background refresh started...")
-                            strategy_optimizer.pre_generate_all_strategy_portfolios()
+                            await asyncio.to_thread(strategy_optimizer.pre_generate_all_strategy_portfolios)
                             logger.info("✅ Background refresh completed")
                         except Exception as e:
                             logger.error(f"❌ Background refresh failed: {e}")

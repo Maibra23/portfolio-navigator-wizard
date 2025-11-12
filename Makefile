@@ -325,16 +325,24 @@ consolidated-view: check-cache
 	@echo "=================================================="
 	@echo "📋 This will:"
 	@echo "  1. 🔍 Check Redis cache status"
-	@echo "  2. 🖥️  Start backend server (port 8000)"
-	@echo "  3. 🌐 Open consolidated HTML (Tickers + Portfolios)"
+	@echo "  2. 🖥️  Start backend server (port 8000) with dedicated logging"
+	@echo "  3. 📡 Launch live monitoring consoles (backend logs + refresh tracker)"
+	@echo "  4. 🌐 Open consolidated HTML (Tickers + Portfolios)"
 	@echo "=================================================="
 	@echo ""
 	@echo "🔄 Step 1: Checking Redis cache..."
 	@make check-cache
 	@echo ""
-	@echo "🔄 Step 2: Starting backend server..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
-	@echo "✅ Backend server started (PID: $$!)"
+	@echo "🔄 Step 2: Starting backend server with consolidated logging..."
+	@ROOT_DIR="$$PWD"; \
+	LOG_FILE="$$ROOT_DIR/backend/logs/consolidated-view.log"; \
+	mkdir -p "$$ROOT_DIR/backend/logs"; \
+	echo "📝 Streaming backend output to $$LOG_FILE"; \
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 > "$$LOG_FILE" 2>&1 & \
+	BACKEND_PID=$$!; \
+	echo "✅ Backend server started (PID: $$BACKEND_PID)"; \
+	echo "$$BACKEND_PID" > "$$ROOT_DIR/backend/logs/consolidated-view.pid"; \
+	echo "📄 Backend logs: $$LOG_FILE"
 	@echo ""
 	@echo "🔄 Step 3: Waiting for backend to be ready..."
 	@for i in {1..30}; do \
@@ -346,7 +354,49 @@ consolidated-view: check-cache
 		sleep 2; \
 	done
 	@echo ""
-	@echo "🔄 Step 4: Opening consolidated table..."
+	@echo "🔄 Step 4: Launching live monitors (Ctrl+C in the spawned terminals to stop)..."
+	@ROOT_DIR="$$PWD"; \
+	LOG_FILE="$$ROOT_DIR/backend/logs/consolidated-view.log"; \
+	SMART_LOG_FILE="$$ROOT_DIR/backend/logs/smart_refresh.log"; \
+	FULL_LOG_FILE="$$ROOT_DIR/backend/logs/full_refresh.log"; \
+	REGEN_LOG_FILE="$$ROOT_DIR/backend/logs/portfolio_regeneration.log"; \
+	MONITOR_SCRIPT="$$ROOT_DIR/backend/scripts/monitor_smart_refresh.py"; \
+	touch "$$LOG_FILE" "$$SMART_LOG_FILE" "$$FULL_LOG_FILE" "$$REGEN_LOG_FILE"; \
+	if command -v osascript > /dev/null 2>&1; then \
+		echo "📡 Opening Terminal to stream backend logs..."; \
+		osascript \
+			-e "tell application \"Terminal\"" \
+			-e "do script \"cd \\\"$ROOT_DIR\\\" && echo 'Streaming backend logs (Ctrl+C to stop)...' && tail -f \\\"$LOG_FILE\\\"\"" \
+			-e "end tell" > /dev/null; \
+		echo "📈 Opening Terminal to stream smart refresh jobs..."; \
+		osascript \
+			-e "tell application \"Terminal\"" \
+			-e "do script \"cd \\\"$ROOT_DIR\\\" && echo 'Streaming smart-refresh logs (Ctrl+C to stop)...' && tail -f \\\"$SMART_LOG_FILE\\\"\"" \
+			-e "end tell" > /dev/null; \
+		echo "💧 Opening Terminal to stream full refresh jobs..."; \
+		osascript \
+			-e "tell application \"Terminal\"" \
+			-e "do script \"cd \\\"$ROOT_DIR\\\" && echo 'Streaming full-refresh logs (Ctrl+C to stop)...' && tail -f \\\"$FULL_LOG_FILE\\\"\"" \
+			-e "end tell" > /dev/null; \
+		echo "🧬 Opening Terminal to stream portfolio regeneration jobs..."; \
+		osascript \
+			-e "tell application \"Terminal\"" \
+			-e "do script \"cd \\\"$ROOT_DIR\\\" && echo 'Streaming portfolio regeneration logs (Ctrl+C to stop)...' && tail -f \\\"$REGEN_LOG_FILE\\\"\"" \
+			-e "end tell" > /dev/null; \
+		echo "📊 Opening Terminal to monitor refresh progress..."; \
+		osascript \
+			-e "tell application \"Terminal\"" \
+			-e "do script \"cd \\\"$ROOT_DIR\\\" && python3 \\\"$MONITOR_SCRIPT\\\"\"" \
+			-e "end tell" > /dev/null; \
+	else \
+		echo "📡 Monitor backend logs: tail -f $$LOG_FILE"; \
+		echo "📈 Monitor smart-refresh logs: tail -f $$SMART_LOG_FILE"; \
+		echo "💧 Monitor full-refresh logs: tail -f $$FULL_LOG_FILE"; \
+		echo "🧬 Monitor portfolio regeneration logs: tail -f $$REGEN_LOG_FILE"; \
+		echo "📊 Monitor refresh progress: python3 $$ROOT_DIR/backend/scripts/monitor_smart_refresh.py"; \
+	fi
+	@echo ""
+	@echo "🔄 Step 5: Opening consolidated table..."
 	@open "http://localhost:8000/api/portfolio/consolidated-table"
 	@echo "✅ Consolidated table opened in browser!"
 
