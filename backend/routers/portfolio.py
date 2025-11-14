@@ -266,7 +266,7 @@ def optimize_portfolio(request: PortfolioOptimizationRequest):
         returns_data = {}
         for ticker, prices in price_data.items():
             if len(prices) > 1:
-                returns = prices.pct_change().dropna()
+                returns = prices.pct_change(fill_method=None).dropna()
                 returns_data[ticker] = returns
         
         if len(returns_data) < 3:
@@ -976,32 +976,35 @@ async def generate_dynamic_portfolio_recommendations(
         logger.error(f"❌ Error generating dynamic portfolios: {e}")
         return _get_static_portfolio_recommendations(risk_profile)
 
-# NEW: Pure Strategy Portfolio Generation Endpoint
+# NEW: Strategy Portfolio Generation Endpoint (Pure + Personalized)
 @router.post("/recommendations/strategy-pure", response_model=List[PortfolioResponse])
 async def generate_pure_strategy_portfolios(
     risk_profile: str,
     strategy: str
 ):
     """
-    Generate pure strategy portfolios using real market data
+    Generate strategy portfolios (mix of pure and personalized) using real market data
     
-    This endpoint generates 5 pure strategy portfolios for the selected strategy,
-    using real market data and proven optimization algorithms. No parameter constraints
-    are applied - each strategy is shown in its purest form.
+    This endpoint generates a mix of pure and personalized strategy portfolios for the selected strategy,
+    using real market data and proven optimization algorithms. Returns both pure (unconstrained) and
+    personalized (risk-profile-adjusted) portfolios.
     
     Args:
-        risk_profile: User's risk profile (for filtering and display)
+        risk_profile: User's risk profile (for personalized portfolios)
         strategy: Investment strategy ('diversification', 'risk', 'return')
     
     Returns:
-        List of 5 pure strategy portfolios with real market data
+        List of strategy portfolios (mix of pure and personalized) with real market data
+        All portfolios are validated to have positive expected returns
     """
     try:
-        logger.info(f"🎯 Pure Strategy Generation: {strategy} for {risk_profile}")
+        logger.info(f"🎯 Strategy Portfolio Generation: {strategy} for {risk_profile}")
         
         # Initialize strategy optimizer if not already done
         if not hasattr(_rds, 'strategy_optimizer'):
             _rds.strategy_optimizer = StrategyPortfolioOptimizer(_rds, redis_manager)
+        
+        responses = []
         
         # Get pure strategy portfolios from cache or generate
         pure_portfolios = _rds.strategy_optimizer.get_pure_portfolios_from_cache(strategy)
@@ -1011,15 +1014,53 @@ async def generate_pure_strategy_portfolios(
             if pure_portfolios:
                 _rds.strategy_optimizer._store_pure_portfolios_in_redis(strategy, pure_portfolios)
         
-        if not pure_portfolios:
-            logger.warning(f"No pure portfolios available for {strategy}, falling back to static")
+        # Get personalized strategy portfolios from cache or generate
+        personalized_portfolios = _rds.strategy_optimizer.get_personalized_portfolios_from_cache(strategy, risk_profile)
+        if not personalized_portfolios:
+            logger.info(f"🔄 Cache miss: Generating personalized {strategy} portfolios for {risk_profile}")
+            personalized_portfolios = _rds.strategy_optimizer._generate_personalized_strategy_portfolios(strategy, risk_profile)
+            if personalized_portfolios:
+                _rds.strategy_optimizer._store_personalized_portfolios_in_redis(strategy, risk_profile, personalized_portfolios)
+        
+        # Randomize portfolio selection for variety (different portfolios each time)
+        # Use timestamp-based seed for variation while maintaining some consistency
+        random.seed(int(datetime.now().timestamp() * 1000) % 1000000)
+        
+        # Shuffle portfolios to get different ones each time
+        if pure_portfolios and len(pure_portfolios) > 1:
+            pure_shuffled = pure_portfolios.copy()
+            random.shuffle(pure_shuffled)
+            pure_portfolios = pure_shuffled
+        
+        if personalized_portfolios and len(personalized_portfolios) > 1:
+            personalized_shuffled = personalized_portfolios.copy()
+            random.shuffle(personalized_shuffled)
+            personalized_portfolios = personalized_shuffled
+        
+        # Combine portfolios: 1 pure + 1 personalized (randomly selected)
+        all_portfolios = []
+        if pure_portfolios:
+            # Take 1 pure portfolio (randomly selected after shuffle)
+            all_portfolios.append(('pure', pure_portfolios[0]))
+        if personalized_portfolios:
+            # Take 1 personalized portfolio (randomly selected after shuffle)
+            all_portfolios.append(('personalized', personalized_portfolios[0]))
+        
+        if not all_portfolios:
+            logger.warning(f"No strategy portfolios available for {strategy}, falling back to static")
             return _get_static_portfolio_recommendations(risk_profile)
         
-        # Take first 2 portfolios and convert to response format
-        responses = []
-        for i, portfolio in enumerate(pure_portfolios[:2]):
+        # Convert portfolios to response format and filter out negative returns
+        for portfolio_type, portfolio in all_portfolios:
             try:
                 metrics = portfolio.get('metrics', {})
+                expected_return = metrics.get('expected_return', 0.12)
+                
+                # STRICT FILTER: Skip portfolios with negative or zero returns
+                if expected_return <= 0:
+                    logger.warning(f"⚠️ Skipping {portfolio_type} portfolio with negative/zero return: {expected_return:.2%}")
+                    continue
+                
                 allocations = []
                 # Convert float weights (0-1) to whole-number percentages summing to 100
                 raw_allocs = portfolio.get('allocations', [])
@@ -1043,9 +1084,9 @@ async def generate_pure_strategy_portfolios(
                 
                 response = PortfolioResponse(
                     portfolio=allocations,
-                    name=portfolio.get('name', f"Pure {strategy.title()} Portfolio {i+1}"),
-                    description=portfolio.get('description', f"Pure {strategy} strategy portfolio optimized using real market data"),
-                    expectedReturn=metrics.get('expected_return', 0.12),
+                    name=portfolio.get('name', f"{portfolio_type.title()} {strategy.title()} Portfolio"),
+                    description=portfolio.get('description', f"{portfolio_type.title()} {strategy} strategy portfolio optimized using real market data"),
+                    expectedReturn=max(0.0, expected_return),  # Ensure non-negative
                     risk=metrics.get('risk', 0.15),
                     diversificationScore=metrics.get('diversification_score', 75.0),
                     sharpeRatio=0.0  # Always 0 as requested
@@ -1053,18 +1094,125 @@ async def generate_pure_strategy_portfolios(
                 responses.append(response)
                 
             except Exception as e:
-                logger.error(f"Error converting pure portfolio {i}: {e}")
+                logger.error(f"Error converting {portfolio_type} portfolio: {e}")
                 continue
         
+        # If we filtered out portfolios, try to get alternatives
+        if len(responses) < 2:
+            # Try to get alternative pure portfolio if first one was filtered
+            if len([r for r in responses if 'Pure' in r.name]) == 0 and len(pure_portfolios) > 1:
+                for portfolio in pure_portfolios[1:]:
+                    try:
+                        metrics = portfolio.get('metrics', {})
+                        expected_return = metrics.get('expected_return', 0.12)
+                        if expected_return > 0:
+                            # Same conversion logic as above
+                            allocations = []
+                            raw_allocs = portfolio.get('allocations', [])
+                            float_weights = [max(0.0, float(a.get('allocation', 0.0))) for a in raw_allocs]
+                            total = sum(float_weights) or 1.0
+                            percents = [int(round(w / total * 100)) for w in float_weights]
+                            diff = 100 - sum(percents)
+                            if percents and diff != 0:
+                                max_idx = percents.index(max(percents))
+                                percents[max_idx] += diff
+                            
+                            for idx, allocation in enumerate(raw_allocs):
+                                allocations.append(PortfolioAllocation(
+                                    symbol=allocation.get('symbol', ''),
+                                    allocation=max(0, percents[idx] if idx < len(percents) else 0),
+                                    name=allocation.get('name', allocation.get('symbol', '')),
+                                    assetType=allocation.get('assetType', 'stock')
+                                ))
+                            
+                            response = PortfolioResponse(
+                                portfolio=allocations,
+                                name=portfolio.get('name', f"Pure {strategy.title()} Portfolio"),
+                                description=portfolio.get('description', f"Pure {strategy} strategy portfolio"),
+                                expectedReturn=expected_return,
+                                risk=metrics.get('risk', 0.15),
+                                diversificationScore=metrics.get('diversification_score', 75.0),
+                                sharpeRatio=0.0
+                            )
+                            responses.append(response)
+                            break
+                    except Exception as e:
+                        logger.error(f"Error converting alternative pure portfolio: {e}")
+                        continue
+            
+            # Try to get alternative personalized portfolio if first one was filtered
+            if len([r for r in responses if 'Personalized' in r.name]) == 0 and len(personalized_portfolios) > 1:
+                for portfolio in personalized_portfolios[1:]:
+                    try:
+                        metrics = portfolio.get('metrics', {})
+                        expected_return = metrics.get('expected_return', 0.12)
+                        if expected_return > 0:
+                            # Same conversion logic as above
+                            allocations = []
+                            raw_allocs = portfolio.get('allocations', [])
+                            float_weights = [max(0.0, float(a.get('allocation', 0.0))) for a in raw_allocs]
+                            total = sum(float_weights) or 1.0
+                            percents = [int(round(w / total * 100)) for w in float_weights]
+                            diff = 100 - sum(percents)
+                            if percents and diff != 0:
+                                max_idx = percents.index(max(percents))
+                                percents[max_idx] += diff
+                            
+                            for idx, allocation in enumerate(raw_allocs):
+                                allocations.append(PortfolioAllocation(
+                                    symbol=allocation.get('symbol', ''),
+                                    allocation=max(0, percents[idx] if idx < len(percents) else 0),
+                                    name=allocation.get('name', allocation.get('symbol', '')),
+                                    assetType=allocation.get('assetType', 'stock')
+                                ))
+                            
+                            response = PortfolioResponse(
+                                portfolio=allocations,
+                                name=portfolio.get('name', f"Personalized {strategy.title()} Portfolio"),
+                                description=portfolio.get('description', f"Personalized {strategy} strategy portfolio"),
+                                expectedReturn=expected_return,
+                                risk=metrics.get('risk', 0.15),
+                                diversificationScore=metrics.get('diversification_score', 75.0),
+                                sharpeRatio=0.0
+                            )
+                            responses.append(response)
+                            break
+                    except Exception as e:
+                        logger.error(f"Error converting alternative personalized portfolio: {e}")
+                        continue
+        
         if not responses:
-            logger.warning(f"No valid pure portfolios for {strategy}, falling back to static")
+            logger.warning(f"No valid strategy portfolios with positive returns for {strategy}, falling back to static")
             return _get_static_portfolio_recommendations(risk_profile)
         
-        logger.info(f"✅ Generated {len(responses)} pure {strategy} strategy portfolios")
-        return responses
+        # Ensure we return exactly 2 portfolios: 1 pure + 1 personalized
+        # Sort to ensure pure comes first, then personalized
+        sorted_responses = sorted(responses, key=lambda r: ('Pure' not in r.name, r.name))
+        final_responses = []
+        
+        # Add 1 pure portfolio
+        pure_found = False
+        for resp in sorted_responses:
+            if 'Pure' in resp.name and not pure_found:
+                final_responses.append(resp)
+                pure_found = True
+                if len(final_responses) >= 2:
+                    break
+        
+        # Add 1 personalized portfolio
+        personalized_found = False
+        for resp in sorted_responses:
+            if 'Personalized' in resp.name and not personalized_found:
+                final_responses.append(resp)
+                personalized_found = True
+                if len(final_responses) >= 2:
+                    break
+        
+        logger.info(f"✅ Generated {len(final_responses)} {strategy} strategy portfolios (1 pure + 1 personalized, all with positive returns)")
+        return final_responses[:2]  # Ensure exactly 2 portfolios
         
     except Exception as e:
-        logger.error(f"❌ Error generating pure strategy portfolios: {e}")
+        logger.error(f"❌ Error generating strategy portfolios: {e}")
         return _get_static_portfolio_recommendations(risk_profile)
 
 # NEW: Pure vs Personalized Strategy Comparison for Optimization Tab
@@ -1874,7 +2022,7 @@ async def risk_return_analysis(request: PortfolioAnalyticsRequest):
         for ticker in tickers:
             if ticker in price_data:
                 prices = price_data[ticker]
-                returns = prices.pct_change().dropna()
+                returns = prices.pct_change(fill_method=None).dropna()
                 returns_data[ticker] = returns
                 
                 # Calculate individual asset metrics
@@ -1985,7 +2133,7 @@ async def enhanced_sector_distribution():
                 price_data = get_price_data_from_redis([ticker])
                 if ticker in price_data:
                     prices = price_data[ticker]
-                    returns = prices.pct_change().dropna()
+                    returns = prices.pct_change(fill_method=None).dropna()
                     metrics = calculate_annualized_metrics(returns)
                     sectors[sector]["returns"].append(metrics["return"])
                     sectors[sector]["risks"].append(metrics["risk"])
@@ -2975,8 +3123,8 @@ def calculate_custom_portfolio(request: dict):
         asset2_metrics = portfolio_analytics.calculate_asset_metrics(data2['prices'])
         
         # Calculate correlation
-        returns1 = pd.Series(data1['prices']).pct_change().dropna()
-        returns2 = pd.Series(data2['prices']).pct_change().dropna()
+        returns1 = pd.Series(data1['prices']).pct_change(fill_method=None).dropna()
+        returns2 = pd.Series(data2['prices']).pct_change(fill_method=None).dropna()
         
         min_length = min(len(returns1), len(returns2))
         returns1_aligned = returns1.iloc[-min_length:]
@@ -3038,7 +3186,7 @@ async def optimize_risk_parity(request: dict):
         # Calculate returns and covariance matrix
         returns_data = {}
         for ticker, prices in price_data.items():
-            returns = pd.Series(prices).pct_change().dropna()
+            returns = pd.Series(prices).pct_change(fill_method=None).dropna()
             returns_data[ticker] = returns
         
         # Align all returns to same length
@@ -3147,7 +3295,7 @@ async def optimize_mean_variance(request: dict):
         # Calculate returns and covariance matrix
         returns_data = {}
         for ticker, prices in price_data.items():
-            returns = pd.Series(prices).pct_change().dropna()
+            returns = pd.Series(prices).pct_change(fill_method=None).dropna()
             returns_data[ticker] = returns
         
         # Align all returns to same length
@@ -3290,7 +3438,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
         asset_performance = {}
         
         for ticker, prices in price_data.items():
-            returns = pd.Series(prices).pct_change().dropna()
+            returns = pd.Series(prices).pct_change(fill_method=None).dropna()
             returns_data[ticker] = returns
             
             # Calculate individual asset metrics
@@ -3413,7 +3561,7 @@ async def risk_decomposition(allocations: str):
         # Calculate returns and covariance
         returns_data = {}
         for ticker, prices in price_data.items():
-            returns = pd.Series(prices).pct_change().dropna()
+            returns = pd.Series(prices).pct_change(fill_method=None).dropna()
             returns_data[ticker] = returns
         
         # Align returns
@@ -4210,11 +4358,12 @@ def smart_monthly_refresh():
 
 
 
-# New: Table-friendly portfolios endpoint (all profiles)
+# New: Table-friendly portfolios endpoint (all profiles + strategy portfolios)
 @router.get("/portfolios-table/data")
 async def get_all_portfolios_table_data():
     """
     Get all portfolios for all risk profiles in a table-friendly format.
+    Includes both regular portfolios and strategy portfolios (pure + personalized).
     Returns flattened list with essential fields for rendering tables.
     """
     try:
@@ -4233,6 +4382,8 @@ async def get_all_portfolios_table_data():
         ]
 
         all_rows = []
+        
+        # 1. Get regular portfolios for each risk profile
         for rp in risk_profiles:
             # Retrieve up to 12 portfolios per profile
             portfolios = redis_manager.get_portfolio_recommendations(rp, count=12) or []
@@ -4246,6 +4397,8 @@ async def get_all_portfolios_table_data():
                     "risk_profile": rp,
                     "risk_profile_display": rp.replace('-', ' ').title(),
                     "portfolio_name": p.get('name', f'Portfolio {idx + 1}'),
+                    "portfolio_type": "Regular",
+                    "strategy": None,
                     "variation_id": p.get('variation_id', idx),
                     "stock_count": len(allocations),
                     "expected_return": round(p.get('expectedReturn', 0) * 100, 2),
@@ -4254,6 +4407,69 @@ async def get_all_portfolios_table_data():
                     "top_stocks": top_preview,
                 }
                 all_rows.append(row)
+        
+        # 2. Get strategy portfolios (pure + personalized)
+        try:
+            # Initialize strategy optimizer if not already done
+            if not hasattr(_rds, 'strategy_optimizer'):
+                _rds.strategy_optimizer = StrategyPortfolioOptimizer(_rds, redis_manager)
+            
+            strategies = ['diversification', 'risk', 'return']
+            
+            # Get pure strategy portfolios
+            for strategy in strategies:
+                pure_portfolios = _rds.strategy_optimizer.get_pure_portfolios_from_cache(strategy) or []
+                for idx, p in enumerate(pure_portfolios):
+                    allocations = p.get('allocations', []) or []
+                    # Top 3 allocation preview
+                    top = sorted(allocations, key=lambda a: a.get('allocation', 0), reverse=True)[:3]
+                    top_preview = ", ".join([f"{t.get('symbol','?')} ({t.get('allocation',0):.1f}%)" for t in top])
+                    
+                    metrics = p.get('metrics', {})
+                    row = {
+                        "id": len(all_rows) + 1,
+                        "risk_profile": "N/A",
+                        "risk_profile_display": "Pure Strategy",
+                        "portfolio_name": p.get('name', f'Pure {strategy.title()} Portfolio {idx + 1}'),
+                        "portfolio_type": "Strategy (Pure)",
+                        "strategy": strategy.title(),
+                        "variation_id": None,
+                        "stock_count": len(allocations),
+                        "expected_return": round(metrics.get('expected_return', 0) * 100, 2),
+                        "risk": round(metrics.get('risk', 0) * 100, 2),
+                        "diversification_score": round(metrics.get('diversification_score', 0) or 0, 1),
+                        "top_stocks": top_preview,
+                    }
+                    all_rows.append(row)
+            
+            # Get personalized strategy portfolios
+            for strategy in strategies:
+                for rp in risk_profiles:
+                    personalized_portfolios = _rds.strategy_optimizer.get_personalized_portfolios_from_cache(strategy, rp) or []
+                    for idx, p in enumerate(personalized_portfolios):
+                        allocations = p.get('allocations', []) or []
+                        # Top 3 allocation preview
+                        top = sorted(allocations, key=lambda a: a.get('allocation', 0), reverse=True)[:3]
+                        top_preview = ", ".join([f"{t.get('symbol','?')} ({t.get('allocation',0):.1f}%)" for t in top])
+                        
+                        metrics = p.get('metrics', {})
+                        row = {
+                            "id": len(all_rows) + 1,
+                            "risk_profile": rp,
+                            "risk_profile_display": rp.replace('-', ' ').title(),
+                            "portfolio_name": p.get('name', f'Personalized {strategy.title()} Portfolio {idx + 1}'),
+                            "portfolio_type": "Strategy (Personalized)",
+                            "strategy": strategy.title(),
+                            "variation_id": None,
+                            "stock_count": len(allocations),
+                            "expected_return": round(metrics.get('expected_return', 0) * 100, 2),
+                            "risk": round(metrics.get('risk', 0) * 100, 2),
+                            "diversification_score": round(metrics.get('diversification_score', 0) or 0, 1),
+                            "top_stocks": top_preview,
+                        }
+                        all_rows.append(row)
+        except Exception as e:
+            logger.warning(f"⚠️ Error fetching strategy portfolios for table: {e}")
 
         return {
             "status": "success",
@@ -4412,12 +4628,6 @@ def _record_warning(warnings: List[str], message: str):
         warnings.append(message)
 
 # Pydantic models for visualization endpoints
-class ClusteringAnalysisRequest(BaseModel):
-    selectedPortfolio: List[PortfolioAllocation]
-    allRecommendations: List[Dict]
-    selectedPortfolioIndex: int
-    riskProfile: str
-
 class ScatterPoint(BaseModel):
     label: str
     risk: float
@@ -4425,14 +4635,15 @@ class ScatterPoint(BaseModel):
     symbol: Optional[str] = None
     sector: Optional[str] = None
 
-class ClusterInfo(BaseModel):
-    center: Dict[str, float]
-    points: List[int]
-    label: str
+class ScatterDataRequest(BaseModel):
+    selectedPortfolio: List[PortfolioAllocation]
+    allRecommendations: List[Dict]
+    selectedPortfolioIndex: int
+    riskProfile: str
 
-class ClusteringAnalysisResponse(BaseModel):
+class ScatterDataResponse(BaseModel):
     points: List[ScatterPoint]
-    clusters: List[ClusterInfo]
+    tickerPoints: Optional[List[ScatterPoint]] = None  # Individual ticker-level points for Ticker View
     palette: List[str]
     warnings: List[str]
     metadata: Dict[str, Any]
@@ -4476,24 +4687,22 @@ class VisualizationDataRequest(BaseModel):
     correlationPortfolioLabels: Optional[str] = None
 
 class VisualizationDataResponse(BaseModel):
-    clustering: ClusteringAnalysisResponse
+    scatter: ScatterDataResponse
     correlation: CorrelationMatrixResponse
     sectorAllocation: SectorAllocationResponse
     warnings: List[str]
     metadata: Dict[str, Any]
 
-@router.post("/visualization/clustering-analysis", response_model=ClusteringAnalysisResponse)
-async def clustering_analysis(request: ClusteringAnalysisRequest):
+async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse:
     """
-    Perform K-means clustering analysis on selected portfolio and benchmark portfolios.
-    Returns scatter points with risk/return coordinates and cluster assignments.
+    Build scatter data for visualization by combining selected portfolio metrics with benchmark portfolios.
     """
     import time
-    from sklearn.cluster import KMeans
     
     start_time = time.time()
-    warnings = []
-    points = []
+    warnings: List[str] = []
+    points: List[Dict[str, Any]] = []
+    ticker_points: List[Dict[str, Any]] = []
     cache_hits = 0
     cache_misses = 0
     
@@ -4597,49 +4806,251 @@ async def clustering_analysis(request: ClusteringAnalysisRequest):
             }
             points.append(benchmark_point)
         
-        # Perform K-means clustering on available points
-        if len(points) >= 2:
-            # Prepare data for clustering (risk, returnValue)
-            X = np.array([[p['risk'], p['returnValue']] for p in points])
-            
-            # Determine optimal number of clusters (at least 2, at most number of points)
-            k = min(max(2, len(points) // 2), len(points))
-            
-            # Apply K-means with deterministic seed
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-            cluster_labels = kmeans.fit_predict(X)
-            
-            # Build cluster info
-            clusters = []
-            for cluster_id in range(k):
-                cluster_points = [i for i, label in enumerate(cluster_labels) if label == cluster_id]
-                if cluster_points:
-                    cluster_center = {
-                        'risk': float(kmeans.cluster_centers_[cluster_id][0]),
-                        'returnValue': float(kmeans.cluster_centers_[cluster_id][1])
-                    }
-                    clusters.append({
-                        'center': cluster_center,
-                        'points': cluster_points,
-                        'label': f"Cluster {cluster_id + 1}"
+        # Build individual ticker-level points for Ticker View
+        try:
+            logger.debug(
+                f"Building ticker points for {len(selected_portfolio)} selected portfolio tickers and {len(all_recommendations)} recommendations"
+            )
+            # Add tickers from selected portfolio
+            for stock in selected_portfolio:
+                ticker = stock.symbol.upper()
+
+                cached_metrics = _rds._load_from_cache(ticker, 'metrics')
+                cached_sector = _rds._load_from_cache(ticker, 'sector')
+                cached_prices = _rds._load_from_cache(ticker, 'prices')
+
+                # Fallback: ensure cached data exists by warming if necessary
+                if cached_prices is None or cached_sector is None:
+                    monthly_data = _rds.get_monthly_data(ticker)
+                    if monthly_data:
+                        try:
+                            if cached_prices is None and monthly_data.get('prices') and monthly_data.get('dates'):
+                                prices_series = pd.Series(
+                                    monthly_data['prices'],
+                                    index=pd.to_datetime(monthly_data['dates'])
+                                )
+                                cached_prices = prices_series
+                        except Exception as price_error:
+                            logger.debug(f"Failed to rebuild price series for {ticker}: {price_error}")
+                        if cached_sector is None:
+                            cached_sector = {
+                                'sector': monthly_data.get('sector', 'Unknown'),
+                                'industry': monthly_data.get('industry', 'Unknown'),
+                                'companyName': monthly_data.get('company_name', ticker),
+                                'country': monthly_data.get('country', 'Unknown'),
+                                'exchange': monthly_data.get('exchange', 'Unknown'),
+                            }
+
+                if cached_metrics is None:
+                    try:
+                        cached_metrics = _rds.get_cached_metrics(ticker)
+                    except Exception as metrics_error:
+                        logger.debug(f"Failed to load cached metrics for {ticker}: {metrics_error}")
+
+                ticker_risk = None
+                ticker_return = None
+
+                if cached_metrics:
+                    ticker_risk = cached_metrics.get('risk') or cached_metrics.get('annualized_risk')
+                    ticker_return = cached_metrics.get('annualized_return') or cached_metrics.get('annual_return')
+
+                    if ticker_risk is not None and ticker_risk > 1:
+                        ticker_risk = ticker_risk / 100.0
+                    if ticker_return is not None and ticker_return > 1:
+                        ticker_return = ticker_return / 100.0
+
+                    if (ticker_risk is None or ticker_return is None) and cached_prices is not None:
+                        try:
+                            import pandas as pd
+                            import numpy as np
+
+                            if hasattr(cached_prices, 'pct_change'):
+                                returns = cached_prices.pct_change(fill_method=None).dropna()
+                            else:
+                                if isinstance(cached_prices, dict):
+                                    prices_series = pd.Series(cached_prices)
+                                else:
+                                    prices_series = pd.Series(cached_prices)
+                                returns = prices_series.pct_change(fill_method=None).dropna()
+
+                            if len(returns) >= 12:
+                                if ticker_return is None:
+                                    ticker_return = float((1 + returns.mean()) ** 12 - 1)
+
+                                if ticker_risk is None:
+                                    ticker_risk = float(returns.std() * np.sqrt(12))
+                        except Exception as e:
+                            logger.debug(f"Failed to calculate metrics for {ticker}: {e}")
+
+                # Extract sector info regardless of price data availability
+                sector = 'Unknown'
+                if cached_sector:
+                    if isinstance(cached_sector, dict):
+                        sector = cached_sector.get('sector', 'Unknown')
+                    elif isinstance(cached_sector, str):
+                        sector = cached_sector
+
+                # Add ticker point if we have price data (for scatter plot)
+                if cached_prices is not None:
+                    if ticker_risk is None:
+                        ticker_risk = 0.15
+                    if ticker_return is None:
+                        ticker_return = 0.08
+
+                    ticker_points.append({
+                        'label': 'Selected Portfolio',
+                        'symbol': ticker,
+                        'risk': float(ticker_risk),
+                        'returnValue': float(ticker_return),
+                        'sector': sector
                     })
-        else:
-            clusters = []
-        
-        # Generate color palette
+                elif sector != 'Unknown':
+                    # Add ticker point with sector info even without price data
+                    # This ensures sector allocation works for all tickers with sector data
+                    ticker_points.append({
+                        'label': 'Selected Portfolio',
+                        'symbol': ticker,
+                        'risk': 0.15,  # Default risk
+                        'returnValue': 0.08,  # Default return
+                        'sector': sector
+                    })
+
+            # Add tickers from benchmark portfolios
+            benchmark_index = 0
+            for idx, recommendation in enumerate(all_recommendations):
+                if idx == selected_portfolio_index:
+                    continue
+
+                benchmark_label = f"Benchmark {benchmark_index + 1}"
+                benchmark_index += 1
+
+                recommendation_allocs = recommendation.get('portfolio', [])
+                if not recommendation_allocs:
+                    recommendation_allocs = recommendation.get('allocations', [])
+
+                for alloc_dict in recommendation_allocs:
+                    ticker = alloc_dict.get('symbol', '').upper()
+                    if not ticker:
+                        continue
+
+                    cached_metrics = _rds._load_from_cache(ticker, 'metrics')
+                    cached_sector = _rds._load_from_cache(ticker, 'sector')
+                    cached_prices = _rds._load_from_cache(ticker, 'prices')
+
+                    if cached_prices is None or cached_sector is None:
+                        monthly_data = _rds.get_monthly_data(ticker)
+                        if monthly_data:
+                            try:
+                                if cached_prices is None and monthly_data.get('prices') and monthly_data.get('dates'):
+                                    prices_series = pd.Series(
+                                        monthly_data['prices'],
+                                        index=pd.to_datetime(monthly_data['dates'])
+                                    )
+                                    cached_prices = prices_series
+                            except Exception as price_error:
+                                logger.debug(f"Failed to rebuild price series for {ticker}: {price_error}")
+                            if cached_sector is None:
+                                cached_sector = {
+                                    'sector': monthly_data.get('sector', 'Unknown'),
+                                    'industry': monthly_data.get('industry', 'Unknown'),
+                                    'companyName': monthly_data.get('company_name', ticker),
+                                    'country': monthly_data.get('country', 'Unknown'),
+                                    'exchange': monthly_data.get('exchange', 'Unknown'),
+                                }
+
+                    if cached_metrics is None:
+                        try:
+                            cached_metrics = _rds.get_cached_metrics(ticker)
+                        except Exception as metrics_error:
+                            logger.debug(f"Failed to load cached metrics for {ticker}: {metrics_error}")
+
+                    ticker_risk = None
+                    ticker_return = None
+
+                    if cached_metrics:
+                        ticker_risk = cached_metrics.get('risk') or cached_metrics.get('annualized_risk')
+                        ticker_return = cached_metrics.get('annualized_return') or cached_metrics.get('annual_return')
+
+                        if ticker_risk is not None and ticker_risk > 1:
+                            ticker_risk = ticker_risk / 100.0
+                        if ticker_return is not None and ticker_return > 1:
+                            ticker_return = ticker_return / 100.0
+
+                    if (ticker_risk is None or ticker_return is None) and cached_prices is not None:
+                        try:
+                            import pandas as pd
+                            import numpy as np
+
+                            if hasattr(cached_prices, 'pct_change'):
+                                returns = cached_prices.pct_change(fill_method=None).dropna()
+                            else:
+                                if isinstance(cached_prices, dict):
+                                    prices_series = pd.Series(cached_prices)
+                                else:
+                                    prices_series = pd.Series(cached_prices)
+                                returns = prices_series.pct_change(fill_method=None).dropna()
+
+                            if len(returns) >= 12:
+                                if ticker_return is None:
+                                    ticker_return = float((1 + returns.mean()) ** 12 - 1)
+
+                                if ticker_risk is None:
+                                    ticker_risk = float(returns.std() * np.sqrt(12))
+                        except Exception as e:
+                            logger.debug(f"Failed to calculate metrics for {ticker}: {e}")
+
+                    # Extract sector info regardless of price data availability
+                    sector = 'Unknown'
+                    if cached_sector:
+                        if isinstance(cached_sector, dict):
+                            sector = cached_sector.get('sector', 'Unknown')
+                        elif isinstance(cached_sector, str):
+                            sector = cached_sector
+
+                    # Add ticker point if we have price data (for scatter plot)
+                    if cached_prices is not None:
+                        if ticker_risk is None:
+                            ticker_risk = 0.15
+                        if ticker_return is None:
+                            ticker_return = 0.08
+
+                        ticker_points.append({
+                            'label': benchmark_label,
+                            'symbol': ticker,
+                            'risk': float(ticker_risk),
+                            'returnValue': float(ticker_return),
+                            'sector': sector
+                        })
+                    elif sector != 'Unknown':
+                        # Add ticker point with sector info even without price data
+                        # This ensures sector allocation works for all tickers with sector data
+                        ticker_points.append({
+                            'label': benchmark_label,
+                            'symbol': ticker,
+                            'risk': 0.15,  # Default risk
+                            'returnValue': 0.08,  # Default return
+                            'sector': sector
+                        })
+
+            logger.info(f"Built {len(ticker_points)} ticker points for visualization")
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.warning(f"Error building ticker points: {e}\n{error_trace}")
+
         palette = ['#2c5aa0', '#1e3d6f', '#4a90e2', '#6ba3d6', '#8bb5c9', '#aac7bc']
         
         elapsed_time = time.time() - start_time
-        logger.info(f"Clustering analysis completed in {elapsed_time:.3f}s (cache hits: {cache_hits}, misses: {cache_misses})")
+        logger.info(f"Scatter data prepared in {elapsed_time:.3f}s (cache hits: {cache_hits}, misses: {cache_misses})")
         
-        return ClusteringAnalysisResponse(
+        return ScatterDataResponse(
             points=[ScatterPoint(**p) for p in points],
-            clusters=[ClusterInfo(**c) for c in clusters],
+            tickerPoints=[ScatterPoint(**p) for p in ticker_points] if ticker_points else None,
             palette=palette,
             warnings=warnings,
             metadata={
                 'pointCount': len(points),
-                'clusterCount': len(clusters),
+                'tickerPointCount': len(ticker_points),
                 'cacheHits': cache_hits,
                 'cacheMisses': cache_misses,
                 'elapsedTime': elapsed_time
@@ -4647,8 +5058,11 @@ async def clustering_analysis(request: ClusteringAnalysisRequest):
         )
         
     except Exception as e:
-        logger.error(f"Error in clustering analysis: {e}")
-        raise HTTPException(status_code=500, detail=f"Clustering analysis failed: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        error_msg = str(e) if str(e) else type(e).__name__
+        logger.error(f"Error preparing scatter data: {error_msg}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Scatter data preparation failed: {error_msg}")
 
 @router.get("/visualization/correlation-matrix", response_model=CorrelationMatrixResponse)
 async def correlation_matrix(
@@ -4718,8 +5132,47 @@ async def correlation_matrix(
         # Create DataFrame of price series
         df = pd.DataFrame(price_series_dict)
         
+        # Drop columns with insufficient data
+        df = df.dropna(axis=1, how='all')
+        if df.shape[1] < 2:
+            _record_warning(warnings, f"Insufficient valid price history after cleaning. Need at least 2 tickers, got {df.shape[1]}")
+            return CorrelationMatrixResponse(
+                tickers=list(df.columns),
+                matrix=[],
+                sectorMap={},
+                portfolioLabels=portfolio_labels,
+                warnings=warnings,
+                missingTickers=list(set(missing_tickers + [t for t in available_tickers if t not in df.columns])),
+                metadata={
+                    'dataPoints': 0,
+                    'period': period,
+                    'elapsedTime': time.time() - start_time
+                }
+            )
+        
         # Calculate returns if needed (for correlation)
-        returns_df = df.pct_change().dropna()
+        # Fix deprecation warning: specify fill_method=None instead of default 'pad'
+        returns_df = df.pct_change(fill_method=None).dropna()
+        
+        # Drop columns with insufficient return data
+        valid_columns = [col for col in returns_df.columns if returns_df[col].count() > 0]
+        returns_df = returns_df[valid_columns]
+        
+        if returns_df.shape[1] < 2:
+            _record_warning(warnings, f"Returns data insufficient for correlation. Need at least 2 tickers with return data, got {returns_df.shape[1]}")
+            return CorrelationMatrixResponse(
+                tickers=list(returns_df.columns),
+                matrix=[],
+                sectorMap={},
+                portfolioLabels=portfolio_labels,
+                warnings=warnings,
+                missingTickers=list(set(missing_tickers + [t for t in available_tickers if t not in returns_df.columns])),
+                metadata={
+                    'dataPoints': returns_df.shape[0],
+                    'period': period,
+                    'elapsedTime': time.time() - start_time
+                }
+            )
         
         # Calculate Pearson correlation matrix
         correlation_matrix = returns_df.corr().values.tolist()
@@ -4758,8 +5211,14 @@ async def correlation_matrix(
         )
         
     except Exception as e:
-        logger.error(f"Error calculating correlation matrix: {e}")
-        raise HTTPException(status_code=500, detail=f"Correlation matrix calculation failed: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        error_msg = str(e) if str(e) else type(e).__name__
+        logger.error(f"Error calculating correlation matrix: {error_msg}\n{error_trace}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Correlation matrix calculation failed: {error_msg}. Missing tickers: {', '.join(missing_tickers) if missing_tickers else 'none'}"
+        )
 
 @router.get("/visualization/sector-allocation", response_model=SectorAllocationResponse)
 async def sector_allocation(
@@ -4845,8 +5304,11 @@ async def sector_allocation(
         )
         
     except Exception as e:
-        logger.error(f"Error calculating sector allocation: {e}")
-        raise HTTPException(status_code=500, detail=f"Sector allocation calculation failed: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        error_msg = str(e) if str(e) else type(e).__name__
+        logger.error(f"Error calculating sector allocation: {error_msg}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Sector allocation calculation failed: {error_msg}")
 
 @router.post("/visualization/data", response_model=VisualizationDataResponse)
 async def visualization_data(request: VisualizationDataRequest):
@@ -4859,17 +5321,26 @@ async def visualization_data(request: VisualizationDataRequest):
     all_warnings = []
     
     try:
-        # Prepare clustering request
-        clustering_request = ClusteringAnalysisRequest(
+        # Prepare scatter data request
+        scatter_request = ScatterDataRequest(
             selectedPortfolio=request.selectedPortfolio,
             allRecommendations=request.allRecommendations,
             selectedPortfolioIndex=request.selectedPortfolioIndex,
             riskProfile=request.riskProfile
         )
         
-        # Get clustering analysis
-        clustering_response = await clustering_analysis(clustering_request)
-        all_warnings.extend(clustering_response.warnings)
+        logger.debug(f"Visualization data request: {len(request.selectedPortfolio)} selected stocks, {len(request.allRecommendations)} recommendations")
+        
+        # Build scatter data
+        try:
+            scatter_response = await build_scatter_data(scatter_request)
+            all_warnings.extend(scatter_response.warnings)
+        except HTTPException as scatter_http_err:
+            logger.error(f"Scatter data HTTP error: {scatter_http_err.detail} (status {scatter_http_err.status_code})")
+            raise
+        except Exception as scatter_err:
+            logger.error(f"Scatter data preparation error: {scatter_err}")
+            raise HTTPException(status_code=500, detail=f"Scatter data preparation failed: {str(scatter_err)}")
         
         # Prepare correlation matrix request
         if request.correlationTickers:
@@ -4879,12 +5350,19 @@ async def visualization_data(request: VisualizationDataRequest):
             correlation_tickers = ','.join([a.symbol for a in request.selectedPortfolio])
         
         if correlation_tickers:
-            correlation_response = await correlation_matrix(
-                tickers=correlation_tickers,
-                portfolioLabels=request.correlationPortfolioLabels,
-                period=None
-            )
-            all_warnings.extend(correlation_response.warnings)
+            try:
+                correlation_response = await correlation_matrix(
+                    tickers=correlation_tickers,
+                    portfolioLabels=request.correlationPortfolioLabels,
+                    period=None
+                )
+                all_warnings.extend(correlation_response.warnings)
+            except HTTPException as corr_http_err:
+                logger.error(f"Correlation matrix HTTP error: {corr_http_err.detail} (status {corr_http_err.status_code})")
+                raise
+            except Exception as corr_err:
+                logger.error(f"Correlation matrix error: {corr_err}")
+                raise HTTPException(status_code=500, detail=f"Correlation matrix failed: {str(corr_err)}")
         else:
             # Create empty correlation response
             correlation_response = CorrelationMatrixResponse(
@@ -4903,18 +5381,25 @@ async def visualization_data(request: VisualizationDataRequest):
         tickers_str = ','.join(tickers_list)
         weights_str = ','.join([str(w) for w in weights_list])
         
-        sector_response = await sector_allocation(
-            tickers=tickers_str,
-            weights=weights_str,
-            portfolioLabel=None
-        )
-        all_warnings.extend(sector_response.warnings)
+        try:
+            sector_response = await sector_allocation(
+                tickers=tickers_str,
+                weights=weights_str,
+                portfolioLabel=None
+            )
+            all_warnings.extend(sector_response.warnings)
+        except HTTPException as sector_http_err:
+            logger.error(f"Sector allocation HTTP error: {sector_http_err.detail} (status {sector_http_err.status_code})")
+            raise
+        except Exception as sector_err:
+            logger.error(f"Sector allocation error: {sector_err}")
+            raise HTTPException(status_code=500, detail=f"Sector allocation failed: {str(sector_err)}")
         
         elapsed_time = time.time() - start_time
         logger.info(f"Consolidated visualization data generated in {elapsed_time:.3f}s")
         
         return VisualizationDataResponse(
-            clustering=clustering_response,
+            scatter=scatter_response,
             correlation=correlation_response,
             sectorAllocation=sector_response,
             warnings=all_warnings,
@@ -4924,9 +5409,25 @@ async def visualization_data(request: VisualizationDataRequest):
             }
         )
         
+    except HTTPException as http_exc:
+        # Re-raise HTTP errors without wrapping so the client sees the original detail
+        detail = http_exc.detail if http_exc.detail else "Unknown HTTP error occurred"
+        logger.error(f"Visualization data generation HTTP error ({http_exc.status_code}): {detail}")
+        # Ensure we have a meaningful detail message
+        if not detail or detail == "HTTPException" or detail.strip() == "":
+            detail = f"Visualization component failed (status {http_exc.status_code}). Check backend logs for details."
+        raise HTTPException(status_code=http_exc.status_code, detail=detail)
     except Exception as e:
-        logger.error(f"Error generating consolidated visualization data: {e}")
-        raise HTTPException(status_code=500, detail=f"Visualization data generation failed: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        # Check if it's an HTTPException that was caught as generic Exception
+        if isinstance(e, HTTPException):
+            detail = e.detail if e.detail else f"HTTP error {e.status_code}"
+            logger.error(f"Visualization data generation HTTP error (caught as Exception): {detail}")
+            raise HTTPException(status_code=e.status_code, detail=detail if detail != "HTTPException" else f"Visualization component failed (status {e.status_code})")
+        error_msg = str(e) if str(e) else type(e).__name__
+        logger.error(f"Error generating consolidated visualization data: {error_msg}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=f"Visualization data generation failed: {error_msg}")
 
 
 # New: Consolidated HTML with two tabs (Tickers + Portfolios) and search inputs
@@ -5053,19 +5554,25 @@ async def get_consolidated_table_html():
         <div class="table-wrap">
           <table id="table-portfolios"><thead><tr>
             <th class="sortable" onclick="sortTable('portfolios', 0, 'number')">#</th>
-            <th class="sortable" onclick="sortTable('portfolios', 1, 'text')">Risk Profile</th>
-            <th class="sortable" onclick="sortTable('portfolios', 2, 'text')">Portfolio</th>
-            <th class="sortable number" onclick="sortTable('portfolios', 3, 'number')">Stocks</th>
-            <th class="sortable number" onclick="sortTable('portfolios', 4, 'number')">Return %</th>
-            <th class="sortable number" onclick="sortTable('portfolios', 5, 'number')">Risk %</th>
-            <th class="sortable number" onclick="sortTable('portfolios', 6, 'number')">Diversification</th>
-            <th class="sortable" onclick="sortTable('portfolios', 7, 'text')">Top Stocks</th>
+            <th class="sortable" onclick="sortTable('portfolios', 1, 'text')">Type</th>
+            <th class="sortable" onclick="sortTable('portfolios', 2, 'text')">Strategy</th>
+            <th class="sortable" onclick="sortTable('portfolios', 3, 'text')">Risk Profile</th>
+            <th class="sortable" onclick="sortTable('portfolios', 4, 'text')">Portfolio</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 5, 'number')">Stocks</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 6, 'number')">Return %</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 7, 'number')">Risk %</th>
+            <th class="sortable number" onclick="sortTable('portfolios', 8, 'number')">Diversification</th>
+            <th class="sortable" onclick="sortTable('portfolios', 9, 'text')">Top Stocks</th>
           </tr></thead><tbody>
 """
         for p in portfolios:
+            portfolio_type = p.get('portfolio_type', 'Regular')
+            strategy = p.get('strategy', '-')
             html += f"""
             <tr>
               <td>{p.get('id','-')}</td>
+              <td>{portfolio_type}</td>
+              <td>{strategy}</td>
               <td>{p.get('risk_profile_display','-')}</td>
               <td><strong>{p.get('portfolio_name','-')}</strong></td>
               <td class=\"number\">{p.get('stock_count',0)}</td>

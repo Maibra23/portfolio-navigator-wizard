@@ -47,7 +47,6 @@ interface OptimizationResult {
   weights: number[];
   expectedReturn: number;
   risk: number;
-  sharpeRatio: number;
   diversificationScore: number;
 }
 
@@ -98,8 +97,7 @@ export const PortfolioOptimization = ({
       return {
         expectedReturn: data.expectedReturn,
         risk: data.risk,
-        diversificationScore: data.diversificationScore,
-        sharpeRatio: data.sharpeRatio
+        diversificationScore: data.diversificationScore
       };
     } catch (err) {
       console.error('Error calculating metrics:', err);
@@ -201,7 +199,6 @@ export const PortfolioOptimization = ({
         weights: data.optimizedMetrics.expectedReturn,
         expectedReturn: data.optimizedMetrics.expectedReturn,
         risk: data.optimizedMetrics.risk,
-        sharpeRatio: data.optimizedMetrics.sharpeRatio,
         diversificationScore: data.optimizedMetrics.diversificationScore
       });
       
@@ -295,93 +292,67 @@ export const PortfolioOptimization = ({
             </TabsList>
 
             {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-6">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <Lightbulb className="h-6 w-6 text-blue-600" />
-                  <h3 className="text-xl font-semibold text-blue-900">Portfolio Optimization Overview</h3>
+            <TabsContent value="overview" className="space-y-4">
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Lightbulb className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-blue-900">Portfolio Optimization</h3>
                 </div>
-                <p className="text-blue-800 mb-4">
-                  Portfolio optimization uses advanced mathematical models to find the best balance between risk and return. 
-                  Our algorithm analyzes your current portfolio and suggests improvements based on modern portfolio theory.
+                <p className="text-xs text-blue-800">
+                  Advanced algorithms analyze your portfolio to find the optimal balance between risk and return using modern portfolio theory.
                 </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white p-4 rounded-lg border">
-                    <h4 className="font-medium text-blue-900 mb-2">What We'll Do</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• Analyze current portfolio efficiency</li>
-                      <li>• Calculate efficient frontier</li>
-                      <li>• Suggest optimal allocations</li>
-                      <li>• Improve risk-return ratio</li>
-                    </ul>
-                  </div>
-                  <div className="bg-white p-4 rounded-lg border">
-                    <h4 className="font-medium text-blue-900 mb-2">Expected Benefits</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
-                      <li>• Better risk-adjusted returns</li>
-                      <li>• Improved diversification</li>
-                      <li>• More efficient allocation</li>
-                      <li>• Professional-grade optimization</li>
-                    </ul>
-                  </div>
-                </div>
               </div>
 
               {/* Current Portfolio Summary */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Current Portfolio Summary</CardTitle>
-                  <p className="text-muted-foreground">
-                    Your selected portfolio with {currentPortfolio.length} assets
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Current Portfolio Summary</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {currentPortfolio.length} assets selected
                   </p>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {currentPortfolio.map((stock, index) => (
-                    <div key={stock.symbol} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-medium text-blue-600">{index + 1}</span>
+                <CardContent className="space-y-3 pt-0">
+                  <div className="grid grid-cols-1 gap-2">
+                    {currentPortfolio.map((stock, index) => (
+                      <div key={stock.symbol} className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-medium text-blue-600">{index + 1}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm">{stock.symbol}</div>
+                            <div className="text-xs text-muted-foreground truncate">{stock.name || 'Stock'}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-medium">{stock.symbol}</div>
-                          <div className="text-sm text-muted-foreground">{stock.name || 'Stock'}</div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-semibold text-sm">{stock.allocation}%</div>
+                          <div className="text-xs text-muted-foreground">
+                            {(stock.allocation / 100 * capital).toLocaleString()} SEK
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{stock.allocation}%</div>
-                        <div className="text-sm text-muted-foreground">
-                          {(stock.allocation / 100 * capital).toLocaleString()} SEK
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                   
                   {currentMetrics && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-                      <div className="text-center p-4 bg-green-50 rounded-lg border">
-                        <div className="text-2xl font-bold text-green-600">
+                    <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
+                      <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
+                        <div className="text-xl font-bold text-emerald-700">
                           {(currentMetrics.expectedReturn * 100).toFixed(1)}%
                         </div>
-                        <div className="text-sm text-green-700">Expected Return</div>
+                        <div className="text-xs text-emerald-600 mt-0.5">Expected Return</div>
                       </div>
-                      <div className="text-center p-4 bg-orange-50 rounded-lg border">
-                        <div className="text-2xl font-bold text-orange-600">
+                      <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                        <div className="text-xl font-bold text-amber-700">
                           {(currentMetrics.risk * 100).toFixed(1)}%
                         </div>
-                        <div className="text-sm text-orange-700">Risk Level</div>
+                        <div className="text-xs text-amber-600 mt-0.5">Risk Level</div>
                       </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg border">
-                        <div className="text-2xl font-bold text-purple-600">
+                      <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                        <div className="text-xl font-bold text-purple-700">
                           {currentMetrics.diversificationScore.toFixed(0)}%
                         </div>
-                        <div className="text-sm text-purple-700">Diversification</div>
-                      </div>
-                      <div className="text-center p-4 bg-blue-50 rounded-lg border">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {currentMetrics.sharpeRatio.toFixed(2)}
-                        </div>
-                        <div className="text-sm text-blue-700">Sharpe Ratio</div>
+                        <div className="text-xs text-purple-600 mt-0.5">Diversification</div>
                       </div>
                     </div>
                   )}
@@ -466,30 +437,24 @@ export const PortfolioOptimization = ({
                     <div className="space-y-4">
                       <h4 className="text-lg font-medium">Optimization Results</h4>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="text-center p-4 bg-green-50 rounded-lg border">
-                          <div className="text-2xl font-bold text-green-600">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
+                          <div className="text-xl font-bold text-emerald-700">
                             {(optimizationResults.expectedReturn * 100).toFixed(1)}%
                           </div>
-                          <div className="text-sm text-green-700">Optimized Return</div>
+                          <div className="text-xs text-emerald-600 mt-0.5">Optimized Return</div>
                         </div>
-                        <div className="text-center p-4 bg-orange-50 rounded-lg border">
-                          <div className="text-2xl font-bold text-orange-600">
+                        <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                          <div className="text-xl font-bold text-amber-700">
                             {(optimizationResults.risk * 100).toFixed(1)}%
                           </div>
-                          <div className="text-sm text-orange-700">Optimized Risk</div>
+                          <div className="text-xs text-amber-600 mt-0.5">Optimized Risk</div>
                         </div>
-                        <div className="text-center p-4 bg-purple-50 rounded-lg border">
-                          <div className="text-2xl font-bold text-purple-600">
+                        <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                          <div className="text-xl font-bold text-purple-700">
                             {optimizationResults.diversificationScore.toFixed(0)}%
                           </div>
-                          <div className="text-sm text-purple-700">Diversification</div>
-                        </div>
-                        <div className="text-center p-4 bg-blue-50 rounded-lg border">
-                          <div className="text-2xl font-bold text-blue-600">
-                            {optimizationResults.sharpeRatio.toFixed(2)}
-                          </div>
-                          <div className="text-sm text-blue-700">Sharpe Ratio</div>
+                          <div className="text-xs text-purple-600 mt-0.5">Diversification</div>
                         </div>
                       </div>
 

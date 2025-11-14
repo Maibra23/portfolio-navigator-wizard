@@ -1,0 +1,2129 @@
+{
+  "total_keys": 18,
+  "audit_timestamp": "2025-11-13T13:54:09.855674",
+  "audit_results": [
+    {
+      "key": "strategy_portfolios:personalized:diversification:moderate",
+      "type": "personalized",
+      "strategy": "diversification",
+      "risk_profile": "moderate",
+      "ttl_seconds": 331917,
+      "generated_at": "2025-11-10T10:06:06.467180",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Diversification Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Diversification Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Diversification Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Diversification Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Diversification Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Diversification Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 30,
+        "all_symbols": [
+          "AMCR",
+          "AMP",
+          "CLN.SW",
+          "CMCSA",
+          "CVX",
+          "DOV",
+          "DPZ",
+          "FAST",
+          "G24.DE",
+          "GALD.SW",
+          "GD",
+          "GLD",
+          "GOOG",
+          "HD",
+          "IG.MI",
+          "IMB.L",
+          "KTY.WA",
+          "LAND.L",
+          "MDLZ",
+          "MERY.PA",
+          "MKC",
+          "MONY.L",
+          "MRK",
+          "PCAR",
+          "PSON.L",
+          "SBMO.AS",
+          "TMO",
+          "VER.VI",
+          "VV",
+          "WY"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:return:very-conservative",
+      "type": "personalized",
+      "strategy": "return",
+      "risk_profile": "very-conservative",
+      "ttl_seconds": 417700,
+      "generated_at": "2025-11-11T09:55:49.118263",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Return Maximization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Return Maximization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Return Maximization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0000000000000002,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Return Maximization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Return Maximization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Return Maximization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 26,
+        "all_symbols": [
+          "APH",
+          "AZO",
+          "COR",
+          "CWK.L",
+          "DHR",
+          "DIA",
+          "ECL",
+          "ELI.BR",
+          "EQIX",
+          "GD",
+          "GIVN.SW",
+          "HSY",
+          "IBE.MC",
+          "IWR",
+          "MSI",
+          "NOC",
+          "ORLY",
+          "PSA",
+          "SCHB",
+          "TRI",
+          "TRV",
+          "TUB.BR",
+          "V",
+          "VLTO",
+          "VONG",
+          "VV"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:return:conservative",
+      "type": "personalized",
+      "strategy": "return",
+      "risk_profile": "conservative",
+      "ttl_seconds": 417761,
+      "generated_at": "2025-11-11T09:56:50.418278",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Return Maximization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Return Maximization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Return Maximization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Return Maximization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Return Maximization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Return Maximization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 27,
+        "all_symbols": [
+          "APD",
+          "AXP",
+          "BSX",
+          "CCEP",
+          "CPG.L",
+          "CRH",
+          "DE",
+          "ETN",
+          "EXR",
+          "FAST",
+          "FOXA",
+          "GOOGL",
+          "KR",
+          "LIN",
+          "LNT",
+          "MSI",
+          "MTD",
+          "NI",
+          "OR.PA",
+          "SBAC",
+          "SCA-B.ST",
+          "SIE.DE",
+          "SOF.BR",
+          "VGT",
+          "VRSK",
+          "VTI",
+          "WIHL.ST"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:risk:moderate",
+      "type": "personalized",
+      "strategy": "risk",
+      "risk_profile": "moderate",
+      "ttl_seconds": 417545,
+      "generated_at": "2025-11-11T09:53:14.298003",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Risk Minimization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0000000000000002,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Risk Minimization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999999,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Risk Minimization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Risk Minimization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Risk Minimization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Risk Minimization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 30,
+        "all_symbols": [
+          "AMGN",
+          "BKNG",
+          "CMS",
+          "COO",
+          "CRH",
+          "CVX",
+          "DCC.L",
+          "EQNR.OL",
+          "HUH1V.HE",
+          "IEX",
+          "JKHY",
+          "JMAT.L",
+          "KEYS",
+          "LKQ",
+          "MKC",
+          "OMC",
+          "PUUILO.HE",
+          "QQ.L",
+          "ROP",
+          "RVTY",
+          "SHEL.L",
+          "SNA",
+          "SPSN.SW",
+          "SRE",
+          "STERV.HE",
+          "TEL.OL",
+          "UHS",
+          "UPM.HE",
+          "VGK",
+          "VTV"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:risk:aggressive",
+      "type": "personalized",
+      "strategy": "risk",
+      "risk_profile": "aggressive",
+      "ttl_seconds": 417586,
+      "generated_at": "2025-11-11T09:53:55.919177",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Risk Minimization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Risk Minimization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Risk Minimization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Risk Minimization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Risk Minimization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Risk Minimization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 30,
+        "all_symbols": [
+          "A",
+          "ALM.MC",
+          "AM.PA",
+          "ANE.MC",
+          "ARIS.MI",
+          "COLR.BR",
+          "DECK",
+          "EFV",
+          "EXE",
+          "GIVN.SW",
+          "IVW",
+          "KMX",
+          "LIN",
+          "MCD",
+          "MPC",
+          "MRVL",
+          "MTG-B.ST",
+          "NHY.OL",
+          "NOC",
+          "NSC",
+          "O",
+          "PRY.MI",
+          "QQ.L",
+          "SBMO.AS",
+          "SDZ.SW",
+          "SLB",
+          "SPIE.PA",
+          "TEL",
+          "ULTA",
+          "VTR"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:diversification:very-aggressive",
+      "type": "personalized",
+      "strategy": "diversification",
+      "risk_profile": "very-aggressive",
+      "ttl_seconds": 332034,
+      "generated_at": "2025-11-10T10:08:03.454073",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Diversification Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Diversification Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Diversification Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Diversification Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Diversification Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Diversification Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "AALB.AS",
+          "ACS.MC",
+          "ADT1.L",
+          "AMG.AS",
+          "BBVA.MC",
+          "BDX",
+          "BRKN.SW",
+          "BTRW.L",
+          "CINF",
+          "DRX.L",
+          "ERG.MI",
+          "GEV",
+          "HOLN.SW",
+          "KOJAMO.HE",
+          "LAND.L",
+          "LONN.SW",
+          "LULU",
+          "NEXT",
+          "NYF.ST",
+          "PFE",
+          "REP.MC",
+          "SEB-A.ST",
+          "SHY",
+          "TGS.OL",
+          "TTE.PA",
+          "VEU",
+          "WALL-B.ST",
+          "WBD.MI",
+          "WSM"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:pure:risk",
+      "type": "pure",
+      "strategy": "risk",
+      "risk_profile": null,
+      "ttl_seconds": 338639,
+      "generated_at": "2025-11-10T11:58:09.084054",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Pure Risk Minimization Portfolio 1",
+          "symbol_count": 4,
+          "total_allocation": 0.7893968047991528,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 0.79% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Pure Risk Minimization Portfolio 2",
+          "symbol_count": 4,
+          "total_allocation": 0.7354421307309238,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 0.74% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Pure Risk Minimization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999998,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Pure Risk Minimization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Pure Risk Minimization Portfolio 5",
+          "symbol_count": 3,
+          "total_allocation": 0.5474398510149774,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 0.55% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Pure Risk Minimization Portfolio 6",
+          "symbol_count": 4,
+          "total_allocation": 0.7475847211509007,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 0.75% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 23,
+        "all_symbols": [
+          "ADP",
+          "APD",
+          "AVY",
+          "BVI.PA",
+          "CA.PA",
+          "CAF.MC",
+          "EQNR.OL",
+          "GALE.SW",
+          "KNEBV.HE",
+          "LIN",
+          "ORLY",
+          "OTIS",
+          "PFE",
+          "PSPN.SW",
+          "SCA-B.ST",
+          "SGRO.L",
+          "SHW",
+          "SRE",
+          "TIETO.HE",
+          "TJX",
+          "TTE.PA",
+          "TUB.BR",
+          "UPS"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:risk:very-conservative",
+      "type": "personalized",
+      "strategy": "risk",
+      "risk_profile": "very-conservative",
+      "ttl_seconds": 417427,
+      "generated_at": "2025-11-11T09:51:16.883441",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Risk Minimization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Risk Minimization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Risk Minimization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Risk Minimization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Risk Minimization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Risk Minimization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "ADP",
+          "AJG",
+          "AMCR",
+          "APD",
+          "APH",
+          "COLR.BR",
+          "CPB",
+          "CPG.L",
+          "DHR",
+          "GIVN.SW",
+          "HD",
+          "ITW",
+          "K",
+          "LQD",
+          "NEE",
+          "NOVN.SW",
+          "ORLY",
+          "PSPN.SW",
+          "RKT.L",
+          "SN.L",
+          "TDY",
+          "VIG",
+          "VIS.MC",
+          "VRSK",
+          "VTEB",
+          "VZ",
+          "WM",
+          "XLF",
+          "ZURN.SW"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:diversification:conservative",
+      "type": "personalized",
+      "strategy": "diversification",
+      "risk_profile": "conservative",
+      "ttl_seconds": 331843,
+      "generated_at": "2025-11-10T10:04:53.207722",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Diversification Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Diversification Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Diversification Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Diversification Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Diversification Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Diversification Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "BP.L",
+          "BRO",
+          "DSFIR.AS",
+          "DUK",
+          "EG",
+          "ESS",
+          "HD",
+          "HLN.L",
+          "HOLM-B.ST",
+          "IRM",
+          "KMI",
+          "KPN.AS",
+          "MCO",
+          "MSI",
+          "NTRS",
+          "OTIS",
+          "PSON.L",
+          "RBREW.CO",
+          "ROST",
+          "RRTL.DE",
+          "STE",
+          "UPS",
+          "VGIT",
+          "VICI",
+          "VOD.L",
+          "WMT",
+          "WPP.L",
+          "XOM",
+          "ZURN.SW"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:return:moderate",
+      "type": "personalized",
+      "strategy": "return",
+      "risk_profile": "moderate",
+      "ttl_seconds": 417816,
+      "generated_at": "2025-11-11T09:57:46.242125",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Return Maximization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Return Maximization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Return Maximization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Return Maximization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Return Maximization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Return Maximization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "A",
+          "AWK",
+          "AZO",
+          "BYG.L",
+          "CLNX.MC",
+          "ELI.BR",
+          "EPR.OL",
+          "GD",
+          "GETI-B.ST",
+          "GRMN",
+          "HPOL-B.ST",
+          "J",
+          "KARN.SW",
+          "KTY.WA",
+          "MANTA.HE",
+          "NEE",
+          "OTIS",
+          "PST.MI",
+          "RJF",
+          "RMV.L",
+          "RSP",
+          "SAP",
+          "SCHW",
+          "SYK",
+          "TECH",
+          "TMUS",
+          "TYL",
+          "YPSN.SW",
+          "YUM"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:risk:conservative",
+      "type": "personalized",
+      "strategy": "risk",
+      "risk_profile": "conservative",
+      "ttl_seconds": 417497,
+      "generated_at": "2025-11-11T09:52:26.773554",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Risk Minimization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Risk Minimization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Risk Minimization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Risk Minimization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Risk Minimization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Risk Minimization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "ACN",
+          "ALLN.SW",
+          "BND",
+          "CPS.WA",
+          "DOV",
+          "EMR",
+          "EQNR.OL",
+          "HON",
+          "IEX",
+          "IG.MI",
+          "J",
+          "KMI",
+          "LIN",
+          "LOW",
+          "NONG.OL",
+          "NVR",
+          "PNW",
+          "PPG",
+          "RMD",
+          "SHY",
+          "SRE",
+          "TEL.OL",
+          "TJX",
+          "TTE.PA",
+          "TXN",
+          "VICI",
+          "VLTO",
+          "VRSN",
+          "ZTS"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:diversification:very-conservative",
+      "type": "personalized",
+      "strategy": "diversification",
+      "risk_profile": "very-conservative",
+      "ttl_seconds": 331786,
+      "generated_at": "2025-11-10T10:03:55.886545",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Diversification Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Diversification Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Diversification Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Diversification Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Diversification Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Diversification Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 28,
+        "all_symbols": [
+          "ACKB.BR",
+          "ADP",
+          "ALL",
+          "AMCR",
+          "APD",
+          "AZN",
+          "BIL",
+          "CB",
+          "ELI.BR",
+          "EQIX",
+          "ESP.L",
+          "ESS",
+          "GIVN.SW",
+          "HUFV-A.ST",
+          "IEFA",
+          "INVE-B.ST",
+          "JEPQ",
+          "K",
+          "KO",
+          "MCD",
+          "NOVN.SW",
+          "PCTN.L",
+          "PEP",
+          "SVT.L",
+          "TELIA.ST",
+          "VRSK",
+          "VYM",
+          "VZ"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:pure:return",
+      "type": "pure",
+      "strategy": "return",
+      "risk_profile": null,
+      "ttl_seconds": 417642,
+      "generated_at": "2025-11-11T09:54:51.998205",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Pure Return Maximization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999999,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Pure Return Maximization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Pure Return Maximization Portfolio 3",
+          "symbol_count": 4,
+          "total_allocation": 0.003931412769753514,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 0.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Pure Return Maximization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999999,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Pure Return Maximization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Pure Return Maximization Portfolio 6",
+          "symbol_count": 3,
+          "total_allocation": 0.0015760243402257658,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 0.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 26,
+        "all_symbols": [
+          "AAK.ST",
+          "ADT1.L",
+          "AKRBP.OL",
+          "ALL",
+          "CATE.ST",
+          "CEG",
+          "CRL",
+          "CTVA",
+          "DSV.CO",
+          "EVO.ST",
+          "EXE",
+          "FOUR.L",
+          "IMCD.AS",
+          "INCY",
+          "INSTAL.ST",
+          "KLR.L",
+          "MONC.MI",
+          "MTCH",
+          "NEXT",
+          "NSC",
+          "PUUILO.HE",
+          "REY.MI",
+          "SALM.OL",
+          "TEL",
+          "VMC",
+          "VST"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:return:very-aggressive",
+      "type": "personalized",
+      "strategy": "return",
+      "risk_profile": "very-aggressive",
+      "ttl_seconds": 417931,
+      "generated_at": "2025-11-11T09:59:40.542572",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Return Maximization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Return Maximization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999998,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Return Maximization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999998,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Return Maximization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Return Maximization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Return Maximization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 28,
+        "all_symbols": [
+          "ADT1.L",
+          "AKRBP.OL",
+          "APP",
+          "ASML.AS",
+          "BWLPG.OL",
+          "BZU.MI",
+          "CCEP",
+          "CTAS",
+          "FUTR.L",
+          "GMAB.CO",
+          "GOOG",
+          "IBKR",
+          "INCY",
+          "INVE-B.ST",
+          "IVG.MI",
+          "IWG.L",
+          "KTY.WA",
+          "MA",
+          "MOL.MI",
+          "NVR",
+          "OCDO.L",
+          "PLAZ-B.ST",
+          "QTCOM.HE",
+          "SIKA.SW",
+          "TE.PA",
+          "TMUS",
+          "VMC",
+          "VRSN"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:return:aggressive",
+      "type": "personalized",
+      "strategy": "return",
+      "risk_profile": "aggressive",
+      "ttl_seconds": 417873,
+      "generated_at": "2025-11-11T09:58:42.453713",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Return Maximization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Return Maximization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Return Maximization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Return Maximization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Return Maximization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Return Maximization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 30,
+        "all_symbols": [
+          "AAPL",
+          "ALLEI.ST",
+          "CATE.ST",
+          "COO",
+          "CTRA",
+          "CTVA",
+          "DIS",
+          "EA",
+          "GEHC",
+          "HAFNI.OL",
+          "HII",
+          "IF.MI",
+          "IMCD.AS",
+          "LOGN.SW",
+          "MCK",
+          "MPWR",
+          "NONG.OL",
+          "PGHN.SW",
+          "PLD",
+          "RJF",
+          "SBAC",
+          "SCHW",
+          "SCHX",
+          "SIKA.SW",
+          "SPLG",
+          "TUB.BR",
+          "TW.L",
+          "VALMT.HE",
+          "WMB",
+          "XYL"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:pure:diversification",
+      "type": "pure",
+      "strategy": "diversification",
+      "risk_profile": null,
+      "ttl_seconds": 331720,
+      "generated_at": "2025-11-10T10:02:49.666254",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Pure Diversification Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Pure Diversification Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Pure Diversification Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Pure Diversification Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Pure Diversification Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Pure Diversification Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "ADT1.L",
+          "AWK",
+          "BANB.SW",
+          "BIIB",
+          "CDR.WA",
+          "CGEO.L",
+          "CMCSA",
+          "DHER.DE",
+          "DOFG.OL",
+          "GEN",
+          "IVG.MI",
+          "JCI",
+          "KOJAMO.HE",
+          "MCOV-B.ST",
+          "MELI",
+          "MGM",
+          "NEE",
+          "NYF.ST",
+          "PHIA.AS",
+          "RVTY",
+          "SBAC",
+          "SCMN.SW",
+          "SRE",
+          "TLW.L",
+          "TROW",
+          "VIE.PA",
+          "WMB",
+          "WSM",
+          "XIOR.BR"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:risk:very-aggressive",
+      "type": "personalized",
+      "strategy": "risk",
+      "risk_profile": "very-aggressive",
+      "ttl_seconds": 417616,
+      "generated_at": "2025-11-11T09:54:25.945726",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Risk Minimization Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Risk Minimization Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Risk Minimization Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Risk Minimization Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Risk Minimization Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0000000000000002,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Risk Minimization Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 0.9999999999999998,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "ADT1.L",
+          "CATE.ST",
+          "COP",
+          "DGX",
+          "ELI.BR",
+          "FABG.ST",
+          "FITB",
+          "FRT",
+          "FXPO.L",
+          "GIVN.SW",
+          "GLD",
+          "GUBRA.CO",
+          "HAL",
+          "HBH.DE",
+          "HTRO.ST",
+          "HWM",
+          "IMPN.SW",
+          "KNOS.L",
+          "MEKO.ST",
+          "MO",
+          "NEL.OL",
+          "NOVN.SW",
+          "OEM-B.ST",
+          "OKE",
+          "ROO.L",
+          "SHUR.BR",
+          "UMI.BR",
+          "VITR.ST",
+          "VTR"
+        ]
+      }
+    },
+    {
+      "key": "strategy_portfolios:personalized:diversification:aggressive",
+      "type": "personalized",
+      "strategy": "diversification",
+      "risk_profile": "aggressive",
+      "ttl_seconds": 331981,
+      "generated_at": "2025-11-10T10:07:11.071557",
+      "count": 6,
+      "portfolios": [
+        {
+          "index": 0,
+          "name": "Personalized Diversification Portfolio 1",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Personalized Diversification Portfolio 2",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Personalized Diversification Portfolio 3",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Personalized Diversification Portfolio 4",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "Personalized Diversification Portfolio 5",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        },
+        {
+          "index": 5,
+          "name": "Personalized Diversification Portfolio 6",
+          "symbol_count": 5,
+          "total_allocation": 1.0,
+          "valid": true,
+          "issues": [],
+          "warnings": [
+            "Total allocation is 1.00% (expected ~100%)"
+          ]
+        }
+      ],
+      "summary": {
+        "total_portfolios": 6,
+        "valid_portfolios": 6,
+        "invalid_portfolios": 0,
+        "total_issues": 0,
+        "total_warnings": 6,
+        "unique_symbols_count": 29,
+        "all_symbols": [
+          "8TRA.DE",
+          "AALB.AS",
+          "ABNB",
+          "ACX.MC",
+          "BKR",
+          "BURE.ST",
+          "CCC.L",
+          "DAE.SW",
+          "DESN.SW",
+          "DUK",
+          "DVA",
+          "ELE.MC",
+          "EXE",
+          "GRI.L",
+          "GTT.PA",
+          "HSBA.L",
+          "HWDN.L",
+          "ICE",
+          "KEMIRA.HE",
+          "MKC",
+          "NHY.OL",
+          "NI",
+          "RILBA.CO",
+          "SECT-B.ST",
+          "SGKN.SW",
+          "TEF.MC",
+          "URW.PA",
+          "VAR.OL",
+          "VID.MC"
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "pure_strategies": {
+      "risk": 6,
+      "return": 6,
+      "diversification": 6
+    },
+    "personalized_strategies": {
+      "diversification": {
+        "moderate": 6,
+        "very-aggressive": 6,
+        "conservative": 6,
+        "very-conservative": 6,
+        "aggressive": 6
+      },
+      "return": {
+        "very-conservative": 6,
+        "conservative": 6,
+        "moderate": 6,
+        "very-aggressive": 6,
+        "aggressive": 6
+      },
+      "risk": {
+        "moderate": 6,
+        "aggressive": 6,
+        "very-conservative": 6,
+        "conservative": 6,
+        "very-aggressive": 6
+      }
+    },
+    "total_portfolios": 108,
+    "valid_portfolios": 108,
+    "invalid_portfolios": 0,
+    "total_issues": 0,
+    "total_warnings": 108,
+    "strategies": [
+      "diversification",
+      "return",
+      "risk"
+    ],
+    "risk_profiles": [
+      "aggressive",
+      "conservative",
+      "moderate",
+      "very-aggressive",
+      "very-conservative"
+    ]
+  }
+}

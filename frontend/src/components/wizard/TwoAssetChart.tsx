@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { TrendingUp, Shield, PieChart } from 'lucide-react';
 
 interface AssetStats {
   ticker: string;
@@ -89,13 +90,13 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Portfolio Comparison</CardTitle>
-        <p className="text-muted-foreground">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Portfolio Comparison</CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
           Compare different portfolio allocations and their risk-return characteristics
         </p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -135,13 +136,18 @@ export const TwoAssetChart: React.FC<TwoAssetChartProps> = ({
           </TableBody>
         </Table>
         
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium mb-2">Key Insights:</h4>
-          <ul className="text-sm text-gray-700 space-y-1">
-            <li>• <strong>Diversification Benefit:</strong> Notice how combining {analysis.ticker1} and {analysis.ticker2} reduces overall portfolio risk</li>
-            <li>• <strong>Risk-Return Trade-off:</strong> Higher {analysis.ticker1} allocation increases both potential return and risk</li>
-            <li>• <strong>Correlation:</strong> These stocks have a correlation of {(analysis.correlation * 100).toFixed(0)}%, providing diversification benefits</li>
-          </ul>
+        <div className="mt-4 bg-muted/30 rounded-lg p-3 border border-border/50">
+          <div className="text-xs text-muted-foreground space-y-2">
+            <div>
+              <strong className="text-foreground">Diversification Benefit:</strong> Combining {analysis.ticker1} and {analysis.ticker2} reduces overall portfolio risk.
+            </div>
+            <div>
+              <strong className="text-foreground">Risk-Return Trade-off:</strong> Higher {analysis.ticker1} allocation increases both potential return and risk.
+            </div>
+            <div>
+              <strong className="text-foreground">Correlation:</strong> These stocks have a correlation of {(analysis.correlation * 100).toFixed(0)}%, providing diversification benefits.
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

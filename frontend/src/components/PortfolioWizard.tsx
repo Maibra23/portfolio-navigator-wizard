@@ -150,18 +150,12 @@ export const PortfolioWizard = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Navigation Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+        <div className="max-w-7xl mx-auto flex justify-center items-center">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-8 w-8 text-blue-600" />
             <h1 className="text-2xl font-bold text-gray-900">Portfolio Navigator Wizard</h1>
           </div>
-          <nav className="flex items-center gap-4">
-            <Link
-              to="/"
-              className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-            >
-              Portfolio Wizard
-            </Link>
+          <nav className="absolute right-6 flex items-center gap-4">
             <Link
               to="/ticker-info"
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -175,16 +169,27 @@ export const PortfolioWizard = () => {
 
       {/* Main Wizard Content */}
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Step {currentStep + 1} of {STEPS.length}: {STEPS[currentStep].title}
-            </h2>
-            <div className="text-sm text-gray-500">
-              {Math.round(progress)}% Complete
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white font-semibold text-sm">
+                {currentStep + 1}
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {STEPS[currentStep].title}
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Step {currentStep + 1} of {STEPS.length}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium text-gray-700">{Math.round(progress)}%</div>
+              <div className="text-xs text-gray-500">Complete</div>
             </div>
           </div>
-          <Progress value={progress} className="h-2" />
+          <Progress value={progress} className="h-1.5" />
         </div>
 
         {renderStep()}

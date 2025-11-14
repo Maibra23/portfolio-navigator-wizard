@@ -181,6 +181,20 @@ export const StockSelection = ({
   const [isLoadingStrategy, setIsLoadingStrategy] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<string>('diversification');
   
+  // Generation limit tracking per strategy (max 2 generations per strategy)
+  const [generationCounts, setGenerationCounts] = useState<Record<string, number>>({
+    diversification: 0,
+    risk: 0,
+    return: 0
+  });
+  
+  // Store all generated portfolios per strategy (to show them even after limit reached)
+  const [allGeneratedPortfolios, setAllGeneratedPortfolios] = useState<Record<string, PortfolioRecommendation[]>>({
+    diversification: [],
+    risk: [],
+    return: []
+  });
+  
   // NEW: Dynamic Portfolio State Management
   const [portfolioValidation, setPortfolioValidation] = useState<PortfolioValidation>({
     isValid: false,
@@ -1289,9 +1303,19 @@ export const StockSelection = ({
         return;
       }
       setActiveTab('full-customization');
+    } else if (activeTab === 'full-customization') {
+      // From visual charts tab, ensure we have selected stocks and navigate to next wizard step
+      if (selectedStocks.length >= 3) {
+        onNext();
+      }
     } else {
-      // From other tabs, call the parent onNext
-      onNext();
+      // From other tabs, navigate to visual charts if we have selected stocks
+      if (selectedStocks.length >= 3) {
+        setActiveTab('full-customization');
+      } else {
+        // Otherwise call parent onNext
+        onNext();
+      }
     }
   };
 
@@ -1506,6 +1530,22 @@ export const StockSelection = ({
 
   // NEW: Generate pure strategy portfolios
   const generateStrategyPortfolios = async () => {
+    // Check generation limit (max 2 per strategy)
+    const currentCount = generationCounts[selectedStrategy] || 0;
+    if (currentCount >= 2) {
+      const strategyName = selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1);
+      setError(
+        `Generation limit reached: You have already generated portfolios twice for the ${strategyName} strategy. ` +
+        `To ensure you have enough options to choose from, we limit each strategy to 2 generations. ` +
+        `Please review and select one of the ${allGeneratedPortfolios[selectedStrategy].length} portfolios you've already generated, or try a different investment strategy.`
+      );
+      // Show existing portfolios if any
+      if (allGeneratedPortfolios[selectedStrategy].length > 0) {
+        setStrategyPortfolios(allGeneratedPortfolios[selectedStrategy]);
+      }
+      return;
+    }
+    
     setIsLoadingStrategy(true);
     setError(null);
     
@@ -1545,8 +1585,21 @@ export const StockSelection = ({
           score: 0
         }));
         
+        // Update generation count
+        const newCount = currentCount + 1;
+        setGenerationCounts(prev => ({
+          ...prev,
+          [selectedStrategy]: newCount
+        }));
+        
+        // Store all generated portfolios for this strategy
+        setAllGeneratedPortfolios(prev => ({
+          ...prev,
+          [selectedStrategy]: [...(prev[selectedStrategy] || []), ...transformedPortfolios]
+        }));
+        
         setStrategyPortfolios(transformedPortfolios);
-        setSuccessMessage(`Generated ${transformedPortfolios.length} ${selectedStrategy} strategy portfolios!`);
+        setSuccessMessage(`Generated ${transformedPortfolios.length} ${selectedStrategy} strategy portfolios! (${newCount}/2 generations used)`);
         setTimeout(() => setSuccessMessage(null), 3000);
 
         // Warm all tickers from strategy portfolios
@@ -1571,6 +1624,19 @@ export const StockSelection = ({
       setIsLoadingStrategy(false);
     }
   };
+  
+  // Update displayed portfolios when strategy changes
+  useEffect(() => {
+    const portfoliosForStrategy = allGeneratedPortfolios[selectedStrategy];
+    if (portfoliosForStrategy && portfoliosForStrategy.length > 0) {
+      setStrategyPortfolios(portfoliosForStrategy);
+    } else {
+      setStrategyPortfolios([]);
+    }
+    // Clear error when switching strategies
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStrategy]);
 
   // NEW: Portfolio optimization analysis
   const analyzePortfolioOptimization = async () => {
@@ -1642,28 +1708,28 @@ export const StockSelection = ({
             </TabsList>
 
             {/* Mini-Lesson Tab - Enhanced with Asset Selection */}
-            <TabsContent value="mini-lesson" className="space-y-6">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <Lightbulb className="h-6 w-6 text-blue-600" />
-                  <h3 className="text-xl font-semibold text-blue-900">How Risk and Return Trade Off</h3>
+            <TabsContent value="mini-lesson" className="space-y-4">
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <Lightbulb className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-blue-900">How Risk and Return Trade Off</h3>
                 </div>
-                <p className="text-blue-800 mb-4">
-                  Learn how combining different assets can reduce risk while maintaining returns. 
-                  Choose from educational asset pairs to explore portfolio theory and diversification benefits.
-                  Each pair represents different sectors and investment themes for comprehensive learning.
-                </p>
+                <div className="bg-muted/30 rounded-lg p-3 border border-border/50 mb-3">
+                  <p className="text-xs text-muted-foreground">
+                    Learn how combining different assets can reduce risk while maintaining returns. Choose from educational asset pairs to explore portfolio theory and diversification benefits.
+                  </p>
+                </div>
                 
                 {/* Asset Pair Selection */}
                 {availableAssetPairs.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-lg font-medium text-blue-900">Select Asset Pair for Analysis</h4>
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-medium text-foreground">Select Asset Pair for Analysis</h4>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => loadAssetPairs()}
-                        className="text-xs px-3 py-1 h-8"
+                        className="text-xs px-2 py-1 h-7"
                       >
                         <RefreshCw className="h-3 w-3 mr-1" />
                         New Pairs
@@ -1749,32 +1815,32 @@ export const StockSelection = ({
                 ) : twoAssetAnalysis && customPortfolio ? (
                   <div className="space-y-6">
                     {/* Asset Information Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Card>
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <TrendingUp className="h-5 w-5" />
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4" />
                             {twoAssetAnalysis.ticker1}
                           </CardTitle>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {twoAssetAnalysis.asset1_stats.company_name || twoAssetAnalysis.ticker1}
                           </p>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                          <div className="flex justify-between">
+                        <CardContent className="space-y-1.5 pt-0">
+                          <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Annual Return:</span>
                             <span className="font-medium text-green-600">
                               {(twoAssetAnalysis.asset1_stats.annualized_return * 100).toFixed(1)}%
                             </span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Volatility:</span>
                             <span className="font-medium text-orange-600">
                               {(twoAssetAnalysis.asset1_stats.annualized_volatility * 100).toFixed(1)}%
                             </span>
                           </div>
                           {twoAssetAnalysis.asset1_stats.sector && (
-                            <div className="flex justify-between">
+                            <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">Sector:</span>
                               <span className="font-medium text-blue-600">
                                 {twoAssetAnalysis.asset1_stats.sector}
@@ -1785,30 +1851,30 @@ export const StockSelection = ({
                       </Card>
                       
                       <Card>
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <TrendingUp className="h-5 w-5" />
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4" />
                             {twoAssetAnalysis.ticker2}
                           </CardTitle>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {twoAssetAnalysis.asset2_stats.company_name || twoAssetAnalysis.ticker2}
                           </p>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                          <div className="flex justify-between">
+                        <CardContent className="space-y-1.5 pt-0">
+                          <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Annual Return:</span>
                             <span className="font-medium text-green-600">
                               {(twoAssetAnalysis.asset2_stats.annualized_return * 100).toFixed(1)}%
                             </span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Volatility:</span>
                             <span className="font-medium text-orange-600">
                               {(twoAssetAnalysis.asset2_stats.annualized_volatility * 100).toFixed(1)}%
                             </span>
                           </div>
                           {twoAssetAnalysis.asset2_stats.sector && (
-                            <div className="flex justify-between">
+                            <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">Sector:</span>
                               <span className="font-medium text-blue-600">
                                 {twoAssetAnalysis.asset2_stats.sector}
@@ -1821,17 +1887,17 @@ export const StockSelection = ({
 
                     {/* Interactive Two-Asset Chart */}
                     <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Interactive Portfolio Builder</CardTitle>
-                        <p className="text-muted-foreground">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Interactive Portfolio Builder</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1">
                           Adjust the allocation between {twoAssetAnalysis.ticker1} and {twoAssetAnalysis.ticker2} to see how it affects your portfolio's risk and return.
                         </p>
                       </CardHeader>
-                      <CardContent className="space-y-4">
+                      <CardContent className="space-y-3 pt-0">
                         <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>{twoAssetAnalysis.ticker1} Weight: {nvdaWeight}%</span>
-                            <span>{twoAssetAnalysis.ticker2} Weight: {100 - nvdaWeight}%</span>
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>{twoAssetAnalysis.ticker1} Weight: <strong className="text-foreground">{nvdaWeight}%</strong></span>
+                            <span>{twoAssetAnalysis.ticker2} Weight: <strong className="text-foreground">{100 - nvdaWeight}%</strong></span>
                           </div>
                           <Slider
                             value={[nvdaWeight]}
@@ -1880,53 +1946,78 @@ export const StockSelection = ({
                     )}
 
                     {/* Portfolio Metrics */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Your Portfolio Metrics</CardTitle>
+                    <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border-0 shadow-lg">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2 text-slate-800">
+                          <BarChart3 className="h-5 w-5 text-blue-600" />
+                          Your Portfolio Metrics
+                        </CardTitle>
+                        <p className="text-xs text-slate-600 mt-1">
+                          Real-time metrics based on your current allocation and market data
+                        </p>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="pt-0">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="text-center p-4 bg-green-50 rounded-lg">
-                            <div className="text-2xl font-bold text-green-600">
-                              {(customPortfolio.return * 100).toFixed(1)}%
+                          {/* Expected Return */}
+                          <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 border border-emerald-200">
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-200 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
+                            <div className="relative z-10">
+                              <div className="flex items-center gap-1.5 mb-1.5">
+                                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                                <span className="text-xs font-medium text-emerald-700">Expected Return</span>
+                              </div>
+                              <div className="text-2xl font-bold text-emerald-800 mb-0.5">
+                                {(customPortfolio.return * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-emerald-600">
+                                Annualized projection
+                              </div>
                             </div>
-                            <div className="text-sm text-green-700">Expected Return</div>
                           </div>
-                          <div className="text-center p-4 bg-orange-50 rounded-lg">
-                            <div className="text-2xl font-bold text-orange-600">
-                              {(customPortfolio.risk * 100).toFixed(1)}%
+
+                          {/* Risk Level */}
+                          <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 p-4 border border-amber-200">
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-200 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
+                            <div className="relative z-10">
+                              <div className="flex items-center gap-1.5 mb-1.5">
+                                <Shield className="h-4 w-4 text-amber-600" />
+                                <span className="text-xs font-medium text-amber-700">Risk (Volatility)</span>
+                              </div>
+                              <div className="text-2xl font-bold text-amber-800 mb-0.5">
+                                {(customPortfolio.risk * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-amber-600">
+                                Volatility measure
+                              </div>
                             </div>
-                            <div className="text-sm text-orange-700">Risk (Volatility)</div>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
 
-                    {/* Educational Callouts */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Alert>
-                        <Info className="h-4 w-4" />
-                        <AlertDescription>
-                          <strong>Expected Return:</strong> The average yearly growth rate of your investment 
-                          based on historical performance data.
-                        </AlertDescription>
-                      </Alert>
-                      <Alert>
-                        <Info className="h-4 w-4" />
-                        <AlertDescription>
-                          <strong>Risk (Volatility):</strong> Measures how much returns vary from the average. 
-                          Higher values mean more uncertainty and potential for larger price swings.
-                        </AlertDescription>
-                      </Alert>
+                    {/* Educational Info - Compact */}
+                    <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                      <div className="text-xs text-muted-foreground space-y-2">
+                        <div className="flex items-start gap-2">
+                          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong className="text-foreground">Expected Return:</strong> Average yearly growth rate based on historical performance.
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Shield className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong className="text-foreground">Risk (Volatility):</strong> Measures return variation. Higher values indicate more uncertainty.
+                          </div>
+                        </div>
+                        <div className="pt-1.5 border-t border-border/30 mt-1.5 flex items-start gap-2">
+                          <Database className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong className="text-foreground">Data Source:</strong> Yahoo Finance (monthly returns, annualized). Historical data for educational purposes only.
+                          </div>
+                        </div>
+                      </div>
                     </div>
-
-                    {/* Data Source Indicator */}
-                    <Alert className="mt-4">
-                      <Database className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Data Source:</strong> Real market data from Yahoo Finance (monthly returns, annualized). All calculations are based on historical performance and are for educational demonstration purposes only.
-                      </AlertDescription>
-                    </Alert>
                   </div>
                 ) : (
                   <Alert>
@@ -1940,10 +2031,10 @@ export const StockSelection = ({
             </TabsContent>
 
             {/* Recommendations Tab */}
-            <TabsContent value="recommendations" className="space-y-6">
-              <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold mb-2">Portfolio Recommendations</h3>
-                <p className="text-muted-foreground">
+            <TabsContent value="recommendations" className="space-y-4">
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold mb-1">Portfolio Recommendations</h3>
+                <p className="text-xs text-muted-foreground">
                   Personalized recommendations optimized for your {getRiskProfileDisplay().toLowerCase()} risk profile using live market data
                 </p>
               </div>
@@ -1954,7 +2045,7 @@ export const StockSelection = ({
                   <p className="mt-2 text-muted-foreground">Generating personalized recommendations...</p>
                 </div>
               ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {(dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations).map((recommendation, index) => (
                   <Card 
                     key={index} 
@@ -1968,32 +2059,32 @@ export const StockSelection = ({
                     {/* Selection indicator */}
                     {selectedPortfolioIndex === index && (
                       <div className="absolute top-2 right-2 z-10">
-                        <Badge variant="default" className="bg-green-600">
+                        <Badge variant="default" className="bg-green-600 text-xs">
                           <CheckCircle className="h-3 w-3 mr-1" />
                           Selected
                         </Badge>
                       </div>
                     )}
                     
-                    <CardHeader className="pb-4">
+                    <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{recommendation.name}</CardTitle>
-                        <Badge variant={index === 0 ? "default" : "secondary"}>
-                          {index === 0 ? "Top Pick" : "Alternative " + (index + 1)}
+                        <CardTitle className="text-base">{recommendation.name}</CardTitle>
+                        <Badge variant={index === 0 ? "default" : "secondary"} className="text-xs">
+                          {index === 0 ? "Top Pick" : "Alt " + (index + 1)}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">{recommendation.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{recommendation.description}</p>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                    <CardContent className="space-y-3 pt-0">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
                         <div>
-                          <div className="text-muted-foreground">Expected Return</div>
+                          <div className="text-muted-foreground mb-0.5">Expected Return</div>
                           <div className="font-semibold text-green-600">
                             {(recommendation.expectedReturn * 100).toFixed(1)}%
                           </div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">Risk Level</div>
+                          <div className="text-muted-foreground mb-0.5">Risk Level</div>
                           <div className="font-semibold text-orange-600">
                             {(recommendation.risk * 100).toFixed(1)}%
                           </div>
@@ -2001,31 +2092,31 @@ export const StockSelection = ({
                       </div>
                       
                       <div>
-                        <div className="flex justify-between text-sm mb-1">
+                        <div className="flex justify-between text-xs mb-1">
                           <span>Diversification Score</span>
                           <span>{recommendation.diversificationScore}%</span>
                         </div>
-                        <Progress value={recommendation.diversificationScore} className="h-2" />
+                        <Progress value={recommendation.diversificationScore} className="h-1.5" />
                       </div>
 
                       {/* Enhanced portfolio information */}
-                      <div className="mt-4 space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span>Total Allocation:</span>
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Total Allocation:</span>
                           <span className="font-medium">100%</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span>Number of Assets:</span>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Number of Assets:</span>
                           <span className="font-medium">{recommendation.allocations.length}</span>
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="text-sm font-medium">Allocations:</div>
+                      <div className="space-y-1.5 pt-1 border-t border-border/30">
+                        <div className="text-xs font-medium mb-1">Allocations:</div>
                         {recommendation.allocations.slice(0, 3).map((allocation, idx) => (
                           <div key={idx} className="flex justify-between text-xs">
-                            <span>{allocation.symbol}</span>
-                            <span>{allocation.allocation}%</span>
+                            <span className="text-muted-foreground">{allocation.symbol}</span>
+                            <span className="font-medium">{allocation.allocation}%</span>
                           </div>
                         ))}
                         {recommendation.allocations.length > 3 && (
@@ -2040,17 +2131,18 @@ export const StockSelection = ({
                           e.stopPropagation();
                           acceptRecommendation(recommendation, index);
                         }}
-                        className="w-full"
+                        className="w-full text-xs h-8"
                         variant={selectedPortfolioIndex === index ? "default" : "outline"}
+                        size="sm"
                       >
                         {selectedPortfolioIndex === index ? (
                           <>
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Portfolio Selected
+                            <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+                            Selected
                           </>
                         ) : (
                           <>
-                            <CheckCircle className="mr-2 h-4 w-4" />
+                            <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
                             Use This Portfolio
                           </>
                         )}
@@ -2063,17 +2155,17 @@ export const StockSelection = ({
 
               {/* Advanced Options Button - Small and at the bottom */}
               {!hasSelectedPortfolio && activeTab === 'recommendations' && (
-                <div className="text-center mt-6">
+                <div className="text-center mt-4">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setActiveTab('dynamic-generation')}
-                    className="flex items-center gap-2 mx-auto"
+                    className="flex items-center gap-1.5 mx-auto text-xs h-8"
                   >
-                    <Zap className="h-4 w-4" />
+                    <Zap className="h-3.5 w-3.5" />
                     Advanced Options
                   </Button>
-                  <p className="text-xs text-muted-foreground mt-2">
+                  <p className="text-xs text-muted-foreground mt-1.5">
                     Generate custom portfolios using AI optimization algorithms
                   </p>
                 </div>
@@ -2082,17 +2174,17 @@ export const StockSelection = ({
               {/* Portfolio Customization Section - Only show after selection AND on recommendations tab */}
               {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
               <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Customize Your Portfolio</CardTitle>
-                    <p className="text-muted-foreground">
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Customize Your Portfolio</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
                       Modify the selected portfolio by adding or removing stocks and adjusting allocations
                     </p>
                 </CardHeader>
-                  <CardContent className="space-y-6">
+                  <CardContent className="space-y-4 pt-0">
                     {/* Stock Search */}
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">
                           Add More Stocks
                         </label>
                         <div className="flex gap-2">
@@ -2150,26 +2242,26 @@ export const StockSelection = ({
                       </div>
 
                       {/* Portfolio Overview - Moved here, below Selected Assets */}
-                      <div className={`border rounded-lg p-4 ${totalAllocation > 100 ? 'bg-red-50 border-red-200' : 'bg-white'}`}>
-                        <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className={`border rounded-lg p-3 ${totalAllocation > 100 ? 'bg-red-50 border-red-200' : 'bg-muted/30'}`}>
+                        <div className="grid grid-cols-3 gap-3 text-center">
                           <div>
-                            <div className="text-2xl font-bold text-primary">{selectedStocks.length}</div>
-                            <div className="text-sm text-muted-foreground">Stocks</div>
+                            <div className="text-xl font-bold text-primary">{selectedStocks.length}</div>
+                            <div className="text-xs text-muted-foreground">Stocks</div>
                           </div>
                           <div>
-                            <div className={`text-2xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
+                            <div className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
                               {totalAllocation.toFixed(1)}%
                             </div>
-                            <div className="text-sm text-muted-foreground">Total Allocation</div>
+                            <div className="text-xs text-muted-foreground">Total Allocation</div>
                           </div>
                           <div>
-                            <div className={`text-2xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
+                            <div className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
                               {totalAllocation > 100 ? '✗' : '✓'}
                             </div>
-                            <div className="text-sm text-muted-foreground">Status</div>
+                            <div className="text-xs text-muted-foreground">Status</div>
                           </div>
                         </div>
-                        <div className={`mt-3 text-center text-sm ${totalAllocation > 100 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                        <div className={`mt-2 text-center text-xs ${totalAllocation > 100 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
                           Total Allocation: {totalAllocation.toFixed(1)}%
                         </div>
                       </div>
@@ -2293,8 +2385,8 @@ export const StockSelection = ({
                     {/* Weight Editor Toggle */}
                     <div className="flex items-center justify-between">
                       <div>
-                        <h5 className="font-medium">Weight Editor</h5>
-                        <p className="text-sm text-muted-foreground">
+                        <h5 className="text-sm font-medium">Weight Editor</h5>
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           Manually adjust stock weights or use auto-normalization
                         </p>
                       </div>
@@ -2380,18 +2472,18 @@ export const StockSelection = ({
                     )}
 
                     {/* Portfolio Validation */}
-                    <div className="space-y-3">
-                      <h5 className="font-medium">Portfolio Validation</h5>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Minimum 3 stocks</span>
-                          <span className={selectedStocks.length >= 3 ? 'text-green-600' : 'text-red-600'}>
+                    <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                      <h5 className="text-xs font-medium mb-2">Portfolio Validation</h5>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">Minimum 3 stocks</span>
+                          <span className={selectedStocks.length >= 3 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
                             {selectedStocks.length >= 3 ? '✓' : '✗'}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Total allocation = 100%</span>
-                          <span className={Math.abs(totalAllocation - 100) < 0.1 ? 'text-green-600' : 'text-red-600'}>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">Total allocation = 100%</span>
+                          <span className={Math.abs(totalAllocation - 100) < 0.1 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
                             {Math.abs(totalAllocation - 100) < 0.1 ? '✓' : '✗'}
                           </span>
                         </div>
@@ -2487,15 +2579,15 @@ export const StockSelection = ({
                     )}
 
                     {/* Continue Button */}
-                    <div className="mt-6 text-center">
+                    <div className="mt-4 text-center">
                       <Button 
                         onClick={handleNext}
-                        size="lg"
+                        size="default"
                         disabled={totalAllocation < 85}
-                        className={`px-8 py-3 rounded-xl shadow-lg transition-all duration-200 ${
+                        className={`px-6 py-2 rounded-lg shadow-md transition-all duration-200 ${
                           totalAllocation < 85 
                             ? 'bg-gray-400 text-gray-600 cursor-not-allowed shadow-none' 
-                            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white hover:shadow-xl'
+                            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white hover:shadow-lg'
                         }`}
                       >
                         {totalAllocation > 100 ? (
@@ -2539,10 +2631,10 @@ export const StockSelection = ({
             </TabsContent>
 
             {/* Visual Charts Tab */}
-            <TabsContent value="full-customization" className="space-y-6">
-              <div className="text-center mb-6">
-                <h3 className="text-xl font-semibold mb-2">Visual Charts & Analysis</h3>
-                <p className="text-muted-foreground">
+            <TabsContent value="full-customization" className="space-y-4">
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold mb-1">Visual Charts & Analysis</h3>
+                <p className="text-xs text-muted-foreground">
                   Interactive visual analytics synchronized with your selected portfolio and benchmarks
                 </p>
               </div>
@@ -2554,14 +2646,15 @@ export const StockSelection = ({
                     riskProfile={riskProfile}
                     selectedPortfolioIndex={selectedPortfolioIndex}
                     allRecommendations={dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations}
+                    strategyPortfolios={strategyPortfolios}
                   />
                 </VisualizationErrorBoundary>
               ) : (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Select a Portfolio to Continue</CardTitle>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Select a Portfolio to Continue</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2 text-center text-sm text-muted-foreground">
+                  <CardContent className="space-y-1.5 text-center text-xs text-muted-foreground pt-0">
                     <p>Select a recommended portfolio or build a custom allocation with at least three assets.</p>
                     <p>Your selections will power the live visualization experience in this tab.</p>
                   </CardContent>
@@ -2571,92 +2664,161 @@ export const StockSelection = ({
 
             {/* Pure Strategy Generation Tab - Hidden by default, accessible via Advanced Options */}
             {activeTab === 'dynamic-generation' && (
-              <TabsContent value="dynamic-generation" className="space-y-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold mb-2">Pure Strategy Portfolio Generation</h3>
-                  <p className="text-muted-foreground">
+              <TabsContent value="dynamic-generation" className="space-y-4">
+                <div className="text-center mb-4">
+                  <h3 className="text-lg font-semibold mb-1">Pure Strategy Portfolio Generation</h3>
+                  <p className="text-xs text-muted-foreground">
                     Explore different investment strategies in their purest form. Each strategy is optimized using real market data and proven algorithms.
                   </p>
                 </div>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Investment Strategy Selection</CardTitle>
-                    <p className="text-muted-foreground">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Investment Strategy Selection</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
                       Choose an investment strategy to see how it performs with your risk profile.
                     </p>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-4">
+                  <CardContent className="space-y-3 pt-0">
+                    {/* Error message display */}
+                    {error && (
+                      <Alert className="bg-red-50 border-red-200 text-xs">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <AlertDescription className="text-red-800">
+                          {error}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {/* Success message display */}
+                    {successMessage && (
+                      <Alert className="bg-green-50 border-green-200 text-xs">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800">
+                          {successMessage}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    <div className="space-y-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Investment Strategy</label>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">Select Investment Strategy</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div 
-                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                            className={`p-3 border rounded-lg cursor-pointer transition-all ${
                               selectedStrategy === 'diversification' 
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary' 
                                 : 'border-gray-200 hover:border-gray-300'
                             }`}
                             onClick={() => setSelectedStrategy('diversification')}
                           >
-                            <h4 className="font-medium text-sm mb-1">Diversification Strategy</h4>
+                            <h4 className="font-medium text-xs mb-0.5">Diversification Strategy</h4>
                             <p className="text-xs text-muted-foreground">Low correlation, balanced sector exposure</p>
                       </div>
                           <div 
-                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                            className={`p-3 border rounded-lg cursor-pointer transition-all ${
                               selectedStrategy === 'risk' 
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary' 
                                 : 'border-gray-200 hover:border-gray-300'
                             }`}
                             onClick={() => setSelectedStrategy('risk')}
                           >
-                            <h4 className="font-medium text-sm mb-1">Risk Minimization</h4>
+                            <h4 className="font-medium text-xs mb-0.5">Risk Minimization</h4>
                             <p className="text-xs text-muted-foreground">Low volatility, defensive positioning</p>
                       </div>
                           <div 
-                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                            className={`p-3 border rounded-lg cursor-pointer transition-all ${
                               selectedStrategy === 'return' 
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary' 
                                 : 'border-gray-200 hover:border-gray-300'
                             }`}
                             onClick={() => setSelectedStrategy('return')}
                           >
-                            <h4 className="font-medium text-sm mb-1">Return Maximization</h4>
+                            <h4 className="font-medium text-xs mb-0.5">Return Maximization</h4>
                             <p className="text-xs text-muted-foreground">High expected return, growth focus</p>
                           </div>
                         </div>
                     </div>
 
-                      <div className="flex gap-4">
-                      <Button
-                          onClick={() => generateStrategyPortfolios()}
-                          disabled={isLoadingStrategy}
-                          className="flex-1"
-                        >
-                          {isLoadingStrategy ? (
-                          <>
-                            <svg className="animate-spin h-5 w-5 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Generating Portfolios...
-                          </>
-                        ) : (
-                          <>
-                              Generate {selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Portfolios
-                            <ArrowRight className="ml-2 h-4 w-4" />
-                          </>
+                      <div className="space-y-2">
+                        {/* Generation limit reached warning */}
+                        {(generationCounts[selectedStrategy] || 0) >= 2 && (
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+                            <div className="flex items-start gap-2">
+                              <svg className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                              <div className="flex-1">
+                                <p className="font-medium text-amber-800 mb-1.5">Generation Limit Reached</p>
+                                <p className="text-amber-700 mb-2">
+                                  You have used all 2 generations for the <span className="font-medium">{selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)}</span> strategy. 
+                                  This limit helps ensure you have a focused set of high-quality portfolio options to choose from.
+                                </p>
+                                <div className="bg-amber-100/50 rounded p-2 mt-2">
+                                  <p className="text-amber-800 font-medium mb-1">What to do next:</p>
+                                  <ul className="list-disc list-inside space-y-0.5 text-amber-700">
+                                    <li>Review the {allGeneratedPortfolios[selectedStrategy]?.length || 0} portfolios displayed above</li>
+                                    <li>Compare their expected returns, risk levels, and diversification scores</li>
+                                    <li>Select the portfolio that best matches your investment goals</li>
+                                    <li>Or try a different investment strategy to explore more options</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         )}
-                      </Button>
-                      
-                      <Button
-                        onClick={() => analyzePortfolioOptimization()}
-                        disabled={selectedStocks.length === 0}
-                        variant="outline"
-                      >
-                        <BarChart3 className="mr-2 h-4 w-4" />
-                          Analyze Current Portfolio
-                      </Button>
+                        
+                        {/* Approaching limit warning (1/2) */}
+                        {(generationCounts[selectedStrategy] || 0) === 1 && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
+                            <div className="flex items-start gap-2">
+                              <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                              <div>
+                                <p className="font-medium text-blue-800 mb-1">One Generation Remaining</p>
+                                <p className="text-blue-700">
+                                  You have used 1 of 2 generations for this strategy. You can generate portfolios one more time before reaching the limit.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Generation count indicator (when not at limit) */}
+                        {(generationCounts[selectedStrategy] || 0) === 0 && (
+                          <div className="text-xs text-muted-foreground text-center">
+                            You can generate portfolios up to 2 times for each strategy
+                          </div>
+                        )}
+                        
+                        <div className="flex gap-3">
+                          <Button
+                              onClick={() => generateStrategyPortfolios()}
+                              disabled={isLoadingStrategy || (generationCounts[selectedStrategy] || 0) >= 2}
+                              className="flex-1 text-xs h-8"
+                              size="sm"
+                            >
+                              {isLoadingStrategy ? (
+                              <>
+                                <svg className="animate-spin h-5 w-5 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Generating Portfolios...
+                              </>
+                            ) : (generationCounts[selectedStrategy] || 0) >= 2 ? (
+                              <>
+                                Limit Reached - Select a Portfolio
+                              </>
+                            ) : (
+                              <>
+                                  Generate {selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Portfolios
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
 
@@ -2664,12 +2826,19 @@ export const StockSelection = ({
                     {isLoadingStrategy ? (
                         <div className="text-center py-8">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                        <p className="mt-2 text-muted-foreground">Generating {selectedStrategy} strategy portfolios...</p>
+                        <p className="mt-2 text-xs text-muted-foreground">Generating {selectedStrategy} strategy portfolios...</p>
                         </div>
                       ) : strategyPortfolios.length > 0 ? (
-                        <div className="mt-6">
-                        <h4 className="text-lg font-medium mb-4">Generated {selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Strategy Portfolios</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="mt-4">
+                        <h4 className="text-base font-medium mb-3 text-center">
+                          Generated {selectedStrategy.charAt(0).toUpperCase() + selectedStrategy.slice(1)} Strategy Portfolios
+                          {(generationCounts[selectedStrategy] || 0) >= 2 && (
+                            <span className="ml-2 text-xs text-amber-600 font-normal">
+                              ({strategyPortfolios.length} total - Select one to proceed)
+                            </span>
+                          )}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {strategyPortfolios.map((portfolio, index) => (
                           <Card
                               key={index}
@@ -2683,37 +2852,29 @@ export const StockSelection = ({
                             {/* Selection indicator */}
                               {selectedPortfolioIndex === index && (
                               <div className="absolute top-2 right-2 z-10">
-                                <Badge variant="default" className="bg-green-600">
-                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                <div className="bg-green-600 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3" />
                                   Selected
-                                </Badge>
+                                </div>
                               </div>
                             )}
                             
-                            <CardHeader className="pb-4">
-                              <div className="flex items-center justify-between">
-                                  <CardTitle className="text-lg">{portfolio.name}</CardTitle>
-                                  <Badge variant={index === 0 ? "default" : "secondary"}>
-                                    {index === 0 ? "Top Pick" : "Variant " + (index + 1)}
-                                  </Badge>
+                            <CardHeader className="pb-3">
+                              <div className="flex items-center justify-center">
+                                  <CardTitle className="text-base">{portfolio.name}</CardTitle>
                               </div>
-                                <p className="text-sm text-muted-foreground">{portfolio.description}</p>
-                                <div className="mt-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {(portfolio.strategy || selectedStrategy)?.charAt(0).toUpperCase() + (portfolio.strategy || selectedStrategy)?.slice(1)} Strategy
-                                  </Badge>
-                                </div>
+                                <p className="text-xs text-muted-foreground mt-1 text-center">{portfolio.description}</p>
                             </CardHeader>
-                            <CardContent className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4 text-sm">
+                            <CardContent className="space-y-3 pt-0">
+                              <div className="grid grid-cols-2 gap-3 text-xs">
                                 <div>
-                                  <div className="text-muted-foreground">Expected Return</div>
+                                  <div className="text-muted-foreground mb-0.5">Expected Return</div>
                                   <div className="font-semibold text-green-600">
                                       {(portfolio.expectedReturn * 100).toFixed(1)}%
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-muted-foreground">Risk Level</div>
+                                  <div className="text-muted-foreground mb-0.5">Risk Level</div>
                                   <div className="font-semibold text-orange-600">
                                       {(portfolio.risk * 100).toFixed(1)}%
                                   </div>
@@ -2721,31 +2882,31 @@ export const StockSelection = ({
                               </div>
                               
                               <div>
-                                <div className="flex justify-between text-sm mb-1">
+                                <div className="flex justify-between text-xs mb-1">
                                   <span>Diversification Score</span>
                                     <span>{portfolio.diversificationScore}%</span>
                                 </div>
-                                  <Progress value={portfolio.diversificationScore} className="h-2" />
+                                  <Progress value={portfolio.diversificationScore} className="h-1.5" />
                               </div>
 
                                 {/* Enhanced portfolio information */}
-                                <div className="mt-4 space-y-3">
-                                  <div className="flex justify-between text-sm">
-                                    <span>Total Allocation:</span>
+                                <div className="space-y-1.5">
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-muted-foreground">Total Allocation:</span>
                                     <span className="font-medium">100%</span>
                                   </div>
-                                  <div className="flex justify-between text-sm">
-                                    <span>Number of Assets:</span>
+                                  <div className="flex justify-between text-xs">
+                                    <span className="text-muted-foreground">Number of Assets:</span>
                                     <span className="font-medium">{portfolio.allocations.length}</span>
                               </div>
                               </div>
 
-                              <div className="space-y-2">
-                                <div className="text-sm font-medium">Allocations:</div>
+                              <div className="space-y-1.5 pt-1 border-t border-border/30">
+                                <div className="text-xs font-medium mb-1">Allocations:</div>
                                   {portfolio.allocations.slice(0, 3).map((allocation, idx) => (
                                   <div key={idx} className="flex justify-between text-xs">
-                                    <span>{allocation.symbol}</span>
-                                    <span>{allocation.allocation}%</span>
+                                    <span className="text-muted-foreground">{allocation.symbol}</span>
+                                    <span className="font-medium">{allocation.allocation}%</span>
                                   </div>
                                 ))}
                                   {portfolio.allocations.length > 3 && (
@@ -2760,27 +2921,28 @@ export const StockSelection = ({
                                   e.stopPropagation();
                                     acceptRecommendation(portfolio, index);
                                 }}
-                                className="w-full"
-                                  variant={selectedPortfolioIndex === index ? "default" : "outline"}
+                                className="w-full text-xs h-8"
+                                variant={selectedPortfolioIndex === index ? "default" : "outline"}
+                                size="sm"
                               >
-                                  {selectedPortfolioIndex === index ? (
+                                {selectedPortfolioIndex === index ? (
                                   <>
-                                    <CheckCircle className="mr-2 h-4 w-4" />
-                                    Portfolio Selected
+                                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+                                    Selected
                                   </>
                                 ) : (
                                   <>
-                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
                                     Use This Portfolio
                                   </>
-                                  )}
+                                )}
                               </Button>
                             </CardContent>
                           </Card>
-                          ))}
+                        ))}
                         </div>
                       </div>
-                    ) : null}
+                      ) : null}
                   </CardContent>
                 </Card>
               </TabsContent>

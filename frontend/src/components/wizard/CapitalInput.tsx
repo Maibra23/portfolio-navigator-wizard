@@ -66,17 +66,18 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
                 placeholder="10,000"
                 value={capital}
                 onChange={(e) => handleCapitalChange(e.target.value)}
-                className="text-lg h-12 pl-8"
+                className="text-sm h-12 pl-8"
+                style={{ fontFamily: 'inherit', fontWeight: 'normal' }}
                 min="1000"
                 step="1000"
               />
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm" style={{ fontWeight: 'normal' }}>
                 kr
               </span>
             </div>
             {capitalValue > 0 && (
-              <p className={`text-sm ${isValid ? 'text-green-600' : 'text-orange-600'}`}>
-                Investment amount: {formatNumber(capitalValue)} SEK
+              <p className={`text-sm ${isValid ? 'text-green-600' : 'text-orange-600'}`} style={{ fontFamily: 'inherit', fontWeight: 'normal' }}>
+                Investment amount: <span style={{ fontWeight: 'normal' }}>{formatNumber(capitalValue)}</span> SEK
                 {!isValid && capitalValue > 0 && (
                   <span className="ml-2">(Minimum 1,000 SEK required)</span>
                 )}
@@ -114,11 +115,6 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
               Continue
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-          </div>
-          
-          {/* Debug info - remove in production */}
-          <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
-            Debug: Capital value = {capitalValue}, Valid = {isValid.toString()}
           </div>
         </CardContent>
       </Card>

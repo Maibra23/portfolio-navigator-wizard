@@ -523,6 +523,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
   const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [selectedOptionValues, setSelectedOptionValues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<RiskResult | null>(null);
   const [storylineProgress, setStorylineProgress] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -910,10 +911,11 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                 </h3>
                 
                 <RadioGroup
-                  value={answers[currentQuestion.id]?.toString() || ""}
+                  value={selectedOptionValues[currentQuestion.id] || ""}
                   onValueChange={(value) => {
                     const option = currentQuestion.options?.find(o => o.value === value);
                     if (option) {
+                      setSelectedOptionValues(prev => ({ ...prev, [currentQuestion.id]: value }));
                       setAnswers(prev => ({ ...prev, [currentQuestion.id]: option.score }));
                     }
                   }}

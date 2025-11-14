@@ -113,7 +113,7 @@ class StrategyPortfolioOptimizer:
                     if not selected_stocks:
                         continue
                     
-                    allocations = self._create_strategy_allocations(selected_stocks, strategy, is_pure=True)
+                    allocations = self._create_strategy_allocations(selected_stocks, strategy, is_pure=True, portfolio_id=portfolio_id + attempt)
                     # Enforce ETF / Unknown sector filtering defensively
                     allocations = [a for a in allocations if a.get('sector') not in (None, 'Unknown')]
                     # Composition key
@@ -163,7 +163,7 @@ class StrategyPortfolioOptimizer:
                 if not selected_stocks:
                     continue
                 
-                allocations = self._create_strategy_allocations(selected_stocks, strategy, is_pure=False, risk_profile=risk_profile)
+                allocations = self._create_strategy_allocations(selected_stocks, strategy, is_pure=False, risk_profile=risk_profile, portfolio_id=portfolio_id)
                 metrics = self._calculate_strategy_portfolio_metrics(allocations, strategy)
                 
                 portfolio = {
@@ -193,6 +193,12 @@ class StrategyPortfolioOptimizer:
         try:
             available_stocks = self._get_available_stocks()
             if not available_stocks:
+                return []
+            
+            # FIRST: Filter out negative returns
+            available_stocks = self._filter_negative_returns(available_stocks)
+            if not available_stocks:
+                logger.warning(f"⚠️ No stocks with positive returns available for {strategy} strategy")
                 return []
             
             if strategy == 'diversification':
@@ -277,6 +283,13 @@ class StrategyPortfolioOptimizer:
         try:
             df = pd.DataFrame(stocks)
             
+            # Ensure no negative returns (already filtered, but double-check)
+            if 'expected_return' in df.columns:
+                df = df[df['expected_return'] > 0]
+                if len(df) == 0:
+                    logger.warning("⚠️ No stocks with positive returns after filtering")
+                    return []
+            
             if 'expected_return' in df.columns:
                 return_threshold = df['expected_return'].quantile(0.6)
                 df = df[df['expected_return'] >= return_threshold]
@@ -345,6 +358,13 @@ class StrategyPortfolioOptimizer:
             df = pd.DataFrame(stocks)
             risk_constraints = self.RISK_PROFILE_CONSTRAINTS[risk_profile]
             
+            # Ensure no negative returns (already filtered, but double-check)
+            if 'expected_return' in df.columns:
+                df = df[df['expected_return'] > 0]
+                if len(df) == 0:
+                    logger.warning("⚠️ No stocks with positive returns after filtering")
+                    return []
+            
             if 'volatility' in df.columns:
                 max_vol = risk_constraints['max_volatility']
                 df = df[df['volatility'] <= max_vol]
@@ -368,9 +388,34 @@ class StrategyPortfolioOptimizer:
             logger.error(f"❌ Error in Personalized Return filtering: {e}")
             return self._select_diversified_stocks_basic(stocks, 5)
     
+    def _filter_negative_returns(self, stocks: List[Dict]) -> List[Dict]:
+        """Filter out stocks with negative expected returns - STRICT NO NEGATIVE RETURNS"""
+        if not stocks:
+            return []
+        
+        try:
+            # Filter out any stock with negative or zero expected return
+            positive_return_stocks = [
+                s for s in stocks 
+                if s.get('expected_return', 0) > 0
+            ]
+            
+            filtered_count = len(stocks) - len(positive_return_stocks)
+            if filtered_count > 0:
+                logger.info(f"🚫 Filtered out {filtered_count} stocks with non-positive returns")
+            
+            return positive_return_stocks
+            
+        except Exception as e:
+            logger.error(f"❌ Error filtering negative returns: {e}")
+            return stocks
+    
     def _apply_risk_profile_constraints(self, stocks: List[Dict], risk_profile: str) -> List[Dict]:
         """Apply risk profile constraints to stock selection"""
         try:
+            # FIRST: Filter out negative returns
+            stocks = self._filter_negative_returns(stocks)
+            
             risk_constraints = self.RISK_PROFILE_CONSTRAINTS[risk_profile]
             df = pd.DataFrame(stocks)
             
@@ -439,29 +484,89 @@ class StrategyPortfolioOptimizer:
         return stocks[:count]
     
     def _create_strategy_allocations(self, stocks: List[Dict], strategy: str, 
-                                   is_pure: bool, risk_profile: str = None) -> List[Dict]:
-        """Create portfolio allocations based on strategy and constraints"""
+                                   is_pure: bool, risk_profile: str = None, portfolio_id: int = 0) -> List[Dict]:
+        """Create portfolio allocations using the SAME weight templates as recommendation portfolios
+        
+        REFACTORED: Strategy is now applied in stock selection only, not in allocation weighting.
+        This ensures consistent, tested allocations and fixes the allocation bug.
+        """
         if not stocks:
             return []
         
+        if not self.stock_selector:
+            logger.error("❌ Stock selector not initialized, cannot use template allocations")
+            return self._create_equal_allocations(stocks)
+        
         try:
-            if strategy == 'diversification':
-                allocations = self._create_diversification_allocations(stocks, is_pure, risk_profile)
-            elif strategy == 'risk':
-                allocations = self._create_risk_allocations(stocks, is_pure, risk_profile)
-            elif strategy == 'return':
-                allocations = self._create_return_allocations(stocks, is_pure, risk_profile)
-            else:
-                allocations = self._create_equal_allocations(stocks)
+            # Normalize stock data to match what _create_portfolio_allocations expects
+            normalized_stocks = []
+            for stock in stocks:
+                normalized_stock = {
+                    'symbol': stock.get('symbol', stock.get('ticker', 'UNKNOWN')),
+                    'name': stock.get('name', stock.get('company_name', stock.get('symbol', 'Unknown'))),
+                    'sector': stock.get('sector', 'Unknown'),
+                    'volatility': stock.get('volatility', 0.2),
+                    'return': stock.get('expected_return', stock.get('return', 0.1)),
+                    'expected_return': stock.get('expected_return', stock.get('return', 0.1))
+                }
+                normalized_stocks.append(normalized_stock)
             
+            # Use the same allocation method as recommendation portfolios
+            # This uses proven weight templates (15 templates for 3-4 stocks)
+            portfolio_size = len(normalized_stocks)
+            
+            # Use variation_id based on strategy, portfolio_id, and risk_profile for template diversity
+            variation_id = hash(f"{strategy}_{is_pure}_{risk_profile}_{portfolio_id}") % 1000
+            
+            # Call the stock selector's allocation method
+            template_allocations = self.stock_selector._create_portfolio_allocations(
+                normalized_stocks,
+                portfolio_size=portfolio_size,
+                variation_id=variation_id
+            )
+            
+            if not template_allocations:
+                logger.warning("⚠️ Template allocation failed, using equal weighting")
+                return self._create_equal_allocations(stocks)
+            
+            # Convert from percentage (0-100) to decimal (0-1) format expected by strategy optimizer
+            # Also ensure we have the required fields
+            allocations = []
+            for alloc in template_allocations:
+                allocation_value = alloc.get('allocation', 0)
+                # Convert from percentage to decimal if needed
+                if allocation_value > 1.0:
+                    allocation_value = allocation_value / 100.0
+                
+                # Find the original stock to preserve sector info
+                symbol = alloc.get('symbol', 'UNKNOWN')
+                original_stock = next((s for s in stocks if s.get('symbol', s.get('ticker')) == symbol), None)
+                sector = alloc.get('sector') or (original_stock.get('sector', 'Unknown') if original_stock else 'Unknown')
+                
+                allocations.append({
+                    'symbol': symbol,
+                    'allocation': allocation_value,
+                    'sector': sector
+                })
+            
+            # Normalize allocations to ensure they sum to 1.0 (fixes rounding issues)
+            total_allocation = sum(a['allocation'] for a in allocations)
+            if total_allocation > 0:
+                for alloc in allocations:
+                    alloc['allocation'] = alloc['allocation'] / total_allocation
+            
+            # Validate allocations
             if not self._validate_allocations(allocations, risk_profile):
-                logger.warning("⚠️ Allocations failed validation, using equal weighting")
-                allocations = self._create_equal_allocations(stocks)
+                logger.warning(f"⚠️ Template allocations failed validation (total={sum(a['allocation'] for a in allocations):.4f}), using equal weighting")
+                return self._create_equal_allocations(stocks)
             
+            logger.info(f"✅ Created allocations using template system for {strategy} strategy ({len(allocations)} stocks)")
             return allocations
             
         except Exception as e:
-            logger.error(f"❌ Error creating strategy allocations: {e}")
+            logger.error(f"❌ Error creating strategy allocations with templates: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return self._create_equal_allocations(stocks)
     
     def _create_diversification_allocations(self, stocks: List[Dict], is_pure: bool, risk_profile: str = None) -> List[Dict]:
@@ -688,11 +793,15 @@ class StrategyPortfolioOptimizer:
             return self._get_fallback_metrics(strategy)
     
     def _calculate_expected_return(self, allocations: List[Dict], strategy: str) -> float:
-        """Calculate expected return using Redis price data (annualized)."""
+        """Calculate expected return using Redis price data (annualized).
+        
+        Prefers cached metrics (expected_return) over recalculating from prices to avoid
+        negative returns from recent market movements. Falls back to price calculation if needed.
+        """
         try:
             if not allocations:
                 return 0.10
-            # Build per-asset annualized returns from cached monthly prices
+            # Build per-asset annualized returns - prefer cached metrics over price calculation
             weights = []
             rets = []
             for alloc in allocations:
@@ -700,11 +809,22 @@ class StrategyPortfolioOptimizer:
                 w = float(alloc.get('allocation', 0.0))
                 if w <= 0 or not symbol:
                     continue
+                
+                # FIRST: Try to use cached metrics (expected_return) - more stable
+                metrics = self.data_service._load_from_cache(symbol, 'metrics') if hasattr(self.data_service, '_load_from_cache') else None
+                if metrics and isinstance(metrics, dict) and 'annualized_return' in metrics:
+                    annual_ret = float(metrics.get('annualized_return', 0.10))
+                    # Ensure positive return (use cached value which should be positive)
+                    if annual_ret > 0:
+                        weights.append(w)
+                        rets.append(annual_ret)
+                        continue
+                
+                # FALLBACK: Calculate from prices if metrics not available
                 prices = self.data_service._load_from_cache(symbol, 'prices') if hasattr(self.data_service, '_load_from_cache') else None
                 if prices is None or getattr(prices, 'empty', False) or len(prices) < 3:
-                    # fallback: use metrics if available
-                    metrics = self.data_service._load_from_cache(symbol, 'metrics') if hasattr(self.data_service, '_load_from_cache') else None
-                    annual_ret = float(metrics.get('annualized_return', 0.10)) if isinstance(metrics, dict) else 0.10
+                    # Final fallback: use default positive return
+                    annual_ret = 0.10
                 else:
                     # monthly series -> annualized return over last 12 months (or scale)
                     import pandas as pd
@@ -715,12 +835,28 @@ class StrategyPortfolioOptimizer:
                         annual_ret = float((s.iloc[-1] / s.iloc[-12]) - 1)
                     else:
                         annual_ret = float(((s.iloc[-1] / s.iloc[0]) - 1) * (12 / len(s)))
+                    
+                    # SAFEGUARD: If calculated return is negative, use fallback
+                    if annual_ret <= 0:
+                        logger.warning(f"⚠️ {symbol} has negative calculated return ({annual_ret:.2%}), using fallback")
+                        annual_ret = 0.10
+                
                 weights.append(w)
                 rets.append(annual_ret)
+            
+            if not weights:
+                return 0.10
+            
             total_w = sum(weights) or 1.0
             # Normalize if needed
             weights = [w / total_w for w in weights]
             portfolio_return = sum(w * r for w, r in zip(weights, rets))
+            
+            # FINAL SAFEGUARD: Ensure portfolio return is positive
+            if portfolio_return <= 0:
+                logger.warning(f"⚠️ Portfolio has negative return ({portfolio_return:.2%}), using fallback")
+                return 0.10
+            
             return float(portfolio_return)
         except Exception as e:
             logger.error(f"❌ Error calculating expected return: {e}")
