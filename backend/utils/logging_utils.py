@@ -35,8 +35,16 @@ def get_job_logger(name: str, log_file: Optional[str] = None) -> logging.Logger:
 
     formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    # Create a custom handler that flushes after each write for immediate file updates
+    class FlushingFileHandler(logging.FileHandler):
+        def emit(self, record):
+            super().emit(record)
+            self.flush()
+    
+    # Use flushing file handler for immediate writes
+    file_handler = FlushingFileHandler(log_path, encoding="utf-8", mode='a')
     file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
     logger.addHandler(file_handler)
 
     stream_handler = logging.StreamHandler(sys.stdout)

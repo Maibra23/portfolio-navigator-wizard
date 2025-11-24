@@ -18,6 +18,7 @@ import {
   Tooltip as RechartsTooltip,
   Legend,
   Customized,
+  Brush,
 } from 'recharts';
 import {
   Pie,
@@ -26,7 +27,7 @@ import {
   Tooltip as PieTooltip,
 } from 'recharts';
 import type { TooltipProps, ValueType, NameType } from 'recharts';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, ZoomOut } from 'lucide-react';
 import clsx from 'clsx';
 
 const vividPalette = [
@@ -454,6 +455,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   const [hoveredSector, setHoveredSector] = useState<string | null>(null);
   const [hoveredTickers, setHoveredTickers] = useState<[number, number] | null>(null);
   const [viewMode, setViewMode] = useState<'portfolio' | 'ticker'>('portfolio');
+  const [zoomDomain, setZoomDomain] = useState<{ x?: [number, number]; y?: [number, number] } | null>(null);
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -738,6 +740,15 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     });
     return groups;
   }, [normalizedScatterPoints]);
+
+  // Prepare brush data for zoom functionality
+  const brushData = useMemo(() => {
+    const allPoints: Array<{ risk: number; annualReturn: number }> = [];
+    Array.from(groupedScatter.values()).forEach(points => {
+      allPoints.push(...points);
+    });
+    return allPoints.length > 0 ? [...allPoints].sort((a, b) => a.risk - b.risk) : [];
+  }, [groupedScatter]);
 
   const portfolioHulls = useMemo<ClusterHull[]>(() => {
     return Array.from(groupedScatter.entries())
@@ -1148,12 +1159,26 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             </div>
               </div>
             </div>
-            <CardTitle
-              className="text-lg"
-              style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
-            >
-              Return vs. Risk Tradeoff
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle
+                className="text-lg flex-1"
+                style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+              >
+                Return vs. Risk Tradeoff
+              </CardTitle>
+              {zoomDomain && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setZoomDomain(null)}
+                  className="h-7 px-2 text-xs"
+                  title="Reset zoom"
+                >
+                  <ZoomOut className="h-3.5 w-3.5 mr-1" />
+                  Reset Zoom
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent
             className="h-[420px]"
@@ -1190,7 +1215,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             {isDataReady && !isLoading && hasData && viewMode === 'portfolio' && groupedScatter.size > 0 && (
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart
-                  margin={{ top: 24, right: 32, bottom: 36, left: 48 }}
+                  margin={{ top: 24, right: 32, bottom: 70, left: 48 }}
                   onMouseLeave={() => {
                     setHoveredSymbol(null);
                     setHoveredSector(null);
@@ -1205,7 +1230,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     axisLine={{ stroke: visualizationTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
                     tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
-                    domain={[0, 'auto']}
+                    domain={zoomDomain?.x || [0, 'auto']}
                     label={{
                       value: 'Risk',
                       position: 'insideBottom',
@@ -1221,7 +1246,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     axisLine={{ stroke: visualizationTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
                     tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
-                    domain={[0, 'auto']}
+                    domain={zoomDomain?.y || [0, 'auto']}
                     label={{
                       value: 'Return',
                       angle: -90,
@@ -1288,6 +1313,46 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       }}
                     />
                   ))}
+                  {brushData.length > 0 && (
+                    <Brush
+                      dataKey="risk"
+                      height={30}
+                      stroke={visualizationTheme.axes.line}
+                      strokeWidth={1.5}
+                      fill={visualizationTheme.grid}
+                      fillOpacity={0.4}
+                      data={brushData}
+                      onChange={(brushEvent) => {
+                        if (brushEvent && typeof brushEvent === 'object' && 'startIndex' in brushEvent && 'endIndex' in brushEvent) {
+                          const startIdx = brushEvent.startIndex as number;
+                          const endIdx = brushEvent.endIndex as number;
+                          
+                          if (startIdx !== undefined && endIdx !== undefined && startIdx >= 0 && endIdx >= 0 && startIdx <= endIdx) {
+                            const visiblePoints = brushData.slice(startIdx, endIdx + 1);
+                            
+                            if (visiblePoints.length > 0) {
+                              const riskMin = Math.min(...visiblePoints.map(p => p.risk));
+                              const riskMax = Math.max(...visiblePoints.map(p => p.risk));
+                              const returnMin = Math.min(...visiblePoints.map(p => p.annualReturn));
+                              const returnMax = Math.max(...visiblePoints.map(p => p.annualReturn));
+                              
+                              // Add padding
+                              const riskPadding = (riskMax - riskMin) * 0.1;
+                              const returnPadding = (returnMax - returnMin) * 0.1;
+                              
+                              setZoomDomain({
+                                x: [Math.max(0, riskMin - riskPadding), riskMax + riskPadding],
+                                y: [Math.max(0, returnMin - returnPadding), returnMax + returnPadding],
+                              });
+                            }
+                          }
+                        } else {
+                          // Reset zoom when brush is cleared
+                          setZoomDomain(null);
+                        }
+                      }}
+                    />
+                  )}
                 </ScatterChart>
               </ResponsiveContainer>
             )}

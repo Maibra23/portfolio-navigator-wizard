@@ -11,12 +11,13 @@ import numpy as np
 from datetime import datetime, timedelta, date
 import gzip
 import redis
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.port_analytics import PortfolioAnalytics
 from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_stock_selector import PortfolioStockSelector
-from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
+from utils.portfolio_mvo_optimizer import PortfolioMVOptimizer
 from utils.logging_utils import get_job_logger
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from datetime import datetime, timedelta, date
@@ -724,6 +725,1456 @@ def refresh_tickers():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error refreshing tickers: {str(e)}")
 
+# ============================================================================
+# Agent 1: Optimization Data Preparation Endpoints
+# ============================================================================
+
+# ============================================================================
+# Cache Invalidation and Refresh Functions
+# ============================================================================
+
+# Global flag to prevent multiple simultaneous cache refreshes
+_refresh_in_progress = False
+
+def _invalidate_eligible_tickers_cache():
+    """
+    Invalidate all eligible tickers cache entries.
+    Called when ticker data is refreshed to ensure cache stays in sync.
+    """
+    if not _rds.redis_client:
+        return
+    
+    try:
+        # Find all eligible tickers cache keys
+        pattern = "optimization:eligible_tickers:*"
+        keys = _rds.redis_client.keys(pattern)
+        if keys:
+            _rds.redis_client.delete(*keys)
+            logger.info(f"🗑️  Invalidated {len(keys)} eligible tickers cache entries")
+        else:
+            logger.debug("No eligible tickers cache entries to invalidate")
+    except Exception as e:
+        logger.error(f"❌ Error invalidating eligible tickers cache: {e}")
+
+def _trigger_eligible_tickers_refresh():
+    """
+    Trigger background refresh of eligible tickers cache.
+    Called after ticker data is refreshed to rebuild the cache automatically.
+    Prevents multiple simultaneous refreshes using a global flag.
+    """
+    global _refresh_in_progress
+    
+    # Prevent multiple simultaneous refreshes
+    if _refresh_in_progress:
+        logger.debug("⏳ Eligible tickers cache refresh already in progress, skipping duplicate trigger")
+        return
+    
+    import asyncio
+    
+    async def refresh_cache():
+        global _refresh_in_progress
+        _refresh_in_progress = True
+        try:
+            logger.info("🔄 Triggering background refresh of eligible tickers cache after ticker data update...")
+            from routers.portfolio import _compute_eligible_tickers_internal
+            from utils.redis_first_data_service import redis_first_data_service as _rds
+            import time
+            import json
+            import hashlib
+            
+            start_time = time.time()
+            
+            # Get all tickers
+            all_tickers = _rds.all_tickers or _rds.list_cached_tickers()
+            if not all_tickers:
+                logger.warning("⚠️  No tickers available for cache refresh")
+                return
+            
+            logger.info(f"📋 Refreshing eligible tickers cache for {len(all_tickers)} tickers...")
+            
+            # Compute with optimized parallel processing (8 workers, 4 batches)
+            eligible_tickers, filtered_stats = await asyncio.to_thread(
+                _compute_eligible_tickers_internal,
+                all_tickers,
+                min_data_points=30,
+                filter_negative_returns=True,
+                min_volatility=None,
+                max_volatility=5.0,
+                min_return=None,
+                max_return=10.0,
+                sectors_list=None,
+                exclude_list=None,
+                sort_by='ticker',
+                max_workers=8,  # Optimized: 8 workers
+                batch_workers=4,  # Optimized: 4 batches
+                batch_size=100
+            )
+            
+            # Calculate statistics
+            total_eligible = len(eligible_tickers)
+            overlap_groups = {'full': 0, 'partial': 0}
+            data_quality_dist = {'Good': 0, 'Fair': 0, 'Limited': 0}
+            
+            for ticker_info in eligible_tickers:
+                overlap_groups[ticker_info.get('overlap_group', 'partial')] += 1
+                data_quality_dist[ticker_info.get('data_quality', 'Unknown')] += 1
+            
+            summary = {
+                "total_eligible": total_eligible,
+                "filtered_by_negative_returns": filtered_stats['negative_returns'],
+                "filtered_by_insufficient_data": filtered_stats['insufficient_data'],
+                "filtered_by_data_quality": filtered_stats['data_quality'],
+                "filtered_by_missing_metrics": filtered_stats['missing_metrics'],
+                "filtered_by_volatility": filtered_stats['volatility'],
+                "filtered_by_return": filtered_stats['return'],
+                "filtered_by_sector": filtered_stats['sector'],
+                "filtered_by_exclude": filtered_stats['exclude'],
+                "overlap_groups": overlap_groups,
+                "data_quality_distribution": data_quality_dist
+            }
+            
+            # Cache the result with 1 week TTL
+            cache_params = {
+                'min_data_points': 30,
+                'filter_negative_returns': True,
+                'min_volatility': None,
+                'max_volatility': 5.0,
+                'min_return': None,
+                'max_return': 10.0,
+                'sectors': None
+            }
+            cache_key_str = json.dumps(cache_params, sort_keys=True)
+            cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+            cache_key = f"optimization:eligible_tickers:{cache_hash}"
+            
+            result_to_cache = {
+                "eligible_tickers": eligible_tickers,
+                "summary": summary
+            }
+            
+            if _rds.redis_client:
+                _rds.redis_client.setex(
+                    cache_key,
+                    604800,  # 1 week TTL
+                    json.dumps(result_to_cache)
+                )
+            
+            elapsed = time.time() - start_time
+            logger.info("="*80)
+            logger.info("✅ ELIGIBLE TICKERS CACHE REFRESHED AFTER TICKER DATA UPDATE!")
+            logger.info(f"   ⏱️  Processing Time: {elapsed:.2f}s")
+            logger.info(f"   📊 Total Eligible: {total_eligible} tickers")
+            logger.info(f"   🔗 Full Overlap: {overlap_groups['full']} tickers")
+            logger.info(f"   🔗 Partial Overlap: {overlap_groups['partial']} tickers")
+            logger.info(f"   ⚡ Performance: {len(all_tickers)/elapsed:.2f} tickers/sec")
+            logger.info("="*80)
+            logger.info("✅ Eligible tickers cache is now up-to-date with latest ticker data!")
+            
+        except Exception as e:
+            logger.error(f"❌ Background eligible tickers cache refresh failed: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            _refresh_in_progress = False
+    
+    # Schedule background task
+    try:
+        asyncio.create_task(refresh_cache())
+    except RuntimeError:
+        # If event loop is not running, create a new one
+        import threading
+        def run_in_thread():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(refresh_cache())
+            loop.close()
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+
+# ============================================================================
+# Reusable function for computing eligible tickers (used by endpoint and background task)
+# ============================================================================
+
+def _compute_eligible_tickers_internal(
+    all_tickers: List[str],
+    min_data_points: int = 30,
+    filter_negative_returns: bool = True,
+    min_volatility: Optional[float] = None,
+    max_volatility: float = 5.0,
+    min_return: Optional[float] = None,
+    max_return: float = 10.0,
+    sectors_list: Optional[List[str]] = None,
+    exclude_list: Optional[List[str]] = None,
+    sort_by: str = 'ticker',
+    max_workers: int = 8,
+    batch_workers: int = 4,
+    batch_size: int = 100
+) -> tuple[List[Dict], Dict]:
+    """
+    Internal function to compute eligible tickers with parallel processing.
+    
+    Returns:
+        (eligible_tickers_list, filtered_stats_dict)
+    """
+    eligible_tickers = []
+    filtered_by_negative_returns = 0
+    filtered_by_insufficient_data = 0
+    filtered_by_missing_metrics = 0
+    filtered_by_data_quality = 0
+    filtered_by_volatility = 0
+    filtered_by_return = 0
+    filtered_by_sector = 0
+    filtered_by_exclude = 0
+    
+    redis_client = _rds.redis_client
+    
+    def _parse_price_data(raw_data: bytes, ticker: str) -> Optional[pd.Series]:
+        """Parse price data from raw Redis bytes"""
+        if not raw_data:
+            return None
+        try:
+            try:
+                data_dict = json.loads(gzip.decompress(raw_data).decode())
+            except:
+                data_dict = json.loads(raw_data.decode())
+            prices = pd.Series(data_dict)
+            if not isinstance(prices.index, pd.DatetimeIndex):
+                prices.index = pd.to_datetime(prices.index, format='mixed', utc=True)
+            return prices
+        except Exception as e:
+            logger.debug(f"⚠️ Error parsing price data for {ticker}: {e}")
+            return None
+    
+    def _parse_metrics_data(raw_data: bytes) -> Optional[Dict]:
+        """Parse metrics data from raw Redis bytes"""
+        if not raw_data:
+            return None
+        try:
+            return json.loads(raw_data.decode())
+        except:
+            return None
+    
+    def _parse_sector_data(raw_data: bytes) -> Optional[Any]:
+        """Parse sector data from raw Redis bytes"""
+        if not raw_data:
+            return None
+        try:
+            return json.loads(raw_data.decode())
+        except:
+            return None
+    
+    def _process_ticker_batch(batch_tickers: List[str], batch_num: int) -> tuple:
+        """Process a batch of tickers and return eligible ones"""
+        batch_eligible = []
+        batch_filtered_stats = {
+            'negative_returns': 0,
+            'insufficient_data': 0,
+            'data_quality': 0,
+            'missing_metrics': 0,
+            'volatility': 0,
+            'return': 0,
+            'sector': 0,
+            'exclude': 0
+        }
+        
+        # Batch load from Redis
+        batch_data = {}
+        if redis_client:
+            try:
+                with redis_client.pipeline() as pipe:
+                    for ticker in batch_tickers:
+                        pipe.get(_rds._get_cache_key(ticker, 'prices'))
+                        pipe.get(_rds._get_cache_key(ticker, 'metrics'))
+                        pipe.get(_rds._get_cache_key(ticker, 'sector'))
+                    results = pipe.execute()
+                
+                # Parse in parallel
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    parse_futures = {}
+                    for i, ticker in enumerate(batch_tickers):
+                        price_idx = i * 3
+                        metrics_idx = i * 3 + 1
+                        sector_idx = i * 3 + 2
+                        
+                        parse_futures[ticker] = {
+                            'prices': executor.submit(_parse_price_data, results[price_idx], ticker),
+                            'metrics': executor.submit(_parse_metrics_data, results[metrics_idx]),
+                            'sector': executor.submit(_parse_sector_data, results[sector_idx])
+                        }
+                    
+                    # Collect parsed data
+                    for ticker in batch_tickers:
+                        futures = parse_futures[ticker]
+                        batch_data[ticker] = {
+                            'prices': futures['prices'].result(),
+                            'metrics': futures['metrics'].result(),
+                            'sector': futures['sector'].result()
+                        }
+            except Exception as e:
+                logger.debug(f"⚠️ Batch {batch_num} pipeline failed: {e}")
+                batch_data = {}
+        
+        # Process each ticker
+        for ticker in batch_tickers:
+            try:
+                # Skip if in exclude list
+                if exclude_list and ticker.upper() in exclude_list:
+                    batch_filtered_stats['exclude'] += 1
+                    continue
+                
+                # Get parsed data
+                prices = batch_data.get(ticker, {}).get('prices')
+                if prices is None:
+                    prices = _rds._load_from_cache(ticker, 'prices')
+                
+                if prices is None or (hasattr(prices, 'empty') and prices.empty):
+                    batch_filtered_stats['insufficient_data'] += 1
+                    continue
+                
+                # Quick check: data points before expensive validation
+                data_points = len(prices) if hasattr(prices, '__len__') else 0
+                if data_points < min_data_points:
+                    batch_filtered_stats['insufficient_data'] += 1
+                    continue
+                
+                # Validate price data quality
+                if not _validate_price_data_optimization(prices, ticker):
+                    batch_filtered_stats['data_quality'] += 1
+                    continue
+                
+                # Get metrics
+                metrics = batch_data.get(ticker, {}).get('metrics')
+                if metrics is None:
+                    metrics = _rds._load_from_cache(ticker, 'metrics')
+                
+                expected_return = None
+                volatility = None
+                
+                if metrics and isinstance(metrics, dict):
+                    expected_return = metrics.get('annualized_return')
+                    volatility = metrics.get('risk')
+                
+                # Validate cached metrics
+                if expected_return is not None and volatility is not None:
+                    if not _validate_calculated_metrics_optimization(expected_return, volatility, ticker):
+                        expected_return = None
+                        volatility = None
+                
+                # Calculate if needed
+                if expected_return is None or volatility is None:
+                    calculated_metrics = _calculate_metrics_safely_optimization(prices, ticker)
+                    if calculated_metrics is None:
+                        batch_filtered_stats['missing_metrics'] += 1
+                        continue
+                    expected_return = calculated_metrics['expected_return']
+                    volatility = calculated_metrics['volatility']
+                
+                # Apply filters
+                if filter_negative_returns and (expected_return is None or expected_return <= 0):
+                    batch_filtered_stats['negative_returns'] += 1
+                    continue
+                
+                if min_volatility is not None and volatility < min_volatility:
+                    batch_filtered_stats['volatility'] += 1
+                    continue
+                
+                if volatility > max_volatility:
+                    batch_filtered_stats['volatility'] += 1
+                    continue
+                
+                if min_return is not None and expected_return < min_return:
+                    batch_filtered_stats['return'] += 1
+                    continue
+                
+                if expected_return > max_return:
+                    batch_filtered_stats['return'] += 1
+                    continue
+                
+                # Get sector info
+                sector_data = batch_data.get(ticker, {}).get('sector')
+                if sector_data is None:
+                    sector_data = _rds._load_from_cache(ticker, 'sector')
+                
+                sector = 'Unknown'
+                industry = 'Unknown'
+                company_name = ticker
+                
+                if sector_data and isinstance(sector_data, dict):
+                    sector = sector_data.get('sector', 'Unknown')
+                    industry = sector_data.get('industry', 'Unknown')
+                    company_name = sector_data.get('companyName', ticker)
+                elif sector_data and isinstance(sector_data, str):
+                    sector = sector_data
+                
+                # Apply sector filter
+                if sectors_list and sector.lower() not in sectors_list:
+                    batch_filtered_stats['sector'] += 1
+                    continue
+                
+                # Determine data quality and overlap group
+                data_quality = 'Good'
+                if data_points < 60:
+                    data_quality = 'Fair'
+                if data_points < 36:
+                    data_quality = 'Limited'
+                
+                # Store date range for overlap calculation (will be processed after all batches)
+                overlap_group = 'partial'
+                recommended_for_optimization = False
+                date_range = None
+                if data_points >= 178:
+                    try:
+                        if isinstance(prices.index, pd.DatetimeIndex):
+                            start_date = prices.index[0]
+                            end_date = prices.index[-1]
+                            date_range = {
+                                'start': start_date,
+                                'end': end_date,
+                                'data_points': data_points
+                            }
+                    except:
+                        pass
+                
+                # Add to eligible list (store date_range for later overlap calculation)
+                batch_eligible.append({
+                    'ticker': ticker,
+                    'sector': sector,
+                    'industry': industry,
+                    'company_name': company_name,
+                    'volatility': round(volatility, 4) if volatility else None,
+                    'expected_return': round(expected_return, 4) if expected_return else None,
+                    'data_points': data_points,
+                    'data_quality': data_quality,
+                    'overlap_group': overlap_group,
+                    'recommended_for_optimization': recommended_for_optimization,
+                    '_date_range': date_range  # Internal: used for overlap calculation
+                })
+                
+            except Exception as e:
+                logger.debug(f"⚠️ Error processing {ticker}: {e}")
+                batch_filtered_stats['insufficient_data'] += 1
+                continue
+        
+        return batch_eligible, batch_filtered_stats
+    
+    # Process batches in parallel
+    ticker_batches = [all_tickers[i:i + batch_size] for i in range(0, len(all_tickers), batch_size)]
+    
+    with ThreadPoolExecutor(max_workers=batch_workers) as executor:
+        future_to_batch = {
+            executor.submit(_process_ticker_batch, batch, idx + 1): idx
+            for idx, batch in enumerate(ticker_batches)
+        }
+        
+        for future in as_completed(future_to_batch):
+            batch_idx = future_to_batch[future]
+            try:
+                batch_eligible, batch_stats = future.result()
+                eligible_tickers.extend(batch_eligible)
+                
+                # Update filtered stats
+                filtered_by_negative_returns += batch_stats['negative_returns']
+                filtered_by_insufficient_data += batch_stats['insufficient_data']
+                filtered_by_data_quality += batch_stats['data_quality']
+                filtered_by_missing_metrics += batch_stats['missing_metrics']
+                filtered_by_volatility += batch_stats['volatility']
+                filtered_by_return += batch_stats['return']
+                filtered_by_sector += batch_stats['sector']
+                filtered_by_exclude += batch_stats['exclude']
+            except Exception as e:
+                logger.error(f"❌ Batch {batch_idx + 1} failed: {e}")
+    
+    # Calculate maximum overlap period from all eligible tickers with 178+ data points
+    date_ranges_178_plus = []
+    for ticker_info in eligible_tickers:
+        if ticker_info.get('_date_range') is not None:
+            date_ranges_178_plus.append(ticker_info['_date_range'])
+    
+    # Find longest common overlap period
+    max_overlap_start = None
+    max_overlap_end = None
+    max_overlap_count = 0
+    max_overlap_months = 0
+    
+    if date_ranges_178_plus:
+        # Strategy: Find the longest period that maximizes both coverage and duration
+        # Get all unique start and end dates
+        all_starts = sorted(set(dr['start'] for dr in date_ranges_178_plus))
+        all_ends = sorted(set(dr['end'] for dr in date_ranges_178_plus))
+        
+        # Try all combinations of start/end dates to find maximum overlap
+        # Limit to reasonable candidates to avoid excessive computation
+        start_candidates = all_starts[:100] if len(all_starts) > 100 else all_starts
+        end_candidates = all_ends[-100:] if len(all_ends) > 100 else all_ends
+        
+        for start_candidate in start_candidates:
+            for end_candidate in end_candidates:
+                if start_candidate >= end_candidate:
+                    continue
+                
+                # Count how many tickers cover this period
+                covering_tickers = [
+                    dr for dr in date_ranges_178_plus
+                    if dr['start'] <= start_candidate and dr['end'] >= end_candidate
+                ]
+                covering_count = len(covering_tickers)
+                
+                if covering_count == 0:
+                    continue
+                
+                # Calculate period length in months
+                period_months = (end_candidate - start_candidate).days / 30.44
+                
+                # Prefer longer periods with good coverage
+                # Score balances both coverage count and duration
+                # We want to maximize: coverage * duration (weighted)
+                score = covering_count * (1 + period_months / 50)  # Weight duration
+                
+                # Update if this is better (more coverage OR same coverage but longer period)
+                if (covering_count > max_overlap_count) or \
+                   (covering_count == max_overlap_count and period_months > max_overlap_months) or \
+                   (score > max_overlap_count * (1 + max_overlap_months / 50) if max_overlap_months > 0 else False):
+                    max_overlap_start = start_candidate
+                    max_overlap_end = end_candidate
+                    max_overlap_count = covering_count
+                    max_overlap_months = period_months
+        
+        # If no good overlap found with candidates, use intersection approach
+        if max_overlap_start is None and date_ranges_178_plus:
+            # Find the intersection: latest start and earliest end
+            latest_start = max(dr['start'] for dr in date_ranges_178_plus)
+            earliest_end = min(dr['end'] for dr in date_ranges_178_plus)
+            
+            if latest_start < earliest_end:
+                covering_tickers = [
+                    dr for dr in date_ranges_178_plus
+                    if dr['start'] <= latest_start and dr['end'] >= earliest_end
+                ]
+                if len(covering_tickers) > 0:
+                    max_overlap_start = latest_start
+                    max_overlap_end = earliest_end
+                    max_overlap_count = len(covering_tickers)
+                    max_overlap_months = (earliest_end - latest_start).days / 30.44
+        
+        # Update overlap_group for tickers that cover the maximum overlap period
+        if max_overlap_start is not None and max_overlap_end is not None:
+            logger.info(f"📊 Maximum overlap period: {max_overlap_start.date()} to {max_overlap_end.date()} "
+                       f"({max_overlap_months:.1f} months, {max_overlap_count} tickers)")
+            
+            for ticker_info in eligible_tickers:
+                date_range = ticker_info.get('_date_range')
+                if date_range is not None:
+                    if date_range['start'] <= max_overlap_start and date_range['end'] >= max_overlap_end:
+                        ticker_info['overlap_group'] = 'full'
+                        ticker_info['recommended_for_optimization'] = True
+    
+    # Remove internal _date_range field before returning
+    for ticker_info in eligible_tickers:
+        ticker_info.pop('_date_range', None)
+    
+    # Sort eligible tickers
+    if sort_by == 'return':
+        eligible_tickers.sort(key=lambda x: x.get('expected_return', 0), reverse=True)
+    elif sort_by == 'volatility':
+        eligible_tickers.sort(key=lambda x: x.get('volatility', 0))
+    elif sort_by == 'sector':
+        eligible_tickers.sort(key=lambda x: x.get('sector', ''))
+    else:  # 'ticker'
+        eligible_tickers.sort(key=lambda x: x.get('ticker', ''))
+    
+    filtered_stats = {
+        'negative_returns': filtered_by_negative_returns,
+        'insufficient_data': filtered_by_insufficient_data,
+        'data_quality': filtered_by_data_quality,
+        'missing_metrics': filtered_by_missing_metrics,
+        'volatility': filtered_by_volatility,
+        'return': filtered_by_return,
+        'sector': filtered_by_sector,
+        'exclude': filtered_by_exclude
+    }
+    
+    return eligible_tickers, filtered_stats
+
+# Helper functions for data validation and metrics calculation
+def _validate_price_data_optimization(prices: pd.Series, ticker: str) -> bool:
+    """Validate price data quality before calculation (for optimization)"""
+    if prices is None or prices.empty:
+        return False
+    
+    # Check minimum data points
+    if len(prices) < 12:
+        return False
+    
+    # Check for zeros or negative prices
+    if (prices <= 0).any():
+        return False
+    
+    # Check for excessive missing values
+    if prices.isna().sum() / len(prices) > 0.2:
+        return False
+    
+    # Check for no variation (all same value)
+    if prices.std() == 0:
+        return False
+    
+    # Check for reasonable price range (filter extreme outliers)
+    if prices.max() > 10000 or prices.min() < 0.01:
+        return False
+    
+    # Check for suspicious jumps (price changes > 1000% in one period)
+    try:
+        pct_changes = prices.pct_change(fill_method=None).dropna()
+        if len(pct_changes) > 0 and (pct_changes.abs() > 10).any():  # >1000% change
+            return False
+    except:
+        pass
+    
+    return True
+
+def _validate_calculated_metrics_optimization(expected_return: float, volatility: float, ticker: str) -> bool:
+    """Validate calculated metrics for sanity (for optimization)"""
+    # Check for NaN or Inf
+    if pd.isna(expected_return) or pd.isna(volatility):
+        return False
+    if np.isinf(expected_return) or np.isinf(volatility):
+        return False
+    
+    # Check for reasonable volatility (max 500% annual)
+    if volatility > 5.0:
+        logger.debug(f"⚠️ {ticker}: Volatility too high ({volatility:.2f})")
+        return False
+    
+    # Check for reasonable expected return (max 1000% annual)
+    if expected_return > 10.0:
+        logger.debug(f"⚠️ {ticker}: Expected return too high ({expected_return:.2f})")
+        return False
+    
+    # Check for negative volatility (impossible)
+    if volatility < 0:
+        return False
+    
+    return True
+
+def _calculate_metrics_safely_optimization(prices: pd.Series, ticker: str) -> Optional[Dict[str, float]]:
+    """Calculate metrics with proper error handling and validation (for optimization)"""
+    try:
+        # Validate price data first
+        if not _validate_price_data_optimization(prices, ticker):
+            return None
+        
+        # Calculate returns
+        returns = prices.pct_change(fill_method=None).dropna()
+        
+        if len(returns) < 3:
+            return None
+        
+        # Filter out extreme returns (likely data errors)
+        # Remove returns > 500% or < -90% (likely data errors)
+        returns_clean = returns[(returns > -0.90) & (returns < 5.0)]
+        
+        if len(returns_clean) < 3:
+            # If too many outliers, use original but cap extreme values
+            returns_clean = returns.clip(-0.90, 5.0)
+        
+        # Calculate monthly metrics
+        monthly_return = returns_clean.mean()
+        monthly_vol = returns_clean.std()
+        
+        # Annualize with safeguards
+        # Use compound formula but cap extreme values
+        if monthly_return > 0.5:  # >50% monthly return is suspicious
+            monthly_return = min(monthly_return, 0.5)
+        if monthly_return < -0.5:  # < -50% monthly return is suspicious
+            monthly_return = max(monthly_return, -0.5)
+        
+        # Annualized return: (1 + monthly) ^ 12 - 1
+        # But use simpler formula if compound would be extreme
+        if abs(monthly_return) < 0.1:  # Small returns, compound is fine
+            expected_return = (1 + monthly_return) ** 12 - 1
+        else:  # Large returns, use simple multiplication to avoid extreme values
+            expected_return = monthly_return * 12
+        
+        # Annualized volatility
+        volatility = monthly_vol * np.sqrt(12)
+        
+        # Validate calculated metrics
+        if not _validate_calculated_metrics_optimization(expected_return, volatility, ticker):
+            return None
+        
+        return {
+            'expected_return': float(expected_return),
+            'volatility': float(volatility)
+        }
+    except Exception as e:
+        logger.debug(f"⚠️ Error calculating metrics for {ticker}: {e}")
+        return None
+
+# Task 1.1: Get Eligible Tickers for Optimization
+@router.get("/optimization/eligible-tickers")
+def get_eligible_tickers_for_optimization(
+    min_data_points: int = Query(30, ge=12, le=180, description="Minimum historical data points required"),
+    filter_negative_returns: bool = Query(True, description="Filter out tickers with negative expected returns"),
+    min_volatility: Optional[float] = Query(None, ge=0.0, le=5.0, description="Optional: Minimum volatility filter"),
+    max_volatility: float = Query(5.0, ge=0.0, le=5.0, description="Maximum volatility filter (prevents extreme values)"),
+    min_return: Optional[float] = Query(None, description="Optional: Minimum expected return filter"),
+    max_return: float = Query(10.0, description="Maximum expected return filter (prevents extreme values)"),
+    sectors: Optional[str] = Query(None, description="Optional: Comma-separated list of sectors to include"),
+    exclude_tickers: Optional[str] = Query(None, description="Optional: Comma-separated list of tickers to exclude"),
+    use_cache: bool = Query(True, description="Use cached eligible list if available"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
+    per_page: int = Query(100, ge=1, le=500, description="Items per page"),
+    sort_by: str = Query('ticker', description="Sort by: 'ticker', 'return', 'volatility', 'sector'")
+):
+    """
+    Get all eligible tickers for optimization (no risk profile filtering)
+    
+    Returns all tickers that meet data quality and filtering criteria.
+    The optimizer will apply risk profile constraints later.
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        # Check cache if enabled
+        if use_cache and _rds.redis_client:
+            try:
+                # Create cache key hash from parameters
+                cache_params = {
+                    'min_data_points': min_data_points,
+                    'filter_negative_returns': filter_negative_returns,
+                    'min_volatility': min_volatility,
+                    'max_volatility': max_volatility,
+                    'min_return': min_return,
+                    'max_return': max_return,
+                    'sectors': sectors
+                }
+                cache_key_str = json.dumps(cache_params, sort_keys=True)
+                cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+                cache_key = f"optimization:eligible_tickers:{cache_hash}"
+                
+                cached_data = _rds.redis_client.get(cache_key)
+                if cached_data:
+                    try:
+                        cached_result = json.loads(cached_data.decode())
+                        logger.info(f"✅ Cache hit for eligible tickers")
+                        # Apply pagination to cached result
+                        total = len(cached_result.get('eligible_tickers', []))
+                        start_idx = (page - 1) * per_page
+                        end_idx = start_idx + per_page
+                        paginated_tickers = cached_result['eligible_tickers'][start_idx:end_idx]
+                        
+                        return {
+                            "eligible_tickers": paginated_tickers,
+                            "pagination": {
+                                "total": total,
+                                "page": page,
+                                "per_page": per_page,
+                                "has_more": end_idx < total,
+                                "total_pages": (total + per_page - 1) // per_page
+                            },
+                            "summary": cached_result.get('summary', {}),
+                            "processing_time_seconds": 0.0
+                        }
+                    except Exception as e:
+                        logger.debug(f"⚠️ Failed to parse cached data: {e}")
+            except Exception as e:
+                logger.debug(f"⚠️ Cache check failed: {e}")
+        
+        # Get all available tickers
+        logger.info("📋 Getting all available tickers...")
+        all_tickers = _rds.all_tickers or _rds.list_cached_tickers()
+        
+        if not all_tickers:
+            raise HTTPException(status_code=404, detail="No tickers found in system")
+        
+        logger.info(f"✅ Found {len(all_tickers)} total tickers")
+        
+        # Parse filter parameters
+        sectors_list = [s.strip().lower() for s in sectors.split(',')] if sectors else None
+        exclude_list = [t.strip().upper() for t in exclude_tickers.split(',')] if exclude_tickers else None
+        
+        eligible_tickers = []
+        filtered_by_negative_returns = 0
+        filtered_by_insufficient_data = 0
+        filtered_by_missing_metrics = 0
+        filtered_by_data_quality = 0
+        filtered_by_volatility = 0
+        filtered_by_return = 0
+        filtered_by_sector = 0
+        filtered_by_exclude = 0
+        
+        # Use optimized parallel processing (8 workers, 4 batches)
+        logger.info(f"🔍 Processing {len(all_tickers)} tickers with optimized parallel processing (8 workers, 4 batches)...")
+        
+        # Compute eligible tickers using internal function
+        eligible_tickers, filtered_stats_dict = _compute_eligible_tickers_internal(
+            all_tickers=all_tickers,
+            min_data_points=min_data_points,
+            filter_negative_returns=filter_negative_returns,
+            min_volatility=min_volatility,
+            max_volatility=max_volatility,
+            min_return=min_return,
+            max_return=max_return,
+            sectors_list=sectors_list,
+            exclude_list=exclude_list,
+            sort_by=sort_by,
+            max_workers=8,  # Optimized: 8 workers for parsing
+            batch_workers=4,  # Optimized: 4 batches in parallel
+            batch_size=100
+        )
+        
+        # Update filtered stats
+        filtered_by_negative_returns = filtered_stats_dict['negative_returns']
+        filtered_by_insufficient_data = filtered_stats_dict['insufficient_data']
+        filtered_by_data_quality = filtered_stats_dict['data_quality']
+        filtered_by_missing_metrics = filtered_stats_dict['missing_metrics']
+        filtered_by_volatility = filtered_stats_dict['volatility']
+        filtered_by_return = filtered_stats_dict['return']
+        filtered_by_sector = filtered_stats_dict['sector']
+        filtered_by_exclude = filtered_stats_dict['exclude']
+        
+        # Note: eligible_tickers are already sorted by _compute_eligible_tickers_internal
+        
+        # Calculate statistics
+        total_eligible = len(eligible_tickers)
+        overlap_groups = {'full': 0, 'partial': 0}
+        data_quality_dist = {'Good': 0, 'Fair': 0, 'Limited': 0}
+        
+        for ticker_info in eligible_tickers:
+            overlap_groups[ticker_info.get('overlap_group', 'partial')] += 1
+            data_quality_dist[ticker_info.get('data_quality', 'Unknown')] += 1
+        
+        # Apply pagination
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_tickers = eligible_tickers[start_idx:end_idx]
+        
+        summary = {
+            "total_eligible": total_eligible,
+            "filtered_by_negative_returns": filtered_by_negative_returns,
+            "filtered_by_insufficient_data": filtered_by_insufficient_data,
+            "filtered_by_data_quality": filtered_by_data_quality,
+            "filtered_by_missing_metrics": filtered_by_missing_metrics,
+            "filtered_by_volatility": filtered_by_volatility,
+            "filtered_by_return": filtered_by_return,
+            "filtered_by_sector": filtered_by_sector,
+            "filtered_by_exclude": filtered_by_exclude,
+            "overlap_groups": overlap_groups,
+            "data_quality_distribution": data_quality_dist
+        }
+        
+        elapsed_time = time.time() - start_time
+        
+        # Cache the result if enabled
+        if use_cache and _rds.redis_client:
+            try:
+                cache_params = {
+                    'min_data_points': min_data_points,
+                    'filter_negative_returns': filter_negative_returns,
+                    'min_volatility': min_volatility,
+                    'max_volatility': max_volatility,
+                    'min_return': min_return,
+                    'max_return': max_return,
+                    'sectors': sectors
+                }
+                cache_key_str = json.dumps(cache_params, sort_keys=True)
+                cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+                cache_key = f"optimization:eligible_tickers:{cache_hash}"
+                
+                result_to_cache = {
+                    "eligible_tickers": eligible_tickers,
+                    "summary": summary
+                }
+                
+                _rds.redis_client.setex(
+                    cache_key,
+                    604800,  # 1 week TTL (604800 seconds)
+                    json.dumps(result_to_cache)
+                )
+                logger.info(f"✅ Cached eligible tickers list (key: {cache_key})")
+            except Exception as e:
+                logger.debug(f"⚠️ Failed to cache eligible tickers: {e}")
+        
+        logger.info(f"✅ Found {total_eligible} eligible tickers in {elapsed_time:.2f}s")
+        
+        return {
+            "eligible_tickers": paginated_tickers,
+            "pagination": {
+                "total": total_eligible,
+                "page": page,
+                "per_page": per_page,
+                "has_more": end_idx < total_eligible,
+                "total_pages": (total_eligible + per_page - 1) // per_page
+            },
+            "summary": summary,
+            "processing_time_seconds": round(elapsed_time, 2)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting eligible tickers: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get eligible tickers: {str(e)}")
+
+# Task 1.2: Get Ticker Metrics Batch
+class TickerMetricsRequest(BaseModel):
+    tickers: List[str]
+    annualize: bool = True
+    min_overlap_months: int = 12
+    strict_overlap: bool = True
+
+@router.post("/optimization/ticker-metrics")
+def get_ticker_metrics_batch(request: TickerMetricsRequest):
+    """
+    Get mean returns (μ) and covariance matrix (Σ) for a list of tickers
+    
+    Required for Mean-Variance Optimization (MVO) calculations.
+    Validates date overlap before calculation to ensure valid covariance.
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        tickers = [t.upper().strip() for t in request.tickers]
+        annualize = request.annualize
+        min_overlap_months = request.min_overlap_months
+        strict_overlap = request.strict_overlap
+        
+        # Validate input
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for covariance calculation")
+        
+        if len(tickers) > 100:
+            raise HTTPException(status_code=400, detail="Maximum 100 tickers per request")
+        
+        # Check cache if enabled
+        cache_hit = False
+        if _rds.redis_client:
+            try:
+                ticker_hash = hashlib.md5(','.join(sorted(tickers)).encode()).hexdigest()
+                cache_key = f"optimization:metrics:{ticker_hash}:{min_overlap_months}:{annualize}"
+                
+                cached_data = _rds.redis_client.get(cache_key)
+                if cached_data:
+                    try:
+                        cached_result = json.loads(cached_data.decode())
+                        logger.info(f"✅ Cache hit for {len(tickers)} tickers")
+                        cache_hit = True
+                        cached_result['metadata']['cache_hit'] = True
+                        cached_result['metadata']['processing_time_seconds'] = 0.0
+                        return cached_result
+                    except Exception as e:
+                        logger.debug(f"⚠️ Failed to parse cached data: {e}")
+            except Exception as e:
+                logger.debug(f"⚠️ Cache check failed: {e}")
+        
+        # OPTIMIZATION: Batch load price data using Redis pipeline
+        logger.info(f"📊 Getting price data for {len(tickers)} tickers (batch loading)...")
+        price_data = {}
+        missing_tickers = []
+        redis_client = _rds.redis_client
+        
+        # Try batch loading first
+        if redis_client and len(tickers) > 1:
+            try:
+                with redis_client.pipeline() as pipe:
+                    for ticker in tickers:
+                        pipe.get(_rds._get_cache_key(ticker, 'prices'))
+                    results = pipe.execute()
+                
+                # Parse batch results
+                for ticker, raw_data in zip(tickers, results):
+                    if raw_data:
+                        try:
+                            try:
+                                data_dict = json.loads(gzip.decompress(raw_data).decode())
+                            except:
+                                data_dict = json.loads(raw_data.decode())
+                            
+                            prices = pd.Series(data_dict)
+                            if not isinstance(prices.index, pd.DatetimeIndex):
+                                prices.index = pd.to_datetime(prices.index, format='mixed', utc=True)
+                            
+                            if len(prices) >= 3:
+                                price_data[ticker] = prices
+                            else:
+                                missing_tickers.append(ticker)
+                        except Exception as e:
+                            logger.debug(f"⚠️ Error parsing batch data for {ticker}: {e}")
+                            missing_tickers.append(ticker)
+                    else:
+                        missing_tickers.append(ticker)
+            except Exception as e:
+                logger.debug(f"⚠️ Batch load failed, using individual loads: {e}")
+                # Fallback to individual loads
+                for ticker in tickers:
+                    try:
+                        prices = _rds._load_from_cache(ticker, 'prices')
+                        if prices is None or (hasattr(prices, 'empty') and prices.empty):
+                            missing_tickers.append(ticker)
+                            continue
+                        
+                        if hasattr(prices, '__len__') and len(prices) < 3:
+                            missing_tickers.append(ticker)
+                            continue
+                        
+                        price_data[ticker] = prices
+                    except Exception as e2:
+                        logger.debug(f"⚠️ Error loading {ticker}: {e2}")
+                        missing_tickers.append(ticker)
+                        continue
+        else:
+            # Individual loads for small batches or no Redis
+            for ticker in tickers:
+                try:
+                    prices = _rds._load_from_cache(ticker, 'prices')
+                    if prices is None or (hasattr(prices, 'empty') and prices.empty):
+                        missing_tickers.append(ticker)
+                        continue
+                    
+                    if hasattr(prices, '__len__') and len(prices) < 3:
+                        missing_tickers.append(ticker)
+                        continue
+                    
+                    price_data[ticker] = prices
+                except Exception as e:
+                    logger.debug(f"⚠️ Error loading {ticker}: {e}")
+                    missing_tickers.append(ticker)
+                    continue
+        
+        if len(price_data) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient price data: only {len(price_data)}/{len(tickers)} tickers have data (need at least 2)"
+            )
+        
+        # Calculate returns for each ticker and collect date ranges
+        logger.info(f"📈 Calculating returns for {len(price_data)} tickers...")
+        returns_data = {}
+        date_ranges = {}
+        
+        for ticker, prices in price_data.items():
+            try:
+                if isinstance(prices, pd.Series):
+                    # Ensure we have a DatetimeIndex
+                    if not isinstance(prices.index, pd.DatetimeIndex):
+                        try:
+                            prices.index = pd.to_datetime(prices.index, format='mixed', utc=True)
+                        except:
+                            logger.debug(f"⚠️ {ticker}: Could not convert index to DatetimeIndex")
+                            missing_tickers.append(ticker)
+                            continue
+                    
+                    # Store date range
+                    if len(prices) > 0:
+                        date_ranges[ticker] = {
+                            'start': prices.index[0],
+                            'end': prices.index[-1],
+                            'months': len(prices)
+                        }
+                    
+                    returns = prices.pct_change(fill_method=None).dropna()
+                else:
+                    # Convert to Series if needed
+                    prices_series = pd.Series(prices)
+                    if len(prices_series) > 0:
+                        date_ranges[ticker] = {
+                            'start': prices_series.index[0] if hasattr(prices_series.index[0], 'strftime') else None,
+                            'end': prices_series.index[-1] if hasattr(prices_series.index[-1], 'strftime') else None,
+                            'months': len(prices_series)
+                        }
+                    returns = prices_series.pct_change(fill_method=None).dropna()
+                
+                if len(returns) >= 3:
+                    returns_data[ticker] = returns
+                else:
+                    missing_tickers.append(ticker)
+            except Exception as e:
+                logger.debug(f"⚠️ Error calculating returns for {ticker}: {e}")
+                missing_tickers.append(ticker)
+                continue
+        
+        if len(returns_data) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient returns data: only {len(returns_data)}/{len(tickers)} tickers have valid returns (need at least 2)"
+            )
+        
+        # Align all returns to common date range (intersection)
+        logger.info("🔄 Aligning returns to common date range...")
+        returns_df = pd.DataFrame(returns_data)
+        
+        # Find intersection of all date ranges
+        if len(returns_df) == 0:
+            error_metadata = {
+                "ticker_count": len(tickers),
+                "available_tickers": len(returns_data),
+                "missing_tickers": missing_tickers,
+                "overlap_months": 0,
+                "min_overlap_required": min_overlap_months,
+                "date_ranges": {k: {
+                    'start': str(v['start']) if v.get('start') else None,
+                    'end': str(v['end']) if v.get('end') else None,
+                    'months': v['months']
+                } for k, v in date_ranges.items()},
+                "error": "No overlapping date ranges found",
+                "cache_hit": False,
+                "processing_time_seconds": round(time.time() - start_time, 3)
+            }
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "No overlapping data after alignment",
+                    "mu": {},
+                    "sigma": {},
+                    "metadata": error_metadata
+                }
+            )
+        
+        # Drop rows with any NaN (only keep overlapping periods)
+        returns_df_aligned = returns_df.dropna()
+        
+        # Validate overlap BEFORE calculation
+        overlap_months = len(returns_df_aligned)
+        if overlap_months < min_overlap_months:
+            error_metadata = {
+                "ticker_count": len(tickers),
+                "available_tickers": len(returns_data),
+                "missing_tickers": missing_tickers,
+                "overlap_months": overlap_months,
+                "min_overlap_required": min_overlap_months,
+                "overlap_sufficient": False,
+                "date_ranges": {k: {
+                    'start': str(v['start']) if v.get('start') else None,
+                    'end': str(v['end']) if v.get('end') else None,
+                    'months': v['months']
+                } for k, v in date_ranges.items()},
+                "suggestion": "Reduce ticker list or lower min_overlap_months requirement. Consider using tickers from full overlap group (400 tickers available with 178 months overlap).",
+                "cache_hit": False,
+                "processing_time_seconds": round(time.time() - start_time, 3)
+            }
+            if strict_overlap:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "Insufficient date overlap",
+                        "mu": {},
+                        "sigma": {},
+                        "metadata": error_metadata
+                    }
+                )
+            else:
+                logger.warning(f"⚠️ Insufficient overlap: {overlap_months} months (minimum: {min_overlap_months})")
+        
+        # Calculate mean returns (μ)
+        logger.info("📊 Calculating mean returns...")
+        monthly_mean_returns = returns_df_aligned.mean()
+        
+        if annualize:
+            # Annualize: (1 + monthly_mean) ^ 12 - 1
+            mu = {ticker: float((1 + monthly_mean) ** 12 - 1) for ticker, monthly_mean in monthly_mean_returns.items()}
+        else:
+            mu = {ticker: float(monthly_mean) for ticker, monthly_mean in monthly_mean_returns.items()}
+        
+        # Calculate covariance matrix (Σ)
+        logger.info("📊 Calculating covariance matrix...")
+        monthly_cov = returns_df_aligned.cov()
+        
+        if annualize:
+            # Annualize: multiply by 12 for monthly data
+            sigma_annualized = monthly_cov * 12
+        else:
+            sigma_annualized = monthly_cov
+        
+        # Convert to nested dict format
+        sigma = {}
+        for ticker1 in sigma_annualized.index:
+            sigma[ticker1] = {}
+            for ticker2 in sigma_annualized.columns:
+                sigma[ticker1][ticker2] = float(sigma_annualized.loc[ticker1, ticker2])
+        
+        # Get date range from aligned data
+        date_range = None
+        if len(returns_df_aligned) > 0:
+            try:
+                start_date = returns_df_aligned.index[0]
+                end_date = returns_df_aligned.index[-1]
+                if hasattr(start_date, 'strftime'):
+                    start_str = start_date.strftime('%Y-%m-%d')
+                else:
+                    start_str = str(start_date)
+                if hasattr(end_date, 'strftime'):
+                    end_str = end_date.strftime('%Y-%m-%d')
+                else:
+                    end_str = str(end_date)
+                
+                date_range = {
+                    "start": start_str,
+                    "end": end_str,
+                    "months": len(returns_df_aligned)
+                }
+            except Exception as e:
+                logger.debug(f"⚠️ Error formatting date range: {e}")
+                date_range = {
+                    "start": str(returns_df_aligned.index[0]),
+                    "end": str(returns_df_aligned.index[-1]),
+                    "months": len(returns_df_aligned)
+                }
+        
+        # Validate calculated metrics for sanity
+        metrics_valid = True
+        warnings = []
+        
+        # Check for NaN or Inf in mu
+        for ticker, mu_val in mu.items():
+            if pd.isna(mu_val) or np.isinf(mu_val):
+                metrics_valid = False
+                warnings.append(f"{ticker}: Invalid mean return (NaN or Inf)")
+            elif abs(mu_val) > 10.0:  # >1000% annual return
+                warnings.append(f"{ticker}: Extreme mean return ({mu_val:.2f})")
+        
+        # Check for NaN or Inf in sigma
+        for ticker1 in sigma:
+            for ticker2 in sigma[ticker1]:
+                sigma_val = sigma[ticker1][ticker2]
+                if pd.isna(sigma_val) or np.isinf(sigma_val):
+                    metrics_valid = False
+                    warnings.append(f"{ticker1}-{ticker2}: Invalid covariance (NaN or Inf)")
+        
+        # Prepare metadata
+        metadata = {
+            "ticker_count": len(tickers),
+            "available_tickers": len(returns_data),
+            "missing_tickers": missing_tickers,
+            "date_range": date_range,
+            "overlap_months": len(returns_df_aligned),
+            "min_overlap_required": min_overlap_months,
+            "overlap_sufficient": overlap_months >= min_overlap_months,
+            "annualized": annualize,
+            "metrics_valid": metrics_valid,
+            "warnings": warnings,
+            "cache_hit": cache_hit,
+            "processing_time_seconds": round(time.time() - start_time, 3)
+        }
+        
+        result = {
+            "mu": mu,
+            "sigma": sigma,
+            "metadata": metadata
+        }
+        
+        # Cache the result if enabled
+        if not cache_hit and _rds.redis_client:
+            try:
+                ticker_hash = hashlib.md5(','.join(sorted(tickers)).encode()).hexdigest()
+                cache_key = f"optimization:metrics:{ticker_hash}:{min_overlap_months}:{annualize}"
+                
+                _rds.redis_client.setex(
+                    cache_key,
+                    604800,  # 1 week TTL (604800 seconds) - matches eligible tickers TTL
+                    json.dumps(result)
+                )
+                logger.info(f"✅ Cached metrics for {len(tickers)} tickers (key: {cache_key}, TTL: 1 week)")
+            except Exception as e:
+                logger.debug(f"⚠️ Failed to cache metrics: {e}")
+        
+        logger.info(f"✅ Calculated metrics for {len(returns_data)} tickers in {metadata['processing_time_seconds']:.3f}s")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting ticker metrics: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get ticker metrics: {str(e)}")
+
+# Task 2: Mean-Variance Optimization (MVO) Endpoint
+class MVOOptimizationRequest(BaseModel):
+    tickers: List[str]
+    optimization_type: str = "max_sharpe"  # "max_sharpe", "min_variance", "target_return", "target_risk"
+    target_return: Optional[float] = None
+    max_risk: Optional[float] = None
+    risk_profile: Optional[str] = None
+    constraints: Optional[Dict[str, Any]] = None
+    current_portfolio: Optional[Dict[str, Any]] = None  # Optional: current portfolio weights for comparison
+    include_efficient_frontier: bool = True
+    include_random_portfolios: bool = True
+    num_frontier_points: int = 20
+    num_random_portfolios: int = 200
+
+class MVOOptimizationResponse(BaseModel):
+    optimization_type: str
+    strategy_name: str
+    optimized_portfolio: Dict[str, Any]
+    current_portfolio: Optional[Dict[str, Any]] = None
+    efficient_frontier: List[Dict[str, Any]] = []
+    random_portfolios: List[Dict[str, Any]] = []
+    improvements: Optional[Dict[str, float]] = None
+    metadata: Dict[str, Any]
+
+# Initialize MVO optimizer (will use internal API calls)
+_mvo_optimizer = None
+
+def get_mvo_optimizer():
+    """Get or create MVO optimizer instance"""
+    global _mvo_optimizer
+    if _mvo_optimizer is None:
+        # Create internal function to call ticker-metrics endpoint
+        def get_ticker_metrics_internal(tickers, annualize=True, min_overlap_months=12, strict_overlap=True):
+            """Internal function to get ticker metrics"""
+            request = TickerMetricsRequest(
+                tickers=tickers,
+                annualize=annualize,
+                min_overlap_months=min_overlap_months,
+                strict_overlap=strict_overlap
+            )
+            result = get_ticker_metrics_batch(request)
+            return result
+        
+        # Use internal function calls (more efficient than HTTP)
+        _mvo_optimizer = PortfolioMVOptimizer(get_ticker_metrics_func=get_ticker_metrics_internal)
+    return _mvo_optimizer
+
+@router.post("/optimization/mvo", response_model=MVOOptimizationResponse)
+def optimize_portfolio_mvo(request: MVOOptimizationRequest):
+    """
+    Mean-Variance Optimization using PyPortfolioOpt
+    
+    This endpoint integrates with Agent 1 endpoints to:
+    1. Get ticker metrics (μ and Σ) from /api/portfolio/optimization/ticker-metrics
+    2. Perform MVO optimization using PyPortfolioOpt
+    3. Generate efficient frontier and random portfolios for visualization
+    
+    Optimization types:
+    - max_sharpe: Maximum Sharpe ratio portfolio
+    - min_variance: Minimum variance portfolio
+    - target_return: Portfolio with target return and minimum risk
+    - target_risk: Portfolio with target risk and maximum return
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        tickers = [t.upper().strip() for t in request.tickers]
+        
+        # Validate input
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for optimization")
+        
+        if len(tickers) > 100:
+            raise HTTPException(status_code=400, detail="Maximum 100 tickers per request")
+        
+        # Get MVO optimizer
+        optimizer = get_mvo_optimizer()
+        
+        # Calculate current portfolio metrics if provided
+        current_portfolio = None
+        if request.current_portfolio:
+            try:
+                current_weights = request.current_portfolio.get('weights', {})
+                current_metrics = optimizer.calculate_portfolio_metrics(tickers, current_weights)
+                current_portfolio = {
+                    "weights": current_weights,
+                    "metrics": current_metrics
+                }
+            except Exception as e:
+                logger.warning(f"⚠️ Could not calculate current portfolio metrics: {e}")
+        
+        # Perform optimization
+        logger.info(f"🔧 Optimizing portfolio with {len(tickers)} tickers using {request.optimization_type}...")
+        optimized_result = optimizer.optimize_portfolio(
+            tickers=tickers,
+            optimization_type=request.optimization_type,
+            target_return=request.target_return,
+            max_risk=request.max_risk,
+            risk_profile=request.risk_profile,
+            constraints=request.constraints
+        )
+        
+        # Generate efficient frontier if requested
+        efficient_frontier = []
+        if request.include_efficient_frontier:
+            try:
+                logger.info(f"📊 Generating efficient frontier with {request.num_frontier_points} points...")
+                efficient_frontier = optimizer.generate_efficient_frontier(
+                    tickers=tickers,
+                    num_points=request.num_frontier_points,
+                    risk_profile=request.risk_profile
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Could not generate efficient frontier: {e}")
+        
+        # Generate random portfolios if requested
+        random_portfolios = []
+        if request.include_random_portfolios:
+            try:
+                logger.info(f"🎲 Generating {request.num_random_portfolios} random portfolios...")
+                random_portfolios = optimizer.generate_random_portfolios(
+                    tickers=tickers,
+                    num_portfolios=request.num_random_portfolios,
+                    risk_profile=request.risk_profile
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Could not generate random portfolios: {e}")
+        
+        # Calculate improvements if current portfolio provided
+        improvements = None
+        if current_portfolio:
+            current_metrics = current_portfolio.get('metrics', {})
+            optimized_metrics = {
+                'expected_return': optimized_result.get('expected_return', 0),
+                'risk': optimized_result.get('risk', 0),
+                'sharpe_ratio': optimized_result.get('sharpe_ratio', 0)
+            }
+            
+            improvements = {
+                'return_improvement': optimized_metrics['expected_return'] - current_metrics.get('expected_return', 0),
+                'risk_improvement': current_metrics.get('risk', 0) - optimized_metrics['risk'],
+                'sharpe_improvement': optimized_metrics['sharpe_ratio'] - current_metrics.get('sharpe_ratio', 0)
+            }
+        
+        # Prepare response
+        processing_time = time.time() - start_time
+        
+        response = MVOOptimizationResponse(
+            optimization_type=optimized_result.get('optimization_type', request.optimization_type),
+            strategy_name=optimized_result.get('strategy_name', 'MVO Optimization'),
+            optimized_portfolio={
+                "tickers": optimized_result.get('tickers', tickers),
+                "weights": optimized_result.get('weights', {}),
+                "weights_list": optimized_result.get('weights_list', []),
+                "metrics": {
+                    "expected_return": optimized_result.get('expected_return', 0),
+                    "risk": optimized_result.get('risk', 0),
+                    "sharpe_ratio": optimized_result.get('sharpe_ratio', 0)
+                }
+            },
+            current_portfolio=current_portfolio,
+            efficient_frontier=efficient_frontier,
+            random_portfolios=random_portfolios,
+            improvements=improvements,
+            metadata={
+                "num_tickers": len(tickers),
+                "processing_time_seconds": round(processing_time, 3),
+                "risk_free_rate": optimizer.risk_free_rate
+            }
+        )
+        
+        logger.info(f"✅ MVO optimization completed in {processing_time:.3f}s")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in MVO optimization: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to optimize portfolio: {str(e)}")
+
 @router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
 def get_portfolio_recommendations(risk_profile: str):
     """Get portfolio recommendations from Enhanced Portfolio System"""
@@ -744,7 +2195,11 @@ def get_portfolio_recommendations(risk_profile: str):
         if (not portfolios or len(portfolios) < 3) or (bucket_count < redis_manager.PORTFOLIOS_PER_PROFILE):
             try:
                 logger.info(f"🔄 Auto-regeneration: ensuring portfolios exist for {risk_profile} (missing-only)")
-                _ensure_missing_portfolios_generated(risk_profile)
+                stats = _ensure_missing_portfolios_generated(risk_profile)
+                if stats.get('success'):
+                    logger.debug(f"✅ Lazy generation completed for {risk_profile}: {stats.get('portfolios_stored', 0)} portfolios stored")
+                else:
+                    logger.warning(f"⚠️ Lazy generation had issues for {risk_profile}: {stats.get('errors', [])}")
                 # Re-fetch after ensuring
                 portfolios = redis_manager.get_portfolio_recommendations(risk_profile, count=3)
             except Exception as e:
@@ -836,67 +2291,236 @@ def get_portfolio_recommendations(risk_profile: str):
         logger.info("🔄 Falling back to static portfolio recommendations")
         return _get_static_portfolio_recommendations(risk_profile)
 
-# Helper: Ensure missing portfolios are generated without overwriting existing ones
-def _ensure_missing_portfolios_generated(risk_profile: str) -> None:
+# Helper: Ensure missing portfolios are generated (enhanced to handle full expiration)
+def _ensure_missing_portfolios_generated(risk_profile: str) -> dict:
+    """
+    Enhanced lazy generation that handles:
+    - Full expiration: If count = 0, regenerate all 12 portfolios
+    - Partial expiration: If count < 12, fill only missing slots
+    
+    Returns:
+        dict: Statistics about the generation process including:
+            - success: bool
+            - portfolios_generated: int
+            - portfolios_stored: int
+            - portfolios_failed: int
+            - processing_time_seconds: float
+            - start_time: str (ISO format)
+            - end_time: str (ISO format)
+            - mode: str ("full" or "partial")
+            - errors: list
+    """
+    import time
+    stats = {
+        'success': False,
+        'risk_profile': risk_profile,
+        'portfolios_generated': 0,
+        'portfolios_stored': 0,
+        'portfolios_failed': 0,
+        'processing_time_seconds': 0.0,
+        'start_time': datetime.now().isoformat(),
+        'end_time': None,
+        'mode': None,
+        'errors': []
+    }
+    
+    start_time = time.time()
+    
     try:
+        if not redis_manager or not redis_manager.redis_client:
+            error_msg = f"Redis not available for {risk_profile}"
+            logger.warning(f"⚠️ {error_msg}")
+            stats['errors'].append(error_msg)
+            stats['end_time'] = datetime.now().isoformat()
+            stats['processing_time_seconds'] = time.time() - start_time
+            return stats
+        
+        # Check current portfolio count
+        current_count = redis_manager.get_portfolio_count(risk_profile)
+        logger.info(f"📊 [{risk_profile}] Current portfolio count: {current_count}/{redis_manager.PORTFOLIOS_PER_PROFILE}")
+        
+        if current_count >= redis_manager.PORTFOLIOS_PER_PROFILE:
+            logger.debug(f"✅ All portfolios exist for {risk_profile} ({current_count}/{redis_manager.PORTFOLIOS_PER_PROFILE})")
+            stats['success'] = True
+            stats['end_time'] = datetime.now().isoformat()
+            stats['processing_time_seconds'] = time.time() - start_time
+            return stats
+        
         # Determine which portfolio slots are missing
         missing_ids = []
         bucket_prefix = f"portfolio_bucket:{risk_profile}:"
         for i in range(redis_manager.PORTFOLIOS_PER_PROFILE):
             key = f"{bucket_prefix}{i}"
-            exists = redis_manager.redis_client.exists(key) if redis_manager and redis_manager.redis_client else 0
+            exists = redis_manager.redis_client.exists(key)
             if not exists:
                 missing_ids.append(i)
+        
         if not missing_ids:
             logger.info(f"✅ No missing portfolios for {risk_profile}")
-            return
+            stats['success'] = True
+            stats['end_time'] = datetime.now().isoformat()
+            stats['processing_time_seconds'] = time.time() - start_time
+            return stats
+        
+        # If all portfolios are expired (count = 0), regenerate all 12
+        if current_count == 0:
+            stats['mode'] = 'full'
+            logger.info("="*80)
+            logger.info(f"🔄 [{risk_profile}] FULL REGENERATION MODE")
+            logger.info(f"   All portfolios expired - regenerating full bucket (12 portfolios)")
+            logger.info("="*80)
+            
+            from utils.redis_first_data_service import redis_first_data_service
+            from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+            from utils.port_analytics import PortfolioAnalytics
 
-        # Generate a full bucket (fast, shared-stock-data path), then store only missing ones
-        from utils.redis_first_data_service import redis_first_data_service
-        from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
-        from utils.port_analytics import PortfolioAnalytics
+            gen_start = time.time()
+            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+            logger.info(f"⏱️  [{risk_profile}] Starting portfolio generation...")
+            generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+            gen_time = time.time() - gen_start
+            
+            stats['portfolios_generated'] = len(generated) if generated else 0
+            logger.info(f"⏱️  [{risk_profile}] Generation completed in {gen_time:.2f}s ({stats['portfolios_generated']} portfolios)")
+            
+            # Store all portfolios using RedisPortfolioManager (handles TTL and metadata)
+            if generated and len(generated) >= redis_manager.PORTFOLIOS_PER_PROFILE:
+                store_start = time.time()
+                logger.info(f"💾 [{risk_profile}] Storing {len(generated)} portfolios in Redis...")
+                success = redis_manager.store_portfolio_bucket(risk_profile, generated)
+                store_time = time.time() - store_start
+                
+                if success:
+                    final_count = redis_manager.get_portfolio_count(risk_profile)
+                    stats['portfolios_stored'] = final_count
+                    stats['success'] = True
+                    logger.info(f"💾 [{risk_profile}] Storage completed in {store_time:.2f}s ({final_count} portfolios stored)")
+                    logger.info("="*80)
+                    logger.info(f"✅ [{risk_profile}] FULL REGENERATION COMPLETE!")
+                    logger.info(f"   📊 Portfolios Generated: {stats['portfolios_generated']}")
+                    logger.info(f"   💾 Portfolios Stored: {stats['portfolios_stored']}")
+                    logger.info(f"   ⏱️  Generation Time: {gen_time:.2f}s")
+                    logger.info(f"   💾 Storage Time: {store_time:.2f}s")
+                    logger.info(f"   ⏱️  Total Time: {time.time() - start_time:.2f}s")
+                    logger.info("="*80)
+                else:
+                    error_msg = f"Failed to store regenerated portfolios for {risk_profile}"
+                    stats['errors'].append(error_msg)
+                    logger.error(f"❌ [{risk_profile}] {error_msg}")
+            else:
+                error_msg = f"Generated only {stats['portfolios_generated']} portfolios, expected {redis_manager.PORTFOLIOS_PER_PROFILE}"
+                stats['errors'].append(error_msg)
+                stats['portfolios_failed'] = redis_manager.PORTFOLIOS_PER_PROFILE - stats['portfolios_generated']
+                logger.warning(f"⚠️ [{risk_profile}] {error_msg}")
+        else:
+            # Partial expiration: fill only missing slots
+            stats['mode'] = 'partial'
+            logger.info("="*80)
+            logger.info(f"🔄 [{risk_profile}] PARTIAL REGENERATION MODE")
+            logger.info(f"   Filling {len(missing_ids)} missing portfolio slots ({current_count}/{redis_manager.PORTFOLIOS_PER_PROFILE} exist)")
+            logger.info(f"   Missing slots: {missing_ids}")
+            logger.info("="*80)
+            
+            from utils.redis_first_data_service import redis_first_data_service
+            from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+            from utils.port_analytics import PortfolioAnalytics
 
-        generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
-        generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+            gen_start = time.time()
+            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+            logger.info(f"⏱️  [{risk_profile}] Starting portfolio generation for {len(missing_ids)} missing slots...")
+            generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+            gen_time = time.time() - gen_start
+            
+            stats['portfolios_generated'] = len(generated) if generated else 0
+            logger.info(f"⏱️  [{risk_profile}] Generation completed in {gen_time:.2f}s ({stats['portfolios_generated']} portfolios)")
 
-        # Index generated portfolios by variation_id
-        vid_to_port = {p.get('variation_id', idx): p for idx, p in enumerate(generated)}
+            # Index generated portfolios by variation_id
+            vid_to_port = {p.get('variation_id', idx): p for idx, p in enumerate(generated)}
 
-        # Store only missing variation ids with proper TTL, without touching existing ones
-        for vid in missing_ids:
-            p = vid_to_port.get(vid)
-            if not p:
-                continue
+            # Store only missing variation ids with proper TTL, without touching existing ones
+            store_start = time.time()
+            logger.info(f"💾 [{risk_profile}] Storing {len(missing_ids)} portfolios in missing slots...")
+            stored_count = 0
+            failed_slots = []
+            
+            for vid in missing_ids:
+                p = vid_to_port.get(vid)
+                if not p:
+                    failed_slots.append(vid)
+                    stats['portfolios_failed'] += 1
+                    logger.warning(f"⚠️ [{risk_profile}] No portfolio found for variation_id {vid}")
+                    continue
+                try:
+                    key = f"{bucket_prefix}{vid}"
+                    redis_manager.redis_client.setex(
+                        key,
+                        redis_manager.PORTFOLIO_TTL_SECONDS,
+                        json.dumps(p, default=str)
+                    )
+                    stored_count += 1
+                    stats['portfolios_stored'] += 1
+                    logger.debug(f"🧩 [{risk_profile}] Filled missing portfolio slot {vid}")
+                except Exception as e:
+                    failed_slots.append(vid)
+                    stats['portfolios_failed'] += 1
+                    error_msg = f"Failed storing portfolio {vid} for {risk_profile}: {e}"
+                    stats['errors'].append(error_msg)
+                    logger.warning(f"⚠️ [{risk_profile}] {error_msg}")
+            
+            store_time = time.time() - store_start
+            
+            if stored_count > 0:
+                final_count = redis_manager.get_portfolio_count(risk_profile)
+                stats['success'] = stored_count == len(missing_ids)
+                logger.info(f"💾 [{risk_profile}] Storage completed in {store_time:.2f}s ({stored_count}/{len(missing_ids)} portfolios stored)")
+                logger.info("="*80)
+                logger.info(f"✅ [{risk_profile}] PARTIAL REGENERATION COMPLETE!")
+                logger.info(f"   📊 Portfolios Generated: {stats['portfolios_generated']}")
+                logger.info(f"   💾 Portfolios Stored: {stored_count}/{len(missing_ids)}")
+                logger.info(f"   ❌ Portfolios Failed: {stats['portfolios_failed']}")
+                if failed_slots:
+                    logger.info(f"   ⚠️  Failed Slots: {failed_slots}")
+                logger.info(f"   📊 Final Count: {final_count}/{redis_manager.PORTFOLIOS_PER_PROFILE}")
+                logger.info(f"   ⏱️  Generation Time: {gen_time:.2f}s")
+                logger.info(f"   💾 Storage Time: {store_time:.2f}s")
+                logger.info(f"   ⏱️  Total Time: {time.time() - start_time:.2f}s")
+                logger.info("="*80)
+            else:
+                error_msg = f"Failed to store any portfolios for {risk_profile}"
+                stats['errors'].append(error_msg)
+                logger.error(f"❌ [{risk_profile}] {error_msg}")
+            
+            # Update metadata TTL if present
             try:
-                key = f"{bucket_prefix}{vid}"
+                meta_key = f"portfolio_bucket:{risk_profile}:metadata"
+                metadata = {
+                    'risk_profile': risk_profile,
+                    'portfolio_count': redis_manager.get_portfolio_count(risk_profile),
+                    'generated_at': datetime.now().isoformat(),
+                    'ttl_days': redis_manager.PORTFOLIO_TTL_DAYS,
+                    'last_updated': datetime.now().isoformat()
+                }
                 redis_manager.redis_client.setex(
-                    key,
+                    meta_key,
                     redis_manager.PORTFOLIO_TTL_SECONDS,
-                    json.dumps(p, default=str)
+                    json.dumps(metadata, default=str)
                 )
-                logger.info(f"🧩 Filled missing portfolio slot {vid} for {risk_profile}")
             except Exception as e:
-                logger.warning(f"⚠️ Failed storing portfolio {vid} for {risk_profile}: {e}")
-
-        # Update metadata TTL if present
-        try:
-            meta_key = f"portfolio_bucket:{risk_profile}:metadata"
-            metadata = {
-                'risk_profile': risk_profile,
-                'portfolio_count': redis_manager.get_portfolio_count(risk_profile),
-                'generated_at': datetime.now().isoformat(),
-                'ttl_days': redis_manager.PORTFOLIO_TTL_DAYS,
-                'last_updated': datetime.now().isoformat()
-            }
-            redis_manager.redis_client.setex(
-                meta_key,
-                redis_manager.PORTFOLIO_TTL_SECONDS,
-                json.dumps(metadata, default=str)
-            )
-        except Exception as e:
-            logger.debug(f"Metadata update skipped for {risk_profile}: {e}")
+                logger.debug(f"Metadata update skipped for {risk_profile}: {e}")
+        
+        stats['end_time'] = datetime.now().isoformat()
+        stats['processing_time_seconds'] = round(time.time() - start_time, 3)
+                
     except Exception as e:
-        logger.debug(f"_ensure_missing_portfolios_generated error: {e}")
+        error_msg = f"Error in _ensure_missing_portfolios_generated for {risk_profile}: {e}"
+        stats['errors'].append(error_msg)
+        logger.error(f"❌ [{risk_profile}] {error_msg}")
+        import traceback
+        traceback.print_exc()
+        stats['end_time'] = datetime.now().isoformat()
+        stats['processing_time_seconds'] = round(time.time() - start_time, 3)
+    
+    return stats
 
 # NEW: Dynamic Portfolio Generation Endpoint - LIVE GENERATION
 @router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
@@ -1748,7 +3372,7 @@ def create_portfolio(data: PortfolioRequest):
     diversification_score = (asset_diversity + allocation_diversity) / 2
     
     # Calculate Sharpe ratio (assuming risk-free rate of 2%)
-    risk_free_rate = 0.02
+    risk_free_rate = 0.038
     sharpe_ratio = (weighted_return - risk_free_rate) / weighted_risk if weighted_risk > 0 else 0
     
     return PortfolioResponse(
@@ -1923,7 +3547,7 @@ def calculate_annualized_metrics(returns: pd.Series) -> Dict[str, float]:
     annualized_volatility = returns.std() * np.sqrt(12)
     
     # Calculate Sharpe ratio (assuming risk-free rate of 2%)
-    risk_free_rate = 0.02
+    risk_free_rate = 0.038
     sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility if annualized_volatility > 0 else 0
     
     return {
@@ -2321,30 +3945,72 @@ async def get_ttl_status():
         logger.error(f"Error getting TTL status: {e}")
         raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
 
-@router.post("/trigger-regeneration")
-async def trigger_portfolio_regeneration(risk_profile: str = None):
+@router.post("/regenerate-recommendations")
+async def regenerate_recommendation_portfolios(risk_profile: str = None):
     """
-    Trigger manual portfolio regeneration using the optimized service
-    Can regenerate specific risk profile or all profiles
+    Regenerate recommendation portfolios (regular portfolios) for specific or all risk profiles.
+    Uses EnhancedPortfolioGenerator directly.
     """
     try:
-        from main import auto_regeneration_service
+        from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+        from utils.port_analytics import PortfolioAnalytics
         
-        if not auto_regeneration_service:
-            raise HTTPException(status_code=500, detail="Auto-regeneration service not available")
+        if not redis_manager:
+            raise HTTPException(status_code=500, detail="Redis portfolio manager not available")
         
-        result = auto_regeneration_service.trigger_regeneration(risk_profile)
+        risk_profiles = [risk_profile] if risk_profile else ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         
+        generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics)
+        results = {}
+        total_portfolios = 0
+        
+        for rp in risk_profiles:
+            try:
+                logger.info(f"🔄 Regenerating portfolios for {rp}...")
+                portfolios = generator.generate_portfolio_bucket(rp, use_parallel=True)
+                
+                if portfolios and len(portfolios) >= 12:
+                    success = redis_manager.store_portfolio_bucket(rp, portfolios)
+                    if success:
+                        total_portfolios += len(portfolios)
+                        results[rp] = {
+                            'success': True,
+                            'count': len(portfolios),
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        logger.info(f"✅ Regenerated {len(portfolios)} portfolios for {rp}")
+                    else:
+                        results[rp] = {
+                            'success': False,
+                            'error': 'Failed to store portfolios',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                else:
+                    results[rp] = {
+                        'success': False,
+                        'error': f'Generated only {len(portfolios) if portfolios else 0} portfolios',
+                        'timestamp': datetime.now().isoformat()
+                    }
+            except Exception as e:
+                logger.error(f"❌ Error regenerating portfolios for {rp}: {e}")
+                results[rp] = {
+                    'success': False,
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }
+        
+        successful = sum(1 for r in results.values() if r.get('success'))
         return {
-            "success": result["success"],
-            "message": result["message"],
-            "timestamp": result["timestamp"],
-            "data": result
+            "success": successful == len(risk_profiles),
+            "message": f"Regenerated portfolios for {successful}/{len(risk_profiles)} profiles",
+            "total_portfolios": total_portfolios,
+            "results": results,
+            "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error triggering portfolio regeneration: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to trigger regeneration: {str(e)}")
+        logger.error(f"Error regenerating recommendation portfolios: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate portfolios: {str(e)}")
 
 @router.post("/regenerate")
 async def regenerate_all_portfolios():
@@ -3488,7 +5154,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
                 risk_contribution_pct = (risk_contribution / portfolio_risk) * 100 if portfolio_risk != 0 else 0
                 
                 # Information ratio (excess return per unit of risk)
-                excess_return = asset_return - 0.02  # Assuming 2% risk-free rate
+                excess_return = asset_return - 0.038  # Assuming 2% risk-free rate
                 information_ratio = excess_return / asset_performance[ticker]['annual_risk'] if asset_performance[ticker]['annual_risk'] > 0 else 0
                 
                 attribution_analysis.append({
@@ -4383,10 +6049,26 @@ async def get_all_portfolios_table_data():
 
         all_rows = []
         
-        # 1. Get regular portfolios for each risk profile
+        # 1. Get ALL regular portfolios for each risk profile (directly from Redis)
         for rp in risk_profiles:
-            # Retrieve up to 12 portfolios per profile
-            portfolios = redis_manager.get_portfolio_recommendations(rp, count=12) or []
+            # Load all portfolios directly from Redis (bypass rotation logic)
+            bucket_key = f"portfolio_bucket:{rp}"
+            portfolios = []
+            
+            # Load all portfolios from Redis (up to 12 per profile)
+            for i in range(redis_manager.PORTFOLIOS_PER_PROFILE):
+                portfolio_key = f"{bucket_key}:{i}"
+                portfolio_data = redis_manager.redis_client.get(portfolio_key) if redis_manager.redis_client else None
+                
+                if portfolio_data:
+                    try:
+                        portfolio = json.loads(portfolio_data)
+                        portfolios.append(portfolio)
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"⚠️ Failed to decode portfolio {i} for {rp}: {e}")
+                        continue
+            
+            # Add all portfolios to table
             for idx, p in enumerate(portfolios):
                 allocations = p.get('allocations', []) or []
                 # Top 3 allocation preview
@@ -5549,7 +7231,8 @@ async def get_consolidated_table_html():
       <div id="panel-portfolios" style="display:none;">
         <div class="toolbar">
           <div class="search"><input id="search-portfolios" placeholder="Search portfolios (name, profile, tickers)..." oninput="searchPortfolios()" /></div>
-          <button class="btn" onclick="openRegenModal()" title="Regenerate all portfolios using current strategies.">Regenerate</button>
+          <button class="btn" onclick="openRegenRecommendationsModal()" title="Regenerate recommendation portfolios (used in Portfolio Recommendations tab).">Regenerate Recommendations</button>
+          <button class="btn" onclick="openRegenStrategiesModal()" title="Regenerate strategy portfolios (pure + personalized, used in Strategy part).">Regenerate Strategies</button>
         </div>
         <div class="table-wrap">
           <table id="table-portfolios"><thead><tr>
@@ -5589,15 +7272,28 @@ async def get_consolidated_table_html():
     </div>
     <div class="footer">Data source: Redis | Use Refresh for full refresh, Smart Refresh for incremental update</div>
 
-    <div id="regenModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenModalTitle" style="display:none;">
+    <div id="regenRecommendationsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenRecommendationsModalTitle" style="display:none;">
       <div class="modal">
-        <header id="regenModalTitle">Confirm Portfolio Regeneration</header>
+        <header id="regenRecommendationsModalTitle">Confirm Recommendation Portfolios Regeneration</header>
         <div class="body">
-          <div id="regenModalText">Regenerating portfolios may take 1–3 minutes.</div>
+          <div id="regenRecommendationsModalText">Regenerating recommendation portfolios for all risk profiles may take 2–3 minutes. This will regenerate 12 portfolios per risk profile (60 total).</div>
         </div>
         <footer>
-          <button class="btn secondary" onclick="closeRegenModal()">Cancel</button>
-          <button class="btn primary" onclick="proceedRegen()">Proceed</button>
+          <button class="btn secondary" onclick="closeRegenRecommendationsModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedRegenRecommendations()">Proceed</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="regenStrategiesModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenStrategiesModalTitle" style="display:none;">
+      <div class="modal">
+        <header id="regenStrategiesModalTitle">Confirm Strategy Portfolios Regeneration</header>
+        <div class="body">
+          <div id="regenStrategiesModalText">Regenerating strategy portfolios may take 3–4 minutes. This will regenerate pure and personalized strategy portfolios for all strategies and risk profiles.</div>
+        </div>
+        <footer>
+          <button class="btn secondary" onclick="closeRegenStrategiesModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedRegenStrategies()">Proceed</button>
         </footer>
       </div>
     </div>
@@ -5850,24 +7546,42 @@ async def get_consolidated_table_html():
       enableColumnHover('table-portfolios');
     });
 
-    async function openRegenModal(){
-      try {
-        const res = await fetch('/api/portfolio/regenerate/estimate');
+    async function openRegenRecommendationsModal(){
+      document.getElementById('regenRecommendationsModal').style.display='flex';
+    }
+    function closeRegenRecommendationsModal(){ document.getElementById('regenRecommendationsModal').style.display='none'; }
+    async function proceedRegenRecommendations(){
+      closeRegenRecommendationsModal();
+      try { 
+        const res = await fetch('/api/portfolio/regenerate-recommendations', { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
-          const secs = data.estimate_seconds || 120;
-          const note = data.note || '';
-          const el = document.getElementById('regenModalText');
-          el.textContent = `Regenerating portfolios may take about ${Math.round(secs/60)||2} minutes. ${note}`;
+          alert(`Portfolio regeneration started: ${data.message || 'Processing...'}`);
+        } else {
+          alert('Failed to start portfolio regeneration');
         }
-      } catch(_) {}
-      document.getElementById('regenModal').style.display='flex';
+      } catch(e) {
+        alert('Error: ' + e.message);
+      }
     }
-    function closeRegenModal(){ document.getElementById('regenModal').style.display='none'; }
-    async function proceedRegen(){
-      closeRegenModal();
-      try { await fetch('/api/portfolio/regenerate', { method: 'POST' }); } catch(_) {}
-      alert('Portfolio regeneration started');
+
+    async function openRegenStrategiesModal(){
+      document.getElementById('regenStrategiesModal').style.display='flex';
+    }
+    function closeRegenStrategiesModal(){ document.getElementById('regenStrategiesModal').style.display='none'; }
+    async function proceedRegenStrategies(){
+      closeRegenStrategiesModal();
+      try { 
+        const res = await fetch('/api/portfolio/pre-generate-strategy-portfolios', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          alert(`Strategy portfolio regeneration started: ${data.message || 'Processing...'}`);
+        } else {
+          alert('Failed to start strategy portfolio regeneration');
+        }
+      } catch(e) {
+        alert('Error: ' + e.message);
+      }
     }
   </script>
 </body>
