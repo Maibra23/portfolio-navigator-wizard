@@ -62,15 +62,10 @@ class PortfolioStockSelector:
             'real_estate': ['Real Estate']
         }
         
-        # Risk profile volatility targets (annualized) - Hybrid approach with controlled overlap
-        # Based on analysis: very-conservative expanded from 1 to 71 stocks, others optimized
-        self.RISK_PROFILE_VOLATILITY = {
-            'very-conservative': (0.05, 0.18),    # 5-18% annual volatility (CRITICAL: expanded from 0.14 - was only 1 stock!)
-            'conservative': (0.15, 0.25),         # 15-25% annual volatility (expanded: 124→321 stocks)
-            'moderate': (0.22, 0.32),             # 22-32% annual volatility (expanded: 333→390 stocks)
-            'aggressive': (0.28, 0.45),           # 28-45% annual volatility (expanded: 239→280 stocks)
-            'very-aggressive': (0.38, 1.00)       # 38%+ annual volatility (adjusted: 103→120 stocks)
-        }
+        # Risk profile volatility targets (annualized) - Using centralized config
+        # Import from risk_profile_config.py for consistency across the project
+        from .risk_profile_config import RISK_PROFILE_VOLATILITY
+        self.RISK_PROFILE_VOLATILITY = RISK_PROFILE_VOLATILITY
         
         # Variable stock count ranges by risk profile (replaces fixed sizes)
         self.STOCK_COUNT_RANGES = {

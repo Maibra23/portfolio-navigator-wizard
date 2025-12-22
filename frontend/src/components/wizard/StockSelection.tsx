@@ -45,6 +45,7 @@ interface StockSelectionProps {
   onNext: () => void;
   onPrev: () => void;
   onStocksUpdate: (stocks: PortfolioAllocation[]) => void;
+  onMetricsUpdate?: (metrics: PortfolioMetrics | null) => void;
   selectedStocks: PortfolioAllocation[];
   riskProfile: string;
   capital: number;
@@ -162,7 +163,8 @@ interface TwoAssetAnalysis {
 export const StockSelection = ({ 
   onNext, 
   onPrev, 
-  onStocksUpdate, 
+  onStocksUpdate,
+  onMetricsUpdate,
   selectedStocks, 
   riskProfile, 
   capital 
@@ -1036,6 +1038,13 @@ export const StockSelection = ({
 
     return () => clearTimeout(timeoutId);
   }, [searchTerm, searchStocks]);
+
+  // Sync portfolio metrics to wizard when they change
+  useEffect(() => {
+    if (onMetricsUpdate) {
+      onMetricsUpdate(portfolioMetrics);
+    }
+  }, [portfolioMetrics, onMetricsUpdate]);
 
   // Calculate portfolio metrics based on SELECTED portfolio, not individual stocks
   useEffect(() => {

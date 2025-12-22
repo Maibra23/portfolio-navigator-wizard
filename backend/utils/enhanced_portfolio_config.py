@@ -19,9 +19,9 @@ class EnhancedPortfolioConfig:
     ENHANCED_RETURN_RANGES = {
         'very-conservative': (0.04, 0.14),    # 4-14% (expanded from 5-13% for better compliance)
         'conservative': (0.12, 0.22),         # 12-22% (expanded from 13-20% for better compliance)
-        'moderate': (0.18, 0.32),             # 18-32% (expanded from 20-30% for better compliance)
-        'aggressive': (0.26, 0.52),           # 26-52% (expanded from 28-50% for better compliance)
-        'very-aggressive': (0.30, 1.20)       # 26-65% (RELAXED: overlaps with aggressive, realistic based on pool max 67.13%)
+        'moderate': (0.18, 0.28),             # FIXED: 18-28% (reduces overlap with aggressive)
+        'aggressive': (0.22, 0.32),           # EXPANDED: 22-32% (increased from 30% to 32% for more flexibility)
+        'very-aggressive': (0.26, 0.40)       # EXPANDED: 26-40% (increased from 38% to 40% for more flexibility)
     }
     
     # Diversification score variation (NO FIXED RANGES - let it vary naturally)
@@ -42,13 +42,26 @@ class EnhancedPortfolioConfig:
         'very-aggressive': (3, 3)            # 3 stocks (maximum concentration)
     }
     
-    # Return target gradation based on Strategy 1B OPTIMIZED non-overlapping ranges (12 targets per profile)
+    # Return target gradation - DISTRIBUTED EVENLY across full ranges for improved diversity
+    # Targets are spread evenly to maximize portfolio diversity while maintaining risk profile boundaries
     RETURN_TARGET_GRADATION = {
         'very-conservative': [4.0, 5.5, 7.0, 8.5, 10.0, 11.5, 13.0, 14.0, 6.0, 8.0, 10.5, 12.5],  # 4% to 14%
         'conservative': [12.0, 13.5, 15.0, 16.5, 18.0, 19.5, 21.0, 22.0, 12.5, 14.5, 16.5, 18.5], # 12% to 22%
-        'moderate': [18.0, 20.0, 22.0, 24.0, 26.0, 28.0, 30.0, 32.0, 19.0, 21.0, 23.0, 25.0], # 18% to 32%
-        'aggressive': [26.0, 30.0, 34.0, 38.0, 42.0, 46.0, 50.0, 52.0, 28.0, 32.0, 36.0, 40.0], # 26% to 52%
-        'very-aggressive': [30.0, 35.0, 40.0 ,70.0, 90.0, 110.0, 130.0, 150.0, 170.0, 60.0, 80.0, 100.0, 120.0, 140.0] # 48% to 170%
+        'moderate': [
+            # Distribute evenly across full range (18-28%) for improved diversity
+            18.0, 18.5, 19.0, 19.5, 20.0, 20.5, 21.0, 21.5, 22.0, 22.5, 23.0, 23.5,
+            24.0, 24.5, 25.0, 25.5, 26.0, 26.5, 27.0, 27.5, 28.0
+        ],
+        'aggressive': [
+            # Distribute evenly across full range (22-32%) for improved diversity
+            22.0, 22.5, 23.0, 23.5, 24.0, 24.5, 25.0, 25.5, 26.0, 26.5, 27.0, 27.5,
+            28.0, 28.5, 29.0, 29.5, 30.0, 30.5, 31.0, 31.5, 32.0
+        ],
+        'very-aggressive': [
+            # Distribute evenly across full range (26-40%) for improved diversity
+            26.0, 26.5, 27.0, 27.5, 28.0, 28.5, 29.0, 29.5, 30.0, 30.5, 31.0, 31.5,
+            32.0, 32.5, 33.0, 33.5, 34.0, 34.5, 35.0, 35.5, 36.0, 36.5, 37.0, 37.5, 38.0, 38.5, 39.0, 39.5, 40.0
+        ]
     }
     
     # Test configuration for 30 portfolios (50% of total)
@@ -71,24 +84,24 @@ class EnhancedPortfolioConfig:
             # NO DIVERSIFICATION LIMITS - let it vary naturally
         },
         'moderate': {
-            'return_range': (0.18, 0.32),    # Strategy 1B OPTIMIZED: 18% to 32% (expanded for compliance)
+            'return_range': (0.18, 0.28),    # FIXED: 18% to 28% (reduces overlap with aggressive)
             'risk_range': (0.220, 0.320),    # Realistic: 22.0-32.0%
             'max_return_variance': 0.04,
             'max_risk_variance': 0.05,
             # NO DIVERSIFICATION LIMITS - let it vary naturally
         },
         'aggressive': {
-            'return_range': (0.26, 0.52),    # Strategy 1B OPTIMIZED: 26% to 52% (expanded for compliance)
-            'risk_range': (0.281, 0.449),    # Realistic: 28.1-44.9%
+            'return_range': (0.22, 0.32),    # EXPANDED: 22% to 32% (increased from 30% for more flexibility - 70 tickers available)
+            'risk_range': (0.28, 0.42),       # ALIGNED: 28-42% (matches risk_profile_config.py RISK_PROFILE_VOLATILITY)
             'max_return_variance': 0.08,     # More tolerance for aggressive
-            'max_risk_variance': 0.06,
+            'max_risk_variance': 0.05,       # Moderate risk tolerance
             # NO DIVERSIFICATION LIMITS - let it vary naturally
         },
         'very-aggressive': {
-            'return_range': (0.26, 0.65),    # RELAXED: 26% to 65% (overlaps with aggressive, realistic)
-            'risk_range': (0.381, 0.990),    # Realistic: 38.1-99.0%
-            'max_return_variance': 0.15,     # Higher tolerance for very-aggressive
-            'max_risk_variance': 0.10,       # Higher tolerance
+            'return_range': (0.26, 0.40),    # EXPANDED: 26% to 40% (increased from 38% for more flexibility - 36 tickers available)
+            'risk_range': (0.32, 0.55),       # ALIGNED: 32-55% (matches risk_profile_config.py RISK_PROFILE_VOLATILITY, adjusted min from 38% to 32%)
+            'max_return_variance': 0.10,     # Higher tolerance for very-aggressive
+            'max_risk_variance': 0.06,       # Moderate risk tolerance
             # NO DIVERSIFICATION LIMITS - let it vary naturally
         }
     }

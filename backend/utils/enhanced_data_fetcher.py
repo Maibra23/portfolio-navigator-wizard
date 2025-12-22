@@ -1452,34 +1452,104 @@ class EnhancedDataFetcher:
 
 
     def preview_expired_data(self):
-        """Compute how many tickers would be refreshed without performing any action."""
+        """
+        Compute how many tickers would be refreshed without performing any action.
+        Checks both missing keys and TTL expiration status.
+        """
         if not self.r:
             return {
                 'expired_count': 0,
                 'tickers': [],
                 'missing_counts': {'prices': 0, 'sector': 0, 'metrics': 0},
                 'missing_samples': {'prices': [], 'sector': [], 'metrics': []},
-                'refresh_candidates': []
+                'refresh_candidates': [],
+                'expiring_soon_count': 0,
+                'expiring_soon_tickers': []
             }
 
         expired_tickers: List[str] = []
+        expiring_soon_tickers: List[str] = []
         missing_prices: List[str] = []
         missing_sector: List[str] = []
         missing_metrics: List[str] = []
+        expired_by_ttl: List[str] = []
 
         for ticker in self.all_tickers:
-            has_prices = bool(self._is_cached(ticker, 'prices'))
-            has_sector = bool(self._is_cached(ticker, 'sector'))
-            has_metrics = bool(self._is_cached(ticker, 'metrics'))
-
+            # Get cache keys
+            price_key = self._get_cache_key(ticker, 'prices')
+            sector_key = self._get_cache_key(ticker, 'sector')
+            metrics_key = self._get_cache_key(ticker, 'metrics')
+            
+            # Check if keys exist
+            has_prices = bool(self.r.exists(price_key))
+            has_sector = bool(self.r.exists(sector_key))
+            has_metrics = bool(self.r.exists(metrics_key))
+            
+            # Check TTL values for prices and sector (metrics are optional)
+            price_ttl = self.r.ttl(price_key) if has_prices else -2
+            sector_ttl = self.r.ttl(sector_key) if has_sector else -2
+            
+            # Track missing data
             if not has_prices:
                 missing_prices.append(ticker)
             if not has_sector:
                 missing_sector.append(ticker)
             if not has_metrics:
                 missing_metrics.append(ticker)
-
-            if not (has_prices and has_sector and has_metrics):
+            
+            # Determine the minimum TTL (most critical)
+            # Only consider TTL if keys exist, otherwise treat as missing
+            min_ttl = None
+            if has_prices and has_sector:
+                # Both exist - use minimum TTL
+                if price_ttl > 0 and sector_ttl > 0:
+                    min_ttl = min(price_ttl, sector_ttl)
+                elif price_ttl > 0:
+                    min_ttl = price_ttl
+                elif sector_ttl > 0:
+                    min_ttl = sector_ttl
+                else:
+                    # At least one has -1 (no expiration), 0 (expired), or -2 (doesn't exist)
+                    min_ttl = max(price_ttl, sector_ttl)  # Use the "worst" status
+            elif has_prices:
+                min_ttl = price_ttl
+            elif has_sector:
+                min_ttl = sector_ttl
+            
+            # Check TTL expiration status
+            is_expired_by_ttl = False
+            is_expiring_soon = False
+            
+            if min_ttl is not None:
+                if min_ttl == -2:  # Key doesn't exist
+                    is_expired_by_ttl = True
+                elif min_ttl == -1:  # No expiration set - consider as expired
+                    is_expired_by_ttl = True
+                elif min_ttl == 0:  # Expired
+                    is_expired_by_ttl = True
+                elif min_ttl > 0 and min_ttl < 86400:  # Less than 24 hours remaining
+                    is_expiring_soon = True
+            
+            # Determine if ticker needs refresh
+            needs_refresh = False
+            
+            # Missing critical data (prices or sector)
+            if not has_prices or not has_sector:
+                needs_refresh = True
+            
+            # Expired by TTL (even if keys exist)
+            if is_expired_by_ttl and has_prices and has_sector:
+                needs_refresh = True
+                if ticker not in expired_by_ttl:
+                    expired_by_ttl.append(ticker)
+            
+            # Expiring soon (add to separate list for information, not necessarily needing refresh)
+            if is_expiring_soon:
+                if ticker not in expiring_soon_tickers:
+                    expiring_soon_tickers.append(ticker)
+            
+            # Add to expired list if needs refresh
+            if needs_refresh and ticker not in expired_tickers:
                 expired_tickers.append(ticker)
 
         return {
@@ -1495,6 +1565,10 @@ class EnhancedDataFetcher:
                 'sector': missing_sector[:20],
                 'metrics': missing_metrics[:20]
             },
+            'expired_by_ttl_count': len(expired_by_ttl),
+            'expired_by_ttl_tickers': expired_by_ttl[:20],
+            'expiring_soon_count': len(expiring_soon_tickers),
+            'expiring_soon_tickers': expiring_soon_tickers[:20],
             # Provide the complete candidate list so callers can target just the gaps
             'refresh_candidates': expired_tickers
         }

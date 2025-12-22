@@ -896,19 +896,20 @@ class PortfolioAnalytics:
             ann_risk = self._sanitize_metric_value(ann_risk, 0.15)      # Default to 15% if invalid
             max_drawdown = self._sanitize_metric_value(max_drawdown, -0.10)  # Default to -10% if invalid
             
-            # Calculate diversification score - enhanced for both cached and calculated assets
-            if cached_assets and not calculated_assets:
-                # For cached assets, use sophisticated diversification calculation based on allocations
-                allocations = portfolio_data.get('allocations', [])
-                if allocations:
-                    diversification_score = self._calculate_sophisticated_diversification_score(allocations)
-                else:
-                    diversification_score = min(100, len(cached_assets) * 25)  # Fallback
+            # Calculate diversification score - use consistent method matching recommendation system
+            # Always use sophisticated method for consistency with recommendation generation
+            allocations = portfolio_data.get('allocations', [])
+            if allocations:
+                # Use sophisticated diversification calculation to match recommendation system
+                diversification_score = self._calculate_sophisticated_diversification_score(allocations)
             elif calculated_assets and 'aligned_returns' in locals() and 'weights' in locals():
-                # For calculated assets, use correlation-based calculation
+                # Fallback to correlation-based if no allocations but have calculated assets
                 diversification_score = self._calculate_portfolio_diversification_score(aligned_returns, weights)
+            elif cached_assets:
+                # Fallback for cached assets without allocations
+                diversification_score = min(100, len(cached_assets) * 25)
             else:
-                # Fallback scoring
+                # Final fallback
                 diversification_score = 50.0
             
             diversification_score = self._sanitize_metric_value(diversification_score, 50.0)  # Default to 50 if invalid
@@ -957,10 +958,28 @@ class PortfolioAnalytics:
             if not allocations or len(allocations) < 2:
                 return 0.0
             
-            # Extract weights and sectors
+            # Extract weights and tickers
             weights = [alloc.get('allocation', 0) / 100.0 for alloc in allocations]  # Convert to decimal
-            sectors = [alloc.get('sector', 'Unknown') for alloc in allocations]
             tickers = [alloc.get('symbol', '') for alloc in allocations]
+            
+            # Get sector info - enrich from Redis if not provided in allocation
+            sectors = []
+            for alloc in allocations:
+                sector = alloc.get('sector')
+                if not sector or sector == 'Unknown':
+                    # Try to get sector from Redis
+                    ticker = alloc.get('symbol', '')
+                    if ticker:
+                        try:
+                            from utils.redis_first_data_service import redis_first_data_service
+                            ticker_info = redis_first_data_service.get_ticker_info(ticker)
+                            if ticker_info:
+                                sector = ticker_info.get('sector', 'Unknown')
+                        except Exception:
+                            sector = 'Unknown'
+                    else:
+                        sector = 'Unknown'
+                sectors.append(sector or 'Unknown')
             
             # Calculate concentration metrics
             weights_array = np.array(weights)
@@ -1053,8 +1072,9 @@ class PortfolioAnalytics:
                         
                         if total_weight > 0:
                             avg_correlation = weighted_corr / total_weight
-                            # Penalize high correlation (above 0.5)
-                            correlation_penalty = max(0, (avg_correlation - 0.5) * 20)  # Up to 10 points penalty
+                            # Align with recommendation system: penalize correlation above 0.3 (same threshold)
+                            # Strategy optimizer uses: (avg_corr - 0.3) * 25, we use similar but adjusted for additional factors
+                            correlation_penalty = max(0, (avg_correlation - 0.3) * 20)  # Penalize above 0.3, up to ~14 points
                 
             except Exception as e:
                 logger.debug(f"Correlation calculation skipped: {e}")
@@ -1070,23 +1090,14 @@ class PortfolioAnalytics:
             final_score = (base_diversification + stock_bonus + evenness_bonus + 
                           sector_bonus + entropy_bonus - variance_penalty - sector_penalty - correlation_penalty)
             
-            # Add variation based on portfolio characteristics for uniqueness
-            weight_pattern = tuple(round(w, 2) for w in sorted(weights, reverse=True))
-            pattern_hash = hash(weight_pattern) % 10000
+            # REMOVED: Random variation and hash-based variation causes inconsistency
+            # Use deterministic score based on actual portfolio characteristics only
+            # This ensures consistency when same portfolio is calculated multiple times
+            # and matches recommendation system behavior
             
-            sector_signature = hash(tuple(sorted(sectors))) % 1000
-            combined_signature = (pattern_hash + sector_signature) % 1000
-            
-            import random
-            random.seed(combined_signature)
-            
-            # Reduced variation to rely more on actual metrics
-            variation = random.uniform(-5.0, 5.0)  # Reduced from -8 to -5
-            
-            varied_score = final_score + variation
-            
-            # IMPROVED: Ensure realistic range but allow wider variation (35-95%)
-            return max(35.0, min(95.0, round(varied_score, 1)))
+            # Normalize to match recommendation system range (0-100)
+            # Strategy optimizer caps at 100, we use same range for consistency
+            return max(0.0, min(100.0, round(final_score, 1)))
             
         except Exception as e:
             logger.error(f"Error calculating sophisticated diversification score: {e}")
@@ -1698,3 +1709,410 @@ class PortfolioAnalytics:
         except Exception as e:
             logger.error(f"Error calculating diversification: {e}")
             return 50.0
+
+    # ==================== NEW: Monte Carlo Simulation ====================
+    
+    def run_monte_carlo_simulation(self, 
+                                   expected_return: float, 
+                                   risk: float, 
+                                   num_simulations: int = 10000,
+                                   time_horizon_years: float = 1.0) -> Dict[str, Any]:
+        """
+        Run Monte Carlo simulation to generate return distribution
+        
+        Args:
+            expected_return: Annual expected return (e.g., 0.12 for 12%)
+            risk: Annual volatility/risk (e.g., 0.20 for 20%)
+            num_simulations: Number of simulations to run (default 10,000)
+            time_horizon_years: Investment time horizon in years (default 1 year)
+            
+        Returns:
+            Dict with simulation results including:
+            - simulated_returns: List of simulated returns
+            - percentiles: Dict with 5th, 25th, 50th, 75th, 95th percentiles
+            - probability_positive: Probability of positive returns
+            - probability_loss_thresholds: Dict with probabilities of various loss levels
+            - histogram_data: Binned data for histogram visualization
+            - statistics: Mean, std, min, max of simulated returns
+        """
+        try:
+            # Generate random returns using normal distribution
+            # For simplicity, assuming returns follow normal distribution
+            # In practice, could use log-normal or more sophisticated models
+            
+            # Annualized parameters adjusted for time horizon
+            adjusted_return = expected_return * time_horizon_years
+            adjusted_risk = risk * np.sqrt(time_horizon_years)
+            
+            # Generate simulated returns
+            np.random.seed(None)  # Use random seed for variety
+            simulated_returns = np.random.normal(adjusted_return, adjusted_risk, num_simulations)
+            
+            # Calculate percentiles
+            percentiles = {
+                'p5': float(np.percentile(simulated_returns, 5)),
+                'p25': float(np.percentile(simulated_returns, 25)),
+                'p50': float(np.percentile(simulated_returns, 50)),  # Median
+                'p75': float(np.percentile(simulated_returns, 75)),
+                'p95': float(np.percentile(simulated_returns, 95)),
+            }
+            
+            # Calculate probability of positive returns
+            probability_positive = float(np.sum(simulated_returns > 0) / num_simulations * 100)
+            
+            # Calculate probability of various loss levels
+            probability_loss_thresholds = {
+                'loss_5pct': float(np.sum(simulated_returns < -0.05) / num_simulations * 100),
+                'loss_10pct': float(np.sum(simulated_returns < -0.10) / num_simulations * 100),
+                'loss_20pct': float(np.sum(simulated_returns < -0.20) / num_simulations * 100),
+                'loss_30pct': float(np.sum(simulated_returns < -0.30) / num_simulations * 100),
+            }
+            
+            # Create histogram data for visualization (30 bins)
+            hist_counts, bin_edges = np.histogram(simulated_returns, bins=30)
+            histogram_data = []
+            for i in range(len(hist_counts)):
+                bin_center = (bin_edges[i] + bin_edges[i+1]) / 2
+                histogram_data.append({
+                    'return': float(bin_center),
+                    'return_pct': float(bin_center * 100),
+                    'count': int(hist_counts[i]),
+                    'frequency': float(hist_counts[i] / num_simulations * 100)
+                })
+            
+            # Calculate statistics
+            statistics = {
+                'mean': float(np.mean(simulated_returns)),
+                'std': float(np.std(simulated_returns)),
+                'min': float(np.min(simulated_returns)),
+                'max': float(np.max(simulated_returns)),
+                'median': float(np.median(simulated_returns)),
+            }
+            
+            # Generate probability statements for UI
+            probability_statements = self._generate_probability_statements(
+                percentiles, probability_positive, probability_loss_thresholds, time_horizon_years
+            )
+            
+            return {
+                'simulated_returns': simulated_returns.tolist()[:100],  # Return only first 100 for size
+                'percentiles': percentiles,
+                'probability_positive': probability_positive,
+                'probability_loss_thresholds': probability_loss_thresholds,
+                'histogram_data': histogram_data,
+                'statistics': statistics,
+                'probability_statements': probability_statements,
+                'parameters': {
+                    'expected_return': expected_return,
+                    'risk': risk,
+                    'num_simulations': num_simulations,
+                    'time_horizon_years': time_horizon_years
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error running Monte Carlo simulation: {e}")
+            return self._get_fallback_monte_carlo()
+    
+    def _generate_probability_statements(self, 
+                                        percentiles: Dict[str, float],
+                                        probability_positive: float,
+                                        probability_loss: Dict[str, float],
+                                        time_horizon: float) -> List[str]:
+        """Generate human-readable probability statements"""
+        statements = []
+        
+        horizon_text = f"{int(time_horizon)} year" if time_horizon == 1 else f"{time_horizon:.1f} years"
+        
+        # Positive return statement
+        statements.append(f"{probability_positive:.0f}% chance of positive returns over {horizon_text}")
+        
+        # Expected range statement
+        statements.append(
+            f"Expected range: {percentiles['p25']*100:.1f}% to {percentiles['p75']*100:.1f}% (50% confidence)"
+        )
+        
+        # Wider range statement
+        statements.append(
+            f"Wider range: {percentiles['p5']*100:.1f}% to {percentiles['p95']*100:.1f}% (90% confidence)"
+        )
+        
+        # Loss probability statements
+        if probability_loss['loss_10pct'] > 5:
+            statements.append(f"{probability_loss['loss_10pct']:.0f}% chance of losing more than 10%")
+        
+        if probability_loss['loss_20pct'] > 2:
+            statements.append(f"{probability_loss['loss_20pct']:.0f}% chance of losing more than 20%")
+        
+        return statements
+    
+    def _get_fallback_monte_carlo(self) -> Dict[str, Any]:
+        """Fallback Monte Carlo results when calculation fails"""
+        return {
+            'simulated_returns': [],
+            'percentiles': {'p5': -0.15, 'p25': 0.0, 'p50': 0.10, 'p75': 0.20, 'p95': 0.35},
+            'probability_positive': 65.0,
+            'probability_loss_thresholds': {'loss_5pct': 20.0, 'loss_10pct': 10.0, 'loss_20pct': 3.0, 'loss_30pct': 1.0},
+            'histogram_data': [],
+            'statistics': {'mean': 0.10, 'std': 0.15, 'min': -0.30, 'max': 0.50, 'median': 0.10},
+            'probability_statements': ['Unable to calculate probabilities'],
+            'parameters': {'expected_return': 0.10, 'risk': 0.15, 'num_simulations': 0, 'time_horizon_years': 1.0}
+        }
+
+    # ==================== NEW: Quality Score Metrics ====================
+    
+    def calculate_sortino_ratio(self, 
+                               returns: Optional[pd.Series] = None,
+                               expected_return: float = 0.0,
+                               risk: float = 0.0,
+                               risk_free_rate: float = 0.038) -> float:
+        """
+        Calculate Sortino Ratio (risk-adjusted return using downside deviation)
+        
+        The Sortino ratio is similar to Sharpe but only penalizes downside volatility,
+        making it more appropriate for investors who care more about losses than gains.
+        
+        Args:
+            returns: Optional time series of returns (if available)
+            expected_return: Annual expected return (used if returns not available)
+            risk: Annual volatility (used to estimate downside deviation if returns not available)
+            risk_free_rate: Risk-free rate (default 3.8%)
+            
+        Returns:
+            Sortino ratio as float
+        """
+        try:
+            if returns is not None and len(returns) > 12:
+                # Calculate from actual returns
+                excess_returns = returns - (risk_free_rate / 12)  # Monthly risk-free rate
+                downside_returns = excess_returns[excess_returns < 0]
+                
+                if len(downside_returns) > 0:
+                    downside_deviation = np.sqrt(np.mean(downside_returns ** 2)) * np.sqrt(12)  # Annualize
+                else:
+                    downside_deviation = risk * 0.5  # Estimate if no negative returns
+                
+                annual_return = (1 + returns.mean()) ** 12 - 1
+                sortino = (annual_return - risk_free_rate) / downside_deviation if downside_deviation > 0 else 0
+            else:
+                # Estimate from expected return and risk
+                # Assume downside deviation is roughly 70% of total volatility
+                downside_deviation = risk * 0.7
+                sortino = (expected_return - risk_free_rate) / downside_deviation if downside_deviation > 0 else 0
+            
+            return round(float(sortino), 3)
+            
+        except Exception as e:
+            logger.error(f"Error calculating Sortino ratio: {e}")
+            return 0.0
+    
+    def calculate_consistency_score(self, 
+                                   returns: Optional[pd.Series] = None,
+                                   expected_return: float = 0.0,
+                                   risk: float = 0.0) -> float:
+        """
+        Calculate Consistency Score based on coefficient of variation
+        
+        Lower CV means more consistent returns relative to the mean.
+        Score is 100 - (CV * 100), capped at 0-100 range.
+        
+        Args:
+            returns: Optional time series of returns
+            expected_return: Annual expected return
+            risk: Annual volatility
+            
+        Returns:
+            Consistency score (0-100)
+        """
+        try:
+            if returns is not None and len(returns) > 12:
+                # Calculate from actual returns
+                mean_return = returns.mean()
+                std_return = returns.std()
+                
+                if mean_return != 0:
+                    cv = abs(std_return / mean_return)
+                else:
+                    cv = float('inf')
+            else:
+                # Estimate from expected return and risk
+                if expected_return != 0:
+                    cv = abs(risk / expected_return)
+                else:
+                    cv = float('inf')
+            
+            # Convert to score (lower CV = higher consistency)
+            # CV of 0 = 100 score, CV of 1 = 0 score
+            consistency_score = max(0, min(100, 100 - (cv * 100)))
+            
+            return round(float(consistency_score), 1)
+            
+        except Exception as e:
+            logger.error(f"Error calculating consistency score: {e}")
+            return 50.0
+    
+    def calculate_risk_profile_compliance(self, 
+                                         portfolio_risk: float, 
+                                         risk_profile: str) -> float:
+        """
+        Calculate how well the portfolio risk matches the user's risk profile
+        
+        Args:
+            portfolio_risk: Portfolio volatility (e.g., 0.20 for 20%)
+            risk_profile: User's risk profile ('very-conservative' to 'very-aggressive')
+            
+        Returns:
+            Compliance score (0-100), where 100 means perfect match
+        """
+        try:
+            # Define ideal risk ranges for each profile
+            risk_profile_ranges = {
+                'very-conservative': {'min': 0.05, 'max': 0.12, 'ideal': 0.08},
+                'conservative': {'min': 0.10, 'max': 0.18, 'ideal': 0.14},
+                'moderate': {'min': 0.15, 'max': 0.25, 'ideal': 0.20},
+                'aggressive': {'min': 0.20, 'max': 0.35, 'ideal': 0.28},
+                'very-aggressive': {'min': 0.25, 'max': 0.50, 'ideal': 0.38}
+            }
+            
+            profile_config = risk_profile_ranges.get(risk_profile, risk_profile_ranges['moderate'])
+            
+            min_risk = profile_config['min']
+            max_risk = profile_config['max']
+            ideal_risk = profile_config['ideal']
+            
+            # Perfect score if within ideal range
+            if min_risk <= portfolio_risk <= max_risk:
+                # Calculate how close to ideal
+                distance_from_ideal = abs(portfolio_risk - ideal_risk)
+                range_width = max_risk - min_risk
+                
+                # Score based on distance from ideal (closer = higher)
+                compliance = 100 - (distance_from_ideal / range_width * 50)
+            else:
+                # Outside acceptable range - penalize
+                if portfolio_risk < min_risk:
+                    distance = min_risk - portfolio_risk
+                else:
+                    distance = portfolio_risk - max_risk
+                
+                # Penalize based on how far outside
+                range_width = max_risk - min_risk
+                penalty = min(50, (distance / range_width) * 100)
+                compliance = 50 - penalty
+            
+            return round(max(0, min(100, float(compliance))), 1)
+            
+        except Exception as e:
+            logger.error(f"Error calculating risk profile compliance: {e}")
+            return 50.0
+    
+    def calculate_quality_score(self,
+                               expected_return: float,
+                               risk: float,
+                               risk_profile: str,
+                               diversification_score: float,
+                               returns: Optional[pd.Series] = None) -> Dict[str, Any]:
+        """
+        Calculate composite Multi-Factor Quality Score
+        
+        Weights:
+        - Risk Profile Compliance: 40%
+        - Sortino Ratio: 30%
+        - Diversification Score: 20%
+        - Consistency Score: 10%
+        
+        Args:
+            expected_return: Annual expected return
+            risk: Annual volatility
+            risk_profile: User's risk profile
+            diversification_score: Pre-calculated diversification score (0-100)
+            returns: Optional time series of returns
+            
+        Returns:
+            Dict with overall score and factor breakdown
+        """
+        try:
+            # Calculate individual factors
+            sortino = self.calculate_sortino_ratio(returns, expected_return, risk)
+            consistency = self.calculate_consistency_score(returns, expected_return, risk)
+            risk_compliance = self.calculate_risk_profile_compliance(risk, risk_profile)
+            
+            # Normalize Sortino to 0-100 scale
+            # Sortino of 0 = 0, Sortino of 2+ = 100
+            sortino_normalized = min(100, max(0, sortino * 50))
+            
+            # Calculate weighted composite score
+            weights = {
+                'risk_profile_compliance': 0.40,
+                'sortino_ratio': 0.30,
+                'diversification': 0.20,
+                'consistency': 0.10
+            }
+            
+            composite_score = (
+                risk_compliance * weights['risk_profile_compliance'] +
+                sortino_normalized * weights['sortino_ratio'] +
+                diversification_score * weights['diversification'] +
+                consistency * weights['consistency']
+            )
+            
+            # Factor breakdown for UI
+            factor_breakdown = {
+                'risk_profile_compliance': {
+                    'score': risk_compliance,
+                    'weight': weights['risk_profile_compliance'] * 100,
+                    'label': 'Risk Profile Match',
+                    'description': 'How well risk matches your profile'
+                },
+                'sortino_ratio': {
+                    'score': sortino_normalized,
+                    'raw_value': sortino,
+                    'weight': weights['sortino_ratio'] * 100,
+                    'label': 'Downside Protection',
+                    'description': 'Risk-adjusted return focusing on losses'
+                },
+                'diversification': {
+                    'score': diversification_score,
+                    'weight': weights['diversification'] * 100,
+                    'label': 'Diversification',
+                    'description': 'Spread across sectors and correlations'
+                },
+                'consistency': {
+                    'score': consistency,
+                    'weight': weights['consistency'] * 100,
+                    'label': 'Return Consistency',
+                    'description': 'Stability of returns over time'
+                }
+            }
+            
+            # Generate quality rating
+            if composite_score >= 85:
+                rating = 'Excellent'
+                rating_color = 'green'
+            elif composite_score >= 70:
+                rating = 'Good'
+                rating_color = 'blue'
+            elif composite_score >= 55:
+                rating = 'Fair'
+                rating_color = 'yellow'
+            else:
+                rating = 'Needs Improvement'
+                rating_color = 'red'
+            
+            return {
+                'composite_score': round(composite_score, 1),
+                'rating': rating,
+                'rating_color': rating_color,
+                'factor_breakdown': factor_breakdown,
+                'weights_used': weights
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating quality score: {e}")
+            return {
+                'composite_score': 50.0,
+                'rating': 'Unknown',
+                'rating_color': 'gray',
+                'factor_breakdown': {},
+                'weights_used': {}
+            }

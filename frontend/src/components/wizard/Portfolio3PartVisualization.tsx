@@ -583,6 +583,18 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     try {
       const response = await fetchVisualizationData(payload, controller.signal);
         setData(response);
+        
+        // Log ticker data for debugging
+        console.log('[Portfolio3PartVisualization] Visualization data received:', {
+          selectedPortfolioTickers: selectedStocks.map(s => s.symbol),
+          tickerPointsTotal: response.scatter?.tickerPoints?.length || 0,
+          tickerPointsLabels: [...new Set((response.scatter?.tickerPoints || []).map(t => t.label))],
+          selectedPortfolioTickerPoints: (response.scatter?.tickerPoints || []).filter(t => t.label === 'Selected Portfolio'),
+          selectedPortfolioTickerSymbols: (response.scatter?.tickerPoints || [])
+            .filter(t => t.label === 'Selected Portfolio')
+            .map(t => t.symbol)
+        });
+        
         const mergedWarnings = [
           ...(response.warnings ?? []),
         ...(response.scatter?.warnings ?? []),
@@ -712,7 +724,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
 
     const colorForPortfolio = getPortfolioColorGenerator(visualizationTheme.portfolioPalette);
 
-    return data.scatter.tickerPoints.map((point) => {
+    const mapped = data.scatter.tickerPoints.map((point) => {
       const baseLabel = point.label ?? 'Portfolio';
       const portfolioLabel = portfolioNameMap.get(baseLabel) ?? baseLabel;
       const color = colorForPortfolio(portfolioLabel);
@@ -728,6 +740,17 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         color,
       };
     });
+
+    // Log for debugging
+    const selectedPortfolioTickers = mapped.filter(p => p.portfolioLabel === portfolioNameMap.get('Selected Portfolio') || p.portfolioLabel.includes('Selected'));
+    console.log('[Portfolio3PartVisualization] Normalized ticker points:', {
+      total: mapped.length,
+      selectedPortfolioCount: selectedPortfolioTickers.length,
+      selectedPortfolioTickers: selectedPortfolioTickers.map(t => ({ symbol: t.symbol, return: t.annualReturn, risk: t.risk })),
+      allLabels: [...new Set(mapped.map(p => p.portfolioLabel))]
+    });
+
+    return mapped;
   }, [data?.scatter?.tickerPoints, portfolioNameMap]);
 
   const groupedScatter = useMemo(() => {
@@ -968,10 +991,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   }, [allRecommendations, selectedPortfolioIndex]);
 
   const renderScatterTooltip = useCallback((tooltipProps: TooltipProps<ValueType, NameType>) => {
-    if (!tooltipProps.active || !tooltipProps.payload?.length) return null;
+    // Only show tooltip if hoveredSymbol is set (prevents lingering tooltip)
+    if (!hoveredSymbol || !tooltipProps.active || !tooltipProps.payload?.length) return null;
     const [firstEntry] = tooltipProps.payload;
     const point = firstEntry?.payload as ScatterPoint | undefined;
-    if (!point) return null;
+    if (!point || point.symbol !== hoveredSymbol) return null;
 
     return (
       <div
@@ -996,7 +1020,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         </div>
       </div>
     );
-  }, []);
+  }, [hoveredSymbol]);
 
   const renderPieTooltip = useCallback((tooltipProps: TooltipProps<ValueType, NameType>) => {
     if (!tooltipProps.active || !tooltipProps.payload?.length) return null;
@@ -1216,9 +1240,17 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart
                   margin={{ top: 24, right: 32, bottom: 70, left: 48 }}
-                  onMouseLeave={() => {
+                  onMouseLeave={(e) => {
+                    // Immediately clear hover state when mouse leaves chart area
                     setHoveredSymbol(null);
                     setHoveredSector(null);
+                  }}
+                  onMouseMove={(e) => {
+                    // Clear hover if mouse moves to empty area (no data point)
+                    if (!e || !e.activePayload || e.activePayload.length === 0) {
+                      setHoveredSymbol(null);
+                      setHoveredSector(null);
+                    }
                   }}
                 >
                   <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
@@ -1242,11 +1274,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     type="number"
                     dataKey="annualReturn"
                     name="Return"
+                    scale="log"
                     tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
                     axisLine={{ stroke: visualizationTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
                     tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
-                    domain={zoomDomain?.y || [0, 'auto']}
+                    domain={zoomDomain?.y || [0.01, 'auto']}
                     label={{
                       value: 'Return',
                       angle: -90,
@@ -1254,7 +1287,13 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
                     }}
                   />
-                  <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={renderScatterTooltip} />
+                  <RechartsTooltip 
+                    cursor={{ strokeDasharray: '3 3' }} 
+                    content={renderScatterTooltip}
+                    isAnimationActive={false}
+                    animationDuration={0}
+                    active={hoveredSymbol !== null ? true : undefined}
+                  />
                   <Legend
                     wrapperStyle={{
                       paddingTop: 12,
@@ -1277,42 +1316,55 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       legendType="none"
                     />
                   ))}
-                  {Array.from(groupedScatter.entries()).map(([label, points]) => (
-                    <Scatter
-                      key={label}
-                      name={label}
-                      data={points}
-                      fill={points[0]?.color ?? visualizationTheme.clusterPalette.fallback}
-                      shape={(props) => {
-                        const point = props.payload as ScatterPoint;
-                        const highlightActive = highlightedSymbols.size > 0;
-                        const isHighlighted = highlightedSymbols.has(point.symbol);
-                        const radius = hoveredSymbol === point.symbol ? 7 : 5.5;
-                        const strokeOpacity = hoveredSymbol === point.symbol || isHighlighted ? 0.9 : 0.7;
-                        return (
-                          <circle
-                            cx={props.cx}
-                            cy={props.cy}
-                            r={radius}
-                            fill={point.color}
-                            fillOpacity={highlightActive ? (isHighlighted ? 0.9 : visualizationTheme.hoverFadeOpacity) : 0.85}
-                            stroke={point.color}
-                            strokeOpacity={strokeOpacity}
-                            strokeWidth={1.6}
-                            onMouseEnter={() => {
-                              setHoveredSymbol(point.symbol);
-                              const sectorValue = point.sector && point.sector !== 'Unknown' ? point.sector : null;
-                              setHoveredSector(sectorValue);
-                            }}
-                            onMouseLeave={() => {
-                              setHoveredSymbol(null);
-                              setHoveredSector(null);
-                            }}
-                          />
-                        );
-                      }}
-                    />
-                  ))}
+                  {Array.from(groupedScatter.entries()).map(([label, points]) => {
+                    // Enhanced visibility for selected portfolio
+                    const isSelectedPortfolio = label === portfolioNameMap.get('Selected Portfolio') || 
+                                               label.includes('Selected');
+                    
+                    return (
+                      <Scatter
+                        key={label}
+                        name={label}
+                        data={points}
+                        fill={points[0]?.color ?? visualizationTheme.clusterPalette.fallback}
+                        shape={(props) => {
+                          const point = props.payload as ScatterPoint;
+                          const highlightActive = highlightedSymbols.size > 0;
+                          const isHighlighted = highlightedSymbols.has(point.symbol);
+                          const isHovered = hoveredSymbol === point.symbol;
+                          // Consistent radius for all points - only hover increases size
+                          const radius = isHovered ? 7 : 5;
+                          const strokeWidth = 1.6;
+                          const strokeOpacity = isHovered || isHighlighted ? 1.0 : 0.7;
+                          const fillOpacity = highlightActive 
+                            ? (isHighlighted ? 1.0 : visualizationTheme.hoverFadeOpacity) 
+                            : 0.85;
+                          
+                          return (
+                            <circle
+                              cx={props.cx}
+                              cy={props.cy}
+                              r={radius}
+                              fill={point.color}
+                              fillOpacity={fillOpacity}
+                              stroke={point.color}
+                              strokeOpacity={strokeOpacity}
+                              strokeWidth={strokeWidth}
+                              onMouseEnter={() => {
+                                setHoveredSymbol(point.symbol);
+                                const sectorValue = point.sector && point.sector !== 'Unknown' ? point.sector : null;
+                                setHoveredSector(sectorValue);
+                              }}
+                              onMouseLeave={() => {
+                                setHoveredSymbol(null);
+                                setHoveredSector(null);
+                              }}
+                            />
+                          );
+                        }}
+                      />
+                    );
+                  })}
                   {brushData.length > 0 && (
                     <Brush
                       dataKey="risk"
@@ -1361,9 +1413,17 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart
                   margin={{ top: 24, right: 32, bottom: 36, left: 48 }}
-                  onMouseLeave={() => {
+                  onMouseLeave={(e) => {
+                    // Immediately clear hover state when mouse leaves chart area
                     setHoveredSymbol(null);
                     setHoveredSector(null);
+                  }}
+                  onMouseMove={(e) => {
+                    // Clear hover if mouse moves to empty area (no data point)
+                    if (!e || !e.activePayload || e.activePayload.length === 0) {
+                      setHoveredSymbol(null);
+                      setHoveredSector(null);
+                    }
                   }}
                 >
                   <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
@@ -1387,11 +1447,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     type="number"
                     dataKey="annualReturn"
                     name="Return"
+                    scale="log"
                     tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
                     axisLine={{ stroke: visualizationTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
                     tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
-                    domain={[0, 'auto']}
+                    domain={[0.01, 'auto']}
                     label={{
                       value: 'Return',
                       angle: -90,
@@ -1399,7 +1460,13 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
                     }}
                   />
-                  <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={renderScatterTooltip} />
+                  <RechartsTooltip 
+                    cursor={{ strokeDasharray: '3 3' }} 
+                    content={renderScatterTooltip}
+                    isAnimationActive={false}
+                    animationDuration={0}
+                    active={hoveredSymbol !== null ? true : undefined}
+                  />
                   <Legend
                     wrapperStyle={{
                       paddingTop: 12,
@@ -1411,13 +1478,40 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <HullPolygons hulls={tickerHulls} />
                   {/* Render individual ticker points grouped by portfolio */}
                   {Array.from(
-                    normalizedTickerPoints.reduce((acc, point) => {
-                      if (!acc.has(point.portfolioLabel)) {
-                        acc.set(point.portfolioLabel, []);
+                    (() => {
+                      const filtered = normalizedTickerPoints.filter(point => {
+                        // Filter out zero or negative returns (consistent with Stock Universe filter)
+                        const passes = point.annualReturn > 0 && point.risk >= 0;
+                        if (!passes) {
+                          console.warn(`[Portfolio3PartVisualization] Filtered out ticker ${point.symbol}: return=${point.annualReturn}, risk=${point.risk}`);
+                        }
+                        return passes;
+                      });
+                      
+                      // Log selected portfolio tickers for debugging
+                      const selectedPortfolioFiltered = filtered.filter(p => 
+                        p.portfolioLabel === portfolioNameMap.get('Selected Portfolio') || 
+                        p.portfolioLabel.includes('Selected')
+                      );
+                      const selectedPortfolioExpected = selectedStocks.map(s => s.symbol.toUpperCase());
+                      const selectedPortfolioFound = selectedPortfolioFiltered.map(p => p.symbol.toUpperCase());
+                      const missing = selectedPortfolioExpected.filter(s => !selectedPortfolioFound.includes(s));
+                      
+                      if (missing.length > 0) {
+                        console.warn(`[Portfolio3PartVisualization] ⚠️ Selected portfolio tickers NOT displayed:`, missing);
+                        console.log(`[Portfolio3PartVisualization] Expected:`, selectedPortfolioExpected);
+                        console.log(`[Portfolio3PartVisualization] Found in normalizedTickerPoints:`, selectedPortfolioFound);
+                        console.log(`[Portfolio3PartVisualization] All normalized ticker points:`, normalizedTickerPoints.map(p => ({ symbol: p.symbol, label: p.portfolioLabel, return: p.annualReturn, risk: p.risk })));
                       }
-                      acc.get(point.portfolioLabel)!.push(point);
-                      return acc;
-                    }, new Map<string, ScatterPoint[]>())
+                      
+                      return filtered.reduce((acc, point) => {
+                        if (!acc.has(point.portfolioLabel)) {
+                          acc.set(point.portfolioLabel, []);
+                        }
+                        acc.get(point.portfolioLabel)!.push(point);
+                        return acc;
+                      }, new Map<string, ScatterPoint[]>());
+                    })()
                   ).map(([portfolioLabel, points]) => (
                     <Scatter
                       key={`tickers-${portfolioLabel}`}
@@ -1428,9 +1522,15 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         const point = props.payload as ScatterPoint;
                         const highlightActive = highlightedSymbols.size > 0;
                         const isHighlighted = highlightedSymbols.has(point.symbol);
-                        const radius = hoveredSymbol === point.symbol ? 7 : 5.5;
-                        const strokeOpacity = hoveredSymbol === point.symbol || isHighlighted ? 0.9 : 0.7;
                         const isHovered = hoveredSymbol === point.symbol;
+                        
+                        // Consistent radius for all points - only hover increases size
+                        const radius = isHovered ? 7 : 5;
+                        const strokeWidth = 1.6;
+                        const strokeOpacity = isHovered || isHighlighted ? 1.0 : 0.7;
+                        const fillOpacity = highlightActive 
+                          ? (isHighlighted ? 1.0 : visualizationTheme.hoverFadeOpacity) 
+                          : 0.85;
                         
                         return (
                           <g>
@@ -1439,35 +1539,22 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                               cy={props.cy}
                               r={radius}
                               fill={point.color}
-                              fillOpacity={highlightActive ? (isHighlighted ? 0.9 : visualizationTheme.hoverFadeOpacity) : 0.85}
+                              fillOpacity={fillOpacity}
                               stroke={point.color}
                               strokeOpacity={strokeOpacity}
-                              strokeWidth={1.6}
+                              strokeWidth={strokeWidth}
                               onMouseEnter={() => {
                                 setHoveredSymbol(point.symbol);
                                 const sectorValue = point.sector && point.sector !== 'Unknown' ? point.sector : null;
                                 setHoveredSector(sectorValue);
                               }}
                               onMouseLeave={() => {
+                                // Immediately clear hover state
                                 setHoveredSymbol(null);
                                 setHoveredSector(null);
                               }}
                               style={{ cursor: 'pointer' }}
                             />
-                            {/* Show ticker symbol label only on hover */}
-                            {isHovered && (
-                              <text
-                                x={props.cx}
-                                y={props.cy - 12}
-                                textAnchor="middle"
-                                fontSize={10}
-                                fontWeight={600}
-                                fill={visualizationTheme.text.primary}
-                                pointerEvents="none"
-                              >
-                                {point.symbol}
-                              </text>
-                            )}
                           </g>
                         );
                       }}

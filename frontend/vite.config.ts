@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0",
     port: 8080,
+    // Improve HMR for large files
+    hmr: {
+      overlay: true,
+    },
+    // Watch options to reduce unnecessary reloads
+    watch: {
+      ignored: ['**/node_modules/**', '**/.git/**'],
+    },
     // Proxy API requests to FastAPI backend during development
     proxy: {
       '/api': {

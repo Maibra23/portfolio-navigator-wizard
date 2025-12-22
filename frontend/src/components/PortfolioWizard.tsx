@@ -19,10 +19,31 @@ export interface PortfolioAllocation {
   assetType?: 'stock' | 'bond' | 'etf';
 }
 
+export interface PortfolioMetrics {
+  expectedReturn: number;
+  risk: number;
+  diversificationScore: number;
+  sharpeRatio: number;
+}
+
+// Selected portfolio data from optimization step
+export interface SelectedPortfolioData {
+  source: 'current' | 'optimized';
+  tickers: string[];
+  weights: Record<string, number>;
+  metrics: {
+    expected_return: number;
+    risk: number;
+    sharpe_ratio: number;
+  };
+}
+
 export interface WizardData {
   riskProfile: RiskProfile;
   capital: number;
   selectedStocks: PortfolioAllocation[];
+  portfolioMetrics: PortfolioMetrics | null;
+  selectedPortfolio: SelectedPortfolioData | null;
 }
 
 const STEPS = [
@@ -40,6 +61,8 @@ export const PortfolioWizard = () => {
     riskProfile: null,
     capital: 0,
     selectedStocks: [],
+    portfolioMetrics: null,
+    selectedPortfolio: null,
   });
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
@@ -108,6 +131,7 @@ export const PortfolioWizard = () => {
             onNext={nextStep}
             onPrev={prevStep}
             onStocksUpdate={(selectedStocks) => updateWizardData({ selectedStocks })}
+            onMetricsUpdate={(metrics) => updateWizardData({ portfolioMetrics: metrics })}
             selectedStocks={wizardData.selectedStocks}
             riskProfile={wizardData.riskProfile || 'moderate'}
             capital={wizardData.capital}
@@ -122,6 +146,11 @@ export const PortfolioWizard = () => {
             selectedStocks={wizardData.selectedStocks}
             riskProfile={wizardData.riskProfile || 'moderate'}
             capital={wizardData.capital}
+            portfolioMetrics={wizardData.portfolioMetrics}
+            onPortfolioSelection={(portfolio) => {
+              console.log('📊 Portfolio selection received:', portfolio.source, portfolio.tickers);
+              updateWizardData({ selectedPortfolio: portfolio });
+            }}
           />
         );
       default:

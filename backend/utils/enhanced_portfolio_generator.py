@@ -40,8 +40,8 @@ class EnhancedPortfolioGenerator:
         # Uniqueness disabled globally (can re-enable via code change)
         self.dedup_bypass = True
         
-        # Quality control configuration - OPTIMIZED for speed
-        self.MAX_QUALITY_RETRIES = 1  # Reduced from 10 to 1 for faster generation
+        # Quality control configuration - Increased retries to ensure realistic portfolios
+        self.MAX_QUALITY_RETRIES = 10  # Increased to ensure we find realistic portfolios
         
         # Load realistic quality control ranges from enhanced config
         from .enhanced_portfolio_config import EnhancedPortfolioConfig
@@ -290,8 +290,17 @@ class EnhancedPortfolioGenerator:
                 # Get return target for this portfolio using adaptive targeting
                 return_target = config.get_adaptive_return_target(risk_profile, available_stocks, portfolio_index)
                 
-                # For first 6 portfolios: strict no reuse (max 1 use), for last 6: allow limited reuse (max 2 uses)
-                max_reuse = 1 if portfolio_index < 6 else 2
+                # Allow more ticker reuse for higher-risk profiles to explore more diverse combinations
+                # This enables different portfolio compositions using same tickers with different weights
+                reuse_map = {
+                    'very-conservative': (1, 2),  # Keep strict for conservative
+                    'conservative': (1, 2),       # Keep strict for conservative
+                    'moderate': (2, 3),           # Allow more reuse for diversity
+                    'aggressive': (2, 3),         # Allow more reuse for diversity
+                    'very-aggressive': (2, 4)     # Allow even more reuse for maximum diversity
+                }
+                max_reuse_first, max_reuse_last = reuse_map.get(risk_profile, (1, 2))
+                max_reuse = max_reuse_first if portfolio_index < 6 else max_reuse_last
                 
                 # Filter out heavily used tickers
                 available_tickers = []
@@ -602,11 +611,37 @@ class EnhancedPortfolioGenerator:
         return self._generate_fallback_portfolio(risk_profile, variation_id)
     
     def _meets_enhanced_quality_criteria(self, risk_profile: str, metrics: Dict, return_target: float) -> bool:
-        """Check if portfolio meets enhanced quality criteria"""
+        """Check if portfolio meets enhanced quality criteria with realistic bounds"""
         try:
             expected_return = metrics.get('expected_return', 0)
             risk = metrics.get('risk', 0)
             diversification = metrics.get('diversification_score', 0)
+            
+            # CRITICAL: Realistic absolute maximums (safety check)
+            max_realistic_return = {
+                'very-conservative': 0.15,  # 15% max
+                'conservative': 0.25,       # 25% max
+                'moderate': 0.35,           # 35% max
+                'aggressive': 0.35,         # 35% max (expanded from ticker pool analysis)
+                'very-aggressive': 0.42     # 42% max (expanded to match new return range)
+            }.get(risk_profile, 0.30)
+            
+            max_realistic_risk = {
+                'very-conservative': 0.25,  # 25% max
+                'conservative': 0.30,       # 30% max
+                'moderate': 0.40,           # 40% max
+                'aggressive': 0.45,         # 45% max (expanded to match new risk range)
+                'very-aggressive': 0.58     # 58% max (expanded to match new risk range)
+            }.get(risk_profile, 0.40)
+            
+            # Reject if metrics exceed realistic bounds (CRITICAL SAFETY CHECK)
+            if expected_return > max_realistic_return:
+                logger.warning(f"⚠️ Portfolio rejected: Return {expected_return*100:.1f}% exceeds realistic max {max_realistic_return*100:.0f}%")
+                return False
+            
+            if risk > max_realistic_risk:
+                logger.warning(f"⚠️ Portfolio rejected: Risk {risk*100:.1f}% exceeds realistic max {max_realistic_risk*100:.0f}%")
+                return False
             
             # Get enhanced targets for this risk profile
             targets = self.TARGET_RANGES.get(risk_profile, {})
@@ -617,15 +652,32 @@ class EnhancedPortfolioGenerator:
                 logger.debug(f"    Return {expected_return:.3f} outside range {return_range}")
                 return False
             
-            # Check if return is close to target (within 1% tolerance)
-            if return_target and abs(expected_return - return_target) > 0.01:
-                logger.debug(f"    Return {expected_return:.3f} too far from target {return_target:.3f}")
+            # Check if return is close to target (profile-specific tolerance for improved diversity)
+            # Higher-risk profiles get more tolerance to allow greater portfolio diversity
+            tolerance_map = {
+                'very-conservative': 0.01,   # Keep tight for conservative (1%)
+                'conservative': 0.015,       # Slightly relaxed (1.5%)
+                'moderate': 0.025,           # Increased tolerance for diversity (2.5%)
+                'aggressive': 0.025,         # Increased tolerance for diversity (2.5%)
+                'very-aggressive': 0.03      # Most relaxed for maximum diversity (3%)
+            }
+            tolerance = tolerance_map.get(risk_profile, 0.02)
+            
+            if return_target and abs(expected_return - return_target) > tolerance:
+                logger.debug(f"    Return {expected_return:.3f} too far from target {return_target:.3f} (tolerance: {tolerance})")
                 return False
             
-            # Check risk range
+            # Check risk range (with tighter enforcement)
             risk_range = targets.get('risk_range', (0.10, 0.30))
-            if not (risk_range[0] <= risk <= risk_range[1]):
-                logger.debug(f"    Risk {risk:.3f} outside range {risk_range}")
+            # Allow small variance but enforce strict upper bound
+            risk_max = risk_range[1] + targets.get('max_risk_variance', 0.05)
+            if not (risk_range[0] <= risk <= risk_max):
+                logger.debug(f"    Risk {risk:.3f} outside range {risk_range[0]:.3f}-{risk_max:.3f}")
+                return False
+            
+            # Additional strict check: risk should not exceed realistic max even with variance
+            if risk > max_realistic_risk:
+                logger.debug(f"    Risk {risk:.3f} exceeds realistic max {max_realistic_risk:.3f} even with variance")
                 return False
             
             # Check diversification range
