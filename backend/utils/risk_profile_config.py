@@ -44,21 +44,34 @@ RISK_PROFILE_MAX_RISK: Dict[str, float] = {
     'very-aggressive': 0.55     # UPDATED: 55% - Expanded from 47% to match volatility range (based on pool analysis)
 }
 
+# Maximum risk with 10% buffer for restrictive ranges
+# Applied when base limits are too restrictive and cause excessive rejections
+RISK_PROFILE_MAX_RISK_WITH_BUFFER: Dict[str, float] = {
+    'very-conservative': 0.18 * 1.10,  # 19.8% - 10% buffer
+    'conservative': 0.25 * 1.10,       # 27.5% - 10% buffer
+    'moderate': 0.32 * 1.10,           # 35.2% - 10% buffer
+    'aggressive': 0.42 * 1.10,         # 46.2% - 10% buffer
+    'very-aggressive': 0.55 * 1.10     # 60.5% - 10% buffer
+}
+
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
-def get_max_risk_for_profile(risk_profile: str) -> float:
+def get_max_risk_for_profile(risk_profile: str, use_buffer: bool = False) -> float:
     """
     Get maximum portfolio risk constraint for a risk profile.
     
     Args:
         risk_profile: One of 'very-conservative', 'conservative', 'moderate', 
                      'aggressive', 'very-aggressive'
+        use_buffer: If True, apply 10% buffer for restrictive ranges
     
     Returns:
         Maximum allowed portfolio volatility as decimal (e.g., 0.25 = 25%)
     """
+    if use_buffer:
+        return RISK_PROFILE_MAX_RISK_WITH_BUFFER.get(risk_profile, 0.32 * 1.10)
     return RISK_PROFILE_MAX_RISK.get(risk_profile, 0.32)  # Default to moderate
 
 

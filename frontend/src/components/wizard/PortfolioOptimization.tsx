@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ReferenceArea, ReferenceDot, ReferenceLine, Line, ComposedChart, Customized, Label, AreaChart, Area } from 'recharts';
 import type { TooltipProps, ValueType, NameType } from 'recharts';
 import { API_ENDPOINTS } from '@/config/api';
@@ -546,31 +547,23 @@ export const PortfolioOptimization = ({
     return result;
   }, [currentPortfolio, eligibleTickers, portfolioTickersMetrics]);
 
-  // Process portfolio tickers to handle overlapping points by applying small offsets
-  const portfolioTickersDataWithOffsets = useMemo(() => {
-    if (!portfolioTickersData || portfolioTickersData.length === 0) {
-      return [];
-    }
-
-    // Threshold for considering points as overlapping (1% of typical range)
-    const OVERLAP_THRESHOLD = 0.01; // 1% of data range
-    const OFFSET_MAGNITUDE = 0.005; // 0.5% offset per overlapping point
+  // Helper function to apply jitter to overlapping points
+  const applyJitterToPoints = useCallback((points: any[], overlapThreshold: number = 0.01, offsetMagnitude: number = 0.005) => {
+    if (!points || points.length === 0) return points;
     
-    // Group overlapping points together
-    const groups: number[][] = [];
-    const processed = new Array(portfolioTickersData.length).fill(null);
     const processedIndices = new Set<number>();
+    const result = [...points];
     
-    portfolioTickersData.forEach((ticker, index) => {
+    points.forEach((point, index) => {
       if (processedIndices.has(index)) return;
       
       // Find all points that overlap with this one
       const overlappingIndices = [index];
-      portfolioTickersData.forEach((other, otherIndex) => {
+      points.forEach((other, otherIndex) => {
         if (index === otherIndex || processedIndices.has(otherIndex)) return;
-        const volDiff = Math.abs(ticker.volatility - other.volatility);
-        const retDiff = Math.abs(ticker.expected_return - other.expected_return);
-        if (volDiff < OVERLAP_THRESHOLD && retDiff < OVERLAP_THRESHOLD) {
+        const volDiff = Math.abs((point.volatility || 0) - (other.volatility || 0));
+        const retDiff = Math.abs((point.expected_return || 0) - (other.expected_return || 0));
+        if (volDiff < overlapThreshold && retDiff < overlapThreshold) {
           overlappingIndices.push(otherIndex);
         }
       });
@@ -578,27 +571,144 @@ export const PortfolioOptimization = ({
       // Mark all overlapping indices as processed
       overlappingIndices.forEach(idx => processedIndices.add(idx));
       
-      // If there are overlaps, distribute points in a circle
+      // If there are overlaps, distribute points in a circle pattern
       if (overlappingIndices.length > 1) {
-        overlappingIndices.forEach((idx, positionInGroup) => {
-          const angle = (positionInGroup * (2 * Math.PI)) / overlappingIndices.length;
-          const offsetDistance = OFFSET_MAGNITUDE * Math.max(1, overlappingIndices.length - 1);
-          const originalTicker = portfolioTickersData[idx];
-          
-          processed[idx] = {
-            ...originalTicker,
-            volatility: originalTicker.volatility + Math.cos(angle) * offsetDistance,
-            expected_return: originalTicker.expected_return + Math.sin(angle) * offsetDistance,
+        overlappingIndices.forEach((idx, i) => {
+          const angle = (i * (2 * Math.PI)) / overlappingIndices.length;
+          const offsetDistance = offsetMagnitude * Math.max(1, overlappingIndices.length - 1);
+          result[idx] = {
+            ...result[idx],
+            volatility: (result[idx].volatility || 0) + Math.cos(angle) * offsetDistance,
+            expected_return: (result[idx].expected_return || 0) + Math.sin(angle) * offsetDistance,
           };
         });
-      } else {
-        // No overlap, keep original position
-        processed[index] = ticker;
       }
     });
+    
+    return result;
+  }, []);
 
-    return processed.filter(t => t !== null);
-  }, [portfolioTickersData]);
+  // Helper function to apply jitter to efficient frontier portfolio points (Current, Weights, Market)
+  const applyJitterToPortfolioPoints = useCallback((points: Array<{risk: number, return: number, [key: string]: any}>, overlapThreshold: number = 0.005, offsetMagnitude: number = 0.003) => {
+    if (!points || points.length === 0) return points;
+    
+    const processedIndices = new Set<number>();
+    const result = points.map(p => ({ ...p }));
+    
+    points.forEach((point, index) => {
+      if (processedIndices.has(index)) return;
+      
+      // Find all points that overlap with this one
+      const overlappingIndices = [index];
+      points.forEach((other, otherIndex) => {
+        if (index === otherIndex || processedIndices.has(otherIndex)) return;
+        const riskDiff = Math.abs((point.risk || 0) - (other.risk || 0));
+        const returnDiff = Math.abs((point.return || 0) - (other.return || 0));
+        if (riskDiff < overlapThreshold && returnDiff < overlapThreshold) {
+          overlappingIndices.push(otherIndex);
+        }
+      });
+      
+      // Mark all overlapping indices as processed
+      overlappingIndices.forEach(idx => processedIndices.add(idx));
+      
+      // If there are overlaps, distribute points in a circle pattern
+      if (overlappingIndices.length > 1) {
+        overlappingIndices.forEach((idx, i) => {
+          const angle = (i * (2 * Math.PI)) / overlappingIndices.length;
+          const offsetDistance = offsetMagnitude * Math.max(1, overlappingIndices.length - 1);
+          result[idx] = {
+            ...result[idx],
+            risk: (result[idx].risk || 0) + Math.cos(angle) * offsetDistance,
+            return: (result[idx].return || 0) + Math.sin(angle) * offsetDistance,
+          };
+        });
+      }
+    });
+    
+    return result;
+  }, []);
+
+  // Process portfolio tickers to handle overlapping points by applying small offsets
+  const portfolioTickersDataWithOffsets = useMemo(() => {
+    if (!portfolioTickersData || portfolioTickersData.length === 0) {
+      return [];
+    }
+    return applyJitterToPoints(portfolioTickersData, 0.01, 0.005);
+  }, [portfolioTickersData, applyJitterToPoints]);
+
+  // Process eligible tickers to handle overlapping points
+  const eligibleTickersWithOffsets = useMemo(() => {
+    if (!eligibleTickers || eligibleTickers.length === 0) return [];
+    
+    const filtered = eligibleTickers.filter(t => {
+      if (!t || !t.ticker) return false;
+      if (!currentPortfolio || !Array.isArray(currentPortfolio)) return true;
+      return !currentPortfolio.some(s => s && s.symbol && s.symbol.toUpperCase().trim() === t.ticker.toUpperCase().trim());
+    }).filter(t => {
+      const vol = t?.volatility ?? 0;
+      const ret = t?.expected_return ?? 0;
+      return vol >= 0 && vol <= 1.1 && ret > 0 && ret <= 1.0;
+    }).map(t => ({
+      volatility: t.volatility || 0,
+      expected_return: t.expected_return ?? 0,
+      ticker: t.ticker,
+      company_name: t.company_name,
+      sector: t.sector,
+      isSelected: false
+    }));
+    
+    return applyJitterToPoints(filtered, 0.008, 0.003); // Smaller threshold and offset for eligible tickers
+  }, [eligibleTickers, currentPortfolio, applyJitterToPoints]);
+
+  // Collect and apply jitter to portfolio points (Current, Weights-Optimized, Market-Optimized) for efficient frontier chart
+  const portfolioPointsWithJitter = useMemo(() => {
+    const points: Array<{risk: number, return: number, type: string, sharpe_ratio?: number}> = [];
+    
+    // Add Current Portfolio
+    if (tripleOptimizationResults?.current_portfolio?.metrics) {
+      points.push({
+        risk: tripleOptimizationResults.current_portfolio.metrics.risk,
+        return: tripleOptimizationResults.current_portfolio.metrics.expected_return,
+        sharpe_ratio: tripleOptimizationResults.current_portfolio.metrics.sharpe_ratio,
+        type: 'current'
+      });
+    }
+    
+    // Add Weights-Optimized Portfolio
+    if (tripleOptimizationResults?.weights_optimized_portfolio?.optimized_portfolio?.metrics) {
+      points.push({
+        risk: tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.risk,
+        return: tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.expected_return,
+        sharpe_ratio: tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio,
+        type: 'weights_optimized'
+      });
+    }
+    
+    // Add Market-Optimized Portfolio
+    if (tripleOptimizationResults?.market_optimized_portfolio?.optimized_portfolio?.metrics) {
+      points.push({
+        risk: tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.risk,
+        return: tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.expected_return,
+        sharpe_ratio: tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio,
+        type: 'market_optimized'
+      });
+    }
+    
+    // Add Legacy Optimized Portfolio (for backward compatibility)
+    if (!tripleOptimizationResults && mvoResults?.optimized_portfolio?.metrics) {
+      points.push({
+        risk: mvoResults.optimized_portfolio.metrics.risk,
+        return: mvoResults.optimized_portfolio.metrics.expected_return,
+        sharpe_ratio: mvoResults.optimized_portfolio.metrics.sharpe_ratio,
+        type: 'optimized'
+      });
+    }
+    
+    // Apply jitter to overlapping points
+    return applyJitterToPortfolioPoints(points, 0.005, 0.003);
+  }, [tripleOptimizationResults, mvoResults, applyJitterToPortfolioPoints]);
+
 
   // Calculate default domain ranges for zoom
   const eligibleTickersDomain = useMemo(() => {
@@ -2557,27 +2667,10 @@ export const PortfolioOptimization = ({
                               color: visualizationTheme.legend.color,
                             }}
                           />
-                          {/* All eligible tickers (gray dots) */}
+                          {/* All eligible tickers (gray dots) with jitter for overlapping points */}
                           <Scatter
                             name="Eligible Tickers"
-                            data={(eligibleTickers || []).filter(t => {
-                              if (!t || !t.ticker) return false;
-                              if (!currentPortfolio || !Array.isArray(currentPortfolio)) return true;
-                              // Case-insensitive matching to exclude portfolio tickers
-                              return !currentPortfolio.some(s => s && s.symbol && s.symbol.toUpperCase().trim() === t.ticker.toUpperCase().trim());
-                            }).filter(t => {
-                              // Pre-filter: exclude zero/negative returns and values exceeding limits before mapping
-                              const vol = t?.volatility ?? 0;
-                              const ret = t?.expected_return ?? 0;
-                              return vol >= 0 && vol <= 1.1 && ret > 0 && ret <= 1.0;
-                            }).map(t => ({
-                              volatility: t.volatility || 0,
-                              expected_return: t.expected_return ?? 0,
-                              ticker: t.ticker,
-                              company_name: t.company_name,
-                              sector: t.sector,
-                              isSelected: false
-                            }))}
+                            data={eligibleTickersWithOffsets}
                             fill="#94a3b8"
                             fillOpacity={0.6}
                             shape={(props) => {
@@ -3427,15 +3520,10 @@ export const PortfolioOptimization = ({
                             )}
                             
                             {/* Weights-Optimized Portfolio - BLUE diamond shape */}
-                            {visibleSeries.weightsOptimized && tripleOptimizationResults?.weights_optimized_portfolio?.optimized_portfolio?.metrics && (
+                            {visibleSeries.weightsOptimized && portfolioPointsWithJitter.find(p => p.type === 'weights_optimized') && (
                               <Scatter
                                 name="Weights-Optimized Portfolio"
-                                data={[{
-                                  risk: tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.risk,
-                                  return: tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.expected_return,
-                                  sharpe_ratio: tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio,
-                                  type: 'weights_optimized' as const
-                                }]}
+                                data={[portfolioPointsWithJitter.find(p => p.type === 'weights_optimized')!]}
                                 fill="#3b82f6"
                                 fillOpacity={1}
                                 shape={(props) => {
@@ -3464,15 +3552,10 @@ export const PortfolioOptimization = ({
                             )}
                             
                             {/* Market-Optimized Portfolio - GREEN star shape */}
-                            {visibleSeries.marketOptimized && tripleOptimizationResults?.market_optimized_portfolio?.optimized_portfolio?.metrics && (
+                            {visibleSeries.marketOptimized && portfolioPointsWithJitter.find(p => p.type === 'market_optimized') && (
                               <Scatter
                                 name="Market-Optimized Portfolio"
-                                data={[{
-                                  risk: tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.risk,
-                                  return: tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.expected_return,
-                                  sharpe_ratio: tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio,
-                                  type: 'market_optimized' as const
-                                }]}
+                                data={[portfolioPointsWithJitter.find(p => p.type === 'market_optimized')!]}
                                 fill="#22c55e"
                                 fillOpacity={1}
                                 shape={(props) => {
@@ -3503,15 +3586,10 @@ export const PortfolioOptimization = ({
                             )}
                             
                             {/* Legacy: Optimized Portfolio (for backward compatibility) */}
-                            {!tripleOptimizationResults && mvoResults?.optimized_portfolio?.metrics && (
+                            {!tripleOptimizationResults && portfolioPointsWithJitter.find(p => p.type === 'optimized') && (
                               <Scatter
                                 name="Optimized Portfolio"
-                                data={[{
-                                  risk: mvoResults.optimized_portfolio.metrics.risk,
-                                  return: mvoResults.optimized_portfolio.metrics.expected_return,
-                                  sharpe_ratio: mvoResults.optimized_portfolio.metrics.sharpe_ratio,
-                                  type: 'optimized' as const
-                                }]}
+                                data={[portfolioPointsWithJitter.find(p => p.type === 'optimized')!]}
                                 fill="#22c55e"
                                 fillOpacity={1}
                                 shape={(props) => {
@@ -3674,7 +3752,16 @@ export const PortfolioOptimization = ({
                                         <svg width="14" height="14" viewBox="0 0 16 16">
                                           <polygon points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6" fill="#22c55e" stroke="#fff" strokeWidth="0.5"/>
                                         </svg>
-                                        <span className="font-medium text-sm" style={{ color: visualizationTheme.text.primary }}>Market-Opt</span>
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="font-medium text-sm cursor-help" style={{ color: visualizationTheme.text.primary }}>Market-Opt</span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="max-w-xs">Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
                                         {tripleOptimizationResults.optimization_metadata?.recommendation === 'market' && (
                                           <span className="text-xs font-medium" style={{ color: '#22c55e' }}>Recommended</span>
                                         )}
@@ -4120,13 +4207,13 @@ export const PortfolioOptimization = ({
                       <CardTitle className="text-lg">Performance Summary</CardTitle>
                 </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Current vs Optimized - Uses Triple or Dual Results */}
-                        <div className="p-4 rounded-lg bg-gradient-to-br from-red-50 to-green-50 border">
-                          <div className="text-sm font-medium text-gray-600 mb-2">
+                        <div className="p-6 rounded-lg bg-gradient-to-br from-red-50 to-green-50 border">
+                          <div className="text-base font-semibold text-gray-700 mb-4">
                             {tripleOptimizationResults ? 'Current → Recommended' : 'Current → Optimized'}
                           </div>
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                       {(() => {
                               // Use triple optimization if available, otherwise fall back to dual
                               let returnDiff = 0;
@@ -4157,21 +4244,42 @@ export const PortfolioOptimization = ({
                               
                               return (
                                 <>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Return</span>
-                                    <span className={`font-semibold ${returnDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  <div className="flex justify-between items-center py-1 group relative">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-medium text-gray-700">Expected Return</span>
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                        <div className="font-semibold mb-1">Expected Return</div>
+                                        <div>The annualized return you can expect from this portfolio based on historical data. Positive values indicate potential gains, negative values indicate potential losses.</div>
+                                      </div>
+                                      <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                    <span className={`text-lg font-bold ${returnDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                       {returnDiff >= 0 ? '+' : ''}{(returnDiff * 100).toFixed(1)}%
                                     </span>
                                           </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Risk</span>
-                                    <span className={`font-semibold ${riskDiff <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  <div className="flex justify-between items-center py-1 group relative">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-medium text-gray-700">Risk (Volatility)</span>
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                        <div className="font-semibold mb-1">Risk (Volatility)</div>
+                                        <div>Measures the annual volatility (standard deviation) of returns. Higher risk means more price fluctuations. Lower risk is generally better, as it indicates more stable returns.</div>
+                                      </div>
+                                      <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                    <span className={`text-lg font-bold ${riskDiff <= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                       {riskDiff <= 0 ? '' : '+'}{(riskDiff * 100).toFixed(1)}%
                                     </span>
                                         </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Sharpe</span>
-                                    <span className={`font-semibold ${sharpeDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  <div className="flex justify-between items-center py-1 group relative border-t border-gray-200 pt-2 mt-2">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-medium text-gray-700">Sharpe Ratio</span>
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                        <div className="font-semibold mb-1">Sharpe Ratio</div>
+                                        <div>Measures risk-adjusted returns. Higher values indicate better returns per unit of risk. Values above 1 are considered good, above 2 are excellent. Negative values indicate the portfolio underperforms the risk-free rate.</div>
+                                      </div>
+                                      <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                    <span className={`text-lg font-bold ${sharpeDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                       {sharpeDiff >= 0 ? '+' : ''}{sharpeDiff.toFixed(2)}
                                     </span>
                                     </div>
@@ -4182,9 +4290,16 @@ export const PortfolioOptimization = ({
                                   </div>
                                   
                         {/* Risk Profile Compliance */}
-                        <div className="p-4 rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 border">
-                          <div className="text-sm font-medium text-gray-600 mb-2">Risk Profile Compliance</div>
-                          <div className="space-y-2">
+                        <div className="p-6 rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 border">
+                          <div className="text-base font-semibold text-gray-700 mb-4 flex items-center gap-1 group relative">
+                            Risk Profile Compliance
+                            <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                              <div className="font-semibold mb-1">Risk Profile Compliance</div>
+                              <div>Checks if the portfolio's volatility (risk) stays within the maximum allowed for your selected risk profile. Each profile has a risk limit: Very-Conservative (18%), Conservative (25%), Moderate (32%), Aggressive (35%), Very-Aggressive (47%).</div>
+                            </div>
+                            <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                          <div className="space-y-3">
                             {(() => {
                               // Risk limits based on volatility range upper bounds (standardized config)
                               const riskProfileMaxRisk: Record<string, number> = {
@@ -4215,21 +4330,25 @@ export const PortfolioOptimization = ({
                               
                               return (
                                 <>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Max Allowed</span>
-                                    <span className="font-semibold text-indigo-600">{(maxRisk * 100).toFixed(0)}%</span>
+                                  <div className="flex justify-between items-center py-1">
+                                    <span className="text-sm font-medium text-gray-700">Max Allowed</span>
+                                    <span className="text-lg font-bold text-indigo-600">{(maxRisk * 100).toFixed(0)}%</span>
                                           </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Your Risk</span>
-                                    <span className={`font-semibold ${isCompliant ? 'text-green-600' : 'text-red-600'}`}>
+                                  <div className="flex justify-between items-center py-1">
+                                    <span className="text-sm font-medium text-gray-700">Portfolio Risk</span>
+                                    <span className={`text-lg font-bold ${isCompliant ? 'text-green-600' : 'text-red-600'}`}>
                                       {(optimizedRisk * 100).toFixed(1)}%
                                     </span>
                                 </div>
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-sm text-gray-600">Status</span>
-                                    <Badge variant={isCompliant ? 'default' : 'destructive'} className={isCompliant ? 'bg-green-500' : ''}>
+                                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                                    {isCompliant ? (
+                                      <CheckCircle className="h-5 w-5 text-green-600" />
+                                    ) : (
+                                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                                    )}
+                                    <span className={`text-sm font-semibold ${isCompliant ? 'text-green-600' : 'text-red-600'}`}>
                                       {isCompliant ? '✓ Compliant' : '⚠ Over Limit'}
-                                      </Badge>
+                                    </span>
                                         </div>
                                 </>
                               );
@@ -4237,44 +4356,6 @@ export const PortfolioOptimization = ({
                                     </div>
                                   </div>
                         
-                        {/* Recommendation Summary */}
-                        {tripleOptimizationResults && (
-                          <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-purple-50 border">
-                            <div className="text-sm font-medium text-gray-600 mb-2">System Recommendation</div>
-                            <div className="space-y-2">
-                              {(() => {
-                                const recommendation = tripleOptimizationResults.optimization_metadata?.recommendation || 'current';
-                                const recommendationLabels: Record<string, string> = {
-                                  'current': 'Keep Current Portfolio',
-                                  'weights': 'Weights-Optimized',
-                                  'market': 'Market-Optimized'
-                                };
-                                const recommendationColors: Record<string, string> = {
-                                  'current': 'text-red-600',
-                                  'weights': 'text-blue-600',
-                                  'market': 'text-green-600'
-                                };
-                                
-                                return (
-                                  <>
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-600">Recommended</span>
-                                      <span className={`font-semibold ${recommendationColors[recommendation]}`}>
-                                        {recommendationLabels[recommendation]}
-                                      </span>
-                                </div>
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-600">Market Exploration</span>
-                                      <Badge variant={tripleOptimizationResults.optimization_metadata?.market_exploration_successful ? 'default' : 'secondary'}>
-                                        {tripleOptimizationResults.optimization_metadata?.market_exploration_successful ? '✓ Success' : '✗ Failed'}
-                                      </Badge>
-                              </div>
-                                  </>
-                                );
-                      })()}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -4416,9 +4497,14 @@ export const PortfolioOptimization = ({
                               return (
                                 <div key={factor.name} className="space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 group relative">
                                       <Icon className="h-4 w-4 text-gray-500" />
                                       <span className="text-sm font-medium text-gray-700">{factor.name}</span>
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                        <div className="font-semibold mb-1">{factor.name}</div>
+                                        <div>{factor.tooltip || factor.description}</div>
+                                      </div>
+                                      <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
                                     <span className={`text-sm font-bold ${getScoreColor(factor.score)}`}>
                                       {factor.score.toFixed(0)}/100
@@ -4948,17 +5034,38 @@ export const PortfolioOptimization = ({
                         
                           {/* Loss Probability Scenarios */}
                           <div className="space-y-3">
-                            <div className="text-sm font-medium text-gray-700">Loss Probability Scenarios</div>
+                            <div className="text-sm font-medium text-gray-700 flex items-center gap-1 group relative">
+                              Loss Probability Scenarios
+                              <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-72 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                <div className="font-semibold mb-1">Loss Probability Scenarios</div>
+                                <div>Based on Monte Carlo simulations, these show the probability that your portfolio will experience losses exceeding the specified thresholds over a 1-year period. Lower percentages indicate better downside protection. For example, a 5% probability of 10%+ loss means there's a 5% chance your portfolio could lose 10% or more in a year.</div>
+                              </div>
+                              <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
                             <div className="grid grid-cols-2 gap-3">
-                              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-                                <div className="text-xs font-medium text-red-700 mb-2">10% Loss Threshold</div>
+                              <div className="p-3 rounded-lg bg-red-50 border border-red-200 group relative">
+                                <div className="text-xs font-medium text-red-700 mb-2 flex items-center gap-1">
+                                  10% Loss Threshold
+                                  <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                    <div className="font-semibold mb-1">10% Loss Threshold</div>
+                                    <div>The probability that your portfolio will lose 10% or more in value over a 1-year period, based on Monte Carlo simulations. This helps assess downside risk.</div>
+                                  </div>
+                                  <Info className="h-3 w-3 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
                                 <div className="text-2xl font-bold text-red-800">
                                   {selectedMonteCarlo.probability_loss_thresholds?.loss_10pct?.toFixed(1) || 0}%
                                   </div>
                                 <div className="text-xs text-red-600 mt-1">Probability of 10%+ loss</div>
                                   </div>
-                              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-                                <div className="text-xs font-medium text-red-700 mb-2">20% Loss Threshold</div>
+                              <div className="p-3 rounded-lg bg-red-50 border border-red-200 group relative">
+                                <div className="text-xs font-medium text-red-700 mb-2 flex items-center gap-1">
+                                  20% Loss Threshold
+                                  <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                    <div className="font-semibold mb-1">20% Loss Threshold</div>
+                                    <div>The probability that your portfolio will lose 20% or more in value over a 1-year period, based on Monte Carlo simulations. This represents significant downside risk.</div>
+                                  </div>
+                                  <Info className="h-3 w-3 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
                                 <div className="text-2xl font-bold text-red-800">
                                   {selectedMonteCarlo.probability_loss_thresholds?.loss_20pct?.toFixed(1) || 0}%
                                   </div>

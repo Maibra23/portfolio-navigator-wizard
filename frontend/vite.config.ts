@@ -11,10 +11,14 @@ export default defineConfig(({ mode }) => ({
     // Improve HMR for large files
     hmr: {
       overlay: true,
+      timeout: 5000,
     },
-    // Watch options to reduce unnecessary reloads
+    // Watch options to reduce unnecessary reloads and prevent EIO errors from OneDrive
     watch: {
-      ignored: ['**/node_modules/**', '**/.git/**'],
+      ignored: ['**/node_modules/**', '**/.git/**', '**/.OneDrive*/**'],
+      usePolling: true,  // More stable with cloud-synced folders like OneDrive
+      interval: 1000,    // Check every 1 second instead of instant
+      binaryInterval: 3000,
     },
     // Proxy API requests to FastAPI backend during development
     proxy: {

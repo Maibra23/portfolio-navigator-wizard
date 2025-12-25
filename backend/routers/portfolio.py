@@ -2435,6 +2435,87 @@ def compute_portfolio_metrics_with_weights(tickers: List[str], weights: Dict[str
                 "sharpe_ratio": 0.0
             }
 
+def find_matching_portfolio_in_redis(user_tickers: List[str], user_weights: Dict[str, float], 
+                                     risk_profile: str) -> Optional[Dict[str, Any]]:
+    """
+    Find a matching portfolio in Redis and return its precomputed metrics.
+    
+    Returns:
+        Dict with precomputed metrics if match found, None otherwise
+    """
+    try:
+        r = _rds.redis_client
+        if not r:
+            return None
+        
+        bucket_key = f"portfolio_bucket:{risk_profile}"
+        
+        # Check up to 60 portfolios (standard bucket size)
+        for i in range(60):
+            portfolio_key = f"{bucket_key}:{i}"
+            portfolio_data = r.get(portfolio_key)
+            
+            if not portfolio_data:
+                continue
+            
+            try:
+                portfolio = json.loads(portfolio_data)
+                allocations = portfolio.get('allocations', [])
+                
+                if not allocations:
+                    continue
+                
+                # Check if tickers match
+                portfolio_tickers = {a.get('symbol', '').upper() for a in allocations}
+                user_tickers_set = {t.upper() for t in user_tickers}
+                
+                if portfolio_tickers != user_tickers_set:
+                    continue
+                
+                # Check if allocations match (within 1% tolerance)
+                portfolio_allocations = {a.get('symbol', '').upper(): a.get('allocation', 0) for a in allocations}
+                matches = True
+                for ticker in user_tickers_set:
+                    user_alloc = user_weights.get(ticker.upper(), 0) * 100  # Convert to percentage
+                    portfolio_alloc = portfolio_allocations.get(ticker.upper(), 0)
+                    if abs(user_alloc - portfolio_alloc) > 1.0:  # 1% tolerance
+                        matches = False
+                        break
+                
+                if matches:
+                    # Found matching portfolio - return precomputed metrics
+                    # Handle both percentage (0-100) and decimal (0-1) formats
+                    expected_return = portfolio.get('expectedReturn', 0)
+                    if expected_return > 1.0:  # If > 1, it's a percentage, convert to decimal
+                        expected_return = expected_return / 100.0
+                    
+                    risk = portfolio.get('risk', 0)
+                    if risk > 1.0:  # If > 1, it's a percentage, convert to decimal
+                        risk = risk / 100.0
+                    
+                    sharpe_ratio = portfolio.get('sharpeRatio', None)
+                    # If sharpeRatio is missing, calculate it
+                    if sharpe_ratio is None or sharpe_ratio == 0:
+                        from utils.portfolio_mvo_optimizer import PortfolioMVOptimizer
+                        optimizer_temp = PortfolioMVOptimizer()
+                        risk_free_rate = optimizer_temp.risk_free_rate
+                        sharpe_ratio = (expected_return - risk_free_rate) / risk if risk > 0 else 0.0
+                    
+                    logger.info(f"✅ Found matching portfolio in Redis for {risk_profile}, using precomputed metrics (Return: {expected_return:.2%}, Risk: {risk:.2%}, Sharpe: {sharpe_ratio:.2f})")
+                    return {
+                        "expected_return": expected_return,
+                        "risk": risk,
+                        "sharpe_ratio": sharpe_ratio
+                    }
+            except Exception as e:
+                logger.debug(f"Error checking portfolio {i}: {e}")
+                continue
+        
+        return None
+    except Exception as e:
+        logger.debug(f"Error searching Redis for matching portfolio: {e}")
+        return None
+
 def optimize_weights_only(tickers: List[str], risk_profile: str, optimizer, 
                          optimization_type: str = "max_sharpe") -> Dict[str, Any]:
     """Optimize weights of current tickers only (no new tickers)."""
@@ -2560,6 +2641,85 @@ def decide_best_portfolio(current: Dict[str, Any], weights_opt: Dict[str, Any],
         return "weights"
     
     # Current is best
+    return "current"
+
+def decide_best_portfolio_v2(current: Dict[str, Any], weights_opt: Dict[str, Any], 
+                             market_opt: Optional[Dict[str, Any]], risk_profile: str) -> str:
+    """
+    NEW Recommendation Logic (Conceptual Implementation):
+    
+    Compare Sharpe ratios across all portfolios.
+    If an optimized portfolio has significantly better Sharpe (e.g., >0.10 improvement), 
+    recommend it even with a moderate risk increase.
+    Only default to "current" if it genuinely has the best risk-adjusted return or 
+    if optimized portfolios have unacceptable risk levels.
+    """
+    from utils.risk_profile_config import RISK_PROFILE_MAX_RISK_WITH_BUFFER
+    
+    SIGNIFICANT_SHARPE_IMPROVEMENT = 0.10  # Threshold for "significantly better"
+    MODERATE_RISK_INCREASE = 0.05  # 5% absolute increase considered moderate
+    
+    # Get maximum risk limit with 10% buffer
+    max_risk_limit = RISK_PROFILE_MAX_RISK_WITH_BUFFER.get(risk_profile, 0.32 * 1.10)
+    
+    # Extract metrics
+    current_sharpe = current.get("sharpe_ratio", 0.0)
+    current_risk = current.get("risk", 0.0)
+    
+    weights_sharpe = weights_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+    weights_risk = weights_opt.get("metrics", {}).get("risk", 0.0)
+    
+    # Calculate Sharpe improvements
+    weights_vs_current_sharpe = weights_sharpe - current_sharpe
+    weights_risk_increase = weights_risk - current_risk
+    
+    market_sharpe = 0.0
+    market_risk = 0.0
+    market_vs_current_sharpe = 0.0
+    market_vs_weights_sharpe = 0.0
+    market_risk_increase = 0.0
+    
+    if market_opt:
+        market_sharpe = market_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+        market_risk = market_opt.get("metrics", {}).get("risk", 0.0)
+        market_vs_current_sharpe = market_sharpe - current_sharpe
+        market_vs_weights_sharpe = market_sharpe - weights_sharpe
+        market_risk_increase = market_risk - current_risk
+    
+    # Check risk compliance (with buffer)
+    weights_risk_compliant = weights_risk <= max_risk_limit
+    market_risk_compliant = market_risk <= max_risk_limit if market_opt else False
+    
+    # Strategy: Compare all portfolios by Sharpe ratio
+    # Priority: Market > Weights > Current (if Sharpe improvements are significant)
+    
+    # 1. Check Market portfolio
+    if market_opt and market_risk_compliant:
+        # Market is acceptable if:
+        # - Significantly better Sharpe than current (>0.10) AND risk increase is moderate (≤5%)
+        # OR
+        # - Significantly better Sharpe than weights (>0.10) AND risk is acceptable
+        if (market_vs_current_sharpe >= SIGNIFICANT_SHARPE_IMPROVEMENT and 
+            market_risk_increase <= MODERATE_RISK_INCREASE) or \
+           (market_vs_weights_sharpe >= SIGNIFICANT_SHARPE_IMPROVEMENT):
+            return "market"
+    
+    # 2. Check Weights portfolio
+    if weights_risk_compliant:
+        # Weights is acceptable if:
+        # - Significantly better Sharpe than current (>0.10) AND risk increase is moderate (≤5%)
+        # OR
+        # - Better Sharpe than current (≥0.05) AND risk doesn't increase
+        if (weights_vs_current_sharpe >= SIGNIFICANT_SHARPE_IMPROVEMENT and 
+            weights_risk_increase <= MODERATE_RISK_INCREASE) or \
+           (weights_vs_current_sharpe >= 0.05 and weights_risk_increase <= 0.0):
+            return "weights"
+    
+    # 3. Default to Current
+    # Only if:
+    # - Current has best Sharpe ratio, OR
+    # - Optimized portfolios violate risk limits, OR
+    # - Optimized portfolios don't provide significant improvement
     return "current"
 
 def build_triple_comparison(current: Dict[str, Any], weights_opt: Dict[str, Any], 
@@ -3325,13 +3485,25 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
         optimizer = get_mvo_optimizer()
         
         # Step 1: Calculate current portfolio metrics using ACTUAL weights
-        logger.info(f"🔧 Step 1: Calculating current portfolio metrics with actual weights from {len(user_tickers)} tickers...")
-        current_metrics = compute_portfolio_metrics_with_weights(
-            tickers=user_tickers,
-            weights=request.user_weights,
-            optimizer=optimizer,
-            min_overlap_months=24
+        # First, try to find matching portfolio in Redis with precomputed metrics
+        logger.info(f"🔧 Step 1: Checking Redis for precomputed metrics for current portfolio...")
+        current_metrics = find_matching_portfolio_in_redis(
+            user_tickers=user_tickers,
+            user_weights=request.user_weights,
+            risk_profile=request.risk_profile
         )
+        
+        if current_metrics is None:
+            # No match found in Redis - calculate metrics from live data
+            logger.info(f"🔧 Step 1: No matching portfolio in Redis, calculating metrics with actual weights from {len(user_tickers)} tickers...")
+            current_metrics = compute_portfolio_metrics_with_weights(
+                tickers=user_tickers,
+                weights=request.user_weights,
+                optimizer=optimizer,
+                min_overlap_months=24
+            )
+        else:
+            logger.info(f"✅ Step 1: Using precomputed metrics from Redis (Return: {current_metrics['expected_return']:.2%}, Risk: {current_metrics['risk']:.2%}, Sharpe: {current_metrics['sharpe_ratio']:.2f})")
         
         current_portfolio_data = {
             "tickers": user_tickers,
@@ -3634,8 +3806,8 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                 logger.warning(f"⚠️ Market exploration failed: {e}")
                 market_optimized_response = None
         
-        # Step 4: Decision framework (for recommendation)
-        recommendation = decide_best_portfolio(
+        # Step 4: Decision framework (for recommendation) - Using improved v2 logic
+        recommendation = decide_best_portfolio_v2(
             current=current_metrics,
             weights_opt=weights_optimized_data,
             market_opt=market_optimized_response.optimized_portfolio if market_optimized_response else None,

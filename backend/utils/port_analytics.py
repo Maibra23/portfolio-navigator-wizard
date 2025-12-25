@@ -1914,7 +1914,7 @@ class PortfolioAnalytics:
         Calculate Consistency Score based on coefficient of variation
         
         Lower CV means more consistent returns relative to the mean.
-        Score is 100 - (CV * 100), capped at 0-100 range.
+        Uses improved formula: score = 100 * exp(-cv) for better scaling.
         
         Args:
             returns: Optional time series of returns
@@ -1925,25 +1925,39 @@ class PortfolioAnalytics:
             Consistency score (0-100)
         """
         try:
+            import math
+            
             if returns is not None and len(returns) > 12:
                 # Calculate from actual returns
                 mean_return = returns.mean()
                 std_return = returns.std()
                 
-                if mean_return != 0:
+                if abs(mean_return) > 1e-6:  # Avoid division by zero
                     cv = abs(std_return / mean_return)
                 else:
-                    cv = float('inf')
+                    # If mean is near zero, use risk-based estimate
+                    if risk > 0:
+                        cv = risk / 0.15  # Assume 15% typical return for normalization
+                    else:
+                        return 50.0  # Default if no data
             else:
                 # Estimate from expected return and risk
-                if expected_return != 0:
+                if abs(expected_return) > 1e-6:  # Avoid division by zero
                     cv = abs(risk / expected_return)
                 else:
-                    cv = float('inf')
+                    # If expected return is zero/negative, use risk-based estimate
+                    if risk > 0:
+                        cv = risk / 0.15  # Assume 15% typical return for normalization
+                    else:
+                        return 50.0  # Default if no data
             
-            # Convert to score (lower CV = higher consistency)
-            # CV of 0 = 100 score, CV of 1 = 0 score
-            consistency_score = max(0, min(100, 100 - (cv * 100)))
+            # Improved formula: exponential decay for better scaling
+            # CV of 0 = 100, CV of 0.5 = ~61, CV of 1 = ~37, CV of 2 = ~14
+            # This gives non-zero scores even for high CV values
+            consistency_score = 100 * math.exp(-min(cv, 3.0))  # Cap CV at 3 for stability
+            
+            # Ensure score is in valid range
+            consistency_score = max(0.0, min(100.0, consistency_score))
             
             return round(float(consistency_score), 1)
             

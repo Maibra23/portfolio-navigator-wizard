@@ -204,6 +204,28 @@ class PortfolioMVOptimizer:
             portfolio_risk = ef.portfolio_performance(verbose=False)[1]
             sharpe_ratio = ef.portfolio_performance(verbose=False)[2]
             
+            # Apply safeguards to prevent unrealistic metrics
+            # 1. Cap expected return at realistic maximum (50% annual)
+            MAX_REALISTIC_RETURN = 0.50
+            if portfolio_return > MAX_REALISTIC_RETURN:
+                logger.warning(f"⚠️ Capping unrealistic return {portfolio_return:.2%} to {MAX_REALISTIC_RETURN:.1%}")
+                portfolio_return = MAX_REALISTIC_RETURN
+            
+            # 2. Apply minimum risk floor (8% annual volatility minimum)
+            MIN_RISK_FLOOR = 0.08
+            if portfolio_risk < MIN_RISK_FLOOR:
+                logger.debug(f"⚠️ Applying minimum risk floor: {portfolio_risk:.2%} → {MIN_RISK_FLOOR:.1%}")
+                portfolio_risk = MIN_RISK_FLOOR
+            
+            # 3. Recalculate Sharpe ratio with adjusted metrics
+            sharpe_ratio = (portfolio_return - self.risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
+            
+            # 4. Cap Sharpe ratio at realistic maximum (2.5)
+            MAX_REALISTIC_SHARPE = 2.5
+            if sharpe_ratio > MAX_REALISTIC_SHARPE:
+                logger.warning(f"⚠️ Capping unrealistic Sharpe ratio {sharpe_ratio:.2f} to {MAX_REALISTIC_SHARPE:.1f}")
+                sharpe_ratio = MAX_REALISTIC_SHARPE
+            
             # Convert weights dict to list in ticker order
             weights_list = [weights.get(ticker, 0.0) for ticker in tickers_ordered]
             
@@ -269,10 +291,16 @@ class PortfolioMVOptimizer:
                 weights_min_var = ef_min_var.clean_weights()
                 min_var_perf = ef_min_var.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                 weights_dict_min_var = dict(weights_min_var)
+                
+                # Apply safeguards
+                ret_val = min(float(min_var_perf[0]), 0.50)
+                risk_val = max(float(min_var_perf[1]), 0.08)
+                sharpe_val = min((ret_val - self.risk_free_rate) / risk_val if risk_val > 0 else 0, 2.5)
+                
                 frontier_points.append({
-                    "return": float(min_var_perf[0]),
-                    "risk": float(min_var_perf[1]),
-                    "sharpe_ratio": float(min_var_perf[2]),
+                    "return": ret_val,
+                    "risk": risk_val,
+                    "sharpe_ratio": sharpe_val,
                     "weights": weights_dict_min_var,
                     "weights_list": [weights_dict_min_var.get(ticker, 0.0) for ticker in tickers_ordered],
                     "type": "frontier"
@@ -303,14 +331,19 @@ class PortfolioMVOptimizer:
                     sigma_val = portfolio_perf[1]  # Volatility (risk)
                     sharpe = portfolio_perf[2]  # Sharpe ratio
                     
+                    # Apply safeguards
+                    mu_val = min(float(mu_val), 0.50)
+                    sigma_val = max(float(sigma_val), 0.08)
+                    sharpe = min((mu_val - self.risk_free_rate) / sigma_val if sigma_val > 0 else 0, 2.5)
+                    
                     # Convert weights dict to list
                     weights_dict = dict(weights)
                     weights_list = [weights_dict.get(ticker, 0.0) for ticker in tickers_ordered]
                     
                     frontier_points.append({
-                        "return": float(mu_val),
-                        "risk": float(sigma_val),
-                        "sharpe_ratio": float(sharpe),
+                        "return": mu_val,
+                        "risk": sigma_val,
+                        "sharpe_ratio": sharpe,
                         "weights": weights_dict,
                         "weights_list": weights_list,
                         "type": "frontier"
@@ -591,8 +624,17 @@ class PortfolioMVOptimizer:
             # Calculate portfolio risk
             portfolio_risk = np.sqrt(np.dot(weights_array, np.dot(sigma_df.values, weights_array)))
             
+            # Apply safeguards
+            MAX_REALISTIC_RETURN = 0.50
+            MIN_RISK_FLOOR = 0.08
+            MAX_REALISTIC_SHARPE = 2.5
+            
+            portfolio_return = min(portfolio_return, MAX_REALISTIC_RETURN)
+            portfolio_risk = max(portfolio_risk, MIN_RISK_FLOOR)
+            
             # Calculate Sharpe ratio
             sharpe_ratio = (portfolio_return - self.risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
+            sharpe_ratio = min(sharpe_ratio, MAX_REALISTIC_SHARPE)
             
             return {
                 "expected_return": float(portfolio_return),
