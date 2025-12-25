@@ -11,13 +11,15 @@ import numpy as np
 from datetime import datetime, timedelta, date
 import gzip
 import redis
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.port_analytics import PortfolioAnalytics
 from utils.redis_portfolio_manager import RedisPortfolioManager
 from utils.portfolio_stock_selector import PortfolioStockSelector
-from utils.portfolio_auto_regeneration_service import PortfolioAutoRegenerationService
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
+from utils.portfolio_mvo_optimizer import PortfolioMVOptimizer
 from utils.logging_utils import get_job_logger
+from pypfopt import EfficientFrontier
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from datetime import datetime, timedelta, date
 import random
@@ -366,15 +368,9 @@ def optimize_mean_variance_weights(returns_data: Dict[str, pd.Series], risk_prof
         expected_returns = returns_df.mean() * 252  # Annualized
         cov_matrix = returns_df.cov() * 252  # Annualized
         
-        # Risk profile constraints
-        risk_constraints = {
-            'very-conservative': 0.08,
-            'conservative': 0.12,
-            'moderate': 0.16,
-            'aggressive': 0.22,
-            'very-aggressive': 0.28
-        }
-        max_risk = risk_constraints.get(risk_profile, 0.16)
+        # Risk profile constraints - using centralized config
+        from utils.risk_profile_config import get_max_risk_for_profile
+        max_risk = get_max_risk_for_profile(risk_profile)
         
         # Simple optimization: minimize variance subject to return constraint
         n_assets = len(expected_returns)
@@ -724,6 +720,3251 @@ def refresh_tickers():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error refreshing tickers: {str(e)}")
 
+# ============================================================================
+# Agent 1: Optimization Data Preparation Endpoints
+# ============================================================================
+
+# ============================================================================
+# Cache Invalidation and Refresh Functions
+# ============================================================================
+
+# Global flag to prevent multiple simultaneous cache refreshes
+_refresh_in_progress = False
+
+def _invalidate_eligible_tickers_cache():
+    """
+    Invalidate all eligible tickers cache entries.
+    Called when ticker data is refreshed to ensure cache stays in sync.
+    """
+    if not _rds.redis_client:
+        return
+    
+    try:
+        # Find all eligible tickers cache keys
+        pattern = "optimization:eligible_tickers:*"
+        keys = _rds.redis_client.keys(pattern)
+        if keys:
+            _rds.redis_client.delete(*keys)
+            logger.info(f"🗑️  Invalidated {len(keys)} eligible tickers cache entries")
+        else:
+            logger.debug("No eligible tickers cache entries to invalidate")
+    except Exception as e:
+        logger.error(f"❌ Error invalidating eligible tickers cache: {e}")
+
+def _trigger_eligible_tickers_refresh():
+    """
+    Trigger background refresh of eligible tickers cache.
+    Called after ticker data is refreshed to rebuild the cache automatically.
+    Prevents multiple simultaneous refreshes using a global flag.
+    """
+    global _refresh_in_progress
+    
+    # Prevent multiple simultaneous refreshes
+    if _refresh_in_progress:
+        logger.debug("⏳ Eligible tickers cache refresh already in progress, skipping duplicate trigger")
+        return
+    
+    import asyncio
+    
+    async def refresh_cache():
+        global _refresh_in_progress
+        _refresh_in_progress = True
+        try:
+            logger.info("🔄 Triggering background refresh of eligible tickers cache after ticker data update...")
+            from routers.portfolio import _compute_eligible_tickers_internal
+            from utils.redis_first_data_service import redis_first_data_service as _rds
+            import time
+            import json
+            import hashlib
+            
+            start_time = time.time()
+            
+            # Get all tickers
+            all_tickers = _rds.all_tickers or _rds.list_cached_tickers()
+            if not all_tickers:
+                logger.warning("⚠️  No tickers available for cache refresh")
+                return
+            
+            logger.info(f"📋 Refreshing eligible tickers cache for {len(all_tickers)} tickers...")
+            
+            # Compute with optimized parallel processing (8 workers, 4 batches)
+            eligible_tickers, filtered_stats = await asyncio.to_thread(
+                _compute_eligible_tickers_internal,
+                all_tickers,
+                min_data_points=30,
+                filter_negative_returns=True,
+                min_volatility=None,
+                max_volatility=5.0,
+                min_return=None,
+                max_return=10.0,
+                sectors_list=None,
+                exclude_list=None,
+                sort_by='ticker',
+                max_workers=8,  # Optimized: 8 workers
+                batch_workers=4,  # Optimized: 4 batches
+                batch_size=100
+            )
+            
+            # Calculate statistics
+            total_eligible = len(eligible_tickers)
+            overlap_groups = {'full': 0, 'partial': 0}
+            data_quality_dist = {'Good': 0, 'Fair': 0, 'Limited': 0}
+            
+            for ticker_info in eligible_tickers:
+                overlap_groups[ticker_info.get('overlap_group', 'partial')] += 1
+                data_quality_dist[ticker_info.get('data_quality', 'Unknown')] += 1
+            
+            summary = {
+                "total_eligible": total_eligible,
+                "filtered_by_negative_returns": filtered_stats['negative_returns'],
+                "filtered_by_insufficient_data": filtered_stats['insufficient_data'],
+                "filtered_by_data_quality": filtered_stats['data_quality'],
+                "filtered_by_missing_metrics": filtered_stats['missing_metrics'],
+                "filtered_by_volatility": filtered_stats['volatility'],
+                "filtered_by_return": filtered_stats['return'],
+                "filtered_by_sector": filtered_stats['sector'],
+                "filtered_by_exclude": filtered_stats['exclude'],
+                "overlap_groups": overlap_groups,
+                "data_quality_distribution": data_quality_dist
+            }
+            
+            # Cache the result with 1 week TTL
+            cache_params = {
+                'min_data_points': 30,
+                'filter_negative_returns': True,
+                'min_volatility': None,
+                'max_volatility': 5.0,
+                'min_return': None,
+                'max_return': 10.0,
+                'sectors': None
+            }
+            cache_key_str = json.dumps(cache_params, sort_keys=True)
+            cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+            cache_key = f"optimization:eligible_tickers:{cache_hash}"
+            
+            result_to_cache = {
+                "eligible_tickers": eligible_tickers,
+                "summary": summary
+            }
+            
+            if _rds.redis_client:
+                _rds.redis_client.setex(
+                    cache_key,
+                    604800,  # 1 week TTL
+                    json.dumps(result_to_cache)
+                )
+            
+            elapsed = time.time() - start_time
+            logger.info("="*80)
+            logger.info("✅ ELIGIBLE TICKERS CACHE REFRESHED AFTER TICKER DATA UPDATE!")
+            logger.info(f"   ⏱️  Processing Time: {elapsed:.2f}s")
+            logger.info(f"   📊 Total Eligible: {total_eligible} tickers")
+            logger.info(f"   🔗 Full Overlap: {overlap_groups['full']} tickers")
+            logger.info(f"   🔗 Partial Overlap: {overlap_groups['partial']} tickers")
+            logger.info(f"   ⚡ Performance: {len(all_tickers)/elapsed:.2f} tickers/sec")
+            logger.info("="*80)
+            logger.info("✅ Eligible tickers cache is now up-to-date with latest ticker data!")
+            
+        except Exception as e:
+            logger.error(f"❌ Background eligible tickers cache refresh failed: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            _refresh_in_progress = False
+    
+    # Schedule background task
+    try:
+        asyncio.create_task(refresh_cache())
+    except RuntimeError:
+        # If event loop is not running, create a new one
+        import threading
+        def run_in_thread():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(refresh_cache())
+            loop.close()
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+
+# ============================================================================
+# Reusable function for computing eligible tickers (used by endpoint and background task)
+# ============================================================================
+
+def _compute_eligible_tickers_internal(
+    all_tickers: List[str],
+    min_data_points: int = 30,
+    filter_negative_returns: bool = True,
+    min_volatility: Optional[float] = None,
+    max_volatility: float = 5.0,
+    min_return: Optional[float] = None,
+    max_return: float = 10.0,
+    sectors_list: Optional[List[str]] = None,
+    exclude_list: Optional[List[str]] = None,
+    sort_by: str = 'ticker',
+    max_workers: int = 8,
+    batch_workers: int = 4,
+    batch_size: int = 100
+) -> tuple[List[Dict], Dict]:
+    """
+    Internal function to compute eligible tickers with parallel processing.
+    
+    Returns:
+        (eligible_tickers_list, filtered_stats_dict)
+    """
+    eligible_tickers = []
+    filtered_by_negative_returns = 0
+    filtered_by_insufficient_data = 0
+    filtered_by_missing_metrics = 0
+    filtered_by_data_quality = 0
+    filtered_by_volatility = 0
+    filtered_by_return = 0
+    filtered_by_sector = 0
+    filtered_by_exclude = 0
+    
+    redis_client = _rds.redis_client
+    
+    def _parse_price_data(raw_data: bytes, ticker: str) -> Optional[pd.Series]:
+        """Parse price data from raw Redis bytes"""
+        if not raw_data:
+            return None
+        try:
+            try:
+                data_dict = json.loads(gzip.decompress(raw_data).decode())
+            except:
+                data_dict = json.loads(raw_data.decode())
+            prices = pd.Series(data_dict)
+            if not isinstance(prices.index, pd.DatetimeIndex):
+                prices.index = pd.to_datetime(prices.index, format='mixed', utc=True)
+            return prices
+        except Exception as e:
+            logger.debug(f"⚠️ Error parsing price data for {ticker}: {e}")
+            return None
+    
+    def _parse_metrics_data(raw_data: bytes) -> Optional[Dict]:
+        """Parse metrics data from raw Redis bytes"""
+        if not raw_data:
+            return None
+        try:
+            return json.loads(raw_data.decode())
+        except:
+            return None
+    
+    def _parse_sector_data(raw_data: bytes) -> Optional[Any]:
+        """Parse sector data from raw Redis bytes"""
+        if not raw_data:
+            return None
+        try:
+            return json.loads(raw_data.decode())
+        except:
+            return None
+    
+    def _process_ticker_batch(batch_tickers: List[str], batch_num: int) -> tuple:
+        """Process a batch of tickers and return eligible ones"""
+        batch_eligible = []
+        batch_filtered_stats = {
+            'negative_returns': 0,
+            'insufficient_data': 0,
+            'data_quality': 0,
+            'missing_metrics': 0,
+            'volatility': 0,
+            'return': 0,
+            'sector': 0,
+            'exclude': 0
+        }
+        
+        # Batch load from Redis
+        batch_data = {}
+        if redis_client:
+            try:
+                with redis_client.pipeline() as pipe:
+                    for ticker in batch_tickers:
+                        pipe.get(_rds._get_cache_key(ticker, 'prices'))
+                        pipe.get(_rds._get_cache_key(ticker, 'metrics'))
+                        pipe.get(_rds._get_cache_key(ticker, 'sector'))
+                    results = pipe.execute()
+                
+                # Parse in parallel
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    parse_futures = {}
+                    for i, ticker in enumerate(batch_tickers):
+                        price_idx = i * 3
+                        metrics_idx = i * 3 + 1
+                        sector_idx = i * 3 + 2
+                        
+                        parse_futures[ticker] = {
+                            'prices': executor.submit(_parse_price_data, results[price_idx], ticker),
+                            'metrics': executor.submit(_parse_metrics_data, results[metrics_idx]),
+                            'sector': executor.submit(_parse_sector_data, results[sector_idx])
+                        }
+                    
+                    # Collect parsed data
+                    for ticker in batch_tickers:
+                        futures = parse_futures[ticker]
+                        batch_data[ticker] = {
+                            'prices': futures['prices'].result(),
+                            'metrics': futures['metrics'].result(),
+                            'sector': futures['sector'].result()
+                        }
+            except Exception as e:
+                logger.debug(f"⚠️ Batch {batch_num} pipeline failed: {e}")
+                batch_data = {}
+        
+        # Process each ticker
+        for ticker in batch_tickers:
+            try:
+                # Skip if in exclude list
+                if exclude_list and ticker.upper() in exclude_list:
+                    batch_filtered_stats['exclude'] += 1
+                    continue
+                
+                # Get parsed data
+                prices = batch_data.get(ticker, {}).get('prices')
+                if prices is None:
+                    prices = _rds._load_from_cache(ticker, 'prices')
+                
+                if prices is None or (hasattr(prices, 'empty') and prices.empty):
+                    batch_filtered_stats['insufficient_data'] += 1
+                    continue
+                
+                # Quick check: data points before expensive validation
+                data_points = len(prices) if hasattr(prices, '__len__') else 0
+                if data_points < min_data_points:
+                    batch_filtered_stats['insufficient_data'] += 1
+                    continue
+                
+                # Validate price data quality
+                if not _validate_price_data_optimization(prices, ticker):
+                    batch_filtered_stats['data_quality'] += 1
+                    continue
+                
+                # Get metrics
+                metrics = batch_data.get(ticker, {}).get('metrics')
+                if metrics is None:
+                    metrics = _rds._load_from_cache(ticker, 'metrics')
+                
+                expected_return = None
+                volatility = None
+                
+                if metrics and isinstance(metrics, dict):
+                    expected_return = metrics.get('annualized_return')
+                    volatility = metrics.get('risk')
+                
+                # Validate cached metrics
+                if expected_return is not None and volatility is not None:
+                    if not _validate_calculated_metrics_optimization(expected_return, volatility, ticker):
+                        expected_return = None
+                        volatility = None
+                
+                # Calculate if needed
+                if expected_return is None or volatility is None:
+                    calculated_metrics = _calculate_metrics_safely_optimization(prices, ticker)
+                    if calculated_metrics is None:
+                        batch_filtered_stats['missing_metrics'] += 1
+                        continue
+                    expected_return = calculated_metrics['expected_return']
+                    volatility = calculated_metrics['volatility']
+                
+                # Apply filters
+                if filter_negative_returns and (expected_return is None or expected_return <= 0):
+                    batch_filtered_stats['negative_returns'] += 1
+                    continue
+                
+                if min_volatility is not None and volatility < min_volatility:
+                    batch_filtered_stats['volatility'] += 1
+                    continue
+                
+                if volatility > max_volatility:
+                    batch_filtered_stats['volatility'] += 1
+                    continue
+                
+                if min_return is not None and expected_return < min_return:
+                    batch_filtered_stats['return'] += 1
+                    continue
+                
+                if expected_return > max_return:
+                    batch_filtered_stats['return'] += 1
+                    continue
+                
+                # Get sector info
+                sector_data = batch_data.get(ticker, {}).get('sector')
+                if sector_data is None:
+                    sector_data = _rds._load_from_cache(ticker, 'sector')
+                
+                sector = 'Unknown'
+                industry = 'Unknown'
+                company_name = ticker
+                
+                if sector_data and isinstance(sector_data, dict):
+                    sector = sector_data.get('sector', 'Unknown')
+                    industry = sector_data.get('industry', 'Unknown')
+                    company_name = sector_data.get('companyName', ticker)
+                elif sector_data and isinstance(sector_data, str):
+                    sector = sector_data
+                
+                # Apply sector filter
+                if sectors_list and sector.lower() not in sectors_list:
+                    batch_filtered_stats['sector'] += 1
+                    continue
+                
+                # Determine data quality and overlap group
+                data_quality = 'Good'
+                if data_points < 60:
+                    data_quality = 'Fair'
+                if data_points < 36:
+                    data_quality = 'Limited'
+                
+                # Store date range for overlap calculation (will be processed after all batches)
+                overlap_group = 'partial'
+                recommended_for_optimization = False
+                date_range = None
+                if data_points >= 178:
+                    try:
+                        if isinstance(prices.index, pd.DatetimeIndex):
+                            start_date = prices.index[0]
+                            end_date = prices.index[-1]
+                            # Normalize timestamps to timezone-naive for comparison
+                            # Convert timezone-aware timestamps to naive
+                            if isinstance(start_date, pd.Timestamp) and start_date.tz is not None:
+                                start_date = start_date.tz_convert('UTC').tz_localize(None)
+                            
+                            if isinstance(end_date, pd.Timestamp) and end_date.tz is not None:
+                                end_date = end_date.tz_convert('UTC').tz_localize(None)
+                            
+                            date_range = {
+                                'start': start_date,
+                                'end': end_date,
+                                'data_points': data_points
+                            }
+                    except Exception as e:
+                        logger.debug(f"Error creating date range: {e}")
+                        pass
+                
+                # Add to eligible list (store date_range for later overlap calculation)
+                batch_eligible.append({
+                    'ticker': ticker,
+                    'sector': sector,
+                    'industry': industry,
+                    'company_name': company_name,
+                    'volatility': round(volatility, 4) if volatility else None,
+                    'expected_return': round(expected_return, 4) if expected_return else None,
+                    'data_points': data_points,
+                    'data_quality': data_quality,
+                    'overlap_group': overlap_group,
+                    'recommended_for_optimization': recommended_for_optimization,
+                    '_date_range': date_range  # Internal: used for overlap calculation
+                })
+                
+            except Exception as e:
+                logger.debug(f"⚠️ Error processing {ticker}: {e}")
+                batch_filtered_stats['insufficient_data'] += 1
+                continue
+        
+        return batch_eligible, batch_filtered_stats
+    
+    # Process batches in parallel
+    ticker_batches = [all_tickers[i:i + batch_size] for i in range(0, len(all_tickers), batch_size)]
+    
+    with ThreadPoolExecutor(max_workers=batch_workers) as executor:
+        future_to_batch = {
+            executor.submit(_process_ticker_batch, batch, idx + 1): idx
+            for idx, batch in enumerate(ticker_batches)
+        }
+        
+        for future in as_completed(future_to_batch):
+            batch_idx = future_to_batch[future]
+            try:
+                batch_eligible, batch_stats = future.result()
+                eligible_tickers.extend(batch_eligible)
+                
+                # Update filtered stats
+                filtered_by_negative_returns += batch_stats['negative_returns']
+                filtered_by_insufficient_data += batch_stats['insufficient_data']
+                filtered_by_data_quality += batch_stats['data_quality']
+                filtered_by_missing_metrics += batch_stats['missing_metrics']
+                filtered_by_volatility += batch_stats['volatility']
+                filtered_by_return += batch_stats['return']
+                filtered_by_sector += batch_stats['sector']
+                filtered_by_exclude += batch_stats['exclude']
+            except Exception as e:
+                logger.error(f"❌ Batch {batch_idx + 1} failed: {e}")
+    
+    # Calculate maximum overlap period from all eligible tickers with 178+ data points
+    date_ranges_178_plus = []
+    for ticker_info in eligible_tickers:
+        if ticker_info.get('_date_range') is not None:
+            date_ranges_178_plus.append(ticker_info['_date_range'])
+    
+    # Find longest common overlap period
+    max_overlap_start = None
+    max_overlap_end = None
+    max_overlap_count = 0
+    max_overlap_months = 0
+    
+    if date_ranges_178_plus:
+        # Strategy: Find the longest period that maximizes both coverage and duration
+        # Normalize all timestamps to timezone-naive before comparison
+        normalized_ranges = []
+        for dr in date_ranges_178_plus:
+            try:
+                start = dr['start']
+                end = dr['end']
+                # Normalize to timezone-naive if needed
+                # Convert timezone-aware timestamps to naive for comparison
+                if isinstance(start, pd.Timestamp):
+                    if start.tz is not None:
+                        # Convert to UTC first, then remove timezone
+                        start = start.tz_convert('UTC').tz_localize(None)
+                else:
+                    start = pd.Timestamp(start)
+                    if start.tz is not None:
+                        start = start.tz_convert('UTC').tz_localize(None)
+                
+                if isinstance(end, pd.Timestamp):
+                    if end.tz is not None:
+                        # Convert to UTC first, then remove timezone
+                        end = end.tz_convert('UTC').tz_localize(None)
+                else:
+                    end = pd.Timestamp(end)
+                    if end.tz is not None:
+                        end = end.tz_convert('UTC').tz_localize(None)
+                
+                normalized_ranges.append({
+                    'start': start,
+                    'end': end,
+                    'data_points': dr.get('data_points', 0)
+                })
+            except Exception as e:
+                logger.debug(f"Error normalizing date range: {e}")
+                continue
+        
+        # Get all unique start and end dates
+        all_starts = sorted(set(dr['start'] for dr in normalized_ranges))
+        all_ends = sorted(set(dr['end'] for dr in normalized_ranges))
+        
+        # Try all combinations of start/end dates to find maximum overlap
+        # Limit to reasonable candidates to avoid excessive computation
+        start_candidates = all_starts[:100] if len(all_starts) > 100 else all_starts
+        end_candidates = all_ends[-100:] if len(all_ends) > 100 else all_ends
+        
+        for start_candidate in start_candidates:
+            for end_candidate in end_candidates:
+                if start_candidate >= end_candidate:
+                    continue
+                
+                # Count how many tickers cover this period
+                covering_tickers = [
+                    dr for dr in normalized_ranges
+                    if dr['start'] <= start_candidate and dr['end'] >= end_candidate
+                ]
+                covering_count = len(covering_tickers)
+                
+                if covering_count == 0:
+                    continue
+                
+                # Calculate period length in months
+                period_months = (end_candidate - start_candidate).days / 30.44
+                
+                # Prefer longer periods with good coverage
+                # Score balances both coverage count and duration
+                # We want to maximize: coverage * duration (weighted)
+                score = covering_count * (1 + period_months / 50)  # Weight duration
+                
+                # Update if this is better (more coverage OR same coverage but longer period)
+                if (covering_count > max_overlap_count) or \
+                   (covering_count == max_overlap_count and period_months > max_overlap_months) or \
+                   (score > max_overlap_count * (1 + max_overlap_months / 50) if max_overlap_months > 0 else False):
+                    max_overlap_start = start_candidate
+                    max_overlap_end = end_candidate
+                    max_overlap_count = covering_count
+                    max_overlap_months = period_months
+        
+        # If no good overlap found with candidates, use intersection approach
+        if max_overlap_start is None and date_ranges_178_plus:
+            # Find the intersection: latest start and earliest end
+            latest_start = max(dr['start'] for dr in date_ranges_178_plus)
+            earliest_end = min(dr['end'] for dr in date_ranges_178_plus)
+            
+            if latest_start < earliest_end:
+                covering_tickers = [
+                    dr for dr in date_ranges_178_plus
+                    if dr['start'] <= latest_start and dr['end'] >= earliest_end
+                ]
+                if len(covering_tickers) > 0:
+                    max_overlap_start = latest_start
+                    max_overlap_end = earliest_end
+                    max_overlap_count = len(covering_tickers)
+                    max_overlap_months = (earliest_end - latest_start).days / 30.44
+        
+        # Update overlap_group for tickers that cover the maximum overlap period
+        if max_overlap_start is not None and max_overlap_end is not None:
+            logger.info(f"📊 Maximum overlap period: {max_overlap_start.date()} to {max_overlap_end.date()} "
+                       f"({max_overlap_months:.1f} months, {max_overlap_count} tickers)")
+            
+            for ticker_info in eligible_tickers:
+                date_range = ticker_info.get('_date_range')
+                if date_range is not None:
+                    if date_range['start'] <= max_overlap_start and date_range['end'] >= max_overlap_end:
+                        ticker_info['overlap_group'] = 'full'
+                        ticker_info['recommended_for_optimization'] = True
+    
+    # Remove internal _date_range field before returning
+    for ticker_info in eligible_tickers:
+        ticker_info.pop('_date_range', None)
+    
+    # Sort eligible tickers
+    if sort_by == 'return':
+        eligible_tickers.sort(key=lambda x: x.get('expected_return', 0), reverse=True)
+    elif sort_by == 'volatility':
+        eligible_tickers.sort(key=lambda x: x.get('volatility', 0))
+    elif sort_by == 'sector':
+        eligible_tickers.sort(key=lambda x: x.get('sector', ''))
+    else:  # 'ticker'
+        eligible_tickers.sort(key=lambda x: x.get('ticker', ''))
+    
+    filtered_stats = {
+        'negative_returns': filtered_by_negative_returns,
+        'insufficient_data': filtered_by_insufficient_data,
+        'data_quality': filtered_by_data_quality,
+        'missing_metrics': filtered_by_missing_metrics,
+        'volatility': filtered_by_volatility,
+        'return': filtered_by_return,
+        'sector': filtered_by_sector,
+        'exclude': filtered_by_exclude
+    }
+    
+    return eligible_tickers, filtered_stats
+
+# Helper functions for data validation and metrics calculation
+def _validate_price_data_optimization(prices: pd.Series, ticker: str) -> bool:
+    """Validate price data quality before calculation (for optimization)"""
+    if prices is None or prices.empty:
+        return False
+    
+    # Check minimum data points
+    if len(prices) < 12:
+        return False
+    
+    # Check for zeros or negative prices
+    if (prices <= 0).any():
+        return False
+    
+    # Check for excessive missing values
+    if prices.isna().sum() / len(prices) > 0.2:
+        return False
+    
+    # Check for no variation (all same value)
+    if prices.std() == 0:
+        return False
+    
+    # Check for reasonable price range (filter extreme outliers)
+    if prices.max() > 10000 or prices.min() < 0.01:
+        return False
+    
+    # Check for suspicious jumps (price changes > 1000% in one period)
+    try:
+        pct_changes = prices.pct_change(fill_method=None).dropna()
+        if len(pct_changes) > 0 and (pct_changes.abs() > 10).any():  # >1000% change
+            return False
+    except:
+        pass
+    
+    return True
+
+def _validate_calculated_metrics_optimization(expected_return: float, volatility: float, ticker: str) -> bool:
+    """Validate calculated metrics for sanity (for optimization)"""
+    # Check for NaN or Inf
+    if pd.isna(expected_return) or pd.isna(volatility):
+        return False
+    if np.isinf(expected_return) or np.isinf(volatility):
+        return False
+    
+    # Check for reasonable volatility (max 500% annual)
+    if volatility > 5.0:
+        logger.debug(f"⚠️ {ticker}: Volatility too high ({volatility:.2f})")
+        return False
+    
+    # Check for reasonable expected return (max 1000% annual)
+    if expected_return > 10.0:
+        logger.debug(f"⚠️ {ticker}: Expected return too high ({expected_return:.2f})")
+        return False
+    
+    # Check for negative volatility (impossible)
+    if volatility < 0:
+        return False
+    
+    return True
+
+def _calculate_metrics_safely_optimization(prices: pd.Series, ticker: str) -> Optional[Dict[str, float]]:
+    """Calculate metrics with proper error handling and validation (for optimization)"""
+    try:
+        # Validate price data first
+        if not _validate_price_data_optimization(prices, ticker):
+            return None
+        
+        # Calculate returns
+        returns = prices.pct_change(fill_method=None).dropna()
+        
+        if len(returns) < 3:
+            return None
+        
+        # Filter out extreme returns (likely data errors)
+        # Remove returns > 500% or < -90% (likely data errors)
+        returns_clean = returns[(returns > -0.90) & (returns < 5.0)]
+        
+        if len(returns_clean) < 3:
+            # If too many outliers, use original but cap extreme values
+            returns_clean = returns.clip(-0.90, 5.0)
+        
+        # Calculate monthly metrics
+        monthly_return = returns_clean.mean()
+        monthly_vol = returns_clean.std()
+        
+        # Annualize with safeguards
+        # Use compound formula but cap extreme values
+        if monthly_return > 0.5:  # >50% monthly return is suspicious
+            monthly_return = min(monthly_return, 0.5)
+        if monthly_return < -0.5:  # < -50% monthly return is suspicious
+            monthly_return = max(monthly_return, -0.5)
+        
+        # Annualized return: (1 + monthly) ^ 12 - 1
+        # But use simpler formula if compound would be extreme
+        if abs(monthly_return) < 0.1:  # Small returns, compound is fine
+            expected_return = (1 + monthly_return) ** 12 - 1
+        else:  # Large returns, use simple multiplication to avoid extreme values
+            expected_return = monthly_return * 12
+        
+        # Annualized volatility
+        volatility = monthly_vol * np.sqrt(12)
+        
+        # Validate calculated metrics
+        if not _validate_calculated_metrics_optimization(expected_return, volatility, ticker):
+            return None
+        
+        return {
+            'expected_return': float(expected_return),
+            'volatility': float(volatility)
+        }
+    except Exception as e:
+        logger.debug(f"⚠️ Error calculating metrics for {ticker}: {e}")
+        return None
+
+# Task 1.1: Get Eligible Tickers for Optimization (Internal Function)
+def _get_eligible_tickers_internal(
+    min_data_points: int = 30,
+    filter_negative_returns: bool = True,
+    min_volatility: Optional[float] = None,
+    max_volatility: float = 5.0,
+    min_return: Optional[float] = None,
+    max_return: float = 10.0,
+    sectors: Optional[str] = None,
+    exclude_tickers: Optional[str] = None,
+    use_cache: bool = True,
+    page: int = 1,
+    per_page: int = 100,
+    sort_by: str = 'ticker'
+):
+    """
+    Internal function to get eligible tickers (accepts regular Python parameters, not Query objects)
+    
+    Returns all tickers that meet data quality and filtering criteria.
+    The optimizer will apply risk profile constraints later.
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        # Check cache if enabled
+        if use_cache and _rds.redis_client:
+            try:
+                # Create cache key hash from parameters
+                cache_params = {
+                    'min_data_points': min_data_points,
+                    'filter_negative_returns': filter_negative_returns,
+                    'min_volatility': min_volatility,
+                    'max_volatility': max_volatility,
+                    'min_return': min_return,
+                    'max_return': max_return,
+                    'sectors': sectors
+                }
+                cache_key_str = json.dumps(cache_params, sort_keys=True)
+                cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+                cache_key = f"optimization:eligible_tickers:{cache_hash}"
+                
+                cached_data = _rds.redis_client.get(cache_key)
+                if cached_data:
+                    try:
+                        cached_result = json.loads(cached_data.decode())
+                        logger.info(f"✅ Cache hit for eligible tickers")
+                        # Apply pagination to cached result
+                        total = len(cached_result.get('eligible_tickers', []))
+                        start_idx = (page - 1) * per_page
+                        end_idx = start_idx + per_page
+                        paginated_tickers = cached_result['eligible_tickers'][start_idx:end_idx]
+                        
+                        return {
+                            "eligible_tickers": paginated_tickers,
+                            "pagination": {
+                                "total": total,
+                                "page": page,
+                                "per_page": per_page,
+                                "has_more": end_idx < total,
+                                "total_pages": (total + per_page - 1) // per_page
+                            },
+                            "summary": cached_result.get('summary', {}),
+                            "processing_time_seconds": 0.0
+                        }
+                    except Exception as e:
+                        logger.debug(f"⚠️ Failed to parse cached data: {e}")
+            except Exception as e:
+                logger.debug(f"⚠️ Cache check failed: {e}")
+        
+        # Get all available tickers
+        logger.info("📋 Getting all available tickers...")
+        all_tickers = _rds.all_tickers or _rds.list_cached_tickers()
+        
+        if not all_tickers:
+            raise HTTPException(status_code=404, detail="No tickers found in system")
+        
+        logger.info(f"✅ Found {len(all_tickers)} total tickers")
+        
+        # Parse filter parameters (sectors and exclude_tickers are strings here, not Query objects)
+        sectors_list = [s.strip().lower() for s in sectors.split(',')] if sectors else None
+        exclude_list = [t.strip().upper() for t in exclude_tickers.split(',')] if exclude_tickers else None
+        
+        eligible_tickers = []
+        filtered_by_negative_returns = 0
+        filtered_by_insufficient_data = 0
+        filtered_by_missing_metrics = 0
+        filtered_by_data_quality = 0
+        filtered_by_volatility = 0
+        filtered_by_return = 0
+        filtered_by_sector = 0
+        filtered_by_exclude = 0
+        
+        # Use optimized parallel processing (8 workers, 4 batches)
+        logger.info(f"🔍 Processing {len(all_tickers)} tickers with optimized parallel processing (8 workers, 4 batches)...")
+        
+        # Compute eligible tickers using internal function
+        eligible_tickers, filtered_stats_dict = _compute_eligible_tickers_internal(
+            all_tickers=all_tickers,
+            min_data_points=min_data_points,
+            filter_negative_returns=filter_negative_returns,
+            min_volatility=min_volatility,
+            max_volatility=max_volatility,
+            min_return=min_return,
+            max_return=max_return,
+            sectors_list=sectors_list,
+            exclude_list=exclude_list,
+            sort_by=sort_by,
+            max_workers=8,  # Optimized: 8 workers for parsing
+            batch_workers=4,  # Optimized: 4 batches in parallel
+            batch_size=100
+        )
+        
+        # Update filtered stats
+        filtered_by_negative_returns = filtered_stats_dict['negative_returns']
+        filtered_by_insufficient_data = filtered_stats_dict['insufficient_data']
+        filtered_by_data_quality = filtered_stats_dict['data_quality']
+        filtered_by_missing_metrics = filtered_stats_dict['missing_metrics']
+        filtered_by_volatility = filtered_stats_dict['volatility']
+        filtered_by_return = filtered_stats_dict['return']
+        filtered_by_sector = filtered_stats_dict['sector']
+        filtered_by_exclude = filtered_stats_dict['exclude']
+        
+        # Note: eligible_tickers are already sorted by _compute_eligible_tickers_internal
+        
+        # Calculate statistics
+        total_eligible = len(eligible_tickers)
+        overlap_groups = {'full': 0, 'partial': 0}
+        data_quality_dist = {'Good': 0, 'Fair': 0, 'Limited': 0}
+        
+        for ticker_info in eligible_tickers:
+            overlap_groups[ticker_info.get('overlap_group', 'partial')] += 1
+            data_quality_dist[ticker_info.get('data_quality', 'Unknown')] += 1
+        
+        # Apply pagination
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_tickers = eligible_tickers[start_idx:end_idx]
+        
+        summary = {
+            "total_eligible": total_eligible,
+            "filtered_by_negative_returns": filtered_by_negative_returns,
+            "filtered_by_insufficient_data": filtered_by_insufficient_data,
+            "filtered_by_data_quality": filtered_by_data_quality,
+            "filtered_by_missing_metrics": filtered_by_missing_metrics,
+            "filtered_by_volatility": filtered_by_volatility,
+            "filtered_by_return": filtered_by_return,
+            "filtered_by_sector": filtered_by_sector,
+            "filtered_by_exclude": filtered_by_exclude,
+            "overlap_groups": overlap_groups,
+            "data_quality_distribution": data_quality_dist
+        }
+        
+        elapsed_time = time.time() - start_time
+        
+        # Cache the result if enabled
+        if use_cache and _rds.redis_client:
+            try:
+                cache_params = {
+                    'min_data_points': min_data_points,
+                    'filter_negative_returns': filter_negative_returns,
+                    'min_volatility': min_volatility,
+                    'max_volatility': max_volatility,
+                    'min_return': min_return,
+                    'max_return': max_return,
+                    'sectors': sectors
+                }
+                cache_key_str = json.dumps(cache_params, sort_keys=True)
+                cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+                cache_key = f"optimization:eligible_tickers:{cache_hash}"
+                
+                result_to_cache = {
+                    "eligible_tickers": eligible_tickers,
+                    "summary": summary
+                }
+                
+                _rds.redis_client.setex(
+                    cache_key,
+                    604800,  # 1 week TTL (604800 seconds)
+                    json.dumps(result_to_cache)
+                )
+                logger.info(f"✅ Cached eligible tickers list (key: {cache_key})")
+            except Exception as e:
+                logger.debug(f"⚠️ Failed to cache eligible tickers: {e}")
+        
+        logger.info(f"✅ Found {total_eligible} eligible tickers in {elapsed_time:.2f}s")
+        
+        return {
+            "eligible_tickers": paginated_tickers,
+            "pagination": {
+                "total": total_eligible,
+                "page": page,
+                "per_page": per_page,
+                "has_more": end_idx < total_eligible,
+                "total_pages": (total_eligible + per_page - 1) // per_page
+            },
+            "summary": summary,
+            "processing_time_seconds": round(elapsed_time, 2)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting eligible tickers: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get eligible tickers: {str(e)}")
+
+# Task 1.1: Get Eligible Tickers for Optimization (API Endpoint)
+@router.get("/optimization/eligible-tickers")
+def get_eligible_tickers_for_optimization(
+    min_data_points: int = Query(30, ge=12, le=180, description="Minimum historical data points required"),
+    filter_negative_returns: bool = Query(True, description="Filter out tickers with negative expected returns"),
+    min_volatility: Optional[float] = Query(None, ge=0.0, le=5.0, description="Optional: Minimum volatility filter"),
+    max_volatility: float = Query(5.0, ge=0.0, le=5.0, description="Maximum volatility filter (prevents extreme values)"),
+    min_return: Optional[float] = Query(None, description="Optional: Minimum expected return filter"),
+    max_return: float = Query(10.0, description="Maximum expected return filter (prevents extreme values)"),
+    sectors: Optional[str] = Query(None, description="Optional: Comma-separated list of sectors to include"),
+    exclude_tickers: Optional[str] = Query(None, description="Optional: Comma-separated list of tickers to exclude"),
+    use_cache: bool = Query(True, description="Use cached eligible list if available"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
+    per_page: int = Query(100, ge=1, le=1000, description="Items per page"),
+    sort_by: str = Query('ticker', description="Sort by: 'ticker', 'return', 'volatility', 'sector'")
+):
+    """
+    Get all eligible tickers for optimization (no risk profile filtering)
+    
+    Returns all tickers that meet data quality and filtering criteria.
+    The optimizer will apply risk profile constraints later.
+    """
+    return _get_eligible_tickers_internal(
+        min_data_points=min_data_points,
+        filter_negative_returns=filter_negative_returns,
+        min_volatility=min_volatility,
+        max_volatility=max_volatility,
+        min_return=min_return,
+        max_return=max_return,
+        sectors=sectors,
+        exclude_tickers=exclude_tickers,
+        use_cache=use_cache,
+        page=page,
+        per_page=per_page,
+        sort_by=sort_by
+    )
+
+# Task 1.2: Get Ticker Metrics Batch
+class TickerMetricsRequest(BaseModel):
+    tickers: List[str]
+    annualize: bool = True
+    min_overlap_months: int = 12
+    strict_overlap: bool = True
+
+@router.post("/optimization/ticker-metrics")
+def get_ticker_metrics_batch(request: TickerMetricsRequest):
+    """
+    Get mean returns (μ) and covariance matrix (Σ) for a list of tickers
+    
+    Required for Mean-Variance Optimization (MVO) calculations.
+    Validates date overlap before calculation to ensure valid covariance.
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        tickers = [t.upper().strip() for t in request.tickers]
+        annualize = request.annualize
+        min_overlap_months = request.min_overlap_months
+        strict_overlap = request.strict_overlap
+        
+        # Validate input
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for covariance calculation")
+        
+        if len(tickers) > 100:
+            raise HTTPException(status_code=400, detail="Maximum 100 tickers per request")
+        
+        # Check cache if enabled
+        cache_hit = False
+        if _rds.redis_client:
+            try:
+                ticker_hash = hashlib.md5(','.join(sorted(tickers)).encode()).hexdigest()
+                cache_key = f"optimization:metrics:{ticker_hash}:{min_overlap_months}:{annualize}"
+                
+                cached_data = _rds.redis_client.get(cache_key)
+                if cached_data:
+                    try:
+                        cached_result = json.loads(cached_data.decode())
+                        logger.info(f"✅ Cache hit for {len(tickers)} tickers")
+                        cache_hit = True
+                        cached_result['metadata']['cache_hit'] = True
+                        cached_result['metadata']['processing_time_seconds'] = 0.0
+                        return cached_result
+                    except Exception as e:
+                        logger.debug(f"⚠️ Failed to parse cached data: {e}")
+            except Exception as e:
+                logger.debug(f"⚠️ Cache check failed: {e}")
+        
+        # OPTIMIZATION: Batch load price data using Redis pipeline
+        logger.info(f"📊 Getting price data for {len(tickers)} tickers (batch loading)...")
+        price_data = {}
+        missing_tickers = []
+        redis_client = _rds.redis_client
+        
+        # Try batch loading first
+        if redis_client and len(tickers) > 1:
+            try:
+                with redis_client.pipeline() as pipe:
+                    for ticker in tickers:
+                        pipe.get(_rds._get_cache_key(ticker, 'prices'))
+                    results = pipe.execute()
+                
+                # Parse batch results
+                for ticker, raw_data in zip(tickers, results):
+                    if raw_data:
+                        try:
+                            try:
+                                data_dict = json.loads(gzip.decompress(raw_data).decode())
+                            except:
+                                data_dict = json.loads(raw_data.decode())
+                            
+                            prices = pd.Series(data_dict)
+                            if not isinstance(prices.index, pd.DatetimeIndex):
+                                prices.index = pd.to_datetime(prices.index, format='mixed', utc=True)
+                            
+                            if len(prices) >= 3:
+                                price_data[ticker] = prices
+                            else:
+                                missing_tickers.append(ticker)
+                        except Exception as e:
+                            logger.debug(f"⚠️ Error parsing batch data for {ticker}: {e}")
+                            missing_tickers.append(ticker)
+                    else:
+                        missing_tickers.append(ticker)
+            except Exception as e:
+                logger.debug(f"⚠️ Batch load failed, using individual loads: {e}")
+                # Fallback to individual loads
+                for ticker in tickers:
+                    try:
+                        prices = _rds._load_from_cache(ticker, 'prices')
+                        if prices is None or (hasattr(prices, 'empty') and prices.empty):
+                            missing_tickers.append(ticker)
+                            continue
+                        
+                        if hasattr(prices, '__len__') and len(prices) < 3:
+                            missing_tickers.append(ticker)
+                            continue
+                        
+                        price_data[ticker] = prices
+                    except Exception as e2:
+                        logger.debug(f"⚠️ Error loading {ticker}: {e2}")
+                        missing_tickers.append(ticker)
+                        continue
+        else:
+            # Individual loads for small batches or no Redis
+            for ticker in tickers:
+                try:
+                    prices = _rds._load_from_cache(ticker, 'prices')
+                    if prices is None or (hasattr(prices, 'empty') and prices.empty):
+                        missing_tickers.append(ticker)
+                        continue
+                    
+                    if hasattr(prices, '__len__') and len(prices) < 3:
+                        missing_tickers.append(ticker)
+                        continue
+                    
+                    price_data[ticker] = prices
+                except Exception as e:
+                    logger.debug(f"⚠️ Error loading {ticker}: {e}")
+                    missing_tickers.append(ticker)
+                    continue
+        
+        if len(price_data) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient price data: only {len(price_data)}/{len(tickers)} tickers have data (need at least 2)"
+            )
+        
+        # Calculate returns for each ticker and collect date ranges
+        logger.info(f"📈 Calculating returns for {len(price_data)} tickers...")
+        returns_data = {}
+        date_ranges = {}
+        
+        for ticker, prices in price_data.items():
+            try:
+                if isinstance(prices, pd.Series):
+                    # Ensure we have a DatetimeIndex
+                    if not isinstance(prices.index, pd.DatetimeIndex):
+                        try:
+                            prices.index = pd.to_datetime(prices.index, format='mixed', utc=True)
+                        except:
+                            logger.debug(f"⚠️ {ticker}: Could not convert index to DatetimeIndex")
+                            missing_tickers.append(ticker)
+                            continue
+                    
+                    # Store date range
+                    if len(prices) > 0:
+                        date_ranges[ticker] = {
+                            'start': prices.index[0],
+                            'end': prices.index[-1],
+                            'months': len(prices)
+                        }
+                    
+                    returns = prices.pct_change(fill_method=None).dropna()
+                else:
+                    # Convert to Series if needed
+                    prices_series = pd.Series(prices)
+                    if len(prices_series) > 0:
+                        date_ranges[ticker] = {
+                            'start': prices_series.index[0] if hasattr(prices_series.index[0], 'strftime') else None,
+                            'end': prices_series.index[-1] if hasattr(prices_series.index[-1], 'strftime') else None,
+                            'months': len(prices_series)
+                        }
+                    returns = prices_series.pct_change(fill_method=None).dropna()
+                
+                if len(returns) >= 3:
+                    returns_data[ticker] = returns
+                else:
+                    missing_tickers.append(ticker)
+            except Exception as e:
+                logger.debug(f"⚠️ Error calculating returns for {ticker}: {e}")
+                missing_tickers.append(ticker)
+                continue
+        
+        if len(returns_data) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient returns data: only {len(returns_data)}/{len(tickers)} tickers have valid returns (need at least 2)"
+            )
+        
+        # Align all returns to common date range (intersection)
+        logger.info("🔄 Aligning returns to common date range...")
+        returns_df = pd.DataFrame(returns_data)
+        
+        # Find intersection of all date ranges
+        if len(returns_df) == 0:
+            error_metadata = {
+                "ticker_count": len(tickers),
+                "available_tickers": len(returns_data),
+                "missing_tickers": missing_tickers,
+                "overlap_months": 0,
+                "min_overlap_required": min_overlap_months,
+                "date_ranges": {k: {
+                    'start': str(v['start']) if v.get('start') else None,
+                    'end': str(v['end']) if v.get('end') else None,
+                    'months': v['months']
+                } for k, v in date_ranges.items()},
+                "error": "No overlapping date ranges found",
+                "cache_hit": False,
+                "processing_time_seconds": round(time.time() - start_time, 3)
+            }
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "No overlapping data after alignment",
+                    "mu": {},
+                    "sigma": {},
+                    "metadata": error_metadata
+                }
+            )
+        
+        # Drop rows with any NaN (only keep overlapping periods)
+        returns_df_aligned = returns_df.dropna()
+        
+        # Validate overlap BEFORE calculation
+        overlap_months = len(returns_df_aligned)
+        if overlap_months < min_overlap_months:
+            error_metadata = {
+                "ticker_count": len(tickers),
+                "available_tickers": len(returns_data),
+                "missing_tickers": missing_tickers,
+                "overlap_months": overlap_months,
+                "min_overlap_required": min_overlap_months,
+                "overlap_sufficient": False,
+                "date_ranges": {k: {
+                    'start': str(v['start']) if v.get('start') else None,
+                    'end': str(v['end']) if v.get('end') else None,
+                    'months': v['months']
+                } for k, v in date_ranges.items()},
+                "suggestion": "Reduce ticker list or lower min_overlap_months requirement. Consider using tickers from full overlap group (400 tickers available with 178 months overlap).",
+                "cache_hit": False,
+                "processing_time_seconds": round(time.time() - start_time, 3)
+            }
+            if strict_overlap:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "Insufficient date overlap",
+                        "mu": {},
+                        "sigma": {},
+                        "metadata": error_metadata
+                    }
+                )
+            else:
+                logger.warning(f"⚠️ Insufficient overlap: {overlap_months} months (minimum: {min_overlap_months})")
+        
+        # Calculate mean returns (μ)
+        logger.info("📊 Calculating mean returns...")
+        monthly_mean_returns = returns_df_aligned.mean()
+        
+        if annualize:
+            # Annualize: (1 + monthly_mean) ^ 12 - 1
+            mu = {ticker: float((1 + monthly_mean) ** 12 - 1) for ticker, monthly_mean in monthly_mean_returns.items()}
+        else:
+            mu = {ticker: float(monthly_mean) for ticker, monthly_mean in monthly_mean_returns.items()}
+        
+        # Calculate covariance matrix (Σ)
+        logger.info("📊 Calculating covariance matrix...")
+        monthly_cov = returns_df_aligned.cov()
+        
+        if annualize:
+            # Annualize: multiply by 12 for monthly data
+            sigma_annualized = monthly_cov * 12
+        else:
+            sigma_annualized = monthly_cov
+        
+        # Convert to nested dict format
+        sigma = {}
+        for ticker1 in sigma_annualized.index:
+            sigma[ticker1] = {}
+            for ticker2 in sigma_annualized.columns:
+                sigma[ticker1][ticker2] = float(sigma_annualized.loc[ticker1, ticker2])
+        
+        # Get date range from aligned data
+        date_range = None
+        if len(returns_df_aligned) > 0:
+            try:
+                start_date = returns_df_aligned.index[0]
+                end_date = returns_df_aligned.index[-1]
+                if hasattr(start_date, 'strftime'):
+                    start_str = start_date.strftime('%Y-%m-%d')
+                else:
+                    start_str = str(start_date)
+                if hasattr(end_date, 'strftime'):
+                    end_str = end_date.strftime('%Y-%m-%d')
+                else:
+                    end_str = str(end_date)
+                
+                date_range = {
+                    "start": start_str,
+                    "end": end_str,
+                    "months": len(returns_df_aligned)
+                }
+            except Exception as e:
+                logger.debug(f"⚠️ Error formatting date range: {e}")
+                date_range = {
+                    "start": str(returns_df_aligned.index[0]),
+                    "end": str(returns_df_aligned.index[-1]),
+                    "months": len(returns_df_aligned)
+                }
+        
+        # Validate calculated metrics for sanity
+        metrics_valid = True
+        warnings = []
+        
+        # Check for NaN or Inf in mu
+        for ticker, mu_val in mu.items():
+            if pd.isna(mu_val) or np.isinf(mu_val):
+                metrics_valid = False
+                warnings.append(f"{ticker}: Invalid mean return (NaN or Inf)")
+            elif abs(mu_val) > 10.0:  # >1000% annual return
+                warnings.append(f"{ticker}: Extreme mean return ({mu_val:.2f})")
+        
+        # Check for NaN or Inf in sigma
+        for ticker1 in sigma:
+            for ticker2 in sigma[ticker1]:
+                sigma_val = sigma[ticker1][ticker2]
+                if pd.isna(sigma_val) or np.isinf(sigma_val):
+                    metrics_valid = False
+                    warnings.append(f"{ticker1}-{ticker2}: Invalid covariance (NaN or Inf)")
+        
+        # Prepare metadata
+        metadata = {
+            "ticker_count": len(tickers),
+            "available_tickers": len(returns_data),
+            "missing_tickers": missing_tickers,
+            "date_range": date_range,
+            "overlap_months": len(returns_df_aligned),
+            "min_overlap_required": min_overlap_months,
+            "overlap_sufficient": overlap_months >= min_overlap_months,
+            "annualized": annualize,
+            "metrics_valid": metrics_valid,
+            "warnings": warnings,
+            "cache_hit": cache_hit,
+            "processing_time_seconds": round(time.time() - start_time, 3)
+        }
+        
+        result = {
+            "mu": mu,
+            "sigma": sigma,
+            "metadata": metadata
+        }
+        
+        # Cache the result if enabled
+        if not cache_hit and _rds.redis_client:
+            try:
+                ticker_hash = hashlib.md5(','.join(sorted(tickers)).encode()).hexdigest()
+                cache_key = f"optimization:metrics:{ticker_hash}:{min_overlap_months}:{annualize}"
+                
+                _rds.redis_client.setex(
+                    cache_key,
+                    604800,  # 1 week TTL (604800 seconds) - matches eligible tickers TTL
+                    json.dumps(result)
+                )
+                logger.info(f"✅ Cached metrics for {len(tickers)} tickers (key: {cache_key}, TTL: 1 week)")
+            except Exception as e:
+                logger.debug(f"⚠️ Failed to cache metrics: {e}")
+        
+        logger.info(f"✅ Calculated metrics for {len(returns_data)} tickers in {metadata['processing_time_seconds']:.3f}s")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting ticker metrics: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get ticker metrics: {str(e)}")
+
+# Task 2: Mean-Variance Optimization (MVO) Endpoint
+class MVOOptimizationRequest(BaseModel):
+    tickers: List[str]
+    optimization_type: str = "max_sharpe"  # "max_sharpe", "min_variance", "target_return", "target_risk"
+    target_return: Optional[float] = None
+    max_risk: Optional[float] = None
+    risk_profile: Optional[str] = None
+    constraints: Optional[Dict[str, Any]] = None
+    current_portfolio: Optional[Dict[str, Any]] = None  # Optional: current portfolio weights for comparison
+    include_efficient_frontier: bool = True
+    include_random_portfolios: bool = True
+    num_frontier_points: int = 20
+    num_random_portfolios: int = 200
+
+class MVOOptimizationResponse(BaseModel):
+    optimization_type: str
+    strategy_name: str
+    optimized_portfolio: Dict[str, Any]
+    current_portfolio: Optional[Dict[str, Any]] = None
+    efficient_frontier: List[Dict[str, Any]] = []
+    inefficient_frontier: List[Dict[str, Any]] = []  # Lower part of hyperbola
+    random_portfolios: List[Dict[str, Any]] = []
+    capital_market_line: List[Dict[str, Any]] = []  # CML points
+    improvements: Optional[Dict[str, float]] = None
+    metadata: Dict[str, Any]
+
+# Initialize MVO optimizer (will use internal API calls)
+_mvo_optimizer = None
+
+def get_mvo_optimizer():
+    """Get or create MVO optimizer instance"""
+    global _mvo_optimizer
+    if _mvo_optimizer is None:
+        # Create internal function to call ticker-metrics endpoint
+        def get_ticker_metrics_internal(tickers, annualize=True, min_overlap_months=12, strict_overlap=True):
+            """Internal function to get ticker metrics"""
+            request = TickerMetricsRequest(
+                tickers=tickers,
+                annualize=annualize,
+                min_overlap_months=min_overlap_months,
+                strict_overlap=strict_overlap
+            )
+            result = get_ticker_metrics_batch(request)
+            # Handle JSONResponse - extract dict if needed
+            if isinstance(result, JSONResponse):
+                import json
+                result_dict = json.loads(result.body.decode())
+                # Check if it's an error response
+                if result_dict.get('error') or not result_dict.get('sigma'):
+                    error_msg = result_dict.get('error', 'No covariance matrix in response')
+                    metadata = result_dict.get('metadata', {})
+                    overlap_info = f" (overlap: {metadata.get('overlap_months', 'unknown')} months, required: {metadata.get('min_overlap_required', 'unknown')} months)"
+                    raise ValueError(f"{error_msg}{overlap_info}")
+                return result_dict
+            return result
+        
+        # Use internal function calls (more efficient than HTTP)
+        _mvo_optimizer = PortfolioMVOptimizer(get_ticker_metrics_func=get_ticker_metrics_internal)
+    return _mvo_optimizer
+
+@router.post("/optimization/mvo", response_model=MVOOptimizationResponse)
+def optimize_portfolio_mvo(request: MVOOptimizationRequest):
+    """
+    Mean-Variance Optimization using PyPortfolioOpt
+    
+    This endpoint integrates with Agent 1 endpoints to:
+    1. Get ticker metrics (μ and Σ) from /api/portfolio/optimization/ticker-metrics
+    2. Perform MVO optimization using PyPortfolioOpt
+    3. Generate efficient frontier and random portfolios for visualization
+    
+    Optimization types:
+    - max_sharpe: Maximum Sharpe ratio portfolio
+    - min_variance: Minimum variance portfolio
+    - target_return: Portfolio with target return and minimum risk
+    - target_risk: Portfolio with target risk and maximum return
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        tickers = [t.upper().strip() for t in request.tickers]
+        
+        # Validate input
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for optimization")
+        
+        if len(tickers) > 100:
+            raise HTTPException(status_code=400, detail="Maximum 100 tickers per request")
+        
+        # Get MVO optimizer
+        optimizer = get_mvo_optimizer()
+        
+        # Calculate current portfolio metrics if provided
+        current_portfolio = None
+        if request.current_portfolio:
+            try:
+                current_weights = request.current_portfolio.get('weights', {})
+                current_metrics = optimizer.calculate_portfolio_metrics(tickers, current_weights)
+                current_portfolio = {
+                    "weights": current_weights,
+                    "metrics": current_metrics
+                }
+            except Exception as e:
+                logger.warning(f"⚠️ Could not calculate current portfolio metrics: {e}")
+        
+        # Perform optimization
+        logger.info(f"🔧 Optimizing portfolio with {len(tickers)} tickers using {request.optimization_type}...")
+        optimized_result = optimizer.optimize_portfolio(
+            tickers=tickers,
+            optimization_type=request.optimization_type,
+            target_return=request.target_return,
+            max_risk=request.max_risk,
+            risk_profile=request.risk_profile,
+            constraints=request.constraints
+        )
+        
+        # Generate efficient frontier if requested
+        efficient_frontier = []
+        if request.include_efficient_frontier:
+            try:
+                logger.info(f"📊 Generating efficient frontier with {request.num_frontier_points} points...")
+                efficient_frontier = optimizer.generate_efficient_frontier(
+                    tickers=tickers,
+                    num_points=request.num_frontier_points,
+                    risk_profile=request.risk_profile
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Could not generate efficient frontier: {e}")
+        
+        # Generate inefficient frontier if requested (lower part of hyperbola)
+        inefficient_frontier = []
+        if request.include_efficient_frontier:  # Generate inefficient frontier when efficient frontier is requested
+            try:
+                logger.info(f"📊 Generating inefficient frontier with {request.num_frontier_points} points...")
+                inefficient_frontier = optimizer.generate_inefficient_frontier(
+                    tickers=tickers,
+                    num_points=request.num_frontier_points,
+                    risk_profile=request.risk_profile
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Could not generate inefficient frontier: {e}")
+        
+        # Generate random portfolios if requested
+        random_portfolios = []
+        if request.include_random_portfolios:
+            try:
+                logger.info(f"🎲 Generating {request.num_random_portfolios} random portfolios...")
+                random_portfolios = optimizer.generate_random_portfolios(
+                    tickers=tickers,
+                    num_portfolios=request.num_random_portfolios,
+                    risk_profile=request.risk_profile
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Could not generate random portfolios: {e}")
+        
+        # Calculate Capital Market Line (CML) from efficient frontier
+        capital_market_line = []
+        if efficient_frontier and len(efficient_frontier) > 0:
+            try:
+                logger.info("📈 Calculating Capital Market Line...")
+                capital_market_line = optimizer.calculate_capital_market_line(
+                    efficient_frontier=efficient_frontier,
+                    risk_free_rate=optimizer.risk_free_rate
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Could not calculate CML: {e}")
+        
+        # Calculate improvements if current portfolio provided
+        improvements = None
+        if current_portfolio:
+            current_metrics = current_portfolio.get('metrics', {})
+            optimized_metrics = {
+                'expected_return': optimized_result.get('expected_return', 0),
+                'risk': optimized_result.get('risk', 0),
+                'sharpe_ratio': optimized_result.get('sharpe_ratio', 0)
+            }
+            
+            improvements = {
+                'return_improvement': optimized_metrics['expected_return'] - current_metrics.get('expected_return', 0),
+                'risk_improvement': current_metrics.get('risk', 0) - optimized_metrics['risk'],
+                'sharpe_improvement': optimized_metrics['sharpe_ratio'] - current_metrics.get('sharpe_ratio', 0)
+            }
+        
+        # Prepare response
+        processing_time = time.time() - start_time
+        
+        response = MVOOptimizationResponse(
+            optimization_type=optimized_result.get('optimization_type', request.optimization_type),
+            strategy_name=optimized_result.get('strategy_name', 'MVO Optimization'),
+            optimized_portfolio={
+                "tickers": optimized_result.get('tickers', tickers),
+                "weights": optimized_result.get('weights', {}),
+                "weights_list": optimized_result.get('weights_list', []),
+                "metrics": {
+                    "expected_return": optimized_result.get('expected_return', 0),
+                    "risk": optimized_result.get('risk', 0),
+                    "sharpe_ratio": optimized_result.get('sharpe_ratio', 0)
+                }
+            },
+            current_portfolio=current_portfolio,
+            efficient_frontier=efficient_frontier,
+            inefficient_frontier=inefficient_frontier,
+            random_portfolios=random_portfolios,
+            capital_market_line=capital_market_line,
+            improvements=improvements,
+            metadata={
+                "num_tickers": len(tickers),
+                "processing_time_seconds": round(processing_time, 3),
+                "risk_free_rate": optimizer.risk_free_rate
+            }
+        )
+        
+        logger.info(f"✅ MVO optimization completed in {processing_time:.3f}s")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in MVO optimization: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to optimize portfolio: {str(e)}")
+
+class DualOptimizationRequest(BaseModel):
+    user_tickers: List[str]  # User's selected tickers
+    risk_profile: str
+    optimization_type: str = "max_sharpe"
+    max_eligible_tickers: int = 20  # Top N eligible tickers to consider
+    include_efficient_frontier: bool = True
+    include_random_portfolios: bool = True
+    num_frontier_points: int = 20
+    num_random_portfolios: int = 200
+    test_hour: Optional[int] = None  # For testing: override hour for diversity seed (0-23)
+    # Optional: Current portfolio weights and metrics (if already calculated)
+    current_portfolio_weights: Optional[Dict[str, float]] = None  # Actual allocation weights
+    current_portfolio_metrics: Optional[Dict[str, float]] = None  # Pre-calculated metrics (expected_return, risk, sharpe_ratio)
+
+class DualOptimizationResponse(BaseModel):
+    current_portfolio: Dict[str, Any]  # User's current portfolio metrics and tickers
+    optimized_portfolio: MVOOptimizationResponse  # Optimized portfolio from market tickers
+    comparison: Dict[str, Any]  # Comparison metrics between current and optimized
+
+class TripleOptimizationRequest(BaseModel):
+    user_tickers: List[str]  # User's selected tickers
+    user_weights: Dict[str, float]  # REQUIRED: Actual allocation weights (0.0-1.0)
+    risk_profile: str
+    optimization_type: str = "max_sharpe"
+    max_eligible_tickers: int = 20
+    include_efficient_frontier: bool = True
+    include_random_portfolios: bool = True
+    num_frontier_points: int = 20
+    num_random_portfolios: int = 200
+    use_combined_strategy: bool = True  # Enable weights-first + market exploration
+    attempt_market_exploration: bool = True  # Always attempt market optimization
+
+class TripleOptimizationResponse(BaseModel):
+    current_portfolio: Dict[str, Any]  # Starting portfolio with actual weights
+    weights_optimized_portfolio: MVOOptimizationResponse  # Weights-only optimization
+    market_optimized_portfolio: Optional[MVOOptimizationResponse]  # Market exploration (optional)
+    comparison: Dict[str, Any]  # Comparison between all three
+    optimization_metadata: Dict[str, Any]  # Strategy used, attempts, recommendation
+
+# Helper functions for triple optimization
+def _postprocess_weights(weights: Dict[str, float], max_assets: int = 10, min_weight: float = 0.005) -> Dict[str, float]:
+    """
+    Trim weights to a practical holding count:
+    - Drop tiny weights (< min_weight)
+    - Keep top weights up to max_assets
+    - Renormalize to sum to 1.0
+    """
+    if not weights:
+        return {}
+    # Drop tiny weights first
+    filtered = {k: v for k, v in weights.items() if v >= min_weight and v > 0}
+    if not filtered:
+        filtered = weights
+    # Sort by weight desc and keep top N
+    sorted_items = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
+    trimmed = dict(sorted_items[:max_assets])
+    total = sum(trimmed.values())
+    if total <= 0:
+        return trimmed
+    return {k: v / total for k, v in trimmed.items()}
+def compute_portfolio_metrics_with_weights(tickers: List[str], weights: Dict[str, float], 
+                                          optimizer, min_overlap_months: int = 24, 
+                                          _recursion_depth: int = 0) -> Dict[str, Any]:
+    """Compute portfolio metrics using actual weights."""
+    # Prevent infinite recursion
+    if _recursion_depth > 0:
+        logger.error(f"❌ Maximum recursion depth reached in compute_portfolio_metrics_with_weights")
+        # Return fallback values instead of recursing
+        return {
+            "expected_return": 0.0,
+            "risk": 0.0,
+            "sharpe_ratio": 0.0
+        }
+    
+    try:
+        # Get ticker metrics
+        mu_dict, sigma_df = optimizer.get_ticker_metrics(
+            tickers=tickers,
+            annualize=True,
+            min_overlap_months=min_overlap_months,
+            strict_overlap=False
+        )
+        
+        # CRITICAL: Ensure tickers match between weights and metrics
+        # get_ticker_metrics may filter out tickers with insufficient data
+        # So we need to align weights with the actual tickers returned
+        available_tickers = list(sigma_df.index) if hasattr(sigma_df, 'index') else list(mu_dict.keys())
+        
+        # Filter to only tickers that exist in both weights and metrics
+        valid_tickers = [t for t in tickers if t in available_tickers and t in weights]
+        
+        if len(valid_tickers) < 2:
+            raise ValueError(f"Insufficient valid tickers: {len(valid_tickers)} (need at least 2)")
+        
+        # Normalize weights for valid tickers only
+        total_weight = sum(weights.get(t, 0.0) for t in valid_tickers)
+        if total_weight <= 0:
+            raise ValueError("Weights sum to zero or negative")
+        
+        # Create aligned arrays - ensure order matches sigma_df
+        w_array = np.array([weights.get(t, 0.0) / total_weight for t in available_tickers])
+        mu_array = np.array([mu_dict.get(t, 0.0) for t in available_tickers])
+        
+        # Ensure sigma_matrix matches the order
+        sigma_matrix = sigma_df.loc[available_tickers, available_tickers].values
+        
+        # Verify dimensions match
+        if len(w_array) != len(mu_array) or len(w_array) != sigma_matrix.shape[0]:
+            raise ValueError(
+                f"Dimension mismatch: w_array={len(w_array)}, mu_array={len(mu_array)}, "
+                f"sigma_matrix={sigma_matrix.shape}"
+            )
+        
+        # Calculate portfolio metrics
+        expected_return = float(w_array @ mu_array)
+        portfolio_variance = float(w_array @ sigma_matrix @ w_array)
+        risk = float(np.sqrt(max(portfolio_variance, 0.0)))
+        
+        sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
+        
+        return {
+            "expected_return": expected_return,
+            "risk": risk,
+            "sharpe_ratio": sharpe_ratio
+        }
+    except Exception as e:
+        logger.warning(f"⚠️ Error computing portfolio metrics with weights: {e}")
+        # Fallback to equal weights with recursion guard
+        if len(tickers) >= 2:
+            equal_weight = 1.0 / len(tickers)
+            return compute_portfolio_metrics_with_weights(
+                tickers, 
+                {t: equal_weight for t in tickers}, 
+                optimizer, 
+                min_overlap_months,
+                _recursion_depth + 1
+            )
+        else:
+            # Can't compute with less than 2 tickers
+            return {
+                "expected_return": 0.0,
+                "risk": 0.0,
+                "sharpe_ratio": 0.0
+            }
+
+def find_matching_portfolio_in_redis(user_tickers: List[str], user_weights: Dict[str, float], 
+                                     risk_profile: str) -> Optional[Dict[str, Any]]:
+    """
+    Find a matching portfolio in Redis and return its precomputed metrics.
+    
+    Returns:
+        Dict with precomputed metrics if match found, None otherwise
+    """
+    try:
+        r = _rds.redis_client
+        if not r:
+            return None
+        
+        bucket_key = f"portfolio_bucket:{risk_profile}"
+        
+        # Check up to 60 portfolios (standard bucket size)
+        for i in range(60):
+            portfolio_key = f"{bucket_key}:{i}"
+            portfolio_data = r.get(portfolio_key)
+            
+            if not portfolio_data:
+                continue
+            
+            try:
+                portfolio = json.loads(portfolio_data)
+                allocations = portfolio.get('allocations', [])
+                
+                if not allocations:
+                    continue
+                
+                # Check if tickers match
+                portfolio_tickers = {a.get('symbol', '').upper() for a in allocations}
+                user_tickers_set = {t.upper() for t in user_tickers}
+                
+                if portfolio_tickers != user_tickers_set:
+                    continue
+                
+                # Check if allocations match (within 1% tolerance)
+                portfolio_allocations = {a.get('symbol', '').upper(): a.get('allocation', 0) for a in allocations}
+                matches = True
+                for ticker in user_tickers_set:
+                    user_alloc = user_weights.get(ticker.upper(), 0) * 100  # Convert to percentage
+                    portfolio_alloc = portfolio_allocations.get(ticker.upper(), 0)
+                    if abs(user_alloc - portfolio_alloc) > 1.0:  # 1% tolerance
+                        matches = False
+                        break
+                
+                if matches:
+                    # Found matching portfolio - return precomputed metrics
+                    # Handle both percentage (0-100) and decimal (0-1) formats
+                    expected_return = portfolio.get('expectedReturn', 0)
+                    if expected_return > 1.0:  # If > 1, it's a percentage, convert to decimal
+                        expected_return = expected_return / 100.0
+                    
+                    risk = portfolio.get('risk', 0)
+                    if risk > 1.0:  # If > 1, it's a percentage, convert to decimal
+                        risk = risk / 100.0
+                    
+                    sharpe_ratio = portfolio.get('sharpeRatio', None)
+                    # If sharpeRatio is missing, calculate it
+                    if sharpe_ratio is None or sharpe_ratio == 0:
+                        from utils.portfolio_mvo_optimizer import PortfolioMVOptimizer
+                        optimizer_temp = PortfolioMVOptimizer()
+                        risk_free_rate = optimizer_temp.risk_free_rate
+                        sharpe_ratio = (expected_return - risk_free_rate) / risk if risk > 0 else 0.0
+                    
+                    logger.info(f"✅ Found matching portfolio in Redis for {risk_profile}, using precomputed metrics (Return: {expected_return:.2%}, Risk: {risk:.2%}, Sharpe: {sharpe_ratio:.2f})")
+                    return {
+                        "expected_return": expected_return,
+                        "risk": risk,
+                        "sharpe_ratio": sharpe_ratio
+                    }
+            except Exception as e:
+                logger.debug(f"Error checking portfolio {i}: {e}")
+                continue
+        
+        return None
+    except Exception as e:
+        logger.debug(f"Error searching Redis for matching portfolio: {e}")
+        return None
+
+def optimize_weights_only(tickers: List[str], risk_profile: str, optimizer, 
+                         optimization_type: str = "max_sharpe") -> Dict[str, Any]:
+    """Optimize weights of current tickers only (no new tickers)."""
+    try:
+        # Get ticker metrics
+        mu_dict, sigma_df = optimizer.get_ticker_metrics(
+            tickers=tickers,
+            annualize=True,
+            min_overlap_months=24,
+            strict_overlap=False
+        )
+        
+        # CRITICAL: Align tickers - get_ticker_metrics may filter out tickers with insufficient data
+        # Get the actual tickers that were returned (from sigma_df index or mu_dict keys)
+        available_tickers = list(sigma_df.index) if hasattr(sigma_df, 'index') and len(sigma_df.index) > 0 else list(mu_dict.keys())
+        
+        # Filter to only tickers that exist in both the original list and returned metrics
+        valid_tickers = [t for t in tickers if t in available_tickers]
+        
+        if len(valid_tickers) < 2:
+            raise ValueError(f"Insufficient valid tickers for optimization: {len(valid_tickers)} (need at least 2). Original: {len(tickers)}, Available: {len(available_tickers)}")
+        
+        # Create aligned arrays using the valid tickers in the same order as sigma_df
+        mu_array = np.array([mu_dict.get(t, 0.0) for t in available_tickers])
+        sigma_matrix = sigma_df.loc[available_tickers, available_tickers].values
+        
+        # Verify dimensions match
+        if len(mu_array) != sigma_matrix.shape[0] or len(mu_array) != sigma_matrix.shape[1]:
+            raise ValueError(
+                f"Dimension mismatch after alignment: mu_array={len(mu_array)}, "
+                f"sigma_matrix={sigma_matrix.shape}, available_tickers={len(available_tickers)}"
+            )
+        
+        ef = EfficientFrontier(mu_array, sigma_matrix)
+        
+        if optimization_type == "max_sharpe":
+            weights_array = ef.max_sharpe(risk_free_rate=optimizer.risk_free_rate)
+        elif optimization_type == "min_variance":
+            weights_array = ef.min_volatility()
+        else:
+            weights_array = ef.max_sharpe(risk_free_rate=optimizer.risk_free_rate)
+        
+        # Convert to dict - use available_tickers (aligned with optimization)
+        optimized_weights = {available_tickers[i]: float(weights_array[i]) for i in range(len(available_tickers))}
+        
+        # Set weights to 0 for tickers that were filtered out
+        for ticker in tickers:
+            if ticker not in optimized_weights:
+                optimized_weights[ticker] = 0.0
+        
+        # Calculate metrics using aligned arrays
+        w_array = np.array([weights_array[i] for i in range(len(available_tickers))])
+        expected_return = float(w_array @ mu_array)
+        portfolio_variance = float(w_array @ sigma_matrix @ w_array)
+        risk = float(np.sqrt(max(portfolio_variance, 0.0)))
+        sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
+        
+        return {
+            "tickers": valid_tickers,  # Return only valid tickers that were optimized
+            "weights": optimized_weights,
+            "metrics": {
+                "expected_return": expected_return,
+                "risk": risk,
+                "sharpe_ratio": sharpe_ratio
+            }
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in weights-only optimization: {e}")
+        raise
+
+def decide_best_portfolio(current: Dict[str, Any], weights_opt: Dict[str, Any], 
+                         market_opt: Optional[Dict[str, Any]], risk_profile: str) -> str:
+    """
+    Decision framework: determine which portfolio to recommend.
+    
+    Updated rule (user intent):
+    - Only recommend MARKET when:
+        Sharpe_market >= Sharpe_weights + 0.10
+        AND Risk_market <= Risk_weights + RISK_BUFFER (profile-specific)
+    - Otherwise fall back to WEIGHTS vs CURRENT comparison.
+    
+    Risk buffers are profile-specific to account for:
+    - Conservative profiles: tighter risk tolerance, small buffer
+    - Aggressive profiles: more risk tolerance, larger buffer
+    """
+    EPS_SHARPE_SMALL = 0.05  # For weights vs current
+    MARKET_SHARPE_MARGIN = 0.10
+    
+    # Profile-specific risk buffer: allows market portfolio to have slightly higher risk
+    # This improves acceptance rate while maintaining risk-appropriate recommendations
+    # Optimized based on comprehensive testing across all portfolios
+    RISK_BUFFER_BY_PROFILE = {
+        'very-conservative': 0.02,  # +2% buffer (slightly relaxed for better acceptance)
+        'conservative': 0.03,       # +3% buffer
+        'moderate': 0.03,           # +3% buffer
+        'aggressive': 0.04,         # +4% buffer (more tolerance for higher risk profiles)
+        'very-aggressive': 0.01     # +1% buffer (small buffer, already has good risk profile)
+    }
+    risk_buffer = RISK_BUFFER_BY_PROFILE.get(risk_profile, 0.03)
+    
+    current_sharpe = current.get("sharpe_ratio", 0.0)
+    weights_sharpe = weights_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+    weights_risk = weights_opt.get("metrics", {}).get("risk", 0.0)
+    current_risk = current.get("risk", 0.0)
+    
+    weights_vs_current = weights_sharpe - current_sharpe
+    weights_risk_change = weights_risk - current_risk
+    
+    # If market optimization was attempted, apply acceptance rule with risk buffer
+    if market_opt:
+        market_sharpe = market_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+        market_risk = market_opt.get("metrics", {}).get("risk", 0.0)
+        market_vs_weights = market_sharpe - weights_sharpe
+        
+        # Recommend market when:
+        # 1. Sharpe is at least 0.10 better than weights
+        # 2. Risk is not worse than weights + profile-specific buffer
+        if (market_vs_weights >= MARKET_SHARPE_MARGIN) and (market_risk <= weights_risk + risk_buffer):
+            return "market"
+    
+    # Is weights better than current?
+    if weights_vs_current >= EPS_SHARPE_SMALL and weights_risk_change <= 0.0:
+        return "weights"
+    
+    # Current is best
+    return "current"
+
+def decide_best_portfolio_v2(current: Dict[str, Any], weights_opt: Dict[str, Any], 
+                             market_opt: Optional[Dict[str, Any]], risk_profile: str) -> str:
+    """
+    NEW Recommendation Logic (Conceptual Implementation):
+    
+    Compare Sharpe ratios across all portfolios.
+    If an optimized portfolio has significantly better Sharpe (e.g., >0.10 improvement), 
+    recommend it even with a moderate risk increase.
+    Only default to "current" if it genuinely has the best risk-adjusted return or 
+    if optimized portfolios have unacceptable risk levels.
+    """
+    from utils.risk_profile_config import RISK_PROFILE_MAX_RISK_WITH_BUFFER
+    
+    SIGNIFICANT_SHARPE_IMPROVEMENT = 0.10  # Threshold for "significantly better"
+    MODERATE_RISK_INCREASE = 0.05  # 5% absolute increase considered moderate
+    
+    # Get maximum risk limit with 10% buffer
+    max_risk_limit = RISK_PROFILE_MAX_RISK_WITH_BUFFER.get(risk_profile, 0.32 * 1.10)
+    
+    # Extract metrics
+    current_sharpe = current.get("sharpe_ratio", 0.0)
+    current_risk = current.get("risk", 0.0)
+    
+    weights_sharpe = weights_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+    weights_risk = weights_opt.get("metrics", {}).get("risk", 0.0)
+    
+    # Calculate Sharpe improvements
+    weights_vs_current_sharpe = weights_sharpe - current_sharpe
+    weights_risk_increase = weights_risk - current_risk
+    
+    market_sharpe = 0.0
+    market_risk = 0.0
+    market_vs_current_sharpe = 0.0
+    market_vs_weights_sharpe = 0.0
+    market_risk_increase = 0.0
+    
+    if market_opt:
+        market_sharpe = market_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+        market_risk = market_opt.get("metrics", {}).get("risk", 0.0)
+        market_vs_current_sharpe = market_sharpe - current_sharpe
+        market_vs_weights_sharpe = market_sharpe - weights_sharpe
+        market_risk_increase = market_risk - current_risk
+    
+    # Check risk compliance (with buffer)
+    weights_risk_compliant = weights_risk <= max_risk_limit
+    market_risk_compliant = market_risk <= max_risk_limit if market_opt else False
+    
+    # Strategy: Compare all portfolios by Sharpe ratio
+    # Priority: Market > Weights > Current (if Sharpe improvements are significant)
+    
+    # 1. Check Market portfolio
+    if market_opt and market_risk_compliant:
+        # Market is acceptable if:
+        # - Significantly better Sharpe than current (>0.10) AND risk increase is moderate (≤5%)
+        # OR
+        # - Significantly better Sharpe than weights (>0.10) AND risk is acceptable
+        if (market_vs_current_sharpe >= SIGNIFICANT_SHARPE_IMPROVEMENT and 
+            market_risk_increase <= MODERATE_RISK_INCREASE) or \
+           (market_vs_weights_sharpe >= SIGNIFICANT_SHARPE_IMPROVEMENT):
+            return "market"
+    
+    # 2. Check Weights portfolio
+    if weights_risk_compliant:
+        # Weights is acceptable if:
+        # - Significantly better Sharpe than current (>0.10) AND risk increase is moderate (≤5%)
+        # OR
+        # - Better Sharpe than current (≥0.05) AND risk doesn't increase
+        if (weights_vs_current_sharpe >= SIGNIFICANT_SHARPE_IMPROVEMENT and 
+            weights_risk_increase <= MODERATE_RISK_INCREASE) or \
+           (weights_vs_current_sharpe >= 0.05 and weights_risk_increase <= 0.0):
+            return "weights"
+    
+    # 3. Default to Current
+    # Only if:
+    # - Current has best Sharpe ratio, OR
+    # - Optimized portfolios violate risk limits, OR
+    # - Optimized portfolios don't provide significant improvement
+    return "current"
+
+def build_triple_comparison(current: Dict[str, Any], weights_opt: Dict[str, Any], 
+                           market_opt: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build comparison between all three portfolios."""
+    current_ret = current.get("expected_return", 0.0)
+    current_risk = current.get("risk", 0.0)
+    current_sharpe = current.get("sharpe_ratio", 0.0)
+    
+    weights_ret = weights_opt.get("metrics", {}).get("expected_return", 0.0)
+    weights_risk = weights_opt.get("metrics", {}).get("risk", 0.0)
+    weights_sharpe = weights_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+    
+    # Weights vs Current
+    weights_vs_current = {
+        "return_difference": weights_ret - current_ret,
+        "risk_difference": weights_risk - current_risk,
+        "sharpe_difference": weights_sharpe - current_sharpe
+    }
+    
+    # Market vs Current and Market vs Weights
+    market_vs_current = None
+    market_vs_weights = None
+    
+    if market_opt:
+        market_ret = market_opt.get("metrics", {}).get("expected_return", 0.0)
+        market_risk = market_opt.get("metrics", {}).get("risk", 0.0)
+        market_sharpe = market_opt.get("metrics", {}).get("sharpe_ratio", 0.0)
+        
+        market_vs_current = {
+            "return_difference": market_ret - current_ret,
+            "risk_difference": market_risk - current_risk,
+            "sharpe_difference": market_sharpe - current_sharpe
+        }
+        
+        market_vs_weights = {
+            "return_difference": market_ret - weights_ret,
+            "risk_difference": market_risk - weights_risk,
+            "sharpe_difference": market_sharpe - weights_sharpe
+        }
+    
+    # Find best metrics
+    returns = [current_ret, weights_ret]
+    risks = [current_risk, weights_risk]
+    sharpes = [current_sharpe, weights_sharpe]
+    
+    if market_opt:
+        returns.append(market_opt.get("metrics", {}).get("expected_return", 0.0))
+        risks.append(market_opt.get("metrics", {}).get("risk", 0.0))
+        sharpes.append(market_opt.get("metrics", {}).get("sharpe_ratio", 0.0))
+    
+    best_return_idx = returns.index(max(returns))
+    best_risk_idx = risks.index(min(risks))
+    best_sharpe_idx = sharpes.index(max(sharpes))
+    
+    best_return = ["current", "weights", "market"][best_return_idx] if best_return_idx < 3 else "current"
+    best_risk = ["current", "weights", "market"][best_risk_idx] if best_risk_idx < 3 else "current"
+    best_sharpe = ["current", "weights", "market"][best_sharpe_idx] if best_sharpe_idx < 3 else "current"
+    
+    return {
+        "weights_vs_current": weights_vs_current,
+        "market_vs_current": market_vs_current,
+        "market_vs_weights": market_vs_weights,
+        "best_return": best_return,
+        "best_risk": best_risk,
+        "best_sharpe": best_sharpe
+    }
+
+@router.post("/optimization/dual", response_model=DualOptimizationResponse)
+def optimize_dual_portfolio(request: DualOptimizationRequest):
+    """
+    Portfolio Optimization: Compare user's current portfolio vs optimized portfolio from market
+    
+    This endpoint:
+    1. Calculates current portfolio metrics (user's selected tickers with current weights)
+    2. Gets eligible tickers from entire market matching risk profile (with diversity rotation)
+    3. Optimizes best portfolio from eligible market tickers
+    4. Returns current portfolio + optimized portfolio for comparison
+    
+    The optimized portfolio uses diversity rotation to provide different ticker combinations
+    over time while maintaining quality (high Sharpe ratio).
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        user_tickers = [t.upper().strip() for t in request.user_tickers]
+        
+        if len(user_tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 user tickers required")
+        
+        optimizer = get_mvo_optimizer()
+        
+        # Step 1: Calculate current portfolio metrics (user's tickers with equal weights for comparison)
+        logger.info(f"🔧 Step 1: Calculating current portfolio metrics from {len(user_tickers)} tickers...")
+        current_weights = {}
+        if user_tickers:
+            # Equal weights for current portfolio (or could use provided weights if available)
+            equal_weight = 1.0 / len(user_tickers)
+            current_weights = {ticker: equal_weight for ticker in user_tickers}
+        
+        # Calculate current portfolio metrics
+        current_data_quality_warnings = []
+        try:
+            current_mvo_result = optimizer.optimize_portfolio(
+            tickers=user_tickers,
+            optimization_type=request.optimization_type,
+            risk_profile=request.risk_profile,
+                min_overlap_months=24,
+                strict_overlap=False
+            )
+            current_expected_return = current_mvo_result.get('expected_return', 0)
+            current_risk = current_mvo_result.get('risk', 0)
+            current_sharpe = current_mvo_result.get('sharpe_ratio', 0)
+            
+            # Validate metrics for data quality issues
+            # Flag unrealistic returns (>50% annual is suspicious for most portfolios)
+            if current_expected_return > 0.50:
+                current_data_quality_warnings.append(
+                    f"Current portfolio shows {current_expected_return*100:.1f}% expected return, which may indicate limited historical data or data quality issues"
+                )
+                logger.warning(f"⚠️ Suspiciously high return for current portfolio: {current_expected_return*100:.1f}%")
+            
+            # Flag unrealistic risk (>60% annual volatility is very high)
+            if current_risk > 0.60:
+                current_data_quality_warnings.append(
+                    f"Current portfolio shows {current_risk*100:.1f}% volatility, which is extremely high"
+                )
+            
+            # Flag unrealistic Sharpe ratio (>3.0 is very rare, >5.0 is almost certainly data error)
+            if current_sharpe > 3.0:
+                current_data_quality_warnings.append(
+                    f"Current portfolio Sharpe ratio of {current_sharpe:.2f} is unusually high and may indicate data quality issues"
+                )
+                logger.warning(f"⚠️ Suspiciously high Sharpe ratio for current portfolio: {current_sharpe:.2f}")
+            
+            current_metrics = {
+                "expected_return": current_expected_return,
+                "risk": current_risk,
+                "sharpe_ratio": current_sharpe,
+                "data_quality_warnings": current_data_quality_warnings
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate current portfolio metrics: {e}, using fallback")
+            current_metrics = {
+                "expected_return": 0.10,
+                "risk": 0.20,
+                "sharpe_ratio": 0.50,
+                "data_quality_warnings": ["Could not calculate metrics from historical data - using fallback values"]
+            }
+        
+        # Step 2: Get eligible tickers for risk profile
+        logger.info(f"🔧 Step 2: Getting eligible tickers for {request.risk_profile} risk profile...")
+        try:
+            # Get eligible tickers using the internal function (not the endpoint)
+            # CRITICAL: Request MANY more tickers to ensure sufficient pool for diversity rotation
+            # We need a large pool so that shuffling and sampling can produce variation
+            # Use 50x multiplier or minimum 2000 to ensure we have enough tickers after filtering
+            per_page_size = max(request.max_eligible_tickers * 50, 2000)
+            eligible_response = _get_eligible_tickers_internal(
+                min_data_points=36,  # Recommended V2: 36 months (3 years) for excellent covariance reliability
+                filter_negative_returns=True,
+                per_page=per_page_size,
+                page=1,
+                sort_by='return'  # Sort by return, but we'll shuffle by quality tiers later
+            )
+            
+            eligible_tickers_data = eligible_response.get('eligible_tickers', [])
+            pagination_info = eligible_response.get('pagination', {})
+            total_eligible = pagination_info.get('total', len(eligible_tickers_data))
+            
+            # VERIFICATION: Log actual pool sizes at each step
+            logger.info(f"🔍 POOL SIZE VERIFICATION:")
+            logger.info(f"   Requested per_page_size: {per_page_size}")
+            logger.info(f"   Total eligible tickers available: {total_eligible}")
+            logger.info(f"   Eligible tickers returned (paginated): {len(eligible_tickers_data)}")
+            logger.info(f"   Has more pages: {pagination_info.get('has_more', False)}")
+            
+            # CRITICAL: If pagination limited results, we need to fetch more pages
+            if pagination_info.get('has_more', False) and len(eligible_tickers_data) < total_eligible:
+                logger.warning(f"⚠️ WARNING: Only got {len(eligible_tickers_data)} tickers but {total_eligible} available. Pagination may be limiting diversity pool!")
+            
+            # Filter by risk profile volatility ranges - using centralized config
+            from utils.risk_profile_config import get_volatility_range_for_profile
+            vol_range = get_volatility_range_for_profile(request.risk_profile)
+            min_vol, max_vol = vol_range
+            
+            # Filter with volatility range (min and max)
+            filtered_tickers = [
+                t for t in eligible_tickers_data
+                if (t.get('volatility', 1.0) >= min_vol and 
+                    t.get('volatility', 1.0) <= max_vol)
+            ]
+            
+            logger.info(f"📊 Filtered {len(filtered_tickers)} tickers in volatility range {min_vol:.2%}-{max_vol:.2%} for {request.risk_profile}")
+            
+            # DIVERSITY ROTATION: Quality tier selection (NO metric manipulation)
+            # Create deterministic but varied seed based on user tickers + hourly rotation
+            import hashlib
+            import random as diversity_random
+            import random
+            import numpy as np
+            
+            user_key = "_".join(sorted(user_tickers))
+            current_datetime = datetime.now()
+            date_seed = current_datetime.date().toordinal() % 7  # Weekly component for stability
+            # Use test_hour if provided (for testing), otherwise use actual hour
+            hour_seed = request.test_hour if request.test_hour is not None else current_datetime.hour  # Hourly rotation (0-23)
+            # Increase hour component impact for better diversity (multiply by larger factor)
+            # Calculate base hash (consistent for same user + risk profile)
+            base_hash = int(hashlib.md5(f"{user_key}_{request.risk_profile}".encode()).hexdigest()[:8], 16)
+            # Make hour component more significant by using it as a multiplier factor
+            # This ensures different hours produce significantly different seeds
+            # Calculate diversity_seed_value for ticker count determination (keep for compatibility)
+            diversity_seed_value = (
+                base_hash +
+                date_seed * 100000 +  # Weekly variation (increased)
+                hour_seed * 10000     # Hourly variation (increased significantly)
+            )
+            if request.test_hour is not None:
+                logger.info(f"🔀 Diversity seed (TEST MODE): base_hash({base_hash}) + date({date_seed}*100000) + hour({hour_seed}*10000) = {diversity_seed_value}")
+            else:
+                logger.debug(f"🔀 Diversity seed: base_hash({base_hash}) + date({date_seed}*100000) + hour({hour_seed}*10000) = {diversity_seed_value}")
+            # DO NOT seed diversity_random here - it will be seeded separately for shuffling and selection
+            
+            # Sort by overlap first, then by Sharpe ratio (NO manipulation)
+            # This creates deterministic order BEFORE shuffling - this is intentional
+            # We'll shuffle within quality tiers to introduce diversity
+            filtered_tickers.sort(
+                key=lambda x: (
+                    bool(x.get('recommended_for_optimization', False)),  # Full overlap first
+                    x.get('sharpe_ratio', x.get('expected_return', 0))  # Pure quality metric
+                ),
+                reverse=True
+            )
+            
+            if request.test_hour is not None and filtered_tickers:
+                sorted_order = [t['ticker'] for t in filtered_tickers[:10]]
+                logger.info(f"🔀 After sort by Sharpe (first 10): {sorted_order}")
+            
+            # Quality tier selection (NO metric manipulation)
+            # Categorize tickers into quality tiers based on actual Sharpe ratios
+            sharpe_values = [t.get('sharpe_ratio', t.get('expected_return', 0)) for t in filtered_tickers if t.get('sharpe_ratio') is not None or t.get('expected_return') is not None]
+            
+            if sharpe_values and len(sharpe_values) > 0:
+                top_tier_threshold = np.percentile(sharpe_values, 80)  # Top 20%
+                mid_tier_threshold = np.percentile(sharpe_values, 50)  # Top 50%
+                
+                # Group by tier
+                top_tier_tickers = []
+                mid_tier_tickers = []
+                lower_tier_tickers = []
+                
+                for t in filtered_tickers:
+                    sharpe = t.get('sharpe_ratio', t.get('expected_return', 0))
+                    if sharpe >= top_tier_threshold:
+                        top_tier_tickers.append(t)
+                    elif sharpe >= mid_tier_threshold:
+                        mid_tier_tickers.append(t)
+                    else:
+                        lower_tier_tickers.append(t)
+                
+                # Randomize order within each tier (for diversity, NO metric modification)
+                # CRITICAL: Use hour_seed as PRIMARY component to ensure different hours = different orders
+                # Create dedicated Random instances for each tier to avoid seed conflicts
+                user_hash_component = int(hashlib.md5(f"{user_key}_{request.risk_profile}".encode()).hexdigest()[:4], 16) % 1000
+                shuffle_seed_top = hour_seed * 1000000 + date_seed * 10000 + user_hash_component
+                shuffle_seed_mid = hour_seed * 1000000 + date_seed * 10000 + user_hash_component + 50000  # Different offset
+                
+                # Use dedicated Random instances to ensure isolation - SHUFFLE IN PLACE
+                shuffle_random_top = random.Random(shuffle_seed_top)
+                shuffle_random_top.shuffle(top_tier_tickers)  # Shuffles the list in place
+                
+                shuffle_random_mid = random.Random(shuffle_seed_mid)
+                shuffle_random_mid.shuffle(mid_tier_tickers)  # Shuffles the list in place
+                
+                # Rebuild filtered_tickers with shuffled tier-based ordering
+                # This order will vary by hour due to shuffling above
+                filtered_tickers = top_tier_tickers + mid_tier_tickers + lower_tier_tickers
+                
+                if request.test_hour is not None:
+                    top_tickers_sample = [t['ticker'] for t in top_tier_tickers[:3]]
+                    filtered_sample = [t['ticker'] for t in filtered_tickers[:6]]
+                    logger.info(f"🔀 Shuffle (hour={hour_seed}): Top seed={shuffle_seed_top}, Top 3={top_tickers_sample}, Filtered first 6={filtered_sample}")
+                
+                logger.info(f"📊 Quality tiers: Top 20%: {len(top_tier_tickers)}, Mid 30%: {len(mid_tier_tickers)}, Lower: {len(lower_tier_tickers)}")
+            else:
+                logger.warning("⚠️ Could not calculate quality tiers, using original order")
+            
+            # Count full overlap tickers in filtered set
+            full_overlap_count = sum(1 for t in filtered_tickers if t.get('recommended_for_optimization', False))
+            logger.info(f"📊 Found {full_overlap_count} tickers with full date overlap ({full_overlap_count/len(filtered_tickers)*100:.1f}%)" if filtered_tickers else "📊 No tickers found")
+            
+            # Dynamic ticker count: Select between 3-7 tickers based on pool size and hour-based seed
+            # CRITICAL: Use hour_seed directly to ensure target_count varies by hour
+            def determine_ticker_count(filtered_count: int, hour_seed: int, date_seed: int) -> int:
+                """Determine ticker count (3-7) based on available pool and hour-based seed"""
+                if filtered_count < 3:
+                    return max(2, filtered_count)  # Minimum 2 for optimization
+                if filtered_count < 5:
+                    return 3  # Use minimum if pool is small
+                
+                # CRITICAL: Use hour as primary component to ensure variation
+                count_seed = hour_seed * 1000000 + date_seed * 10000
+                temp_random = random.Random(count_seed)
+                
+                # CRITICAL: Ensure we leave room for variation
+                # If pool is small (<=8), use smaller target to allow sampling variation
+                if filtered_count <= 8:
+                    # Small pool - use 3-5 to ensure we can sample different combinations
+                    count = temp_random.choice([3, 4, 5])
+                    return min(count, filtered_count)
+                
+                # Larger pool - random selection between 3-7, weighted towards 4-6
+                weights = [0.1, 0.2, 0.3, 0.3, 0.1]  # 3, 4, 5, 6, 7
+                count = temp_random.choices([3, 4, 5, 6, 7], weights=weights, k=1)[0]
+                return min(count, filtered_count)
+            
+            # Select tickers: Can include user's tickers if they're high quality
+            user_tickers_set = set(t.upper() for t in user_tickers)
+            
+            # CRITICAL FIX: Use dedicated Random instance for selection to avoid seed conflicts
+            # Hour component MUST be primary to ensure different hours = different selections
+            # Use a DIFFERENT seed calculation than shuffle to ensure independence
+            user_hash_small = int(hashlib.md5(f"{user_key}_{request.risk_profile}_SELECTION".encode()).hexdigest()[:4], 16) % 1000
+            # Make hour component EXTREMELY dominant for selection (increased multiplier)
+            selection_seed = hour_seed * 1000000000 + date_seed * 100000 + user_hash_small
+            
+            # Create dedicated random instance for selection (isolated from tier shuffling)
+            selection_random = random.Random(selection_seed)
+            
+            # CHANGE: Include user tickers in market pool for fair comparison
+            # This ensures both portfolios use the same opportunity set
+            # Separate user and non-user tickers from shuffled list (order matters - uses shuffled order)
+            non_user_tickers = [t['ticker'].upper() for t in filtered_tickers if t['ticker'].upper() not in user_tickers_set]
+            user_tickers_in_pool = [t['ticker'].upper() for t in filtered_tickers if t['ticker'].upper() in user_tickers_set]
+            
+            # Combine all tickers for market pool (user tickers included)
+            # This ensures the efficient frontier includes user's tickers in the opportunity set
+            market_pool_tickers = filtered_tickers  # All filtered tickers (includes user tickers)
+            
+            # VERIFICATION: Log pool sizes after user ticker filtering
+            logger.info(f"🔍 POOL SIZE AFTER USER FILTER:")
+            logger.info(f"   Total filtered_tickers: {len(filtered_tickers)}")
+            logger.info(f"   Non-user tickers: {len(non_user_tickers)}")
+            logger.info(f"   User tickers in pool: {len(user_tickers_in_pool)}")
+            logger.info(f"   User tickers excluded: {user_tickers}")
+            
+            # CRITICAL: Determine target_count AFTER we know non_user_tickers size
+            # Adjust target if pool is small to ensure variation is possible
+            initial_target = determine_ticker_count(len(filtered_tickers), hour_seed, date_seed)
+            
+            # CRITICAL: ALWAYS ensure target_count allows variation when pool is small
+            # This is essential for diversity rotation - we need room to sample different combinations
+            # Force reduction if pool size is small (<=8) to ensure we can get different ticker sets
+            if len(non_user_tickers) <= 8:
+                # Small pool - MUST reduce target to allow variation
+                # Use hour-based random to vary the target, ensuring different hours get different counts
+                if len(non_user_tickers) <= 6:
+                    # Very small pool (6 or less) - use 3-4 to ensure we can get different combinations
+                    # CRITICAL: This MUST vary by hour to produce different ticker sets
+                    target_count = selection_random.choice([3, 4])
+                    # Ensure target is less than pool size to allow variation
+                    if target_count >= len(non_user_tickers):
+                        target_count = len(non_user_tickers) - 1
+                    if request.test_hour is not None:
+                        logger.info(f"🔀 Very small pool ({len(non_user_tickers)} tickers): Using target {target_count} (was {initial_target}) for variation")
+                else:
+                    # Small pool (7-8) - reduce by 1-2 from initial, but ensure it's less than pool
+                    reduction = selection_random.randint(1, min(2, initial_target - 3))
+                    target_count = max(3, initial_target - reduction)
+                    # Ensure target is less than pool size
+                    if target_count >= len(non_user_tickers):
+                        target_count = len(non_user_tickers) - 1
+                    if request.test_hour is not None:
+                        logger.info(f"🔀 Small pool ({len(non_user_tickers)} tickers): Adjusted target {initial_target} -> {target_count} for variation")
+            else:
+                target_count = initial_target
+                if request.test_hour is not None:
+                    logger.info(f"🔀 Large pool ({len(non_user_tickers)} tickers): Using initial target {target_count}")
+            
+            logger.info(f"📊 Dynamic ticker count: {target_count} (from pool of {len(filtered_tickers)}, non-user: {len(non_user_tickers)})")
+            
+            if request.test_hour is not None:
+                logger.info(f"🔀 Selection prep (hour={hour_seed}): selection_seed={selection_seed}")
+                logger.info(f"🔀   Non-user tickers (from shuffled list) first 15: {non_user_tickers[:15]}")
+                logger.info(f"🔀   Total non-user: {len(non_user_tickers)}, target_count: {target_count}")
+            
+            # Prefer non-user tickers, but allow user tickers if pool is limited
+            pool_size = len(non_user_tickers)
+            
+            # CRITICAL: Determine actual_target BEFORE any conditions
+            # Force variation by varying sample size based on hour for large pools
+            if pool_size > 10:
+                # Large pool - ALWAYS use hour-based size to guarantee variation
+                hour_based_size = 3 + (hour_seed % 4)  # 3, 4, 5, or 6 based on hour
+                actual_target = min(hour_based_size, pool_size - 1)
+                if request.test_hour is not None:
+                    logger.info(f"🔀 VARIATION FIX (LARGE POOL): pool_size={pool_size}, hour={hour_seed}, hour%4={hour_seed % 4}")
+                    logger.info(f"🔀   hour_based_size={hour_based_size}, actual_target={actual_target} (overriding target_count={target_count})")
+            elif pool_size <= target_count + 2:
+                # Small pool - reduce target to ensure variation
+                max_reduction = min(3, pool_size - 3)
+                reduction = selection_random.randint(1, max_reduction)
+                actual_target = max(3, pool_size - reduction)
+                if request.test_hour is not None:
+                    logger.info(f"🔀 Small pool ({pool_size}): Reduced target from {target_count} to {actual_target}")
+            else:
+                # Medium pool - use target_count but ensure it's less than pool
+                actual_target = min(target_count, pool_size - 1)
+                if request.test_hour is not None:
+                    logger.info(f"🔀 Medium pool ({pool_size}): Using target {actual_target}")
+            
+            # Now proceed with selection using actual_target
+            if pool_size >= actual_target:
+                # CRITICAL FIX: Shuffle the list using hour-based seed to ensure variation
+                # The shuffle order will differ by hour, ensuring different tickers are selected
+                if request.test_hour is not None:
+                    before_shuffle = non_user_tickers[:10].copy()
+                    logger.info(f"🔀 BEFORE shuffle (hour={hour_seed}): first 10 = {before_shuffle}")
+                
+                selection_random.shuffle(non_user_tickers)  # Shuffle in place - order varies by hour
+                
+                if request.test_hour is not None:
+                    after_shuffle = non_user_tickers[:10].copy()
+                    logger.info(f"🔀 AFTER shuffle (hour={hour_seed}): first 10 = {after_shuffle}")
+                    logger.info(f"🔀 Shuffle changed: {before_shuffle != after_shuffle}")
+                
+                # FINAL SAFETY CHECK: Ensure actual_target is always less than pool_size
+                if actual_target >= pool_size:
+                    actual_target = max(3, pool_size - selection_random.randint(1, 2))
+                    if request.test_hour is not None:
+                        logger.info(f"🔀 SAFETY CHECK: Forced actual_target to {actual_target} (pool={pool_size})")
+                
+                # Use random.sample() to select actual_target tickers from shuffled list
+                # This ensures variation - different hours will produce different samples
+                best_tickers = selection_random.sample(non_user_tickers, actual_target)
+                
+                if request.test_hour is not None:
+                    logger.info(f"🔀 Selection RESULT (hour={hour_seed}): sampled {actual_target} from {pool_size} tickers")
+                    logger.info(f"🔀   Selected tickers ({len(best_tickers)}): {best_tickers}")
+                    logger.info(f"🔀   Selection seed: {selection_seed}")
+            elif market_pool_size <= target_count:
+                # Not enough total tickers - use all available from market pool
+                best_tickers = market_pool_ticker_symbols
+                if request.test_hour is not None:
+                    logger.info(f"🔀 Selection (hour={hour_seed}): using all {len(best_tickers)} available tickers from market pool")
+            else:
+                # Should not reach here due to earlier checks, but fallback
+                best_tickers = selection_random.sample(market_pool_ticker_symbols, min(actual_target, market_pool_size))
+                if request.test_hour is not None:
+                    logger.info(f"🔀 Selection (hour={hour_seed}): fallback selection of {len(best_tickers)} tickers")
+            
+            logger.info(f"📊 Diversity selection: diversity_seed={diversity_seed_value}, hour={hour_seed}, date={date_seed}")
+            
+            # Ensure minimum 2 tickers for optimization
+            if len(best_tickers) < 2:
+                logger.warning("⚠️ Not enough eligible tickers, using all available")
+                best_tickers = [t['ticker'].upper() for t in filtered_tickers[:max(2, target_count)]]
+            
+            overlap_count = len(set(best_tickers) & user_tickers_set)
+            logger.info(f"✅ Selected {len(best_tickers)} tickers (target: {target_count}): {best_tickers[:10]}...")
+            logger.info(f"📊 User tickers: {user_tickers}, Selected tickers: {best_tickers[:10]}, Overlap: {overlap_count}/{len(best_tickers)}")
+            
+        except Exception as e:
+            logger.error(f"❌ CRITICAL ERROR: Could not get eligible tickers: {e}")
+            logger.error(f"   Cannot create best available portfolio without eligible tickers")
+            # DO NOT fallback to user_tickers - this would make both portfolios identical
+            # Instead, raise an error or use empty list to signal failure
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to get eligible tickers for best available portfolio: {str(e)}"
+            )
+        
+        # Step 3: Optimize portfolio from market tickers (with diversity rotation)
+        # Use 24 months overlap requirement (eligible tickers have 36 months individually, 
+        # so overlap should be at least 24 months) and strict_overlap=False for leniency
+        logger.info(f"🔧 Step 3: Optimizing portfolio from market tickers ({len(best_tickers)} tickers, 24mo overlap, lenient)...")
+        try:
+            # Directly call optimizer with 24 months overlap
+            optimized_result = optimizer.optimize_portfolio(
+                tickers=best_tickers,
+                optimization_type=request.optimization_type,
+                risk_profile=request.risk_profile,
+                min_overlap_months=24,  # 24 months overlap (eligible tickers have 36mo individually)
+                strict_overlap=False     # Lenient: use available overlap even if slightly less than 24mo
+            )
+            
+            # Generate efficient frontier if requested
+            efficient_frontier = []
+            if request.include_efficient_frontier:
+                try:
+                    logger.info(f"📊 Generating efficient frontier for optimized portfolio...")
+                    efficient_frontier = optimizer.generate_efficient_frontier(
+                        tickers=best_tickers,
+                        num_points=request.num_frontier_points,
+                        risk_profile=request.risk_profile,
+                        min_overlap_months=24,
+                        strict_overlap=False
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not generate efficient frontier: {e}")
+            
+            # Generate random portfolios if requested
+            random_portfolios = []
+            if request.include_random_portfolios:
+                try:
+                    logger.info(f"🎲 Generating {request.num_random_portfolios} random portfolios...")
+                    random_portfolios = optimizer.generate_random_portfolios(
+                        tickers=best_tickers,
+                        num_portfolios=request.num_random_portfolios,
+                        risk_profile=request.risk_profile,
+                        min_overlap_months=24,
+                        strict_overlap=False
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not generate random portfolios: {e}")
+            
+            # Generate inefficient frontier
+            inefficient_frontier = []
+            if efficient_frontier:
+                try:
+                    inefficient_frontier = optimizer.generate_inefficient_frontier(
+                        tickers=best_tickers,
+                        num_points=request.num_frontier_points,
+                        risk_profile=request.risk_profile
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not generate inefficient frontier: {e}")
+            
+            # Calculate CML from efficient frontier (Optimized Portfolio will intersect this)
+            capital_market_line = []
+            if efficient_frontier:
+                try:
+                    logger.info("📈 Calculating Capital Market Line...")
+                    capital_market_line = optimizer.calculate_capital_market_line(
+                        efficient_frontier=efficient_frontier,
+                        risk_free_rate=optimizer.risk_free_rate
+                    )
+                    logger.info(f"✅ Generated CML with {len(capital_market_line)} points")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not calculate CML: {e}")
+            
+            # Build optimized portfolio response
+            # CRITICAL: Use tickers from weights to ensure consistency
+            optimized_weights = optimized_result.get('weights', {})
+            optimized_tickers_from_weights = list(optimized_weights.keys()) if optimized_weights else []
+            
+            # Use tickers from weights if available, otherwise fall back
+            if optimized_tickers_from_weights and len(optimized_tickers_from_weights) >= 2:
+                final_tickers = optimized_tickers_from_weights
+            else:
+                optimized_tickers = optimized_result.get('tickers', best_tickers)
+                if set(optimized_tickers).issubset(set(best_tickers)) and len(optimized_tickers) >= 2:
+                    final_tickers = optimized_tickers
+                else:
+                    final_tickers = best_tickers
+            
+            # Ensure final_tickers match weights keys exactly
+            if optimized_weights:
+                final_tickers = [t for t in final_tickers if t in optimized_weights]
+                if len(final_tickers) < 2:
+                    logger.warning(f"⚠️ Only {len(final_tickers)} tickers have weights. Using all weight keys.")
+                    final_tickers = list(optimized_weights.keys())
+            
+            logger.info(f"✅ Optimized portfolio: {len(final_tickers)} tickers, Sharpe: {optimized_result.get('sharpe_ratio', 0):.3f}")
+            
+            optimized_portfolio_response = MVOOptimizationResponse(
+                optimization_type=request.optimization_type,
+                strategy_name=f"Optimized Portfolio ({request.risk_profile})",
+                optimized_portfolio={
+                    "tickers": final_tickers,
+                    "weights": optimized_weights,
+                    "weights_list": optimized_result.get('weights_list', []),
+                    "metrics": {
+                        "expected_return": optimized_result.get('expected_return', 0),
+                        "risk": optimized_result.get('risk', 0),
+                        "sharpe_ratio": optimized_result.get('sharpe_ratio', 0)
+                    }
+                },
+                current_portfolio={
+                    "tickers": user_tickers,
+                    "weights": current_weights,
+                    "metrics": current_metrics
+                },
+                efficient_frontier=efficient_frontier,
+                inefficient_frontier=inefficient_frontier,
+                random_portfolios=random_portfolios,
+                capital_market_line=capital_market_line,
+                metadata={
+                    "ticker_count": len(final_tickers),
+                    "risk_profile": request.risk_profile,
+                    "min_overlap_months": 24,
+                    "strict_overlap": False,
+                    "diversity_seed": diversity_seed_value
+                }
+            )
+        except Exception as e:
+            logger.error(f"❌ Error optimizing portfolio: {e}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Failed to optimize portfolio: {str(e)}")
+        
+        # Step 4: Compare results
+        optimized_metrics = optimized_portfolio_response.optimized_portfolio.get('metrics', {})
+        
+        # Prepare comparison data with data quality assessment
+        optimized_tickers_for_comparison = final_tickers if 'final_tickers' in locals() else best_tickers
+        
+        # Assess data quality of current portfolio
+        current_return = current_metrics.get('expected_return', 0)
+        current_risk = current_metrics.get('risk', 0)
+        current_sharpe = current_metrics.get('sharpe_ratio', 0)
+        
+        # Flag if current portfolio metrics seem unreliable
+        current_metrics_unreliable = False
+        reliability_reasons = []
+        
+        if current_return > 0.50:  # >50% annual return is suspicious
+            current_metrics_unreliable = True
+            reliability_reasons.append(f"Unusually high return ({current_return*100:.1f}%) may indicate limited historical data")
+        
+        if current_risk > 0.60:  # >60% volatility is extremely high
+            current_metrics_unreliable = True
+            reliability_reasons.append(f"Extremely high volatility ({current_risk*100:.1f}%) suggests data quality issues")
+        
+        if current_sharpe > 3.0:  # Sharpe >3 is very rare, >5 is almost certainly wrong
+            current_metrics_unreliable = True
+            reliability_reasons.append(f"Sharpe ratio of {current_sharpe:.2f} is unusually high and may be unreliable")
+        
+        # Check if optimized portfolio is more realistic
+        optimized_return = optimized_metrics.get('expected_return', 0)
+        optimized_risk = optimized_metrics.get('risk', 0)
+        optimized_sharpe = optimized_metrics.get('sharpe_ratio', 0)
+        
+        # If current metrics are unreliable, adjust comparison interpretation
+        comparison_notes = []
+        if current_metrics_unreliable:
+            comparison_notes.append("Current portfolio metrics may be unreliable due to limited historical data or data quality issues")
+            comparison_notes.append("Optimized portfolio uses validated tickers with sufficient historical data (36+ months)")
+            comparison_notes.append("Consider the optimized portfolio's more realistic risk-return profile")
+        
+        comparison = {
+            'return_difference': optimized_return - current_return,
+            'risk_difference': optimized_risk - current_risk,
+            'sharpe_difference': optimized_sharpe - current_sharpe,
+            'optimized_tickers': optimized_tickers_for_comparison,
+            'current_tickers': user_tickers,
+            'current_metrics_unreliable': current_metrics_unreliable,
+            'reliability_reasons': reliability_reasons,
+            'comparison_notes': comparison_notes
+        }
+        
+        # ==================== NEW: Add Monte Carlo and Quality Score ====================
+        try:
+            from utils.port_analytics import PortfolioAnalytics
+            analytics = PortfolioAnalytics()
+            
+            # Get diversification scores
+            # For current portfolio, estimate diversification
+            current_diversification = 50.0  # Default
+            if current_weights:
+                allocations = [{'symbol': t, 'allocation': w * 100, 'sector': 'Unknown'} for t, w in current_weights.items()]
+                current_diversification = analytics._calculate_sophisticated_diversification_score(allocations)
+            
+            # For optimized portfolio
+            optimized_diversification = 50.0
+            if optimized_weights:
+                allocations = [{'symbol': t, 'allocation': w * 100, 'sector': 'Unknown'} for t, w in optimized_weights.items()]
+                optimized_diversification = analytics._calculate_sophisticated_diversification_score(allocations)
+            
+            # Monte Carlo simulations
+            current_monte_carlo = analytics.run_monte_carlo_simulation(
+                expected_return=current_return,
+                risk=current_risk,
+                num_simulations=10000
+            )
+            
+            optimized_monte_carlo = analytics.run_monte_carlo_simulation(
+                expected_return=optimized_return,
+                risk=optimized_risk,
+                num_simulations=10000
+            )
+            
+            # Quality scores
+            current_quality = analytics.calculate_quality_score(
+                expected_return=current_return,
+                risk=current_risk,
+                risk_profile=request.risk_profile,
+                diversification_score=current_diversification
+            )
+            
+            optimized_quality = analytics.calculate_quality_score(
+                expected_return=optimized_return,
+                risk=optimized_risk,
+                risk_profile=request.risk_profile,
+                diversification_score=optimized_diversification
+            )
+            
+            # Add to comparison
+            comparison['monte_carlo'] = {
+                'current': current_monte_carlo,
+                'optimized': optimized_monte_carlo
+            }
+            
+            comparison['quality_scores'] = {
+                'current': current_quality,
+                'optimized': optimized_quality
+            }
+            
+            logger.info(f"📊 Quality scores - Current: {current_quality['composite_score']:.1f}, Optimized: {optimized_quality['composite_score']:.1f}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate Monte Carlo/Quality scores: {e}")
+            # Continue without these metrics
+        
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Portfolio optimization completed in {processing_time:.3f}s")
+        
+        return DualOptimizationResponse(
+            current_portfolio={
+                "tickers": user_tickers,
+                "weights": current_weights,
+                "metrics": current_metrics
+            },
+            optimized_portfolio=optimized_portfolio_response,
+            comparison=comparison
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in dual optimization: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to perform dual optimization: {str(e)}")
+
+@router.post("/optimization/triple", response_model=TripleOptimizationResponse)
+def optimize_triple_portfolio(request: TripleOptimizationRequest):
+    """
+    Combined Strategy Optimization: Compare current, weights-optimized, and market-optimized portfolios
+    
+    This endpoint:
+    1. Calculates current portfolio metrics using ACTUAL weights
+    2. Optimizes weights of current tickers (weights-only optimization)
+    3. Always attempts market exploration (optimization from market tickers)
+    4. Returns all three portfolios for comparison
+    
+    Decision framework determines which portfolio to recommend, but all three are always returned.
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        user_tickers = [t.upper().strip() for t in request.user_tickers]
+        
+        if len(user_tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 user tickers required")
+        
+        if not request.user_weights:
+            raise HTTPException(status_code=400, detail="user_weights is required")
+        
+        optimizer = get_mvo_optimizer()
+        
+        # Step 1: Calculate current portfolio metrics using ACTUAL weights
+        # First, try to find matching portfolio in Redis with precomputed metrics
+        logger.info(f"🔧 Step 1: Checking Redis for precomputed metrics for current portfolio...")
+        current_metrics = find_matching_portfolio_in_redis(
+            user_tickers=user_tickers,
+            user_weights=request.user_weights,
+            risk_profile=request.risk_profile
+        )
+        
+        if current_metrics is None:
+            # No match found in Redis - calculate metrics from live data
+            logger.info(f"🔧 Step 1: No matching portfolio in Redis, calculating metrics with actual weights from {len(user_tickers)} tickers...")
+            current_metrics = compute_portfolio_metrics_with_weights(
+                tickers=user_tickers,
+                weights=request.user_weights,
+                optimizer=optimizer,
+                min_overlap_months=24
+            )
+        else:
+            logger.info(f"✅ Step 1: Using precomputed metrics from Redis (Return: {current_metrics['expected_return']:.2%}, Risk: {current_metrics['risk']:.2%}, Sharpe: {current_metrics['sharpe_ratio']:.2f})")
+        
+        current_portfolio_data = {
+            "tickers": user_tickers,
+            "weights": request.user_weights,
+            "metrics": current_metrics
+        }
+        
+        # Step 2: Weights-only optimization (ALWAYS done)
+        logger.info(f"🔧 Step 2: Optimizing weights of current tickers...")
+        weights_optimized_data = optimize_weights_only(
+            tickers=user_tickers,
+            risk_profile=request.risk_profile,
+            optimizer=optimizer,
+            optimization_type=request.optimization_type
+        )
+        
+        # Generate efficient frontier and related curves for the weights-only universe
+        efficient_frontier_weights: List[Dict[str, Any]] = []
+        inefficient_frontier_weights: List[Dict[str, Any]] = []
+        random_portfolios_weights: List[Dict[str, Any]] = []
+        capital_market_line_weights: List[Dict[str, Any]] = []
+        
+        try:
+            if request.include_efficient_frontier:
+                logger.info("📊 Generating efficient frontier for weights-optimized portfolio...")
+                efficient_frontier_weights = optimizer.generate_efficient_frontier(
+                    tickers=weights_optimized_data["tickers"],
+                    num_points=request.num_frontier_points,
+                    risk_profile=request.risk_profile,
+                    min_overlap_months=24,
+                    strict_overlap=True
+                )
+                
+                # Inefficient frontier (lower part of the hyperbola)
+                try:
+                    inefficient_frontier_weights = optimizer.generate_inefficient_frontier(
+                        tickers=weights_optimized_data["tickers"],
+                        num_points=request.num_frontier_points,
+                        risk_profile=request.risk_profile
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not generate inefficient frontier for weights-only optimization: {e}")
+                
+                # Capital Market Line from weights-only efficient frontier
+                try:
+                    if efficient_frontier_weights:
+                        logger.info("📈 Calculating Capital Market Line for weights-only efficient frontier...")
+                        capital_market_line_weights = optimizer.calculate_capital_market_line(
+                            efficient_frontier=efficient_frontier_weights,
+                            risk_free_rate=optimizer.risk_free_rate
+                        )
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not calculate CML for weights-only optimization: {e}")
+            
+            if request.include_random_portfolios:
+                try:
+                    logger.info(f"🎲 Generating {request.num_random_portfolios} random portfolios for weights-only universe...")
+                    random_portfolios_weights = optimizer.generate_random_portfolios(
+                        tickers=weights_optimized_data["tickers"],
+                        num_portfolios=request.num_random_portfolios,
+                        min_overlap_months=24,
+                        strict_overlap=True
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not generate random portfolios for weights-only optimization: {e}")
+        except Exception as e:
+            # Frontier generation is non-critical; optimization results are still valid
+            logger.warning(f"⚠️ Failed to generate frontier data for weights-only optimization: {e}")
+            efficient_frontier_weights = []
+            inefficient_frontier_weights = []
+            random_portfolios_weights = []
+            capital_market_line_weights = []
+        
+        # Build MVOOptimizationResponse for weights-optimized
+        weights_optimized_response = MVOOptimizationResponse(
+            optimization_type=request.optimization_type,
+            strategy_name=f"Weights-Optimized Portfolio ({request.risk_profile})",
+            optimized_portfolio={
+                "tickers": weights_optimized_data["tickers"],
+                "weights": weights_optimized_data["weights"],
+                "weights_list": list(weights_optimized_data["weights"].values()),
+                "metrics": weights_optimized_data["metrics"]
+            },
+            current_portfolio=current_portfolio_data,
+            efficient_frontier=efficient_frontier_weights,
+            inefficient_frontier=inefficient_frontier_weights,
+            random_portfolios=random_portfolios_weights,
+            capital_market_line=capital_market_line_weights,
+            metadata={
+                "ticker_count": len(weights_optimized_data["tickers"]),
+                "risk_profile": request.risk_profile,
+                "optimization_type": "weights_only"
+            }
+        )
+        
+        # Step 3: Market exploration (ALWAYS attempted)
+        market_optimized_response = None
+        market_exploration_successful = False
+        
+        if request.attempt_market_exploration:
+            logger.info(f"🔧 Step 3: Market exploration - optimizing from eligible market tickers...")
+            try:
+                # Use similar logic to dual optimization for market exploration
+                # CRITICAL: Sort by data_points first to get tickers with long histories (better overlap)
+                per_page_size = max(request.max_eligible_tickers * 50, 2000)
+                eligible_response = _get_eligible_tickers_internal(
+                    min_data_points=96,  # Require at least 96 months (8 years) of data for strong overlap
+                    filter_negative_returns=True,
+                    per_page=per_page_size,
+                    page=1,
+                    sort_by='data_points'  # Sort by data points to get tickers with longest histories
+                )
+                
+                eligible_tickers_data = eligible_response.get('eligible_tickers', [])
+                if not eligible_tickers_data:
+                    logger.warning("⚠️ No eligible tickers found for market exploration")
+                else:
+                    # Extract ticker symbols, preferring non-user tickers for diversity
+                    user_tickers_set = set(user_tickers)
+                    
+                    # OPTION A (enhanced): Variable basket size with Sharpe-driven, diversified sampling
+                    # Create variation seed from user tickers + timestamp for different baskets each run
+                    user_tickers_str = ','.join(sorted(user_tickers))
+                    import time
+                    seed_value = int(hashlib.md5(f"{user_tickers_str}_{time.time()}".encode()).hexdigest()[:8], 16)
+                    variation_random = random.Random(seed_value)
+                    
+                    # CRITICAL FIX: Pre-validate tickers for data overlap before optimization
+                    # Get a larger candidate pool (top 200) and sort by Sharpe for better selection
+                    candidate_pool_size = 200
+                    # Sort by sharpe_ratio (fallback to expected_return) descending for high-quality pool
+                    sorted_eligible = sorted(
+                        [
+                            t for t in eligible_tickers_data
+                            if t.get('ticker') and t['ticker'].upper() not in user_tickers_set
+                        ],
+                        key=lambda t: t.get('sharpe_ratio', t.get('expected_return', 0.0)),
+                        reverse=True
+                    )
+                    all_candidates = [t['ticker'].upper() for t in sorted_eligible][:candidate_pool_size]
+                    
+                    # Shuffle ALL candidates for variation (not just positions 51-200)
+                    # This ensures different ticker combinations each run while keeping high Sharpe focus
+                    shuffled_candidates = all_candidates.copy()
+                    variation_random.shuffle(shuffled_candidates)
+                    
+                    # Variable basket size by risk profile
+                    # LARGER baskets = more diversification = lower risk = better acceptance rate
+                    # Optimized based on comprehensive testing across all portfolios
+                    BASKET_SIZE_BY_PROFILE = {
+                        'very-conservative': (10, 14),  # Larger for better diversification
+                        'conservative': (10, 14),       # Larger for better diversification
+                        'moderate': (12, 16),           # Even larger for moderate
+                        'aggressive': (12, 16),         # Even larger for aggressive
+                        'very-aggressive': (10, 14)     # Good balance
+                    }
+                    min_size, max_size = BASKET_SIZE_BY_PROFILE.get(request.risk_profile, (10, 14))
+                    target_pool_size = variation_random.randint(min_size, max_size)
+                    logger.info(f"🎲 Variable basket size: {target_pool_size} tickers (seed: {seed_value})")
+                    logger.info(f"🎲 Shuffled candidates (first 10): {shuffled_candidates[:10]}")
+                    
+                    # Validate each ticker has sufficient data overlap with others
+                    # by checking metrics calculation doesn't produce NaN
+                    best_tickers = []
+                    logger.info(f"🔍 Validating {len(shuffled_candidates)} candidate tickers for data overlap (shuffled for variation)...")
+                    
+                    # Try to find a subset with valid overlap
+                    # Build basket from shuffled candidates (ensures variation)
+                    for candidate in shuffled_candidates:
+                        test_set = best_tickers + [candidate]
+                        if len(test_set) >= 2:
+                            try:
+                                # Quick validation: check if metrics are valid
+                                mu, sigma = optimizer.get_ticker_metrics(
+                                    tickers=test_set,
+                                    annualize=True,
+                                    min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                    strict_overlap=True
+                                )
+                                # Check for NaN/Inf values
+                                if mu and sigma is not None:
+                                    has_nan = any(np.isnan(v) for v in mu.values()) or np.isnan(sigma.values).any()
+                                    has_inf = np.isinf(sigma.values).any()
+                                    if not has_nan and not has_inf:
+                                        best_tickers.append(candidate)
+                                        logger.info(f"  ✅ {candidate} added (valid overlap with {len(best_tickers)-1} others)")
+                                        if len(best_tickers) >= target_pool_size:
+                                            break
+                                    else:
+                                        logger.debug(f"  ⚠️ {candidate} skipped (NaN/Inf in metrics)")
+                            except Exception as e:
+                                logger.debug(f"  ⚠️ {candidate} skipped (metrics error: {e})")
+                        else:
+                            # First ticker, just add it
+                            best_tickers.append(candidate)
+                    
+                    logger.info(f"📊 Found {len(best_tickers)} tickers with valid data overlap")
+                    
+                    # Fallback: include user tickers if not enough diversity
+                    if len(best_tickers) < 2:
+                        logger.warning("⚠️ Not enough valid market tickers, trying with user tickers...")
+                        best_tickers = [t['ticker'].upper() for t in eligible_tickers_data[:target_pool_size]]
+                    
+                    if len(best_tickers) >= 2:
+                        # Optimize from market tickers
+                        optimized_result = optimizer.optimize_portfolio(
+                            tickers=best_tickers,
+                            optimization_type=request.optimization_type,
+                            risk_profile=request.risk_profile,
+                            min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                            strict_overlap=False
+                        )
+                        
+                        final_tickers = optimized_result.get('tickers', best_tickers)
+                        raw_weights = optimized_result.get('weights', {})
+                        optimized_weights = _postprocess_weights(raw_weights, max_assets=10, min_weight=0.005)
+                        final_tickers = list(optimized_weights.keys()) if optimized_weights else final_tickers
+                        
+                        # Generate efficient frontier if requested
+                        efficient_frontier = []
+                        if request.include_efficient_frontier:
+                            try:
+                                logger.info(f"📊 Generating efficient frontier for market-optimized portfolio...")
+                                efficient_frontier = optimizer.generate_efficient_frontier(
+                                    tickers=best_tickers,
+                                    num_points=request.num_frontier_points,
+                                    risk_profile=request.risk_profile,
+                                    min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                    strict_overlap=False
+                                )
+                            except Exception as e:
+                                logger.warning(f"⚠️ Could not generate efficient frontier: {e}")
+                        
+                        # Generate random portfolios if requested
+                        random_portfolios = []
+                        if request.include_random_portfolios:
+                            try:
+                                logger.info(f"🎲 Generating {request.num_random_portfolios} random portfolios...")
+                                random_portfolios = optimizer.generate_random_portfolios(
+                                    tickers=best_tickers,
+                                    num_portfolios=request.num_random_portfolios,
+                                    risk_profile=request.risk_profile,
+                                    min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                    strict_overlap=False
+                                )
+                            except Exception as e:
+                                logger.warning(f"⚠️ Could not generate random portfolios: {e}")
+                        
+                        # Generate inefficient frontier
+                        inefficient_frontier = []
+                        if efficient_frontier:
+                            try:
+                                inefficient_frontier = optimizer.generate_inefficient_frontier(
+                                    tickers=best_tickers,
+                                    num_points=request.num_frontier_points,
+                                    risk_profile=request.risk_profile
+                                )
+                            except Exception as e:
+                                logger.warning(f"⚠️ Could not generate inefficient frontier: {e}")
+                        
+                        # Calculate CML from efficient frontier
+                        capital_market_line = []
+                        if efficient_frontier:
+                            try:
+                                logger.info("📈 Calculating Capital Market Line...")
+                                capital_market_line = optimizer.calculate_capital_market_line(
+                                    efficient_frontier=efficient_frontier,
+                                    risk_free_rate=optimizer.risk_free_rate
+                                )
+                            except Exception as e:
+                                logger.warning(f"⚠️ Could not calculate CML: {e}")
+                        
+                        market_optimized_response = MVOOptimizationResponse(
+                            optimization_type=request.optimization_type,
+                            strategy_name=f"Market-Optimized Portfolio ({request.risk_profile})",
+                            optimized_portfolio={
+                                "tickers": final_tickers,
+                                "weights": optimized_weights,
+                                "weights_list": list(optimized_weights.values()),
+                                "metrics": {
+                                    "expected_return": optimized_result.get('expected_return', 0),
+                                    "risk": optimized_result.get('risk', 0),
+                                    "sharpe_ratio": optimized_result.get('sharpe_ratio', 0)
+                                }
+                            },
+                            current_portfolio=current_portfolio_data,
+                            efficient_frontier=efficient_frontier,
+                            inefficient_frontier=inefficient_frontier,
+                            random_portfolios=random_portfolios,
+                            capital_market_line=capital_market_line,
+                            metadata={
+                                "ticker_count": len(final_tickers),
+                                "risk_profile": request.risk_profile,
+                                "optimization_type": "market_exploration",
+                                "risk_free_rate": optimizer.risk_free_rate
+                            }
+                        )
+                        market_exploration_successful = True
+            except Exception as e:
+                logger.warning(f"⚠️ Market exploration failed: {e}")
+                market_optimized_response = None
+        
+        # Step 4: Decision framework (for recommendation) - Using improved v2 logic
+        recommendation = decide_best_portfolio_v2(
+            current=current_metrics,
+            weights_opt=weights_optimized_data,
+            market_opt=market_optimized_response.optimized_portfolio if market_optimized_response else None,
+            risk_profile=request.risk_profile
+        )
+        
+        # Step 5: Build comparison
+        comparison = build_triple_comparison(
+            current=current_metrics,
+            weights_opt=weights_optimized_data,
+            market_opt=market_optimized_response.optimized_portfolio if market_optimized_response else None
+        )
+        
+        # ==================== NEW: Add Monte Carlo and Quality Score for all portfolios ====================
+        try:
+            from utils.port_analytics import PortfolioAnalytics
+            analytics = PortfolioAnalytics()
+            
+            # Helper for safe weight extraction
+            def get_weights_safe(response_obj):
+                if not response_obj or not response_obj.optimized_portfolio:
+                    return {}
+                opt = response_obj.optimized_portfolio
+                # Check if it's a dict or object
+                if isinstance(opt, dict):
+                    return opt.get('weights', {})
+                return getattr(opt, 'weights', {})
+                
+            # Helper for safe metric extraction
+            def get_metrics_safe(response_obj):
+                if not response_obj or not response_obj.optimized_portfolio:
+                    return {}
+                opt = response_obj.optimized_portfolio
+                if isinstance(opt, dict):
+                    return opt.get('metrics', {})
+                # It's an object (Pydantic model)
+                metrics = getattr(opt, 'metrics', {})
+                if hasattr(metrics, 'model_dump'):
+                    return metrics.model_dump()
+                if hasattr(metrics, 'dict'):
+                    return metrics.dict()
+                return metrics if isinstance(metrics, dict) else {}
+
+            # Get diversification scores for all portfolios
+            current_diversification = 50.0
+            if request.user_weights:
+                allocations = [{'symbol': t, 'allocation': w * 100, 'sector': 'Unknown'} for t, w in request.user_weights.items()]
+                current_diversification = analytics._calculate_sophisticated_diversification_score(allocations)
+            
+            weights_diversification = 50.0
+            w_weights = get_weights_safe(weights_optimized_response)
+            if w_weights:
+                allocations = [{'symbol': t, 'allocation': w * 100, 'sector': 'Unknown'} for t, w in w_weights.items()]
+                weights_diversification = analytics._calculate_sophisticated_diversification_score(allocations)
+            
+            market_diversification = 50.0
+            m_weights = get_weights_safe(market_optimized_response)
+            if m_weights:
+                allocations = [{'symbol': t, 'allocation': w * 100, 'sector': 'Unknown'} for t, w in m_weights.items()]
+                market_diversification = analytics._calculate_sophisticated_diversification_score(allocations)
+            
+            # Monte Carlo simulations for all portfolios
+            current_monte_carlo = analytics.run_monte_carlo_simulation(
+                expected_return=current_metrics.get('expected_return', 0),
+                risk=current_metrics.get('risk', 0),
+                num_simulations=10000
+            )
+            
+            # Use safe metric extraction for weights
+            w_metrics = get_metrics_safe(weights_optimized_response)
+            weights_monte_carlo = analytics.run_monte_carlo_simulation(
+                expected_return=w_metrics.get('expected_return', 0),
+                risk=w_metrics.get('risk', 0),
+                num_simulations=10000
+            )
+            
+            market_monte_carlo = None
+            if market_optimized_response:
+                m_metrics = get_metrics_safe(market_optimized_response)
+                market_monte_carlo = analytics.run_monte_carlo_simulation(
+                    expected_return=m_metrics.get('expected_return', 0),
+                    risk=m_metrics.get('risk', 0),
+                    num_simulations=10000
+                )
+            
+            # Quality scores for all portfolios
+            current_quality = analytics.calculate_quality_score(
+                expected_return=current_metrics.get('expected_return', 0),
+                risk=current_metrics.get('risk', 0),
+                risk_profile=request.risk_profile,
+                diversification_score=current_diversification
+            )
+            
+            weights_quality = analytics.calculate_quality_score(
+                expected_return=w_metrics.get('expected_return', 0),
+                risk=w_metrics.get('risk', 0),
+                risk_profile=request.risk_profile,
+                diversification_score=weights_diversification
+            )
+            
+            market_quality = None
+            if market_optimized_response:
+                m_metrics = get_metrics_safe(market_optimized_response)
+                market_quality = analytics.calculate_quality_score(
+                    expected_return=m_metrics.get('expected_return', 0),
+                    risk=m_metrics.get('risk', 0),
+                    risk_profile=request.risk_profile,
+                    diversification_score=market_diversification
+                )
+            
+            # Add to comparison - structure matches what frontend expects
+            comparison['monte_carlo'] = {
+                'current': current_monte_carlo,
+                'weights': weights_monte_carlo,
+                'market': market_monte_carlo
+            }
+            
+            comparison['quality_scores'] = {
+                'current': current_quality,
+                'weights': weights_quality,
+                'market': market_quality
+            }
+            
+            # FIXED: Safe logging format without conditional expression inside f-string
+            market_score_str = f"{market_quality['composite_score']:.1f}" if market_quality else "N/A"
+            logger.info(f"📊 Quality scores - Current: {current_quality['composite_score']:.1f}, Weights: {weights_quality['composite_score']:.1f}, Market: {market_score_str}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate Monte Carlo/Quality scores: {e}")
+            # Continue without these metrics
+        
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Triple portfolio optimization completed in {processing_time:.3f}s (recommendation: {recommendation})")
+        
+        return TripleOptimizationResponse(
+            current_portfolio=current_portfolio_data,
+            weights_optimized_portfolio=weights_optimized_response,
+            market_optimized_portfolio=market_optimized_response,
+            comparison=comparison,
+            optimization_metadata={
+                "strategy_used": "combined_strategy",
+                "attempts_made": 2 if market_optimized_response else 1,
+                "market_exploration_attempted": request.attempt_market_exploration,
+                "market_exploration_successful": market_exploration_successful,
+                "recommendation": recommendation,
+                "processing_time_seconds": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in triple optimization: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to perform triple optimization: {str(e)}")
+
 @router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
 def get_portfolio_recommendations(risk_profile: str):
     """Get portfolio recommendations from Enhanced Portfolio System"""
@@ -744,7 +3985,11 @@ def get_portfolio_recommendations(risk_profile: str):
         if (not portfolios or len(portfolios) < 3) or (bucket_count < redis_manager.PORTFOLIOS_PER_PROFILE):
             try:
                 logger.info(f"🔄 Auto-regeneration: ensuring portfolios exist for {risk_profile} (missing-only)")
-                _ensure_missing_portfolios_generated(risk_profile)
+                stats = _ensure_missing_portfolios_generated(risk_profile)
+                if stats.get('success'):
+                    logger.debug(f"✅ Lazy generation completed for {risk_profile}: {stats.get('portfolios_stored', 0)} portfolios stored")
+                else:
+                    logger.warning(f"⚠️ Lazy generation had issues for {risk_profile}: {stats.get('errors', [])}")
                 # Re-fetch after ensuring
                 portfolios = redis_manager.get_portfolio_recommendations(risk_profile, count=3)
             except Exception as e:
@@ -836,67 +4081,236 @@ def get_portfolio_recommendations(risk_profile: str):
         logger.info("🔄 Falling back to static portfolio recommendations")
         return _get_static_portfolio_recommendations(risk_profile)
 
-# Helper: Ensure missing portfolios are generated without overwriting existing ones
-def _ensure_missing_portfolios_generated(risk_profile: str) -> None:
+# Helper: Ensure missing portfolios are generated (enhanced to handle full expiration)
+def _ensure_missing_portfolios_generated(risk_profile: str) -> dict:
+    """
+    Enhanced lazy generation that handles:
+    - Full expiration: If count = 0, regenerate all 12 portfolios
+    - Partial expiration: If count < 12, fill only missing slots
+    
+    Returns:
+        dict: Statistics about the generation process including:
+            - success: bool
+            - portfolios_generated: int
+            - portfolios_stored: int
+            - portfolios_failed: int
+            - processing_time_seconds: float
+            - start_time: str (ISO format)
+            - end_time: str (ISO format)
+            - mode: str ("full" or "partial")
+            - errors: list
+    """
+    import time
+    stats = {
+        'success': False,
+        'risk_profile': risk_profile,
+        'portfolios_generated': 0,
+        'portfolios_stored': 0,
+        'portfolios_failed': 0,
+        'processing_time_seconds': 0.0,
+        'start_time': datetime.now().isoformat(),
+        'end_time': None,
+        'mode': None,
+        'errors': []
+    }
+    
+    start_time = time.time()
+    
     try:
+        if not redis_manager or not redis_manager.redis_client:
+            error_msg = f"Redis not available for {risk_profile}"
+            logger.warning(f"⚠️ {error_msg}")
+            stats['errors'].append(error_msg)
+            stats['end_time'] = datetime.now().isoformat()
+            stats['processing_time_seconds'] = time.time() - start_time
+            return stats
+        
+        # Check current portfolio count
+        current_count = redis_manager.get_portfolio_count(risk_profile)
+        logger.info(f"📊 [{risk_profile}] Current portfolio count: {current_count}/{redis_manager.PORTFOLIOS_PER_PROFILE}")
+        
+        if current_count >= redis_manager.PORTFOLIOS_PER_PROFILE:
+            logger.debug(f"✅ All portfolios exist for {risk_profile} ({current_count}/{redis_manager.PORTFOLIOS_PER_PROFILE})")
+            stats['success'] = True
+            stats['end_time'] = datetime.now().isoformat()
+            stats['processing_time_seconds'] = time.time() - start_time
+            return stats
+        
         # Determine which portfolio slots are missing
         missing_ids = []
         bucket_prefix = f"portfolio_bucket:{risk_profile}:"
         for i in range(redis_manager.PORTFOLIOS_PER_PROFILE):
             key = f"{bucket_prefix}{i}"
-            exists = redis_manager.redis_client.exists(key) if redis_manager and redis_manager.redis_client else 0
+            exists = redis_manager.redis_client.exists(key)
             if not exists:
                 missing_ids.append(i)
+        
         if not missing_ids:
             logger.info(f"✅ No missing portfolios for {risk_profile}")
-            return
+            stats['success'] = True
+            stats['end_time'] = datetime.now().isoformat()
+            stats['processing_time_seconds'] = time.time() - start_time
+            return stats
+        
+        # If all portfolios are expired (count = 0), regenerate all 12
+        if current_count == 0:
+            stats['mode'] = 'full'
+            logger.info("="*80)
+            logger.info(f"🔄 [{risk_profile}] FULL REGENERATION MODE")
+            logger.info(f"   All portfolios expired - regenerating full bucket (12 portfolios)")
+            logger.info("="*80)
+            
+            from utils.redis_first_data_service import redis_first_data_service
+            from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+            from utils.port_analytics import PortfolioAnalytics
 
-        # Generate a full bucket (fast, shared-stock-data path), then store only missing ones
-        from utils.redis_first_data_service import redis_first_data_service
-        from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
-        from utils.port_analytics import PortfolioAnalytics
+            gen_start = time.time()
+            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+            logger.info(f"⏱️  [{risk_profile}] Starting portfolio generation...")
+            generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+            gen_time = time.time() - gen_start
+            
+            stats['portfolios_generated'] = len(generated) if generated else 0
+            logger.info(f"⏱️  [{risk_profile}] Generation completed in {gen_time:.2f}s ({stats['portfolios_generated']} portfolios)")
+            
+            # Store all portfolios using RedisPortfolioManager (handles TTL and metadata)
+            if generated and len(generated) >= redis_manager.PORTFOLIOS_PER_PROFILE:
+                store_start = time.time()
+                logger.info(f"💾 [{risk_profile}] Storing {len(generated)} portfolios in Redis...")
+                success = redis_manager.store_portfolio_bucket(risk_profile, generated)
+                store_time = time.time() - store_start
+                
+                if success:
+                    final_count = redis_manager.get_portfolio_count(risk_profile)
+                    stats['portfolios_stored'] = final_count
+                    stats['success'] = True
+                    logger.info(f"💾 [{risk_profile}] Storage completed in {store_time:.2f}s ({final_count} portfolios stored)")
+                    logger.info("="*80)
+                    logger.info(f"✅ [{risk_profile}] FULL REGENERATION COMPLETE!")
+                    logger.info(f"   📊 Portfolios Generated: {stats['portfolios_generated']}")
+                    logger.info(f"   💾 Portfolios Stored: {stats['portfolios_stored']}")
+                    logger.info(f"   ⏱️  Generation Time: {gen_time:.2f}s")
+                    logger.info(f"   💾 Storage Time: {store_time:.2f}s")
+                    logger.info(f"   ⏱️  Total Time: {time.time() - start_time:.2f}s")
+                    logger.info("="*80)
+                else:
+                    error_msg = f"Failed to store regenerated portfolios for {risk_profile}"
+                    stats['errors'].append(error_msg)
+                    logger.error(f"❌ [{risk_profile}] {error_msg}")
+            else:
+                error_msg = f"Generated only {stats['portfolios_generated']} portfolios, expected {redis_manager.PORTFOLIOS_PER_PROFILE}"
+                stats['errors'].append(error_msg)
+                stats['portfolios_failed'] = redis_manager.PORTFOLIOS_PER_PROFILE - stats['portfolios_generated']
+                logger.warning(f"⚠️ [{risk_profile}] {error_msg}")
+        else:
+            # Partial expiration: fill only missing slots
+            stats['mode'] = 'partial'
+            logger.info("="*80)
+            logger.info(f"🔄 [{risk_profile}] PARTIAL REGENERATION MODE")
+            logger.info(f"   Filling {len(missing_ids)} missing portfolio slots ({current_count}/{redis_manager.PORTFOLIOS_PER_PROFILE} exist)")
+            logger.info(f"   Missing slots: {missing_ids}")
+            logger.info("="*80)
+            
+            from utils.redis_first_data_service import redis_first_data_service
+            from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+            from utils.port_analytics import PortfolioAnalytics
 
-        generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
-        generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+            gen_start = time.time()
+            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+            logger.info(f"⏱️  [{risk_profile}] Starting portfolio generation for {len(missing_ids)} missing slots...")
+            generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
+            gen_time = time.time() - gen_start
+            
+            stats['portfolios_generated'] = len(generated) if generated else 0
+            logger.info(f"⏱️  [{risk_profile}] Generation completed in {gen_time:.2f}s ({stats['portfolios_generated']} portfolios)")
 
-        # Index generated portfolios by variation_id
-        vid_to_port = {p.get('variation_id', idx): p for idx, p in enumerate(generated)}
+            # Index generated portfolios by variation_id
+            vid_to_port = {p.get('variation_id', idx): p for idx, p in enumerate(generated)}
 
-        # Store only missing variation ids with proper TTL, without touching existing ones
-        for vid in missing_ids:
-            p = vid_to_port.get(vid)
-            if not p:
-                continue
+            # Store only missing variation ids with proper TTL, without touching existing ones
+            store_start = time.time()
+            logger.info(f"💾 [{risk_profile}] Storing {len(missing_ids)} portfolios in missing slots...")
+            stored_count = 0
+            failed_slots = []
+            
+            for vid in missing_ids:
+                p = vid_to_port.get(vid)
+                if not p:
+                    failed_slots.append(vid)
+                    stats['portfolios_failed'] += 1
+                    logger.warning(f"⚠️ [{risk_profile}] No portfolio found for variation_id {vid}")
+                    continue
+                try:
+                    key = f"{bucket_prefix}{vid}"
+                    redis_manager.redis_client.setex(
+                        key,
+                        redis_manager.PORTFOLIO_TTL_SECONDS,
+                        json.dumps(p, default=str)
+                    )
+                    stored_count += 1
+                    stats['portfolios_stored'] += 1
+                    logger.debug(f"🧩 [{risk_profile}] Filled missing portfolio slot {vid}")
+                except Exception as e:
+                    failed_slots.append(vid)
+                    stats['portfolios_failed'] += 1
+                    error_msg = f"Failed storing portfolio {vid} for {risk_profile}: {e}"
+                    stats['errors'].append(error_msg)
+                    logger.warning(f"⚠️ [{risk_profile}] {error_msg}")
+            
+            store_time = time.time() - store_start
+            
+            if stored_count > 0:
+                final_count = redis_manager.get_portfolio_count(risk_profile)
+                stats['success'] = stored_count == len(missing_ids)
+                logger.info(f"💾 [{risk_profile}] Storage completed in {store_time:.2f}s ({stored_count}/{len(missing_ids)} portfolios stored)")
+                logger.info("="*80)
+                logger.info(f"✅ [{risk_profile}] PARTIAL REGENERATION COMPLETE!")
+                logger.info(f"   📊 Portfolios Generated: {stats['portfolios_generated']}")
+                logger.info(f"   💾 Portfolios Stored: {stored_count}/{len(missing_ids)}")
+                logger.info(f"   ❌ Portfolios Failed: {stats['portfolios_failed']}")
+                if failed_slots:
+                    logger.info(f"   ⚠️  Failed Slots: {failed_slots}")
+                logger.info(f"   📊 Final Count: {final_count}/{redis_manager.PORTFOLIOS_PER_PROFILE}")
+                logger.info(f"   ⏱️  Generation Time: {gen_time:.2f}s")
+                logger.info(f"   💾 Storage Time: {store_time:.2f}s")
+                logger.info(f"   ⏱️  Total Time: {time.time() - start_time:.2f}s")
+                logger.info("="*80)
+            else:
+                error_msg = f"Failed to store any portfolios for {risk_profile}"
+                stats['errors'].append(error_msg)
+                logger.error(f"❌ [{risk_profile}] {error_msg}")
+            
+            # Update metadata TTL if present
             try:
-                key = f"{bucket_prefix}{vid}"
+                meta_key = f"portfolio_bucket:{risk_profile}:metadata"
+                metadata = {
+                    'risk_profile': risk_profile,
+                    'portfolio_count': redis_manager.get_portfolio_count(risk_profile),
+                    'generated_at': datetime.now().isoformat(),
+                    'ttl_days': redis_manager.PORTFOLIO_TTL_DAYS,
+                    'last_updated': datetime.now().isoformat()
+                }
                 redis_manager.redis_client.setex(
-                    key,
+                    meta_key,
                     redis_manager.PORTFOLIO_TTL_SECONDS,
-                    json.dumps(p, default=str)
+                    json.dumps(metadata, default=str)
                 )
-                logger.info(f"🧩 Filled missing portfolio slot {vid} for {risk_profile}")
             except Exception as e:
-                logger.warning(f"⚠️ Failed storing portfolio {vid} for {risk_profile}: {e}")
-
-        # Update metadata TTL if present
-        try:
-            meta_key = f"portfolio_bucket:{risk_profile}:metadata"
-            metadata = {
-                'risk_profile': risk_profile,
-                'portfolio_count': redis_manager.get_portfolio_count(risk_profile),
-                'generated_at': datetime.now().isoformat(),
-                'ttl_days': redis_manager.PORTFOLIO_TTL_DAYS,
-                'last_updated': datetime.now().isoformat()
-            }
-            redis_manager.redis_client.setex(
-                meta_key,
-                redis_manager.PORTFOLIO_TTL_SECONDS,
-                json.dumps(metadata, default=str)
-            )
-        except Exception as e:
-            logger.debug(f"Metadata update skipped for {risk_profile}: {e}")
+                logger.debug(f"Metadata update skipped for {risk_profile}: {e}")
+        
+        stats['end_time'] = datetime.now().isoformat()
+        stats['processing_time_seconds'] = round(time.time() - start_time, 3)
+                
     except Exception as e:
-        logger.debug(f"_ensure_missing_portfolios_generated error: {e}")
+        error_msg = f"Error in _ensure_missing_portfolios_generated for {risk_profile}: {e}"
+        stats['errors'].append(error_msg)
+        logger.error(f"❌ [{risk_profile}] {error_msg}")
+        import traceback
+        traceback.print_exc()
+        stats['end_time'] = datetime.now().isoformat()
+        stats['processing_time_seconds'] = round(time.time() - start_time, 3)
+    
+    return stats
 
 # NEW: Dynamic Portfolio Generation Endpoint - LIVE GENERATION
 @router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
@@ -1748,7 +5162,7 @@ def create_portfolio(data: PortfolioRequest):
     diversification_score = (asset_diversity + allocation_diversity) / 2
     
     # Calculate Sharpe ratio (assuming risk-free rate of 2%)
-    risk_free_rate = 0.02
+    risk_free_rate = 0.038
     sharpe_ratio = (weighted_return - risk_free_rate) / weighted_risk if weighted_risk > 0 else 0
     
     return PortfolioResponse(
@@ -1923,7 +5337,7 @@ def calculate_annualized_metrics(returns: pd.Series) -> Dict[str, float]:
     annualized_volatility = returns.std() * np.sqrt(12)
     
     # Calculate Sharpe ratio (assuming risk-free rate of 2%)
-    risk_free_rate = 0.02
+    risk_free_rate = 0.038
     sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility if annualized_volatility > 0 else 0
     
     return {
@@ -2321,30 +5735,72 @@ async def get_ttl_status():
         logger.error(f"Error getting TTL status: {e}")
         raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
 
-@router.post("/trigger-regeneration")
-async def trigger_portfolio_regeneration(risk_profile: str = None):
+@router.post("/regenerate-recommendations")
+async def regenerate_recommendation_portfolios(risk_profile: str = None):
     """
-    Trigger manual portfolio regeneration using the optimized service
-    Can regenerate specific risk profile or all profiles
+    Regenerate recommendation portfolios (regular portfolios) for specific or all risk profiles.
+    Uses EnhancedPortfolioGenerator directly.
     """
     try:
-        from main import auto_regeneration_service
+        from utils.enhanced_portfolio_generator import EnhancedPortfolioGenerator
+        from utils.port_analytics import PortfolioAnalytics
         
-        if not auto_regeneration_service:
-            raise HTTPException(status_code=500, detail="Auto-regeneration service not available")
+        if not redis_manager:
+            raise HTTPException(status_code=500, detail="Redis portfolio manager not available")
         
-        result = auto_regeneration_service.trigger_regeneration(risk_profile)
+        risk_profiles = [risk_profile] if risk_profile else ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         
+        generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics)
+        results = {}
+        total_portfolios = 0
+        
+        for rp in risk_profiles:
+            try:
+                logger.info(f"🔄 Regenerating portfolios for {rp}...")
+                portfolios = generator.generate_portfolio_bucket(rp, use_parallel=True)
+                
+                if portfolios and len(portfolios) >= 12:
+                    success = redis_manager.store_portfolio_bucket(rp, portfolios)
+                    if success:
+                        total_portfolios += len(portfolios)
+                        results[rp] = {
+                            'success': True,
+                            'count': len(portfolios),
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        logger.info(f"✅ Regenerated {len(portfolios)} portfolios for {rp}")
+                    else:
+                        results[rp] = {
+                            'success': False,
+                            'error': 'Failed to store portfolios',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                else:
+                    results[rp] = {
+                        'success': False,
+                        'error': f'Generated only {len(portfolios) if portfolios else 0} portfolios',
+                        'timestamp': datetime.now().isoformat()
+                    }
+            except Exception as e:
+                logger.error(f"❌ Error regenerating portfolios for {rp}: {e}")
+                results[rp] = {
+                    'success': False,
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }
+        
+        successful = sum(1 for r in results.values() if r.get('success'))
         return {
-            "success": result["success"],
-            "message": result["message"],
-            "timestamp": result["timestamp"],
-            "data": result
+            "success": successful == len(risk_profiles),
+            "message": f"Regenerated portfolios for {successful}/{len(risk_profiles)} profiles",
+            "total_portfolios": total_portfolios,
+            "results": results,
+            "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error triggering portfolio regeneration: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to trigger regeneration: {str(e)}")
+        logger.error(f"Error regenerating recommendation portfolios: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate portfolios: {str(e)}")
 
 @router.post("/regenerate")
 async def regenerate_all_portfolios():
@@ -3488,7 +6944,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
                 risk_contribution_pct = (risk_contribution / portfolio_risk) * 100 if portfolio_risk != 0 else 0
                 
                 # Information ratio (excess return per unit of risk)
-                excess_return = asset_return - 0.02  # Assuming 2% risk-free rate
+                excess_return = asset_return - 0.038  # Assuming 2% risk-free rate
                 information_ratio = excess_return / asset_performance[ticker]['annual_risk'] if asset_performance[ticker]['annual_risk'] > 0 else 0
                 
                 attribution_analysis.append({
@@ -4383,10 +7839,26 @@ async def get_all_portfolios_table_data():
 
         all_rows = []
         
-        # 1. Get regular portfolios for each risk profile
+        # 1. Get ALL regular portfolios for each risk profile (directly from Redis)
         for rp in risk_profiles:
-            # Retrieve up to 12 portfolios per profile
-            portfolios = redis_manager.get_portfolio_recommendations(rp, count=12) or []
+            # Load all portfolios directly from Redis (bypass rotation logic)
+            bucket_key = f"portfolio_bucket:{rp}"
+            portfolios = []
+            
+            # Load all portfolios from Redis (up to 12 per profile)
+            for i in range(redis_manager.PORTFOLIOS_PER_PROFILE):
+                portfolio_key = f"{bucket_key}:{i}"
+                portfolio_data = redis_manager.redis_client.get(portfolio_key) if redis_manager.redis_client else None
+                
+                if portfolio_data:
+                    try:
+                        portfolio = json.loads(portfolio_data)
+                        portfolios.append(portfolio)
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"⚠️ Failed to decode portfolio {i} for {rp}: {e}")
+                        continue
+            
+            # Add all portfolios to table
             for idx, p in enumerate(portfolios):
                 allocations = p.get('allocations', []) or []
                 # Top 3 allocation preview
@@ -5431,6 +8903,127 @@ async def visualization_data(request: VisualizationDataRequest):
 
 
 # New: Consolidated HTML with two tabs (Tickers + Portfolios) and search inputs
+@router.post("/portfolios/verify-tickers")
+async def verify_portfolio_tickers():
+    """
+    Verify all tickers in cached portfolios and fetch missing ones
+    
+    This endpoint:
+    1. Checks all tickers in cached portfolios
+    2. Verifies if they exist in Redis
+    3. Fetches missing tickers using the data fetching system
+    4. Returns status report
+    """
+    try:
+        if not redis_manager:
+            raise HTTPException(status_code=503, detail="Redis manager not available")
+        
+        from utils.redis_first_data_service import RedisFirstDataService
+        from utils.enhanced_data_fetcher import EnhancedDataFetcher
+        
+        data_service = RedisFirstDataService()
+        data_fetcher = EnhancedDataFetcher()
+        
+        risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
+        all_tickers_by_profile = {}
+        all_unique_tickers = set()
+        
+        # Step 1: Collect all tickers from portfolios
+        logger.info("📊 Collecting tickers from cached portfolios...")
+        for risk_profile in risk_profiles:
+            tickers = set()
+            try:
+                portfolios = redis_manager.get_portfolio_recommendations(risk_profile, count=12)
+                for portfolio in portfolios:
+                    allocations = portfolio.get('allocations', [])
+                    for alloc in allocations:
+                        symbol = alloc.get('symbol', '').upper().strip()
+                        if symbol:
+                            tickers.add(symbol)
+                all_tickers_by_profile[risk_profile] = tickers
+                all_unique_tickers.update(tickers)
+            except Exception as e:
+                logger.error(f"Error getting tickers for {risk_profile}: {e}")
+                all_tickers_by_profile[risk_profile] = set()
+        
+        # Step 2: Check which tickers are in Redis
+        logger.info("🔍 Checking ticker availability in Redis...")
+        ticker_status = {}
+        for ticker in all_unique_tickers:
+            try:
+                price_key = data_service._get_cache_key(ticker, 'prices')
+                sector_key = data_service._get_cache_key(ticker, 'sector')
+                has_prices = data_service.redis_client.exists(price_key) > 0
+                has_sector = data_service.redis_client.exists(sector_key) > 0
+                ticker_status[ticker] = has_prices and has_sector
+            except Exception as e:
+                logger.warning(f"Error checking {ticker}: {e}")
+                ticker_status[ticker] = False
+        
+        present_tickers = [t for t, status in ticker_status.items() if status]
+        missing_tickers = [t for t, status in ticker_status.items() if not status]
+        
+        # Step 3: Fetch missing tickers
+        fetch_results = {}
+        newly_present = []
+        still_missing = []
+        
+        if missing_tickers:
+            logger.info(f"📥 Fetching {len(missing_tickers)} missing tickers...")
+            for ticker in missing_tickers:
+                try:
+                    ticker_data = data_fetcher.get_ticker_data(ticker)
+                    success = ticker_data is not None and 'prices' in ticker_data and len(ticker_data.get('prices', [])) > 0
+                    fetch_results[ticker] = success
+                    
+                    if success:
+                        # Verify it's now in Redis
+                        price_key = data_service._get_cache_key(ticker, 'prices')
+                        if data_service.redis_client.exists(price_key) > 0:
+                            newly_present.append(ticker)
+                        else:
+                            still_missing.append(ticker)
+                    else:
+                        still_missing.append(ticker)
+                except Exception as e:
+                    logger.error(f"Error fetching {ticker}: {e}")
+                    fetch_results[ticker] = False
+                    still_missing.append(ticker)
+        else:
+            newly_present = []
+            still_missing = []
+        
+        # Build summary by profile
+        profile_summary = {}
+        for risk_profile, tickers in all_tickers_by_profile.items():
+            profile_status = {t: ticker_status.get(t, False) for t in tickers}
+            present_count = sum(1 for status in profile_status.values() if status)
+            missing_count = len(profile_status) - present_count
+            profile_summary[risk_profile] = {
+                'total_tickers': len(tickers),
+                'present': present_count,
+                'missing': missing_count,
+                'missing_tickers': [t for t, status in profile_status.items() if not status]
+            }
+        
+        return {
+            'total_unique_tickers': len(all_unique_tickers),
+            'present_tickers': len(present_tickers),
+            'missing_tickers': len(missing_tickers),
+            'newly_fetched': len(newly_present),
+            'still_missing': len(still_missing),
+            'profile_summary': profile_summary,
+            'newly_present_tickers': newly_present,
+            'still_missing_tickers': still_missing,
+            'fetch_results': fetch_results
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error verifying portfolio tickers: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to verify portfolio tickers: {str(e)}")
+
 @router.get("/consolidated-table")
 async def get_consolidated_table_html():
     """Serve consolidated HTML page with Tickers and Portfolios tabs and search."""
@@ -5549,7 +9142,8 @@ async def get_consolidated_table_html():
       <div id="panel-portfolios" style="display:none;">
         <div class="toolbar">
           <div class="search"><input id="search-portfolios" placeholder="Search portfolios (name, profile, tickers)..." oninput="searchPortfolios()" /></div>
-          <button class="btn" onclick="openRegenModal()" title="Regenerate all portfolios using current strategies.">Regenerate</button>
+          <button class="btn" onclick="openRegenRecommendationsModal()" title="Regenerate recommendation portfolios (used in Portfolio Recommendations tab).">Regenerate Recommendations</button>
+          <button class="btn" onclick="openRegenStrategiesModal()" title="Regenerate strategy portfolios (pure + personalized, used in Strategy part).">Regenerate Strategies</button>
         </div>
         <div class="table-wrap">
           <table id="table-portfolios"><thead><tr>
@@ -5589,15 +9183,28 @@ async def get_consolidated_table_html():
     </div>
     <div class="footer">Data source: Redis | Use Refresh for full refresh, Smart Refresh for incremental update</div>
 
-    <div id="regenModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenModalTitle" style="display:none;">
+    <div id="regenRecommendationsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenRecommendationsModalTitle" style="display:none;">
       <div class="modal">
-        <header id="regenModalTitle">Confirm Portfolio Regeneration</header>
+        <header id="regenRecommendationsModalTitle">Confirm Recommendation Portfolios Regeneration</header>
         <div class="body">
-          <div id="regenModalText">Regenerating portfolios may take 1–3 minutes.</div>
+          <div id="regenRecommendationsModalText">Regenerating recommendation portfolios for all risk profiles may take 2–3 minutes. This will regenerate 12 portfolios per risk profile (60 total).</div>
         </div>
         <footer>
-          <button class="btn secondary" onclick="closeRegenModal()">Cancel</button>
-          <button class="btn primary" onclick="proceedRegen()">Proceed</button>
+          <button class="btn secondary" onclick="closeRegenRecommendationsModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedRegenRecommendations()">Proceed</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="regenStrategiesModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="regenStrategiesModalTitle" style="display:none;">
+      <div class="modal">
+        <header id="regenStrategiesModalTitle">Confirm Strategy Portfolios Regeneration</header>
+        <div class="body">
+          <div id="regenStrategiesModalText">Regenerating strategy portfolios may take 3–4 minutes. This will regenerate pure and personalized strategy portfolios for all strategies and risk profiles.</div>
+        </div>
+        <footer>
+          <button class="btn secondary" onclick="closeRegenStrategiesModal()">Cancel</button>
+          <button class="btn primary" onclick="proceedRegenStrategies()">Proceed</button>
         </footer>
       </div>
     </div>
@@ -5718,10 +9325,13 @@ async def get_consolidated_table_html():
           smartRefreshPreview = data;
           const n = data.expired_count || 0;
           const counts = data.missing_counts || {};
+          const expiredByTtlCount = data.expired_by_ttl_count || 0;
+          const expiringSoonCount = data.expiring_soon_count || 0;
           const details = [];
           if (counts.prices) { details.push(`${counts.prices} missing prices`); }
           if (counts.sector) { details.push(`${counts.sector} missing sector entries`); }
           if (counts.metrics) { details.push(`${counts.metrics} missing metrics`); }
+          if (expiredByTtlCount > 0) { details.push(`${expiredByTtlCount} expired by TTL`); }
           const note = details.length ? ` (${details.join(', ')})` : '';
           const samples = data.missing_samples || {};
           const sampleLines = [];
@@ -5734,12 +9344,18 @@ async def get_consolidated_table_html():
           if (samples.metrics && samples.metrics.length) {
             sampleLines.push(`Metrics: ${samples.metrics.slice(0, 5).join(', ')}`);
           }
+          if (data.expired_by_ttl_tickers && data.expired_by_ttl_tickers.length) {
+            sampleLines.push(`Expired TTL: ${data.expired_by_ttl_tickers.slice(0, 5).join(', ')}`);
+          }
           const el = document.getElementById('smartModalText');
           const summaryLines = [
             `<strong>${n}</strong> ticker${n === 1 ? '' : 's'} scheduled for smart refresh${note}.`,
           ];
           if (details.length) {
             summaryLines.push(`Data gaps detected: ${details.join(', ')}.`);
+          }
+          if (expiringSoonCount > 0) {
+            summaryLines.push(`⚠️ <strong>${expiringSoonCount}</strong> ticker${expiringSoonCount === 1 ? '' : 's'} expiring soon (< 24 hours).`);
           }
           if (sampleLines.length) {
             summaryLines.push(`Example tickers: ${sampleLines.join(' | ')}.`);
@@ -5850,24 +9466,42 @@ async def get_consolidated_table_html():
       enableColumnHover('table-portfolios');
     });
 
-    async function openRegenModal(){
-      try {
-        const res = await fetch('/api/portfolio/regenerate/estimate');
+    async function openRegenRecommendationsModal(){
+      document.getElementById('regenRecommendationsModal').style.display='flex';
+    }
+    function closeRegenRecommendationsModal(){ document.getElementById('regenRecommendationsModal').style.display='none'; }
+    async function proceedRegenRecommendations(){
+      closeRegenRecommendationsModal();
+      try { 
+        const res = await fetch('/api/portfolio/regenerate-recommendations', { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
-          const secs = data.estimate_seconds || 120;
-          const note = data.note || '';
-          const el = document.getElementById('regenModalText');
-          el.textContent = `Regenerating portfolios may take about ${Math.round(secs/60)||2} minutes. ${note}`;
+          alert(`Portfolio regeneration started: ${data.message || 'Processing...'}`);
+        } else {
+          alert('Failed to start portfolio regeneration');
         }
-      } catch(_) {}
-      document.getElementById('regenModal').style.display='flex';
+      } catch(e) {
+        alert('Error: ' + e.message);
+      }
     }
-    function closeRegenModal(){ document.getElementById('regenModal').style.display='none'; }
-    async function proceedRegen(){
-      closeRegenModal();
-      try { await fetch('/api/portfolio/regenerate', { method: 'POST' }); } catch(_) {}
-      alert('Portfolio regeneration started');
+
+    async function openRegenStrategiesModal(){
+      document.getElementById('regenStrategiesModal').style.display='flex';
+    }
+    function closeRegenStrategiesModal(){ document.getElementById('regenStrategiesModal').style.display='none'; }
+    async function proceedRegenStrategies(){
+      closeRegenStrategiesModal();
+      try { 
+        const res = await fetch('/api/portfolio/pre-generate-strategy-portfolios', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          alert(`Strategy portfolio regeneration started: ${data.message || 'Processing...'}`);
+        } else {
+          alert('Failed to start strategy portfolio regeneration');
+        }
+      } catch(e) {
+        alert('Error: ' + e.message);
+      }
     }
   </script>
 </body>

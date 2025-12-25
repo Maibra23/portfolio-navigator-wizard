@@ -485,20 +485,20 @@ class StrategyPortfolioOptimizer:
     
     def _create_strategy_allocations(self, stocks: List[Dict], strategy: str, 
                                    is_pure: bool, risk_profile: str = None, portfolio_id: int = 0) -> List[Dict]:
-        """Create portfolio allocations using the SAME weight templates as recommendation portfolios
+        """
+        Create portfolio allocations using strategy-specific weighting logic.
         
-        REFACTORED: Strategy is now applied in stock selection only, not in allocation weighting.
-        This ensures consistent, tested allocations and fixes the allocation bug.
+        - Diversification: sector-balanced allocations
+        - Risk: inverse-volatility weighting (with risk-profile caps when personalized)
+        - Return: return-proportional weighting (with risk-profile caps when personalized)
+        
+        Falls back to equal-weighted allocations on error.
         """
         if not stocks:
             return []
         
-        if not self.stock_selector:
-            logger.error("❌ Stock selector not initialized, cannot use template allocations")
-            return self._create_equal_allocations(stocks)
-        
         try:
-            # Normalize stock data to match what _create_portfolio_allocations expects
+            # Normalize stock data to ensure required fields are present
             normalized_stocks = []
             for stock in stocks:
                 normalized_stock = {
@@ -506,65 +506,34 @@ class StrategyPortfolioOptimizer:
                     'name': stock.get('name', stock.get('company_name', stock.get('symbol', 'Unknown'))),
                     'sector': stock.get('sector', 'Unknown'),
                     'volatility': stock.get('volatility', 0.2),
-                    'return': stock.get('expected_return', stock.get('return', 0.1)),
-                    'expected_return': stock.get('expected_return', stock.get('return', 0.1))
+                    'expected_return': stock.get('expected_return', stock.get('return', 0.1)),
                 }
                 normalized_stocks.append(normalized_stock)
             
-            # Use the same allocation method as recommendation portfolios
-            # This uses proven weight templates (15 templates for 3-4 stocks)
-            portfolio_size = len(normalized_stocks)
+            # Strategy-specific allocation
+            if strategy == 'diversification':
+                allocations = self._create_diversification_allocations(normalized_stocks, is_pure, risk_profile)
+            elif strategy == 'risk':
+                allocations = self._create_risk_allocations(normalized_stocks, is_pure, risk_profile)
+            elif strategy == 'return':
+                allocations = self._create_return_allocations(normalized_stocks, is_pure, risk_profile)
+            else:
+                logger.warning(f"⚠️ Unknown strategy '{strategy}', using equal-weight allocations")
+                allocations = self._create_equal_allocations(normalized_stocks)
             
-            # Use variation_id based on strategy, portfolio_id, and risk_profile for template diversity
-            variation_id = hash(f"{strategy}_{is_pure}_{risk_profile}_{portfolio_id}") % 1000
-            
-            # Call the stock selector's allocation method
-            template_allocations = self.stock_selector._create_portfolio_allocations(
-                normalized_stocks,
-                portfolio_size=portfolio_size,
-                variation_id=variation_id
-            )
-            
-            if not template_allocations:
-                logger.warning("⚠️ Template allocation failed, using equal weighting")
-                return self._create_equal_allocations(stocks)
-            
-            # Convert from percentage (0-100) to decimal (0-1) format expected by strategy optimizer
-            # Also ensure we have the required fields
-            allocations = []
-            for alloc in template_allocations:
-                allocation_value = alloc.get('allocation', 0)
-                # Convert from percentage to decimal if needed
-                if allocation_value > 1.0:
-                    allocation_value = allocation_value / 100.0
-                
-                # Find the original stock to preserve sector info
-                symbol = alloc.get('symbol', 'UNKNOWN')
-                original_stock = next((s for s in stocks if s.get('symbol', s.get('ticker')) == symbol), None)
-                sector = alloc.get('sector') or (original_stock.get('sector', 'Unknown') if original_stock else 'Unknown')
-                
-                allocations.append({
-                    'symbol': symbol,
-                    'allocation': allocation_value,
-                    'sector': sector
-                })
-            
-            # Normalize allocations to ensure they sum to 1.0 (fixes rounding issues)
-            total_allocation = sum(a['allocation'] for a in allocations)
-            if total_allocation > 0:
-                for alloc in allocations:
-                    alloc['allocation'] = alloc['allocation'] / total_allocation
-            
-            # Validate allocations
+            # Validate allocations (sum to 1.0, respect risk constraints when provided)
             if not self._validate_allocations(allocations, risk_profile):
-                logger.warning(f"⚠️ Template allocations failed validation (total={sum(a['allocation'] for a in allocations):.4f}), using equal weighting")
-                return self._create_equal_allocations(stocks)
+                logger.warning(
+                    f"⚠️ Strategy allocations failed validation (total={sum(a['allocation'] for a in allocations):.4f}), "
+                    f"falling back to equal-weight allocations"
+                )
+                return self._create_equal_allocations(normalized_stocks)
             
-            logger.info(f"✅ Created allocations using template system for {strategy} strategy ({len(allocations)} stocks)")
+            logger.info(f"✅ Created allocations using strategy-specific logic for {strategy} strategy ({len(allocations)} stocks)")
             return allocations
             
         except Exception as e:
-            logger.error(f"❌ Error creating strategy allocations with templates: {e}")
+            logger.error(f"❌ Error creating strategy allocations for {strategy}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return self._create_equal_allocations(stocks)
@@ -670,32 +639,20 @@ class StrategyPortfolioOptimizer:
         ]
     
     def _create_constrained_risk_allocations(self, stocks: List[Dict], risk_profile: str) -> List[Dict]:
-        """Create risk allocations with risk profile constraints"""
+        """Create risk allocations with risk profile constraints using iterative capping"""
         try:
             risk_constraints = self.RISK_PROFILE_CONSTRAINTS[risk_profile]
             max_single_weight = risk_constraints.get('max_single_stock_weight', 0.4)
             
-            total_inverse_vol = sum(1.0 / max(stock.get('volatility', 0.01), 0.01) for stock in stocks)
-            
-            allocations = []
+            # Calculate initial inverse-volatility weights
+            weights = {}
             for stock in stocks:
+                symbol = stock.get('symbol', 'UNKNOWN')
                 inverse_vol = 1.0 / max(stock.get('volatility', 0.01), 0.01)
-                weight = inverse_vol / total_inverse_vol
-                
-                if weight > max_single_weight:
-                    weight = max_single_weight
-                
-                allocations.append({
-                    'symbol': stock.get('symbol', 'UNKNOWN'),
-                    'allocation': weight,
-                    'sector': stock.get('sector', 'Unknown')
-                })
+                weights[symbol] = {'weight': inverse_vol, 'stock': stock, 'capped': False}
             
-            # Normalize allocations
-            total_allocation = sum(alloc['allocation'] for alloc in allocations)
-            if total_allocation > 0:
-                for alloc in allocations:
-                    alloc['allocation'] /= total_allocation
+            # Iterative capping and redistribution
+            allocations = self._iterative_cap_and_normalize(weights, max_single_weight)
             
             return allocations
             
@@ -704,35 +661,25 @@ class StrategyPortfolioOptimizer:
             return self._create_equal_allocations(stocks)
     
     def _create_constrained_return_allocations(self, stocks: List[Dict], risk_profile: str) -> List[Dict]:
-        """Create return allocations with risk profile constraints"""
+        """Create return allocations with risk profile constraints using iterative capping"""
         try:
             risk_constraints = self.RISK_PROFILE_CONSTRAINTS[risk_profile]
             max_single_weight = risk_constraints.get('max_single_stock_weight', 0.4)
             
-            total_return = sum(max(stock.get('expected_return', 0.0), 0.0) for stock in stocks)
+            # Calculate initial return-proportional weights
+            weights = {}
+            for stock in stocks:
+                symbol = stock.get('symbol', 'UNKNOWN')
+                return_value = max(stock.get('expected_return', 0.0), 0.0)
+                weights[symbol] = {'weight': return_value, 'stock': stock, 'capped': False}
             
-            if total_return <= 0:
+            # Check if all returns are zero or negative
+            total_weight = sum(w['weight'] for w in weights.values())
+            if total_weight <= 0:
                 return self._create_equal_allocations(stocks)
             
-            allocations = []
-            for stock in stocks:
-                return_value = max(stock.get('expected_return', 0.0), 0.0)
-                weight = return_value / total_return
-                
-                if weight > max_single_weight:
-                    weight = max_single_weight
-                
-                allocations.append({
-                    'symbol': stock.get('symbol', 'UNKNOWN'),
-                    'allocation': weight,
-                    'sector': stock.get('sector', 'Unknown')
-                })
-            
-            # Normalize allocations
-            total_allocation = sum(alloc['allocation'] for alloc in allocations)
-            if total_allocation > 0:
-                for alloc in allocations:
-                    alloc['allocation'] /= total_allocation
+            # Iterative capping and redistribution
+            allocations = self._iterative_cap_and_normalize(weights, max_single_weight)
             
             return allocations
             
@@ -740,23 +687,99 @@ class StrategyPortfolioOptimizer:
             logger.error(f"❌ Error in constrained return allocations: {e}")
             return self._create_equal_allocations(stocks)
     
+    def _iterative_cap_and_normalize(self, weights: Dict, max_weight: float, max_iterations: int = 10) -> List[Dict]:
+        """Iteratively cap and normalize weights to ensure sum=1.0 and no weight exceeds max"""
+        try:
+            for iteration in range(max_iterations):
+                # Normalize weights
+                total = sum(w['weight'] for w in weights.values() if not w['capped'])
+                capped_total = sum(max_weight for w in weights.values() if w['capped'])
+                remaining = 1.0 - capped_total
+                
+                if total <= 0:
+                    # All remaining weights are zero, distribute equally among uncapped
+                    uncapped = [k for k, v in weights.items() if not v['capped']]
+                    if uncapped:
+                        equal_weight = remaining / len(uncapped)
+                        for symbol in uncapped:
+                            weights[symbol]['weight'] = equal_weight
+                    break
+                
+                # Normalize uncapped weights to fill remaining allocation
+                scale_factor = remaining / total
+                any_exceeded = False
+                
+                for symbol, data in weights.items():
+                    if not data['capped']:
+                        normalized_weight = data['weight'] * scale_factor
+                        if normalized_weight > max_weight:
+                            data['weight'] = max_weight
+                            data['capped'] = True
+                            any_exceeded = True
+                        else:
+                            data['weight'] = normalized_weight
+                
+                if not any_exceeded:
+                    break
+            
+            # Build final allocations
+            allocations = []
+            for symbol, data in weights.items():
+                stock = data['stock']
+                allocations.append({
+                    'symbol': symbol,
+                    'allocation': data['weight'],
+                    'sector': stock.get('sector', 'Unknown')
+                })
+            
+            # Final normalization to ensure sum = 1.0
+            total_allocation = sum(a['allocation'] for a in allocations)
+            if total_allocation > 0 and abs(total_allocation - 1.0) > 0.0001:
+                for alloc in allocations:
+                    alloc['allocation'] /= total_allocation
+            
+            return allocations
+            
+        except Exception as e:
+            logger.error(f"❌ Error in iterative cap and normalize: {e}")
+            # Return equal weights as fallback
+            return [
+                {
+                    'symbol': symbol,
+                    'allocation': 1.0 / len(weights),
+                    'sector': data['stock'].get('sector', 'Unknown')
+                }
+                for symbol, data in weights.items()
+            ]
+    
     def _validate_allocations(self, allocations: List[Dict], risk_profile: str = None) -> bool:
-        """Validate portfolio allocations"""
+        """Validate portfolio allocations with improved tolerance"""
         if not allocations:
             return False
         
         try:
             total_allocation = sum(alloc['allocation'] for alloc in allocations)
+            
+            # Check sum is approximately 1.0 (allow 1% tolerance)
             if abs(total_allocation - 1.0) > 0.01:
+                logger.debug(f"Validation failed: total={total_allocation:.4f}, expected ~1.0")
                 return False
             
-            if any(alloc['allocation'] < 0 for alloc in allocations):
+            # Check no negative allocations
+            negative_allocs = [a for a in allocations if a['allocation'] < 0]
+            if negative_allocs:
+                logger.debug(f"Validation failed: {len(negative_allocs)} negative allocations")
                 return False
             
-            if risk_profile:
+            # Check max single stock weight if risk profile provided
+            if risk_profile and risk_profile in self.RISK_PROFILE_CONSTRAINTS:
                 risk_constraints = self.RISK_PROFILE_CONSTRAINTS[risk_profile]
                 max_single_weight = risk_constraints.get('max_single_stock_weight', 1.0)
-                if any(alloc['allocation'] > max_single_weight for alloc in allocations):
+                
+                # Allow small tolerance (0.5%) for floating point precision
+                exceeded = [a for a in allocations if a['allocation'] > max_single_weight + 0.005]
+                if exceeded:
+                    logger.debug(f"Validation failed: {len(exceeded)} allocations exceed max weight {max_single_weight}")
                     return False
             
             return True
@@ -776,11 +799,41 @@ class StrategyPortfolioOptimizer:
                 sector = alloc.get('sector', 'Unknown')
                 sector_breakdown[sector] += alloc['allocation']
             
+            # Calculate core metrics
+            expected_return = self._calculate_expected_return(allocations, strategy)
+            risk = self._calculate_portfolio_risk(allocations, strategy)
+            sharpe_ratio = self._calculate_sharpe_ratio(allocations, strategy)
+            
+            # Cap return-strategy portfolios at 90% expected return to avoid unrealistic results
+            if strategy == 'return' and expected_return > 0.90:
+                logger.warning(
+                    f"⚠️ Capping expected return for return strategy portfolio from {expected_return:.2%} to 90.00%"
+                )
+                expected_return = 0.90
+            
+            # Use the same sophisticated diversification score as the main recommendation system
+            try:
+                analytics_allocations = [
+                    {
+                        'symbol': alloc.get('symbol', 'UNKNOWN'),
+                        # Convert from decimal (0-1) to percentage (0-100) for analytics
+                        'allocation': float(alloc.get('allocation', 0.0)) * 100.0,
+                        'sector': alloc.get('sector', 'Unknown')
+                    }
+                    for alloc in allocations
+                ]
+                diversification_score = self.portfolio_analytics._calculate_sophisticated_diversification_score(
+                    analytics_allocations
+                )
+            except Exception as e:
+                logger.error(f"❌ Error calculating sophisticated diversification score for strategy portfolio: {e}")
+                diversification_score = self._calculate_diversification_score(allocations, strategy)
+            
             metrics = {
-                'expected_return': self._calculate_expected_return(allocations, strategy),
-                'risk': self._calculate_portfolio_risk(allocations, strategy),
-                'sharpe_ratio': self._calculate_sharpe_ratio(allocations, strategy),
-                'diversification_score': self._calculate_diversification_score(allocations, strategy),
+                'expected_return': expected_return,
+                'risk': risk,
+                'sharpe_ratio': sharpe_ratio,
+                'diversification_score': diversification_score,
                 'sector_breakdown': dict(sector_breakdown),
                 'num_stocks': len(allocations),
                 'strategy': strategy
@@ -795,8 +848,8 @@ class StrategyPortfolioOptimizer:
     def _calculate_expected_return(self, allocations: List[Dict], strategy: str) -> float:
         """Calculate expected return using Redis price data (annualized).
         
-        Prefers cached metrics (expected_return) over recalculating from prices to avoid
-        negative returns from recent market movements. Falls back to price calculation if needed.
+        Prefers cached metrics (expected_return) over recalculating from prices.
+        Filters out assets with non-positive expected returns instead of forcing a positive fallback.
         """
         try:
             if not allocations:
@@ -814,17 +867,21 @@ class StrategyPortfolioOptimizer:
                 metrics = self.data_service._load_from_cache(symbol, 'metrics') if hasattr(self.data_service, '_load_from_cache') else None
                 if metrics and isinstance(metrics, dict) and 'annualized_return' in metrics:
                     annual_ret = float(metrics.get('annualized_return', 0.10))
-                    # Ensure positive return (use cached value which should be positive)
+                    # Keep only assets with strictly positive expected returns
                     if annual_ret > 0:
                         weights.append(w)
                         rets.append(annual_ret)
+                        continue
+                    else:
+                        logger.info(f"ℹ️ {symbol} has non-positive cached return ({annual_ret:.2%}), excluding from expected return calculation")
                         continue
                 
                 # FALLBACK: Calculate from prices if metrics not available
                 prices = self.data_service._load_from_cache(symbol, 'prices') if hasattr(self.data_service, '_load_from_cache') else None
                 if prices is None or getattr(prices, 'empty', False) or len(prices) < 3:
-                    # Final fallback: use default positive return
-                    annual_ret = 0.10
+                    # Not enough data to estimate return, skip this asset
+                    logger.info(f"ℹ️ {symbol} has insufficient price data for return calculation, excluding from expected return calculation")
+                    continue
                 else:
                     # monthly series -> annualized return over last 12 months (or scale)
                     import pandas as pd
@@ -836,15 +893,15 @@ class StrategyPortfolioOptimizer:
                     else:
                         annual_ret = float(((s.iloc[-1] / s.iloc[0]) - 1) * (12 / len(s)))
                     
-                    # SAFEGUARD: If calculated return is negative, use fallback
-                    if annual_ret <= 0:
-                        logger.warning(f"⚠️ {symbol} has negative calculated return ({annual_ret:.2%}), using fallback")
-                        annual_ret = 0.10
-                
-                weights.append(w)
-                rets.append(annual_ret)
+                    # Keep only assets with strictly positive calculated returns
+                    if annual_ret > 0:
+                        weights.append(w)
+                        rets.append(annual_ret)
+                    else:
+                        logger.info(f"ℹ️ {symbol} has non-positive calculated return ({annual_ret:.2%}), excluding from expected return calculation")
             
             if not weights:
+                logger.warning("⚠️ No assets with positive expected returns found, using 10% fallback")
                 return 0.10
             
             total_w = sum(weights) or 1.0
@@ -852,9 +909,10 @@ class StrategyPortfolioOptimizer:
             weights = [w / total_w for w in weights]
             portfolio_return = sum(w * r for w, r in zip(weights, rets))
             
-            # FINAL SAFEGUARD: Ensure portfolio return is positive
+            # At this point portfolio_return should already be positive given filtering,
+            # but keep a minimal safeguard.
             if portfolio_return <= 0:
-                logger.warning(f"⚠️ Portfolio has negative return ({portfolio_return:.2%}), using fallback")
+                logger.warning(f"⚠️ Portfolio has non-positive return after filtering ({portfolio_return:.2%}), using 10% fallback")
                 return 0.10
             
             return float(portfolio_return)
@@ -910,9 +968,11 @@ class StrategyPortfolioOptimizer:
         try:
             expected_return = self._calculate_expected_return(allocations, strategy)
             risk = self._calculate_portfolio_risk(allocations, strategy)
+            # Use the same risk-free rate as the main analytics system for consistency
+            risk_free_rate = getattr(self.portfolio_analytics, 'risk_free_rate', 0.02)
             
             if risk > 0:
-                return (expected_return - 0.02) / risk
+                return (expected_return - risk_free_rate) / risk
             return 0.5
         except Exception as e:
             logger.error(f"❌ Error calculating Sharpe ratio: {e}")
@@ -1049,69 +1109,97 @@ class StrategyPortfolioOptimizer:
             cache_miss_count = 0
             cache_hit_count = 0
             
-            # Debug: Check first few tickers in detail
-            logger.info("🔍 Debug: Checking first 5 tickers in detail...")
+            # OPTIMIZED: Batch check and load using pipeline for faster processing
+            logger.info("⚡ Using optimized batch loading...")
             
-            for i, ticker in enumerate(all_tickers):
+            # Batch check existence first (faster than loading)
+            price_keys = [f"ticker_data:prices:{t}" for t in all_tickers]
+            sector_keys = [f"ticker_data:sector:{t}" for t in all_tickers]
+            
+            # Use pipeline for batch existence checks
+            pipe = redis_client.pipeline()
+            for key in price_keys + sector_keys:
+                pipe.exists(key)
+            existence_results = pipe.execute()
+            
+            # Split results
+            price_exists = existence_results[:len(price_keys)]
+            sector_exists = existence_results[len(price_keys):]
+            
+            # Filter to only tickers with both prices and sector
+            valid_tickers = [
+                ticker for i, ticker in enumerate(all_tickers)
+                if price_exists[i] and sector_exists[i]
+            ]
+            
+            logger.info(f"⚡ Found {len(valid_tickers)}/{len(all_tickers)} tickers with prices+sector data")
+            
+            # OPTIMIZED: Batch load sector and metrics data using pipeline
+            logger.info(f"⚡ Batch loading data for {len(valid_tickers)} valid tickers...")
+            
+            # Batch load sector and metrics data
+            sector_data_keys = [f"ticker_data:sector:{t}" for t in valid_tickers]
+            metrics_data_keys = [f"ticker_data:metrics:{t}" for t in valid_tickers]
+            
+            pipe = redis_client.pipeline()
+            for key in sector_data_keys + metrics_data_keys:
+                pipe.get(key)
+            batch_results = pipe.execute()
+            
+            sector_data_raw = batch_results[:len(valid_tickers)]
+            metrics_data_raw = batch_results[len(valid_tickers):]
+            
+            import json as json_lib
+            import pickle
+            
+            for i, ticker in enumerate(valid_tickers):
                 try:
-                    # Check if we have all required data in Redis
-                    has_prices = self.data_service._is_cached(ticker, 'prices')
-                    has_sector = self.data_service._is_cached(ticker, 'sector')
-                    has_metrics = self.data_service._is_cached(ticker, 'metrics')
+                    # Parse sector data
+                    cached_sector = None
+                    if sector_data_raw[i]:
+                        try:
+                            cached_sector = json_lib.loads(sector_data_raw[i])
+                        except:
+                            try:
+                                cached_sector = pickle.loads(sector_data_raw[i])
+                            except:
+                                pass
                     
-                    # Convert Redis return values to proper booleans
-                    has_prices_bool = bool(has_prices)
-                    has_sector_bool = bool(has_sector)
-                    has_metrics_bool = bool(has_metrics)
-                    
-                    # Debug logging for first few tickers
-                    if i < 5:
-                        logger.info(f"🔍 {ticker}: prices={has_prices}({has_prices_bool}), sector={has_sector}({has_sector_bool}), metrics={has_metrics}({has_metrics_bool})")
-                    
-                    # Use boolean values for the condition
-                    if not (has_prices_bool and has_sector_bool):
+                    if not cached_sector or not isinstance(cached_sector, dict):
                         cache_miss_count += 1
-                        if i < 5:  # Log first few misses
-                            logger.info(f"⚠️ {ticker}: Skipped - missing required data (prices: {has_prices_bool}, sector: {has_sector_bool})")
                         continue
                     
-                    # Load data from Redis cache only
-                    cached_prices = self.data_service._load_from_cache(ticker, 'prices')
-                    cached_sector = self.data_service._load_from_cache(ticker, 'sector')
-                    cached_metrics = self.data_service._load_from_cache(ticker, 'metrics')
+                    # Parse metrics data
+                    cached_metrics = None
+                    if metrics_data_raw[i]:
+                        try:
+                            cached_metrics = json_lib.loads(metrics_data_raw[i])
+                        except:
+                            try:
+                                cached_metrics = pickle.loads(metrics_data_raw[i])
+                            except:
+                                pass
                     
-                    if i < 5:
-                        logger.info(f"🔍 {ticker}: Loaded - prices={cached_prices is not None}, sector={cached_sector is not None}, metrics={cached_metrics is not None}")
-                    
-                    # Check if cached data is valid using pandas-safe methods
-                    prices_valid = cached_prices is not None and not cached_prices.empty if hasattr(cached_prices, 'empty') else cached_prices is not None
-                    sector_valid = cached_sector is not None and len(cached_sector) > 0 if isinstance(cached_sector, dict) else cached_sector is not None
-                    
-                    if not prices_valid or not sector_valid:
-                        cache_miss_count += 1
-                        if i < 5:  # Log first few misses
-                            logger.debug(f"⚠️ {ticker}: Skipped - data loading failed (prices: {prices_valid}, sector: {sector_valid})")
-                        continue
-                    
-                    # Calculate basic metrics from cached data
-                    if cached_prices is not None and len(cached_prices) > 1:
-                        # Calculate volatility from price changes
-                        price_changes = cached_prices.pct_change().dropna()
-                        volatility = price_changes.std() * (252 ** 0.5)  # Annualized
-                        
-                        # Calculate return from price change
-                        if len(cached_prices) > 12:  # At least 1 year of data
-                            annual_return = ((cached_prices.iloc[-1] / cached_prices.iloc[-12]) - 1)
-                        else:
-                            annual_return = ((cached_prices.iloc[-1] / cached_prices.iloc[0]) - 1) * (12 / len(cached_prices))
-                    else:
-                        volatility = 0.2  # Default volatility
-                        annual_return = 0.1  # Default return
-                    
-                    # Use cached metrics if available, otherwise calculate from prices
+                    # Use cached metrics primarily (faster than loading prices)
                     if cached_metrics:
-                        volatility = cached_metrics.get('risk', volatility)
-                        annual_return = cached_metrics.get('annualized_return', annual_return)
+                        volatility = cached_metrics.get('risk', 0.2)
+                        annual_return = cached_metrics.get('annualized_return', 0.1)
+                        current_price = cached_metrics.get('current_price', 0)
+                    else:
+                        # Only load prices if no metrics available
+                        cached_prices = self.data_service._load_from_cache(ticker, 'prices')
+                        if cached_prices is not None and len(cached_prices) > 1:
+                            price_changes = cached_prices.pct_change().dropna()
+                            volatility = price_changes.std() * (252 ** 0.5)
+                            if len(cached_prices) > 12:
+                                annual_return = ((cached_prices.iloc[-1] / cached_prices.iloc[-12]) - 1)
+                            else:
+                                annual_return = ((cached_prices.iloc[-1] / cached_prices.iloc[0]) - 1) * (12 / len(cached_prices))
+                            current_price = cached_prices.iloc[-1]
+                        else:
+                            volatility = 0.2
+                            annual_return = 0.1
+                            current_price = 0
                     
                     stock_data = {
                         'symbol': ticker,
@@ -1121,7 +1209,7 @@ class StrategyPortfolioOptimizer:
                         'industry': cached_sector.get('industry', 'Unknown'),
                         'volatility': volatility,
                         'expected_return': annual_return,
-                        'current_price': cached_prices.iloc[-1] if not cached_prices.empty else 0,
+                        'current_price': current_price,
                         'data_quality': 'cached',
                         'cached': True
                     }
@@ -1129,15 +1217,11 @@ class StrategyPortfolioOptimizer:
                     available_stocks.append(stock_data)
                     cache_hit_count += 1
                     
-                    # Debug logging for first few successful stocks
-                    if i < 5:
-                        logger.info(f"✅ {ticker}: Added successfully - {stock_data['sector']}, vol={volatility:.4f}, ret={annual_return:.4f}")
-                    
                 except Exception as e:
                     cache_miss_count += 1
-                    if i < 5:  # Log first few errors
-                        logger.error(f"❌ {ticker}: Error processing - {e}")
                     continue
+            
+            cache_miss_count += len(all_tickers) - len(valid_tickers)
             
             logger.info(f"✅ Found {len(available_stocks)} stocks with complete Redis data")
             logger.info(f"📊 Cache hits: {cache_hit_count}, Cache misses: {cache_miss_count}")
@@ -1160,8 +1244,8 @@ class StrategyPortfolioOptimizer:
         
         This generates:
         - 3 strategies × 6 pure portfolios = 18 pure portfolios
-        - 3 strategies × 5 risk profiles × 3 portfolios = 45 personalized portfolios
-        - Total: 63 portfolios
+        - 3 strategies × 5 risk profiles × 6 portfolios = 90 personalized portfolios
+        - Total: 108 portfolios
         
         Returns:
             Summary of generation with timing and success rates
@@ -1178,10 +1262,10 @@ class StrategyPortfolioOptimizer:
         }
         
         try:
-            # Pre-load stock pool once for all portfolios
-            logger.info("📊 Pre-loading stock pool...")
-            self._get_available_stocks()  # This will cache it
-            logger.info(f"✅ Stock pool loaded: {len(self._stock_pool_cache)} stocks")
+            # Pre-load stock pool once for all portfolios (optimized batch loading)
+            logger.info("📊 Pre-loading stock pool (optimized)...")
+            stock_pool = self._get_available_stocks()  # This will cache it
+            logger.info(f"✅ Stock pool loaded: {len(stock_pool)} stocks")
             
             # Generate for each strategy
             for strategy in self.STRATEGIES.keys():

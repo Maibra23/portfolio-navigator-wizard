@@ -68,7 +68,7 @@ def get_volatility_weighted_sector_weights(
 def invalidate_volatility_sector_weights_cache(redis_client: Any, risk_profile: str) -> None:
 	"""
 	No-op cache invalidation placeholder. Kept for compatibility with
-	PortfolioAutoRegenerationService. This function intentionally does
+	portfolio generation. This function intentionally does
 	nothing; sector weights are computed on demand by the helper above.
 	"""
 	try:

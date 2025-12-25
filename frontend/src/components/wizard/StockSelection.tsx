@@ -45,6 +45,7 @@ interface StockSelectionProps {
   onNext: () => void;
   onPrev: () => void;
   onStocksUpdate: (stocks: PortfolioAllocation[]) => void;
+  onMetricsUpdate?: (metrics: PortfolioMetrics | null) => void;
   selectedStocks: PortfolioAllocation[];
   riskProfile: string;
   capital: number;
@@ -162,7 +163,8 @@ interface TwoAssetAnalysis {
 export const StockSelection = ({ 
   onNext, 
   onPrev, 
-  onStocksUpdate, 
+  onStocksUpdate,
+  onMetricsUpdate,
   selectedStocks, 
   riskProfile, 
   capital 
@@ -1036,6 +1038,13 @@ export const StockSelection = ({
 
     return () => clearTimeout(timeoutId);
   }, [searchTerm, searchStocks]);
+
+  // Sync portfolio metrics to wizard when they change
+  useEffect(() => {
+    if (onMetricsUpdate) {
+      onMetricsUpdate(portfolioMetrics);
+    }
+  }, [portfolioMetrics, onMetricsUpdate]);
 
   // Calculate portfolio metrics based on SELECTED portfolio, not individual stocks
   useEffect(() => {
@@ -2574,57 +2583,9 @@ export const StockSelection = ({
                         <div className="text-center">
                           <div className="text-slate-500 mb-2">No metrics available</div>
                           <div className="text-sm text-slate-400">Please wait for calculation to complete</div>
-                        </div>
                       </div>
-                    )}
-
-                    {/* Continue Button */}
-                    <div className="mt-4 text-center">
-                      <Button 
-                        onClick={handleNext}
-                        size="default"
-                        disabled={totalAllocation < 85}
-                        className={`px-6 py-2 rounded-lg shadow-md transition-all duration-200 ${
-                          totalAllocation < 85 
-                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed shadow-none' 
-                            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white hover:shadow-lg'
-                        }`}
-                      >
-                        {totalAllocation > 100 ? (
-                          <>
-                            <AlertTriangle className="mr-2 h-5 w-5" />
-                            Fix Allocation Before Continuing
-                          </>
-                        ) : totalAllocation === 0 ? (
-                          <>
-                            <Info className="mr-2 h-5 w-5" />
-                            Set Allocations to Continue
-                          </>
-                        ) : totalAllocation < 85 ? (
-                          <>
-                            <AlertTriangle className="mr-2 h-5 w-5" />
-                            Need 85%+ Allocation to Continue
-                          </>
-                        ) : totalAllocation >= 85 && totalAllocation < 90 ? (
-                          <>
-                            <Lightbulb className="mr-2 h-5 w-5" />
-                            Proceed with {totalAllocation.toFixed(1)}% Allocation
-                          </>
-                        ) : totalAllocation >= 90 && totalAllocation < 100 ? (
-                          <>
-                            <Lightbulb className="mr-2 h-5 w-5" />
-                            Proceed with {totalAllocation.toFixed(1)}% Allocation
-                          </>
-                        ) : (
-                          <>
-                            Continue to Visual Charts
-                            <ArrowRight className="ml-2 h-5 w-5" />
-                          </>
-                        )}
-                      </Button>
-                      
-
                     </div>
+                    )}
                   </CardContent>
                 </Card>
               )}

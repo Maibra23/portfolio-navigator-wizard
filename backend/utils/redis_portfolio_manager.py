@@ -202,6 +202,37 @@ class RedisPortfolioManager:
             logger.error(f"Error counting portfolios for {risk_profile}: {e}")
             return 0
     
+    def get_valid_portfolio_count(self, risk_profile: str) -> int:
+        """Get the number of VALID portfolios (with stocks) available for a risk profile"""
+        if not self.redis_client:
+            return 0
+        
+        try:
+            count = 0
+            bucket_key = f"portfolio_bucket:{risk_profile}"
+            
+            for i in range(self.PORTFOLIOS_PER_PROFILE):
+                portfolio_key = f"{bucket_key}:{i}"
+                portfolio_data = self.redis_client.get(portfolio_key)
+                
+                if portfolio_data:
+                    try:
+                        portfolio = json.loads(portfolio_data)
+                        allocations = portfolio.get('allocations', [])
+                        # Count stocks (assetType='stock' or no assetType specified)
+                        stock_count = len([a for a in allocations if a.get('assetType') == 'stock' or not a.get('assetType')])
+                        if stock_count > 0:
+                            count += 1
+                    except (json.JSONDecodeError, KeyError, TypeError):
+                        # Invalid portfolio data
+                        continue
+            
+            return count
+            
+        except Exception as e:
+            logger.error(f"Error counting valid portfolios for {risk_profile}: {e}")
+            return 0
+    
     def clear_portfolio_bucket(self, risk_profile: str) -> bool:
         """Clear all portfolios for a specific risk profile"""
         if not self.redis_client:

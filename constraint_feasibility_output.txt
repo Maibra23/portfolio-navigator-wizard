@@ -1,0 +1,116 @@
+2025-12-19 18:02:16,887 - INFO - 
+================================================================================
+2025-12-19 18:02:16,887 - INFO - Testing Constraint Feasibility: VERY-CONSERVATIVE
+2025-12-19 18:02:16,887 - INFO - ================================================================================
+2025-12-19 18:02:16,887 - INFO - Max Risk Constraint: 18.00% (18.0%)
+2025-12-19 18:02:16,895 - INFO - ✅ Retrieved 5 portfolio recommendations for very-conservative
+2025-12-19 18:02:16,896 - INFO - Found 5 portfolios to test
+2025-12-19 18:02:16,896 - ERROR - Error testing very-conservative: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+Traceback (most recent call last):
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 299, in main
+    result = test_portfolio_constraint_feasibility(risk_profile, num_portfolios=5)
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 220, in test_portfolio_constraint_feasibility
+    get_ticker_metrics_func=redis_first_data_service.get_ticker_metrics,
+AttributeError: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+2025-12-19 18:02:16,903 - INFO - 
+================================================================================
+2025-12-19 18:02:16,903 - INFO - Testing Constraint Feasibility: CONSERVATIVE
+2025-12-19 18:02:16,903 - INFO - ================================================================================
+2025-12-19 18:02:16,903 - INFO - Max Risk Constraint: 25.00% (25.0%)
+2025-12-19 18:02:16,920 - INFO - ✅ Retrieved 5 portfolio recommendations for conservative
+2025-12-19 18:02:16,920 - INFO - Found 5 portfolios to test
+2025-12-19 18:02:16,920 - ERROR - Error testing conservative: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+Traceback (most recent call last):
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 299, in main
+    result = test_portfolio_constraint_feasibility(risk_profile, num_portfolios=5)
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 220, in test_portfolio_constraint_feasibility
+    get_ticker_metrics_func=redis_first_data_service.get_ticker_metrics,
+AttributeError: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+2025-12-19 18:02:16,920 - INFO - 
+================================================================================
+2025-12-19 18:02:16,921 - INFO - Testing Constraint Feasibility: MODERATE
+2025-12-19 18:02:16,921 - INFO - ================================================================================
+2025-12-19 18:02:16,921 - INFO - Max Risk Constraint: 32.00% (32.0%)
+2025-12-19 18:02:16,927 - INFO - ✅ Retrieved 5 portfolio recommendations for moderate
+2025-12-19 18:02:16,927 - INFO - Found 5 portfolios to test
+2025-12-19 18:02:16,927 - ERROR - Error testing moderate: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+Traceback (most recent call last):
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 299, in main
+    result = test_portfolio_constraint_feasibility(risk_profile, num_portfolios=5)
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 220, in test_portfolio_constraint_feasibility
+    get_ticker_metrics_func=redis_first_data_service.get_ticker_metrics,
+AttributeError: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+2025-12-19 18:02:16,929 - INFO - 
+================================================================================
+2025-12-19 18:02:16,929 - INFO - Testing Constraint Feasibility: AGGRESSIVE
+2025-12-19 18:02:16,929 - INFO - ================================================================================
+2025-12-19 18:02:16,929 - INFO - Max Risk Constraint: 42.00% (42.0%)
+2025-12-19 18:02:16,943 - INFO - ✅ Retrieved 5 portfolio recommendations for aggressive
+2025-12-19 18:02:16,943 - INFO - Found 5 portfolios to test
+2025-12-19 18:02:16,945 - ERROR - Error testing aggressive: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+Traceback (most recent call last):
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 299, in main
+    result = test_portfolio_constraint_feasibility(risk_profile, num_portfolios=5)
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 220, in test_portfolio_constraint_feasibility
+    get_ticker_metrics_func=redis_first_data_service.get_ticker_metrics,
+AttributeError: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+2025-12-19 18:02:16,949 - INFO - 
+================================================================================
+2025-12-19 18:02:16,949 - INFO - Testing Constraint Feasibility: VERY-AGGRESSIVE
+2025-12-19 18:02:16,949 - INFO - ================================================================================
+2025-12-19 18:02:16,950 - INFO - Max Risk Constraint: 55.00% (55.0%)
+2025-12-19 18:02:16,961 - INFO - ✅ Retrieved 5 portfolio recommendations for very-aggressive
+2025-12-19 18:02:16,961 - INFO - Found 5 portfolios to test
+2025-12-19 18:02:16,963 - ERROR - Error testing very-aggressive: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+Traceback (most recent call last):
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 299, in main
+    result = test_portfolio_constraint_feasibility(risk_profile, num_portfolios=5)
+  File "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/backend/scripts/test_constraint_feasibility.py", line 220, in test_portfolio_constraint_feasibility
+    get_ticker_metrics_func=redis_first_data_service.get_ticker_metrics,
+AttributeError: 'RedisFirstDataService' object has no attribute 'get_ticker_metrics'
+2025-12-19 18:02:16,969 - INFO - 
+================================================================================
+2025-12-19 18:02:16,969 - INFO - FINAL FEASIBILITY SUMMARY - ALL RISK PROFILES
+2025-12-19 18:02:16,969 - INFO - ================================================================================
+2025-12-19 18:02:16,969 - INFO - 
+VERY-CONSERVATIVE:
+2025-12-19 18:02:16,970 - INFO -   Max Risk Constraint: 0.00%
+2025-12-19 18:02:16,970 - INFO -   Portfolios Tested: 0
+2025-12-19 18:02:16,973 - INFO -   Feasible: 0/0
+2025-12-19 18:02:16,979 - INFO -   Feasibility Rate: 0.0%
+2025-12-19 18:02:16,980 - INFO - 
+CONSERVATIVE:
+2025-12-19 18:02:16,980 - INFO -   Max Risk Constraint: 0.00%
+2025-12-19 18:02:16,980 - INFO -   Portfolios Tested: 0
+2025-12-19 18:02:16,980 - INFO -   Feasible: 0/0
+2025-12-19 18:02:16,980 - INFO -   Feasibility Rate: 0.0%
+2025-12-19 18:02:16,981 - INFO - 
+MODERATE:
+2025-12-19 18:02:16,981 - INFO -   Max Risk Constraint: 0.00%
+2025-12-19 18:02:16,981 - INFO -   Portfolios Tested: 0
+2025-12-19 18:02:16,981 - INFO -   Feasible: 0/0
+2025-12-19 18:02:16,981 - INFO -   Feasibility Rate: 0.0%
+2025-12-19 18:02:16,985 - INFO - 
+AGGRESSIVE:
+2025-12-19 18:02:16,985 - INFO -   Max Risk Constraint: 0.00%
+2025-12-19 18:02:16,985 - INFO -   Portfolios Tested: 0
+2025-12-19 18:02:16,987 - INFO -   Feasible: 0/0
+2025-12-19 18:02:16,988 - INFO -   Feasibility Rate: 0.0%
+2025-12-19 18:02:16,988 - INFO - 
+VERY-AGGRESSIVE:
+2025-12-19 18:02:16,988 - INFO -   Max Risk Constraint: 0.00%
+2025-12-19 18:02:16,989 - INFO -   Portfolios Tested: 0
+2025-12-19 18:02:16,994 - INFO -   Feasible: 0/0
+2025-12-19 18:02:16,994 - INFO -   Feasibility Rate: 0.0%
+2025-12-19 18:02:16,994 - INFO - 
+================================================================================
+2025-12-19 18:02:16,994 - INFO - OVERALL FEASIBILITY
+2025-12-19 18:02:16,994 - INFO - ================================================================================
+2025-12-19 18:02:16,995 - INFO - Total Portfolios Tested: 0
+2025-12-19 18:02:16,995 - INFO - Total Feasible: 0
+2025-12-19 18:02:16,995 - INFO - Overall Feasibility Rate: 0.0%
+2025-12-19 18:02:16,996 - ERROR - 
+❌ LOW FEASIBILITY: Only 0.0% of portfolios can respect constraints
+2025-12-19 18:02:16,996 - ERROR -    Recommendation: Review constraint values or optimization approach
+2025-12-19 18:02:17,001 - INFO - 
+Detailed results saved to: constraint_feasibility_test_results.json

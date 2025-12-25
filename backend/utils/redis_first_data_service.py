@@ -755,6 +755,18 @@ class RedisFirstDataService:
             smart_refresh_logger.info("Smart monthly refresh initiated for all tickers")
             result = self.enhanced_data_fetcher.smart_monthly_refresh(job_logger=smart_refresh_logger)
             smart_refresh_logger.info("Smart monthly refresh completed: %s", result)
+            
+            # Invalidate eligible tickers cache when ticker data is refreshed
+            if result and isinstance(result, dict) and result.get('success_count', 0) > 0:
+                try:
+                    # Lazy import to avoid circular dependencies
+                    from routers.portfolio import _invalidate_eligible_tickers_cache, _trigger_eligible_tickers_refresh
+                    _invalidate_eligible_tickers_cache()
+                    _trigger_eligible_tickers_refresh()
+                    logger.info("🔄 Eligible tickers cache invalidated and refresh triggered after monthly ticker data update")
+                except Exception as e:
+                    logger.debug(f"⚠️ Could not invalidate eligible tickers cache: {e}")
+            
             return result
         except Exception as e:
             logger.error(f"Error performing monthly refresh: {e}")
@@ -772,17 +784,180 @@ class RedisFirstDataService:
             logger.info(f"Smart refreshing {len(tickers)} specific tickers")
             smart_refresh_logger.info("Smart refresh triggered via UI for %s tickers", len(tickers))
             smart_refresh_logger.info("Tickers: %s", ", ".join(tickers))
+            
+            # Check which tickers actually need refresh before fetching
+            tickers_needing_refresh = []
+            for ticker in tickers:
+                try:
+                    cached_data = self.get_monthly_data(ticker)
+                    if cached_data is None:
+                        tickers_needing_refresh.append(ticker)
+                    elif isinstance(cached_data, pd.Series) and not cached_data.empty:
+                        last_date = cached_data.index[-1]
+                        # Handle pandas Timestamp conversion
+                        if hasattr(last_date, 'to_pydatetime'):
+                            last_date_dt = last_date.to_pydatetime()
+                        elif isinstance(last_date, pd.Timestamp):
+                            last_date_dt = last_date.to_pydatetime()
+                        else:
+                            last_date_dt = pd.to_datetime(last_date).to_pydatetime()
+                        
+                        days_old = (datetime.now() - last_date_dt).days
+                        if days_old > 30:
+                            tickers_needing_refresh.append(ticker)
+                except Exception as e:
+                    logger.debug(f"⚠️ Error checking cache freshness for {ticker}: {e}")
+                    tickers_needing_refresh.append(ticker)
+            
+            # Only refresh tickers that need it
+            if not tickers_needing_refresh:
+                logger.info(f"✅ All {len(tickers)} tickers are fresh, no refresh needed")
+                smart_refresh_logger.info("All tickers are fresh, no refresh needed")
+                return {
+                    "changed_count": 0,
+                    "tickers": tickers,
+                    "result": {"success_count": 0, "error_count": 0, "total_processed": 0}
+                }
+            
+            logger.info(f"🔄 {len(tickers_needing_refresh)}/{len(tickers)} tickers need refresh: {tickers_needing_refresh}")
+            smart_refresh_logger.info("Refreshing %s tickers that need update", len(tickers_needing_refresh))
+            
             # Use the enhanced data fetcher to refresh specific tickers
-            result = self.enhanced_data_fetcher.refresh_specific_tickers(tickers, job_logger=smart_refresh_logger)
+            result = self.enhanced_data_fetcher.refresh_specific_tickers(tickers_needing_refresh, job_logger=smart_refresh_logger)
             smart_refresh_logger.info("Smart refresh finished with summary: %s", result)
+            
+            # Only invalidate eligible tickers cache when data was actually refreshed
+            if result and result.get('success_count', 0) > 0:
+                try:
+                    # Lazy import to avoid circular dependencies
+                    from routers.portfolio import _invalidate_eligible_tickers_cache, _trigger_eligible_tickers_refresh
+                    _invalidate_eligible_tickers_cache()
+                    _trigger_eligible_tickers_refresh()
+                    logger.info("🔄 Eligible tickers cache invalidated and refresh triggered after ticker data update")
+                except Exception as e:
+                    logger.debug(f"⚠️ Could not invalidate eligible tickers cache: {e}")
+            else:
+                logger.debug("ℹ️ No data was refreshed, eligible tickers cache remains valid")
+            
             return {
-                "changed_count": len(tickers),
+                "changed_count": len(tickers_needing_refresh),
                 "tickers": tickers,
                 "result": result
             }
         except Exception as e:
             logger.error(f"Error refreshing specific tickers: {e}")
             smart_refresh_logger.error("Smart refresh failed: %s", e)
+            return None
+    
+    def check_ticker_status(self) -> Optional[Dict[str, Any]]:
+        """
+        Check ticker data status in Redis without fetching anything.
+        Returns statistics about ticker data health, including comparison with master list.
+        """
+        if not self.redis_client:
+            return None
+        
+        try:
+            import redis
+            from datetime import datetime
+            
+            # Get master ticker list for comparison
+            master_tickers = set()
+            try:
+                master_list = self.all_tickers
+                if master_list:
+                    master_tickers = set(master_list)
+            except Exception as e:
+                logger.debug(f"Could not load master ticker list: {e}")
+            
+            # Get all ticker keys - Use correct key pattern matching actual storage format
+            price_keys = self.redis_client.keys("ticker_data:prices:*")
+            sector_keys = self.redis_client.keys("ticker_data:sector:*")
+            
+            # Get unique tickers with data in Redis
+            tickers_with_data = set()
+            for key in price_keys:
+                if isinstance(key, bytes):
+                    key = key.decode()
+                # Extract ticker from "ticker_data:prices:{ticker}"
+                ticker = key.replace("ticker_data:prices:", "")
+                tickers_with_data.add(ticker)
+            
+            for key in sector_keys:
+                if isinstance(key, bytes):
+                    key = key.decode()
+                # Extract ticker from "ticker_data:sector:{ticker}"
+                ticker = key.replace("ticker_data:sector:", "")
+                tickers_with_data.add(ticker)
+            
+            tickers_with_data = sorted(list(tickers_with_data))
+            total_tickers_in_redis = len(tickers_with_data)
+            
+            # Find missing tickers (in master list but not in Redis)
+            missing_from_master = []
+            if master_tickers:
+                tickers_with_data_set = set(tickers_with_data)
+                missing_from_master = sorted(list(master_tickers - tickers_with_data_set))
+            
+            # Analyze TTL status for existing tickers
+            expired = []
+            expiring_soon = []  # Within 24 hours
+            missing_prices = []
+            missing_sector = []
+            missing_both = []
+            
+            for ticker in tickers_with_data:
+                # Use _get_cache_key() method to ensure correct key format
+                price_key = self._get_cache_key(ticker, 'prices')
+                sector_key = self._get_cache_key(ticker, 'sector')
+                
+                price_ttl = self.redis_client.ttl(price_key)
+                sector_ttl = self.redis_client.ttl(sector_key)
+                
+                # Check if keys exist
+                has_prices = self.redis_client.exists(price_key)
+                has_sector = self.redis_client.exists(sector_key)
+                
+                if not has_prices and not has_sector:
+                    missing_both.append(ticker)
+                elif not has_prices:
+                    missing_prices.append(ticker)
+                elif not has_sector:
+                    missing_sector.append(ticker)
+                
+                # Use the minimum TTL (most critical)
+                min_ttl = min(price_ttl, sector_ttl) if price_ttl > 0 and sector_ttl > 0 else (price_ttl if price_ttl > 0 else sector_ttl)
+                
+                if min_ttl == -2:  # Key doesn't exist
+                    expired.append(ticker)
+                elif min_ttl == 0:
+                    expired.append(ticker)
+                elif min_ttl > 0 and min_ttl < 86400:  # Less than 24 hours
+                    expiring_soon.append(ticker)
+            
+            # Total needing fetch = missing from master + expired + missing data
+            needs_fetch = len(missing_from_master) + len(expired) + len(missing_both) + len(missing_prices) + len(missing_sector)
+            
+            return {
+                'total_tickers_in_redis': total_tickers_in_redis,
+                'total_tickers_in_master': len(master_tickers) if master_tickers else 0,
+                'missing_from_master_count': len(missing_from_master),
+                'expired_count': len(expired),
+                'expiring_soon_count': len(expiring_soon),
+                'missing_data_count': len(missing_both) + len(missing_prices) + len(missing_sector),
+                'missing_both_count': len(missing_both),
+                'missing_prices_count': len(missing_prices),
+                'missing_sector_count': len(missing_sector),
+                'needs_fetch_count': needs_fetch,
+                'missing_from_master_sample': missing_from_master[:20],  # Sample
+                'expired_tickers': expired[:20],  # Sample
+                'expiring_soon_tickers': expiring_soon[:20],  # Sample
+                'timestamp': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error checking ticker status: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 # Global instance for lazy initialization

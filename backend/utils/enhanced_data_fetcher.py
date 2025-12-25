@@ -174,6 +174,15 @@ class EnhancedDataFetcher:
             # Unified TTL to match sector/metrics (90 days via CACHE_TTL_HOURS)
             self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), prices_compressed)
             
+            # Invalidate eligible tickers cache when new ticker data is cached
+            # (Only invalidate, don't trigger refresh here to avoid excessive refreshes during batch operations)
+            try:
+                # Lazy import to avoid circular dependencies
+                from routers.portfolio import _invalidate_eligible_tickers_cache
+                _invalidate_eligible_tickers_cache()
+            except Exception as e:
+                logger.debug(f"⚠️ Could not invalidate eligible tickers cache: {e}")
+            
             logger.debug(f"✅ {ticker}: Data validated and cached safely ({len(price_dict)} points)")
             return True
             
@@ -652,26 +661,74 @@ class EnhancedDataFetcher:
         """Fetch data for a single ticker with retry logic and rate limiting"""
         # NEW: Normalize ticker format first using timestamp_utils
         original_ticker = ticker
-        ticker = normalize_ticker_format(ticker)
+        normalized_ticker = normalize_ticker_format(ticker)
         
-        if ticker != original_ticker:
-            logger.info(f"🔄 Normalized ticker: {original_ticker} → {ticker}")
+        # Determine which ticker formats to try and which to use for caching
+        # Strategy: 
+        # 1. Keep normalization as-is (it's useful for Yahoo Finance compatibility)
+        # 2. Try multiple formats when fetching (normalized first, then original if needed)
+        # 3. Cache under the format that's in master list to ensure consistency
+        fetch_formats_to_try = []  # List of formats to try when fetching
+        cache_ticker = None  # Format to use for caching (must be in master list)
         
-        # Validate ticker is in master list unless allowed during this run
-        if ticker not in self.all_tickers and not getattr(self, '_allow_out_of_master', False):
-            logger.warning(f"⚠️ Ticker {ticker} not in master list - skipping fetch")
+        if normalized_ticker != original_ticker:
+            logger.info(f"🔄 Normalized ticker: {original_ticker} → {normalized_ticker}")
+            
+            # Check which formats are in master list
+            normalized_in_master = normalized_ticker in self.all_tickers if self.all_tickers else False
+            original_in_master = original_ticker in self.all_tickers if self.all_tickers else False
+            
+            # Build list of formats to try (prefer normalized first, then original)
+            if normalized_in_master:
+                fetch_formats_to_try.append(normalized_ticker)
+                cache_ticker = normalized_ticker  # Cache under normalized if it's in master
+            if original_in_master:
+                if original_ticker not in fetch_formats_to_try:
+                    fetch_formats_to_try.append(original_ticker)
+                if cache_ticker is None:
+                    cache_ticker = original_ticker  # Cache under original if normalized not in master
+            
+            # If neither is in master list
+            if not fetch_formats_to_try:
+                if not getattr(self, '_allow_out_of_master', False):
+                    logger.warning(f"⚠️ Ticker {normalized_ticker} (normalized from {original_ticker}) not in master list - skipping fetch")
+                    return None
+                # If allowed, try both formats
+                fetch_formats_to_try = [normalized_ticker, original_ticker]
+                cache_ticker = original_ticker  # Default to original for caching
+        else:
+            # No normalization occurred, use original
+            fetch_formats_to_try = [original_ticker]
+            cache_ticker = original_ticker
+        
+        # Final validation: cache_ticker must be in master list unless allowed
+        if cache_ticker not in self.all_tickers and not getattr(self, '_allow_out_of_master', False):
+            logger.warning(f"⚠️ Ticker {cache_ticker} not in master list - skipping fetch")
             return None
             
         # Check daily quota first
+        display_ticker = fetch_formats_to_try[0] if fetch_formats_to_try else original_ticker
         if not self._check_daily_quota():
-            logger.warning(f"⚠️ Daily quota exceeded, skipping {ticker}")
+            logger.warning(f"⚠️ Daily quota exceeded, skipping {display_ticker}")
             return None
         
         for attempt in range(MAX_RETRIES):
             try:
-                # Check cache first
-                cached_prices = self._load_from_cache(ticker, 'prices')
-                cached_sector = self._load_from_cache(ticker, 'sector')
+                # Check cache first - try all formats that might be cached
+                cached_prices = None
+                cached_sector = None
+                
+                # Build unique list of formats to check (avoid duplicates)
+                formats_to_check = list(dict.fromkeys(fetch_formats_to_try + [cache_ticker]))
+                
+                for format_to_check in formats_to_check:
+                    if not format_to_check:
+                        continue
+                    cached_prices = self._load_from_cache(format_to_check, 'prices')
+                    cached_sector = self._load_from_cache(format_to_check, 'sector')
+                    if cached_prices is not None and cached_sector is not None:
+                        logger.debug(f"✅ Found cached data for {format_to_check}")
+                        break
                 
                 if cached_prices is not None and cached_sector is not None:
                     # Handle timezone-aware datetime index
@@ -687,11 +744,26 @@ class EnhancedDataFetcher:
                 # Increment daily quota
                 self._increment_daily_quota()
                 
-                # MODIFIED: Use yahooquery library (user requested)
-                direct_data = self._fetch_ticker_yahooquery(ticker)
+                # Try fetching with different formats (normalized first, then original if needed)
+                direct_data = None
+                successful_fetch_ticker = None
+                
+                for fetch_format in fetch_formats_to_try:
+                    try:
+                        logger.debug(f"🔄 Trying to fetch with format: {fetch_format}")
+                        direct_data = self._fetch_ticker_yahooquery(fetch_format)
+                        
+                        if direct_data and direct_data.get('prices') is not None:
+                            successful_fetch_ticker = fetch_format
+                            if fetch_format != fetch_formats_to_try[0]:
+                                logger.info(f"✅ Successfully fetched with format {fetch_format} (tried {len(fetch_formats_to_try)} formats)")
+                            break
+                    except Exception as e:
+                        logger.debug(f"⚠️ Format {fetch_format} failed: {str(e)[:50]}")
+                        continue
                 
                 if not direct_data:
-                    logger.warning(f"⚠️  No data found for {ticker}")
+                    logger.warning(f"⚠️  No data found for any format: {fetch_formats_to_try}")
                     self.stats['errors']['no_data'] += 1
                     continue  # Retry
 
@@ -699,8 +771,9 @@ class EnhancedDataFetcher:
                 close_data = direct_data['prices']
                 sector_info = direct_data['sector']
                 
-                # Validate price data
-                if not self._validate_price_data(close_data, ticker):
+                # Validate price data (use successful fetch ticker for logging)
+                validation_ticker = successful_fetch_ticker or fetch_formats_to_try[0]
+                if not self._validate_price_data(close_data, validation_ticker):
                     self.stats['errors']['invalid_data'] += 1
                     continue  # Retry
                 
@@ -710,19 +783,20 @@ class EnhancedDataFetcher:
                     'sector': sector_info
                 }
                 
-                # Cache the data
-                self._save_to_cache(ticker, data_to_cache)
+                # Cache the data under the format that's in master list (cache_ticker)
+                # This ensures data is cached under the correct format for future lookups
+                self._save_to_cache(cache_ticker, data_to_cache)
                 
                 return data_to_cache
 
             except Exception as e:
-                logger.warning(f"⚠️  Attempt {attempt + 1} failed for {ticker}: {e}")
+                logger.warning(f"⚠️  Attempt {attempt + 1} failed for {display_ticker}: {e}")
                 
                 # Intelligent error handling for rate limiting and throttling
                 if self._is_rate_limit_error(e):
                     self.stats['throttled'] += 1
                     wait_time = self._calculate_rate_limit_wait(attempt)
-                    logger.warning(f"🔄 Rate limit/throttling detected for {ticker}, waiting {wait_time}s...")
+                    logger.warning(f"🔄 Rate limit/throttling detected for {display_ticker}, waiting {wait_time}s...")
                     
                     # Check if we're getting heavily throttled
                     if self.stats['throttled'] >= 10:  # Stop after 10 throttling events
@@ -736,7 +810,7 @@ class EnhancedDataFetcher:
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY * (attempt + 1))  # Exponential backoff
                 else:
-                    logger.error(f"❌ All attempts failed for {ticker}")
+                    logger.error(f"❌ All attempts failed for {display_ticker}")
                     self.stats['errors'][str(e)] += 1
                     
                     # Alpha Vantage fallback DISABLED (user requested)
@@ -1378,34 +1452,104 @@ class EnhancedDataFetcher:
 
 
     def preview_expired_data(self):
-        """Compute how many tickers would be refreshed without performing any action."""
+        """
+        Compute how many tickers would be refreshed without performing any action.
+        Checks both missing keys and TTL expiration status.
+        """
         if not self.r:
             return {
                 'expired_count': 0,
                 'tickers': [],
                 'missing_counts': {'prices': 0, 'sector': 0, 'metrics': 0},
                 'missing_samples': {'prices': [], 'sector': [], 'metrics': []},
-                'refresh_candidates': []
+                'refresh_candidates': [],
+                'expiring_soon_count': 0,
+                'expiring_soon_tickers': []
             }
 
         expired_tickers: List[str] = []
+        expiring_soon_tickers: List[str] = []
         missing_prices: List[str] = []
         missing_sector: List[str] = []
         missing_metrics: List[str] = []
+        expired_by_ttl: List[str] = []
 
         for ticker in self.all_tickers:
-            has_prices = bool(self._is_cached(ticker, 'prices'))
-            has_sector = bool(self._is_cached(ticker, 'sector'))
-            has_metrics = bool(self._is_cached(ticker, 'metrics'))
-
+            # Get cache keys
+            price_key = self._get_cache_key(ticker, 'prices')
+            sector_key = self._get_cache_key(ticker, 'sector')
+            metrics_key = self._get_cache_key(ticker, 'metrics')
+            
+            # Check if keys exist
+            has_prices = bool(self.r.exists(price_key))
+            has_sector = bool(self.r.exists(sector_key))
+            has_metrics = bool(self.r.exists(metrics_key))
+            
+            # Check TTL values for prices and sector (metrics are optional)
+            price_ttl = self.r.ttl(price_key) if has_prices else -2
+            sector_ttl = self.r.ttl(sector_key) if has_sector else -2
+            
+            # Track missing data
             if not has_prices:
                 missing_prices.append(ticker)
             if not has_sector:
                 missing_sector.append(ticker)
             if not has_metrics:
                 missing_metrics.append(ticker)
-
-            if not (has_prices and has_sector and has_metrics):
+            
+            # Determine the minimum TTL (most critical)
+            # Only consider TTL if keys exist, otherwise treat as missing
+            min_ttl = None
+            if has_prices and has_sector:
+                # Both exist - use minimum TTL
+                if price_ttl > 0 and sector_ttl > 0:
+                    min_ttl = min(price_ttl, sector_ttl)
+                elif price_ttl > 0:
+                    min_ttl = price_ttl
+                elif sector_ttl > 0:
+                    min_ttl = sector_ttl
+                else:
+                    # At least one has -1 (no expiration), 0 (expired), or -2 (doesn't exist)
+                    min_ttl = max(price_ttl, sector_ttl)  # Use the "worst" status
+            elif has_prices:
+                min_ttl = price_ttl
+            elif has_sector:
+                min_ttl = sector_ttl
+            
+            # Check TTL expiration status
+            is_expired_by_ttl = False
+            is_expiring_soon = False
+            
+            if min_ttl is not None:
+                if min_ttl == -2:  # Key doesn't exist
+                    is_expired_by_ttl = True
+                elif min_ttl == -1:  # No expiration set - consider as expired
+                    is_expired_by_ttl = True
+                elif min_ttl == 0:  # Expired
+                    is_expired_by_ttl = True
+                elif min_ttl > 0 and min_ttl < 86400:  # Less than 24 hours remaining
+                    is_expiring_soon = True
+            
+            # Determine if ticker needs refresh
+            needs_refresh = False
+            
+            # Missing critical data (prices or sector)
+            if not has_prices or not has_sector:
+                needs_refresh = True
+            
+            # Expired by TTL (even if keys exist)
+            if is_expired_by_ttl and has_prices and has_sector:
+                needs_refresh = True
+                if ticker not in expired_by_ttl:
+                    expired_by_ttl.append(ticker)
+            
+            # Expiring soon (add to separate list for information, not necessarily needing refresh)
+            if is_expiring_soon:
+                if ticker not in expiring_soon_tickers:
+                    expiring_soon_tickers.append(ticker)
+            
+            # Add to expired list if needs refresh
+            if needs_refresh and ticker not in expired_tickers:
                 expired_tickers.append(ticker)
 
         return {
@@ -1421,6 +1565,10 @@ class EnhancedDataFetcher:
                 'sector': missing_sector[:20],
                 'metrics': missing_metrics[:20]
             },
+            'expired_by_ttl_count': len(expired_by_ttl),
+            'expired_by_ttl_tickers': expired_by_ttl[:20],
+            'expiring_soon_count': len(expiring_soon_tickers),
+            'expiring_soon_tickers': expiring_soon_tickers[:20],
             # Provide the complete candidate list so callers can target just the gaps
             'refresh_candidates': expired_tickers
         }

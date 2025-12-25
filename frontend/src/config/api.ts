@@ -13,6 +13,9 @@ export const API_ENDPOINTS = {
   // Portfolio optimization endpoints
   OPTIMIZE_RISK_PARITY: `${API_BASE_URL}/api/portfolio/optimize/risk-parity`,
   OPTIMIZE_MEAN_VARIANCE: `${API_BASE_URL}/api/portfolio/optimize/mean-variance`,
+  OPTIMIZE_MVO: `${API_BASE_URL}/api/portfolio/optimization/mvo`,
+  ELIGIBLE_TICKERS: (params?: string) => `${API_BASE_URL}/api/portfolio/optimization/eligible-tickers${params ? `?${params}` : ''}`,
+  TICKER_METRICS: `${API_BASE_URL}/api/portfolio/optimization/ticker-metrics`,
   
   // Portfolio monitoring and rebalancing
   CHECK_REBALANCING: `${API_BASE_URL}/api/portfolio/rebalance/check`,

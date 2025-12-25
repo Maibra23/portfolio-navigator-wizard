@@ -159,25 +159,25 @@ class EnhancedStockSelector(PortfolioStockSelector):
             volatility_filtered = self._filter_stocks_by_volatility(available_stocks, volatility_range)
             logger.debug(f"  After volatility filtering: {len(volatility_filtered)} stocks")
             
-            # Step 2: Apply return-based filtering with flexibility
+            # Step 2: Apply return-based filtering with profile-specific flexibility for improved diversity
             if return_target is not None:
-                # For return targeting, be more flexible with stock selection
-                return_tolerance = 0.05  # 5% tolerance
+                # Increase tolerance for higher-risk profiles to allow more diverse stock combinations
+                tolerance_map = {
+                    'very-conservative': 0.03,   # Keep tight for conservative (3%)
+                    'conservative': 0.04,        # Slightly relaxed (4%)
+                    'moderate': 0.08,            # Increased tolerance for diversity (8%)
+                    'aggressive': 0.08,          # Increased tolerance for diversity (8%)
+                    'very-aggressive': 0.10      # Most relaxed for maximum diversity (10%)
+                }
+                return_tolerance = tolerance_map.get(risk_profile, 0.05)
                 
-                # Prioritize stocks within return target range
-                target_range_stocks = [
-                    s for s in volatility_filtered 
-                    if s.get('return', 0) >= (return_target - return_tolerance) and 
-                       s.get('return', 0) <= (return_target + return_tolerance * 2)
-                ]
+                # Always use all volatility-filtered stocks, but prioritize by return proximity to target
+                # This allows more diverse combinations while still targeting desired returns
+                volatility_filtered.sort(
+                    key=lambda s: abs(s.get('return', 0) - return_target)
+                )
                 
-                # If we have enough stocks in target range, use them
-                if len(target_range_stocks) >= portfolio_size:
-                    logger.debug(f"  Using {len(target_range_stocks)} stocks within return target range")
-                    return target_range_stocks
-                
-                # Otherwise, use all volatility-filtered stocks but prioritize by return potential
-                logger.debug(f"  Only {len(target_range_stocks)} stocks in target range, using all {len(volatility_filtered)} stocks")
+                logger.debug(f"  Using {len(volatility_filtered)} stocks, prioritized by return proximity to {return_target:.2%} (tolerance: {return_tolerance:.2%})")
                 return volatility_filtered
             
             # Step 3: Standard filtering (no return target)
