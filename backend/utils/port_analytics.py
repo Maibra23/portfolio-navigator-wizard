@@ -2249,12 +2249,11 @@ class PortfolioAnalytics:
             # Import unified configuration (single source of truth)
             from .risk_profile_config import get_quality_risk_range_for_profile
             
-            # Get risk ranges from unified config
-            profile_config = get_quality_risk_range_for_profile(risk_profile)
+            # Get risk ranges from unified config (returns tuple: (min_risk, max_risk))
+            min_risk, max_risk = get_quality_risk_range_for_profile(risk_profile)
             
-            min_risk = profile_config['min']
-            max_risk = profile_config['max']
-            ideal_risk = profile_config['ideal']
+            # Calculate ideal risk as midpoint of the range
+            ideal_risk = (min_risk + max_risk) / 2.0
             
             # Perfect score if within ideal range
             if min_risk <= portfolio_risk <= max_risk:

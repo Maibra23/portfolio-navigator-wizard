@@ -169,7 +169,11 @@ class PortfolioMVOptimizer:
                 # Check if risk profile constraint is violated and enforce it
                 if optimization_successful and risk_profile and max_risk is not None:
                     # Calculate portfolio metrics to check risk
-                    portfolio_risk_check = ef.portfolio_performance(verbose=False)[1]
+                    # Use same risk_free_rate as max_sharpe() to avoid warnings
+                    portfolio_risk_check = ef.portfolio_performance(
+                        verbose=False, 
+                        risk_free_rate=self.risk_free_rate
+                    )[1]
                     if portfolio_risk_check > max_risk:
                         # Re-optimize with risk constraint: create new EfficientFrontier instance
                         # to avoid "already solved problem" error
@@ -261,9 +265,17 @@ class PortfolioMVOptimizer:
                 weights = ef.clean_weights()
             
             # Calculate portfolio metrics
-            portfolio_return = ef.portfolio_performance(verbose=False)[0]
-            portfolio_risk = ef.portfolio_performance(verbose=False)[1]
-            sharpe_ratio = ef.portfolio_performance(verbose=False)[2]
+            # IMPORTANT: Use same risk_free_rate as max_sharpe() to avoid PyPortfolioOpt warnings
+            # If max_sharpe was used, pass risk_free_rate; otherwise use default
+            if optimization_type == "max_sharpe":
+                portfolio_return, portfolio_risk, sharpe_ratio = ef.portfolio_performance(
+                    verbose=False, 
+                    risk_free_rate=self.risk_free_rate
+                )
+            else:
+                portfolio_return = ef.portfolio_performance(verbose=False)[0]
+                portfolio_risk = ef.portfolio_performance(verbose=False)[1]
+                sharpe_ratio = ef.portfolio_performance(verbose=False)[2]
             
             # Apply safeguards to prevent unrealistic metrics
             # 1. Cap expected return at realistic maximum (50% annual)
@@ -473,7 +485,7 @@ class PortfolioMVOptimizer:
                 min_risk = min_var_perf[1]
                 
                 # Get maximum risk (from maximum return portfolio)
-                weights_max_ret = ef.max_sharpe()
+                weights_max_ret = ef.max_sharpe(risk_free_rate=self.risk_free_rate)
                 max_ret_perf = ef.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                 max_risk = max_ret_perf[1]
             except Exception as e:

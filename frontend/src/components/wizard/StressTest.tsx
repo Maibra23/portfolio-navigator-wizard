@@ -760,7 +760,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                             </div>
                           )}
                           
+                          {/* Projections - Only show if recovery is needed (recovery_needed_pct > 0) */}
                           {stressTestResults.scenarios.covid19.metrics.max_drawdown_data?.is_significant && 
+                           stressTestResults.scenarios.covid19.metrics.recovery_needed_pct > 0 &&
                            stressTestResults.scenarios.covid19.metrics.trajectory_projections && (
                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-indigo-50 border border-indigo-200">
                               <span className="text-xs text-indigo-700 font-medium">Projections</span>
@@ -794,6 +796,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                               </span>
                             </div>
                           )}
+                          {/* Show message when portfolio already recovered above peak */}
+                          {stressTestResults.scenarios.covid19.metrics.max_drawdown_data?.is_significant && 
+                           stressTestResults.scenarios.covid19.metrics.recovery_needed_pct <= 0 && (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-green-50 border border-green-200">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-xs text-green-700 font-medium">Already above peak - projections N/A</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Portfolio Value Timeline Chart */}
@@ -817,6 +827,27 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       realistic: null,
                                       pessimistic: null
                                     }));
+                                    
+                                    // Ensure peak/trough dates exist in chart data for ReferenceDot rendering
+                                    // This handles cases where dates might be slightly off or missing
+                                    if (stressTestResults.scenarios.covid19.peaks_troughs?.peak) {
+                                      const peakDate = stressTestResults.scenarios.covid19.peaks_troughs.peak.date?.substring(0, 7) || '';
+                                      if (peakDate && !baseData.find((d: any) => d.date === peakDate)) {
+                                        // Peak date not in data - find closest month or insert
+                                        const peakValue = ((stressTestResults.scenarios.covid19.peaks_troughs.peak.value || 0) * normalizationFactor) * 100;
+                                        baseData.push({ date: peakDate, value: peakValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                    }
+                                    
+                                    if (stressTestResults.scenarios.covid19.peaks_troughs?.trough) {
+                                      const troughDate = stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(0, 7) || '';
+                                      if (troughDate && !baseData.find((d: any) => d.date === troughDate)) {
+                                        const troughValue = ((stressTestResults.scenarios.covid19.peaks_troughs.trough.value || 0) * normalizationFactor) * 100;
+                                        baseData.push({ date: troughDate, value: troughValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                    }
                                     
                                     // Add trajectory data if available
                                     // Projection lines should start from the end of the portfolio value line
@@ -937,11 +968,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     // Normalize peak value to match chart normalization
                                     const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
                                     const normalizationFactor = 1.0 / jan2020Value;
-                                    const peakDate = stressTestResults.scenarios.covid19.peaks_troughs.peak.date?.substring(0, 7) || '';
-                                    // Peak should always show at 100% (normalized starting value)
-                                    const peakValue = 100.0; // Always 100% - the normalized starting value
+                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
+                                    const peakDateFull = stressTestResults.scenarios.covid19.peaks_troughs.peak.date || '';
+                                    const peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
+                                    // Peak value normalized to chart scale (peak is pre-crisis value, typically at crisis start)
+                                    const peakValueRaw = stressTestResults.scenarios.covid19.peaks_troughs.peak.value || 1.0;
+                                    const peakValue = (peakValueRaw * normalizationFactor) * 100;
                                     
-                                    // Always render peak marker - removed data point check that was preventing display
+                                    // Always render peak marker
                                     return (
                                       <ReferenceDot 
                                         x={peakDate} 
@@ -950,7 +984,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         fill="#22c55e"
                                         stroke="#fff"
                                         strokeWidth={2}
-                                        label={{ value: 'Peak (100%)', position: 'top', fill: '#22c55e', fontSize: 10 }}
+                                        label={{ value: `Peak (${peakValue.toFixed(1)}%)`, position: 'top', fill: '#22c55e', fontSize: 10 }}
                                       />
                                     );
                                   })()}
@@ -958,10 +992,12 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     // Normalize trough value to match chart normalization
                                     const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
                                     const normalizationFactor = 1.0 / jan2020Value;
-                                    const troughDate = stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(0, 7) || '';
+                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
+                                    const troughDateFull = stressTestResults.scenarios.covid19.peaks_troughs.trough.date || '';
+                                    const troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
                                     const troughValue = ((stressTestResults.scenarios.covid19.peaks_troughs.trough.value || 0) * normalizationFactor) * 100;
                                     
-                                    // Always render trough marker - removed data point check that was preventing display
+                                    // Always render trough marker
                                     return (
                                       <ReferenceDot 
                                         x={troughDate} 
@@ -970,7 +1006,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         fill="#ef4444"
                                         stroke="#fff"
                                         strokeWidth={2}
-                                        label={{ value: 'Trough', position: 'bottom', fill: '#ef4444', fontSize: 10 }}
+                                        label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: 'bottom', fill: '#ef4444', fontSize: 10 }}
                                       />
                                     );
                                   })()}
@@ -978,10 +1014,12 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     // Normalize recovery peak value to match chart normalization
                                     const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
                                     const normalizationFactor = 1.0 / jan2020Value;
-                                    const recoveryDate = stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date?.substring(0, 7) || '';
+                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
+                                    const recoveryDateFull = stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date || '';
+                                    const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
                                     const recoveryValue = ((stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.value || 0) * normalizationFactor) * 100;
                                     
-                                    // Always render recovery peak marker - removed data point check that was preventing display
+                                    // Always render recovery peak marker
                                     return (
                                       <ReferenceDot 
                                         x={recoveryDate} 
@@ -990,7 +1028,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         fill="#9333ea"
                                         stroke="#fff"
                                         strokeWidth={2}
-                                        label={{ value: 'Recovery Peak', position: 'top', fill: '#9333ea', fontSize: 10 }}
+                                        label={{ value: `Recovery (${recoveryValue.toFixed(1)}%)`, position: 'top', fill: '#9333ea', fontSize: 10 }}
                                       />
                                     );
                                   })()}
@@ -1186,8 +1224,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                               </div>
                             </div>
                           )}
-                          {/* Trajectory Projections */}
+                          {/* Trajectory Projections - Only show if recovery is needed and projections are available */}
                           {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
+                           stressTestResults.scenarios['2008_crisis'].metrics.recovery_needed_pct > 0 &&
                            stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections && (
                             <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
                               <div className="text-xs text-indigo-700 mb-2 flex items-center gap-1">
@@ -1231,6 +1270,16 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       : 'N/A'}
                                   </div>
                                 </div>
+                              </div>
+                            </div>
+                          )}
+                          {/* Show message when portfolio already recovered above peak */}
+                          {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
+                           stressTestResults.scenarios['2008_crisis'].metrics.recovery_needed_pct <= 0 && (
+                            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+                              <div className="text-xs text-green-700 flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4" />
+                                <span>Portfolio has already recovered above pre-crisis peak. Recovery projections are not applicable.</span>
                               </div>
                             </div>
                           )}
@@ -1284,6 +1333,27 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       realistic: null,
                                       pessimistic: null
                                     }));
+                                    
+                                    // Ensure peak/trough dates exist in chart data for ReferenceDot rendering
+                                    if (stressTestResults.scenarios['2008_crisis'].peaks_troughs?.peak) {
+                                      const peakDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date || '';
+                                      const peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
+                                      if (peakDate && !baseData.find((d: any) => d.date === peakDate)) {
+                                        const peakValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.value || 0) * 100;
+                                        baseData.push({ date: peakDate, value: peakValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                    }
+                                    
+                                    if (stressTestResults.scenarios['2008_crisis'].peaks_troughs?.trough) {
+                                      const troughDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date || '';
+                                      const troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
+                                      if (troughDate && !baseData.find((d: any) => d.date === troughDate)) {
+                                        const troughValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.value || 0) * 100;
+                                        baseData.push({ date: troughDate, value: troughValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                    }
                                     
                                     // Add trajectory data if available
                                     if (stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
@@ -1419,10 +1489,12 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     </>
                                   )}
                                   {stressTestResults.scenarios['2008_crisis'].peaks_troughs?.peak && (() => {
-                                    const peakDate = stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date?.substring(0, 7) || '';
+                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
+                                    const peakDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date || '';
+                                    const peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
                                     const peakValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.value || 0) * 100;
                                     
-                                    // Always render peak marker - removed data point check that was preventing display
+                                    // Always render peak marker
                                     return (
                                       <ReferenceDot 
                                         x={peakDate} 
@@ -1431,15 +1503,17 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         fill="#22c55e"
                                         stroke="#fff"
                                         strokeWidth={2}
-                                        label={{ value: 'Peak', position: 'top', fill: '#22c55e', fontSize: 10 }}
+                                        label={{ value: `Peak (${peakValue.toFixed(1)}%)`, position: 'top', fill: '#22c55e', fontSize: 10 }}
                                       />
                                     );
                                   })()}
                                   {stressTestResults.scenarios['2008_crisis'].peaks_troughs?.trough && (() => {
-                                    const troughDate = stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date?.substring(0, 7) || '';
+                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
+                                    const troughDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date || '';
+                                    const troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
                                     const troughValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.value || 0) * 100;
                                     
-                                    // Always render trough marker - removed data point check that was preventing display
+                                    // Always render trough marker
                                     return (
                                       <ReferenceDot 
                                         x={troughDate} 
@@ -1448,15 +1522,17 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         fill="#ef4444"
                                         stroke="#fff"
                                         strokeWidth={2}
-                                        label={{ value: 'Trough', position: 'bottom', fill: '#ef4444', fontSize: 10 }}
+                                        label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: 'bottom', fill: '#ef4444', fontSize: 10 }}
                                       />
                                     );
                                   })()}
                                   {stressTestResults.scenarios['2008_crisis'].peaks_troughs?.recovery_peak && (() => {
-                                    const recoveryDate = stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date?.substring(0, 7) || '';
+                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
+                                    const recoveryDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date || '';
+                                    const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
                                     const recoveryValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.value || 0) * 100;
                                     
-                                    // Always render recovery peak marker - removed data point check that was preventing display
+                                    // Always render recovery peak marker
                                     return (
                                       <ReferenceDot 
                                         x={recoveryDate} 
@@ -1465,7 +1541,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         fill="#10b981"
                                         stroke="#fff"
                                         strokeWidth={2}
-                                        label={{ value: 'Recovery', position: 'top', fill: '#10b981', fontSize: 10 }}
+                                        label={{ value: `Recovery (${recoveryValue.toFixed(1)}%)`, position: 'top', fill: '#10b981', fontSize: 10 }}
                                       />
                                     );
                                   })()}
