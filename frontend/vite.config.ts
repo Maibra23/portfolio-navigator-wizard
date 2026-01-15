@@ -6,18 +6,21 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "0.0.0.0",
+    host: "localhost",
     port: 8080,
-    // Improve HMR for large files
+    strictPort: true,
+    // HMR settings optimized for OneDrive-synced folders
     hmr: {
+      host: "localhost",
+      port: 8080,
       overlay: true,
-      timeout: 5000,
+      timeout: 10000,
     },
     // Watch options to reduce unnecessary reloads and prevent EIO errors from OneDrive
     watch: {
-      ignored: ['**/node_modules/**', '**/.git/**', '**/.OneDrive*/**'],
+      ignored: ['**/node_modules/**', '**/.git/**', '**/.OneDrive*/**', '**/~$*'],
       usePolling: true,  // More stable with cloud-synced folders like OneDrive
-      interval: 1000,    // Check every 1 second instead of instant
+      interval: 1500,    // Check every 1.5 seconds
       binaryInterval: 3000,
     },
     // Proxy API requests to FastAPI backend during development

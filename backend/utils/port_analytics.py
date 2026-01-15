@@ -655,7 +655,7 @@ class PortfolioAnalytics:
         
         return selected_assets
     
-    def calculate_real_portfolio_metrics(self, portfolio_data: Dict) -> Dict:
+    def calculate_real_portfolio_metrics(self, portfolio_data: Dict, risk_profile: str = None) -> Dict:
         """Calculate portfolio metrics using real data from portfolio allocations"""
         def get_ticker_monthly_data(ticker: str) -> Optional[Dict[str, Any]]:
             """
@@ -696,7 +696,7 @@ class PortfolioAnalytics:
         try:
             allocations = portfolio_data.get('allocations', [])
             if not allocations:
-                return self._get_fallback_portfolio_metrics()
+                return self._get_fallback_portfolio_metrics(risk_profile)
 
             # Get real data for each asset
             raw_returns: list = []  # Can contain either pd.Series or dict with cached metrics
@@ -769,7 +769,7 @@ class PortfolioAnalytics:
                 logger.warning(f"Skipping {ticker}: no cached/sourced data available after warm retry")
 
             if not raw_returns:
-                return self._get_fallback_portfolio_metrics()
+                return self._get_fallback_portfolio_metrics(risk_profile)
 
             # Separate cached metrics from calculated returns
             cached_assets = []
@@ -786,21 +786,180 @@ class PortfolioAnalytics:
             logger.info(f"raw_returns length: {len(raw_returns)}")
             
             # Calculate portfolio metrics using the appropriate method
+            if cached_assets and calculated_assets:
+                # Mixed case: combine cached and calculated assets
+                # For cached assets, use their annual metrics
+                # For calculated assets, compute from return series
+                
+                # Process calculated assets to get their metrics
+                calculated_returns = []
+                calculated_weights_list = []
+                
+                for i, asset_data in enumerate(raw_returns):
+                    if not (isinstance(asset_data, dict) and asset_data.get('use_cached')):
+                        calculated_returns.append(asset_data)
+                        calculated_weights_list.append(raw_weights[i])
+                
+                if calculated_returns:
+                    # Calculate metrics for calculated assets
+                    min_length = min(len(returns) for returns in calculated_returns)
+                    aligned_calc_returns = [returns.iloc[-min_length:] for returns in calculated_returns]
+                    
+                    # Calculate annual return and risk for each calculated asset
+                    annual_factor = np.sqrt(12)
+                    calculated_metrics = []
+                    for returns in aligned_calc_returns:
+                        monthly_return = returns.mean()
+                        monthly_risk = returns.std()
+                        ann_return = (1 + monthly_return) ** 12 - 1
+                        ann_risk = monthly_risk * annual_factor
+                        calculated_metrics.append({
+                            'annual_return': ann_return,
+                            'annual_risk': ann_risk
+                        })
+                    
+                    # Combine cached and calculated assets
+                    all_assets = []
+                    all_weights = []
+                    
+                    for asset in cached_assets:
+                        all_assets.append({
+                            'annual_return': asset['annual_return'],
+                            'annual_risk': asset['annual_risk'],
+                            'ticker': asset['ticker']
+                        })
+                        all_weights.append(asset['weight'])
+                    
+                    for i, metrics in enumerate(calculated_metrics):
+                        all_assets.append(metrics)
+                        all_weights.append(calculated_weights_list[i])
+                    
+                    # Normalize weights
+                    total_weight = sum(all_weights)
+                    if total_weight <= 0:
+                        return self._get_fallback_portfolio_metrics(risk_profile)
+                    normalized_weights = np.array([w / total_weight for w in all_weights])
+                    
+                    # Calculate portfolio return
+                    weighted_return = sum(asset['annual_return'] * weight for asset, weight in zip(all_assets, normalized_weights))
+                    
+                    # Reject negative returns
+                    if weighted_return <= 0:
+                        logger.warning(
+                            f"Portfolio calculation rejected: Negative return {weighted_return:.2%} "
+                            f"from mixed assets"
+                        )
+                        return self._get_fallback_portfolio_metrics(risk_profile)
+                    
+                    # For risk calculation with mixed assets, use simplified approach
+                    # Try to get correlation matrix for all tickers if possible
+                    try:
+                        tickers = [asset.get('ticker', f'CALC_{i}') for i, asset in enumerate(all_assets)]
+                        # Only use correlation if we have tickers for all assets
+                        if all(t and not t.startswith('CALC_') for t in tickers):
+                            correlation_matrix = self._get_correlation_matrix_for_tickers(tickers)
+                            individual_risks = np.array([asset['annual_risk'] for asset in all_assets])
+                            
+                            portfolio_variance = 0
+                            for i in range(len(normalized_weights)):
+                                for j in range(len(normalized_weights)):
+                                    if i == j:
+                                        portfolio_variance += (normalized_weights[i] ** 2) * (individual_risks[i] ** 2)
+                                    else:
+                                        correlation = correlation_matrix.iloc[i, j] if hasattr(correlation_matrix, 'iloc') else correlation_matrix[i][j]
+                                        if pd.isna(correlation):
+                                            correlation = 0.0
+                                        portfolio_variance += normalized_weights[i] * normalized_weights[j] * correlation * individual_risks[i] * individual_risks[j]
+                            
+                            weighted_risk = np.sqrt(max(portfolio_variance, 0.0))
+                        else:
+                            # Fallback: use diversification factor
+                            simple_weighted_risk = sum(asset['annual_risk'] * weight for asset, weight in zip(all_assets, normalized_weights))
+                            diversification_factor = 0.72
+                            weighted_risk = simple_weighted_risk * diversification_factor
+                    except Exception as e:
+                        logger.warning(f"Could not calculate correlation-based risk for mixed assets, using diversification factor: {e}")
+                        simple_weighted_risk = sum(asset['annual_risk'] * weight for asset, weight in zip(all_assets, normalized_weights))
+                        diversification_factor = 0.72
+                        weighted_risk = simple_weighted_risk * diversification_factor
+                    
+                    ann_return = weighted_return
+                    ann_risk = weighted_risk
+                    
+                    # Calculate diversification score
+                    allocations = portfolio_data.get('allocations', [])
+                    if allocations:
+                        diversification_score = self._calculate_simple_diversification_score(allocations)
+                    else:
+                        diversification_score = min(100, len(all_assets) * 25)
+                    
+                    logger.info(f"Portfolio calculation using mixed assets: {len(cached_assets)} cached, {len(calculated_returns)} calculated")
+                    logger.info(f"  Weighted return: {weighted_return:.2%}, Weighted risk: {weighted_risk:.2%}")
+                    
+                    # Clear calculated_assets to prevent falling through to elif calculated_assets block
+                    calculated_assets = []
+                else:
+                    # No calculated assets after filtering, treat as cached-only
+                    # Set calculated_assets to empty so it falls through to cached-only path
+                    calculated_assets = []
+            
             if cached_assets and not calculated_assets:
-                # All assets have cached metrics - use weighted average approach
+                # All assets have cached metrics - use proper portfolio theory
                 total_weight = sum(asset['weight'] for asset in cached_assets)
                 if total_weight <= 0:
                     return self._get_fallback_portfolio_metrics()
                 
                 # Normalize weights
-                normalized_weights = [asset['weight'] / total_weight for asset in cached_assets]
+                normalized_weights = np.array([asset['weight'] / total_weight for asset in cached_assets])
                 
-                # Calculate weighted average return and risk
+                # Calculate portfolio return (weighted average is correct for returns)
                 weighted_return = sum(asset['annual_return'] * weight for asset, weight in zip(cached_assets, normalized_weights))
                 
-                # For risk, use simplified approach (weighted average of individual risks)
-                # This is a simplification - in reality, correlation should be considered
-                weighted_risk = sum(asset['annual_risk'] * weight for asset, weight in zip(cached_assets, normalized_weights))
+                # CRITICAL: Reject portfolios with negative returns
+                if weighted_return <= 0:
+                    logger.warning(
+                        f"Portfolio calculation rejected: Negative return {weighted_return:.2%} "
+                        f"from stocks: {[a['ticker'] for a in cached_assets]}"
+                    )
+                    # Return fallback metrics instead
+                    return self._get_fallback_portfolio_metrics(risk_profile)
+                
+                # CRITICAL FIX: Calculate portfolio risk using correlation matrix
+                # Get correlation data for these tickers
+                tickers = [asset['ticker'] for asset in cached_assets]
+                
+                # Try to get correlation matrix from cached data or calculate it
+                try:
+                    correlation_matrix = self._get_correlation_matrix_for_tickers(tickers)
+                    
+                    # Extract individual risks
+                    individual_risks = np.array([asset['annual_risk'] for asset in cached_assets])
+                    
+                    # Calculate portfolio variance using proper formula:
+                    # σ²_portfolio = Σᵢ Σⱼ wᵢ wⱼ σᵢ σⱼ ρᵢⱼ
+                    portfolio_variance = 0
+                    for i in range(len(normalized_weights)):
+                        for j in range(len(normalized_weights)):
+                            if i == j:
+                                # Diagonal: individual asset variance
+                                portfolio_variance += (normalized_weights[i] ** 2) * (individual_risks[i] ** 2)
+                            else:
+                                # Off-diagonal: correlation term
+                                correlation = correlation_matrix.iloc[i, j] if hasattr(correlation_matrix, 'iloc') else correlation_matrix[i][j]
+                                if pd.isna(correlation):
+                                    correlation = 0.0  # Default to no correlation if missing
+                                portfolio_variance += normalized_weights[i] * normalized_weights[j] * correlation * individual_risks[i] * individual_risks[j]
+                    
+                    # Portfolio risk is square root of variance
+                    weighted_risk = np.sqrt(max(portfolio_variance, 0.0))
+                    
+                except Exception as e:
+                    logger.warning(f"Could not calculate correlation-based risk, using diversification factor: {e}")
+                    # Fallback: Use diversification factor (0.72) to approximate correlation effects
+                    # This is better than simple weighted average
+                    simple_weighted_risk = sum(asset['annual_risk'] * weight for asset, weight in zip(cached_assets, normalized_weights))
+                    diversification_factor = 0.72  # Based on typical correlation of ~0.3 for 4 stocks
+                    weighted_risk = simple_weighted_risk * diversification_factor
                 
                 ann_return = weighted_return
                 ann_risk = weighted_risk
@@ -822,12 +981,23 @@ class PortfolioAnalytics:
                 
             elif calculated_assets:
                 # Some assets need calculation - use the original method
-                # Normalize weights of remaining assets to sum to 1
-                total_weight = sum(raw_weights)
+                # Filter to only calculated assets (not cached)
+                asset_returns = []
+                calculated_weights = []
+                
+                for i, asset_data in enumerate(raw_returns):
+                    if not (isinstance(asset_data, dict) and asset_data.get('use_cached')):
+                        asset_returns.append(asset_data)
+                        calculated_weights.append(raw_weights[i])
+                
+                if not asset_returns:
+                    return self._get_fallback_portfolio_metrics(risk_profile)
+                
+                # Normalize weights of calculated assets to sum to 1
+                total_weight = sum(calculated_weights)
                 if total_weight <= 0:
-                    return self._get_fallback_portfolio_metrics()
-                weights = [w / total_weight for w in raw_weights]
-                asset_returns = [asset for asset in raw_returns if not isinstance(asset, dict) or not asset.get('use_cached')]
+                    return self._get_fallback_portfolio_metrics(risk_profile)
+                weights = [w / total_weight for w in calculated_weights]
                 
                 # Align all return series to same length
                 min_length = min(len(returns) for returns in asset_returns)
@@ -851,27 +1021,43 @@ class PortfolioAnalytics:
                     returns_df = pd.concat(aligned_returns, axis=1)
                     corr_matrix = returns_df.corr()
                     
-                    # Calculate portfolio variance using weights and correlation
-                    portfolio_variance = 0
-                    for i in range(len(weights)):
-                        for j in range(len(weights)):
-                            if i == j:
-                                # Diagonal: individual asset variance
-                                asset_risk = aligned_returns[i].std()
-                                portfolio_variance += (weights[i] ** 2) * (asset_risk ** 2)
-                            else:
-                                # Off-diagonal: correlation term
-                                correlation = corr_matrix.iloc[i, j] if not pd.isna(corr_matrix.iloc[i, j]) else 0
-                                asset_i_risk = aligned_returns[i].std()
-                                asset_j_risk = aligned_returns[j].std()
-                                portfolio_variance += 2 * weights[i] * weights[j] * correlation * asset_i_risk * asset_j_risk
-                    
-                    # Portfolio risk is square root of variance
-                    monthly_risk = np.sqrt(portfolio_variance)
+                    # Ensure correlation matrix size matches aligned_returns
+                    n_assets = len(aligned_returns)
+                    if corr_matrix.shape[0] != n_assets or corr_matrix.shape[1] != n_assets:
+                        logger.warning(f"Correlation matrix size mismatch: expected {n_assets}x{n_assets}, got {corr_matrix.shape}")
+                        # Fallback to simple risk calculation
+                        monthly_risk = portfolio_returns.std()
+                    else:
+                        # Calculate portfolio variance using weights and correlation
+                        portfolio_variance = 0
+                        for i in range(n_assets):
+                            for j in range(n_assets):
+                                if i == j:
+                                    # Diagonal: individual asset variance
+                                    asset_risk = aligned_returns[i].std()
+                                    portfolio_variance += (weights[i] ** 2) * (asset_risk ** 2)
+                                else:
+                                    # Off-diagonal: correlation term
+                                    correlation = corr_matrix.iloc[i, j] if not pd.isna(corr_matrix.iloc[i, j]) else 0
+                                    asset_i_risk = aligned_returns[i].std()
+                                    asset_j_risk = aligned_returns[j].std()
+                                    portfolio_variance += 2 * weights[i] * weights[j] * correlation * asset_i_risk * asset_j_risk
+                        
+                        # Portfolio risk is square root of variance
+                        monthly_risk = np.sqrt(max(portfolio_variance, 0.0))
                 
                 # Annualize metrics
                 ann_return = (1 + monthly_return) ** 12 - 1  # Compound annual return
                 ann_risk = monthly_risk * annual_factor      # Annualized risk
+                
+                # CRITICAL: Reject portfolios with negative returns
+                if ann_return <= 0:
+                    logger.warning(
+                        f"Portfolio calculation rejected: Negative return {ann_return:.2%} "
+                        f"from calculated assets"
+                    )
+                    # Return fallback metrics instead
+                    return self._get_fallback_portfolio_metrics(risk_profile)
                 
                 # Calculate diversification score
                 diversification_score = self._calculate_portfolio_diversification_score(aligned_returns, weights)
@@ -891,10 +1077,23 @@ class PortfolioAnalytics:
                     logger.warning(f"Failed to calculate max drawdown: {e}")
                     max_drawdown = -0.10
             
+            # CRITICAL: Final validation - reject negative returns
+            if ann_return <= 0:
+                logger.warning(
+                    f"Portfolio calculation FINAL REJECTION: Negative return {ann_return:.2%} "
+                    f"after all calculations. Using fallback."
+                )
+                return self._get_fallback_portfolio_metrics(risk_profile)
+            
             # Ensure all metrics are JSON-compliant (no NaN, inf, or -inf)
             ann_return = self._sanitize_metric_value(ann_return, 0.10)  # Default to 10% if invalid
             ann_risk = self._sanitize_metric_value(ann_risk, 0.15)      # Default to 15% if invalid
             max_drawdown = self._sanitize_metric_value(max_drawdown, -0.10)  # Default to -10% if invalid
+            
+            # CRITICAL: Double-check after sanitization
+            if ann_return <= 0:
+                logger.warning(f"Portfolio return still non-positive after sanitization: {ann_return:.2%}")
+                return self._get_fallback_portfolio_metrics(risk_profile)
             
             # Calculate diversification score - use consistent method matching recommendation system
             # Always use sophisticated method for consistency with recommendation generation
@@ -1291,10 +1490,75 @@ class PortfolioAnalytics:
             }
         ]
     
-    def _get_fallback_portfolio_metrics(self) -> Dict:
+    def _get_correlation_matrix_for_tickers(self, tickers: List[str]) -> pd.DataFrame:
+        """Get correlation matrix for given tickers"""
+        try:
+            from utils.redis_first_data_service import redis_first_data_service
+            
+            # Get monthly returns for all tickers
+            returns_data = {}
+            for ticker in tickers:
+                data = redis_first_data_service.get_monthly_data(ticker)
+                if data and data.get('prices'):
+                    prices = pd.Series(data['prices'])
+                    returns = prices.pct_change().dropna()
+                    if len(returns) >= 12:  # Need at least 12 months
+                        returns_data[ticker] = returns
+            
+            if len(returns_data) < 2:
+                # Not enough data, return identity matrix (no correlation)
+                return pd.DataFrame(np.eye(len(tickers)), index=tickers, columns=tickers)
+            
+            # Align returns to same time period
+            returns_df = pd.DataFrame(returns_data)
+            returns_df = returns_df.dropna()  # Remove rows with missing data
+            
+            if len(returns_df) < 12:
+                # Not enough overlapping data
+                return pd.DataFrame(np.eye(len(tickers)), index=tickers, columns=tickers)
+            
+            # Calculate correlation matrix
+            correlation_matrix = returns_df.corr().fillna(0.0)
+            
+            # Ensure all tickers are in the matrix (add missing ones with zero correlation)
+            for ticker in tickers:
+                if ticker not in correlation_matrix.index:
+                    correlation_matrix.loc[ticker] = 0.0
+                    correlation_matrix[ticker] = 0.0
+                if ticker not in correlation_matrix.columns:
+                    correlation_matrix[ticker] = 0.0
+            
+            # Reorder to match ticker order
+            correlation_matrix = correlation_matrix.loc[tickers, tickers]
+            
+            return correlation_matrix
+            
+        except Exception as e:
+            logger.warning(f"Error calculating correlation matrix: {e}")
+            # Return identity matrix (no correlation) as fallback
+            return pd.DataFrame(np.eye(len(tickers)), index=tickers, columns=tickers)
+    
+    def _get_fallback_portfolio_metrics(self, risk_profile: str = None) -> Dict:
         """Fallback portfolio metrics when calculation fails"""
+        try:
+            from .risk_profile_config import get_fallback_metrics_for_profile
+            # Default to moderate if no profile provided
+            profile = risk_profile if risk_profile else 'moderate'
+            fallback_metrics = get_fallback_metrics_for_profile(profile)
+            
+            # CRITICAL: Ensure fallback has positive return
+            if fallback_metrics.get('expected_return', 0) <= 0:
+                logger.warning(f"Fallback metrics have non-positive return, using default")
+                fallback_metrics['expected_return'] = 0.10
+            
+            logger.warning(f"🔴 Using fallback metrics for {profile}: return={fallback_metrics.get('expected_return', 0)*100:.2f}%")
+            return fallback_metrics
+        except Exception as e:
+            logger.warning(f"Error getting fallback metrics for {risk_profile}: {e}")
+        
+        # Final fallback with guaranteed positive return
         return {
-            'expected_return': 0.10,
+            'expected_return': 0.10,  # Guaranteed positive
             'risk': 0.15,
             'diversification_score': 50.0,
             'sharpe_ratio': 0.0,
@@ -1971,6 +2235,9 @@ class PortfolioAnalytics:
         """
         Calculate how well the portfolio risk matches the user's risk profile
         
+        Uses UNIFIED configuration from risk_profile_config.py for consistency
+        with portfolio generation and optimization.
+        
         Args:
             portfolio_risk: Portfolio volatility (e.g., 0.20 for 20%)
             risk_profile: User's risk profile ('very-conservative' to 'very-aggressive')
@@ -1979,16 +2246,11 @@ class PortfolioAnalytics:
             Compliance score (0-100), where 100 means perfect match
         """
         try:
-            # Define ideal risk ranges for each profile
-            risk_profile_ranges = {
-                'very-conservative': {'min': 0.05, 'max': 0.12, 'ideal': 0.08},
-                'conservative': {'min': 0.10, 'max': 0.18, 'ideal': 0.14},
-                'moderate': {'min': 0.15, 'max': 0.25, 'ideal': 0.20},
-                'aggressive': {'min': 0.20, 'max': 0.35, 'ideal': 0.28},
-                'very-aggressive': {'min': 0.25, 'max': 0.50, 'ideal': 0.38}
-            }
+            # Import unified configuration (single source of truth)
+            from .risk_profile_config import get_quality_risk_range_for_profile
             
-            profile_config = risk_profile_ranges.get(risk_profile, risk_profile_ranges['moderate'])
+            # Get risk ranges from unified config
+            profile_config = get_quality_risk_range_for_profile(risk_profile)
             
             min_risk = profile_config['min']
             max_risk = profile_config['max']

@@ -25,7 +25,8 @@ PROFILES = [
 
 def generate_and_store_stats(profile: str):
     pa = PortfolioAnalytics()
-    eg = EnhancedPortfolioGenerator(redis_first_data_service, pa)
+    # Use conservative approach + Strategy 5 for aggressive profiles
+    eg = EnhancedPortfolioGenerator(redis_first_data_service, pa, use_conservative_approach=True)
     portfolios = eg.generate_portfolio_bucket(profile, use_parallel=True)
 
     # Build stats

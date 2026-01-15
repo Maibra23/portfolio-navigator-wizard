@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Body
+from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Body, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
@@ -63,7 +63,8 @@ def get_top_pick(risk_profile: str):
             return JSONResponse({"status": "ok", "risk_profile": risk_profile, "top_pick": json.loads(raw)})
         # Compute now from a fresh generation
         pa = PortfolioAnalytics()
-        eg = EnhancedPortfolioGenerator(_rds, pa)
+        # Use conservative approach + Strategy 5 for aggressive profiles
+        eg = EnhancedPortfolioGenerator(_rds, pa, use_conservative_approach=True)
         portfolios = eg.generate_portfolio_bucket(risk_profile, use_parallel=True)
         # Score by expectedReturn (fallback to risk-adjusted if needed)
         def score(p: Dict[str, Any]) -> float:
@@ -3652,9 +3653,10 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                     
                     # Variable basket size by risk profile
                     # LARGER baskets = more diversification = lower risk = better acceptance rate
+                    # PRIORITY 3: Expanded ticker pool for very-conservative to reduce solver infeasibility
                     # Optimized based on comprehensive testing across all portfolios
                     BASKET_SIZE_BY_PROFILE = {
-                        'very-conservative': (10, 14),  # Larger for better diversification
+                        'very-conservative': (15, 20),  # Expanded for better feasibility (was 10-14)
                         'conservative': (10, 14),       # Larger for better diversification
                         'moderate': (12, 16),           # Even larger for moderate
                         'aggressive': (12, 16),         # Even larger for aggressive
@@ -3708,14 +3710,34 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                         best_tickers = [t['ticker'].upper() for t in eligible_tickers_data[:target_pool_size]]
                     
                     if len(best_tickers) >= 2:
-                        # Optimize from market tickers
-                        optimized_result = optimizer.optimize_portfolio(
-                            tickers=best_tickers,
-                            optimization_type=request.optimization_type,
-                            risk_profile=request.risk_profile,
-                            min_overlap_months=96,  # Use 96 months (8 years) for market optimization
-                            strict_overlap=False
-                        )
+                        # PRIORITY 2: Add fallback mechanisms for market exploration
+                        # The optimize_portfolio method now has built-in fallback (constraint relaxation + min_variance)
+                        # So we just call it once and it will handle fallbacks internally
+                        try:
+                            logger.info(f"🔄 Attempting market optimization with max_sharpe (with automatic fallbacks)...")
+                            optimized_result = optimizer.optimize_portfolio(
+                                tickers=best_tickers,
+                                optimization_type=request.optimization_type,  # Usually 'max_sharpe'
+                                risk_profile=request.risk_profile,
+                                min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                strict_overlap=False
+                            )
+                            logger.info(f"✅ Market optimization succeeded")
+                        except Exception as e:
+                            # Final fallback: try min_variance directly
+                            logger.warning(f"⚠️ Market optimization with fallbacks failed: {e}, trying min_variance as last resort...")
+                            try:
+                                optimized_result = optimizer.optimize_portfolio(
+                                    tickers=best_tickers,
+                                    optimization_type='min_variance',
+                                    risk_profile=request.risk_profile,
+                                    min_overlap_months=96,
+                                    strict_overlap=False
+                                )
+                                logger.info(f"✅ Market optimization succeeded with min_variance fallback")
+                            except Exception as e2:
+                                logger.error(f"❌ All market optimization strategies failed: {e2}")
+                                raise Exception(f"Market optimization failed after all fallback attempts: {e2}")
                         
                         final_tickers = optimized_result.get('tickers', best_tickers)
                         raw_weights = optimized_result.get('weights', {})
@@ -3764,14 +3786,21 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                             except Exception as e:
                                 logger.warning(f"⚠️ Could not generate inefficient frontier: {e}")
                         
-                        # Calculate CML from efficient frontier
+                        # Calculate CML from market-optimized portfolio (ensures CML connects Rf to market-opt portfolio)
                         capital_market_line = []
                         if efficient_frontier:
                             try:
-                                logger.info("📈 Calculating Capital Market Line...")
+                                logger.info("📈 Calculating Capital Market Line from market-optimized portfolio...")
+                                # Use market-optimized portfolio metrics to ensure CML connects to it
+                                market_portfolio_metrics = {
+                                    'return': optimized_result.get('expected_return', 0),
+                                    'risk': optimized_result.get('risk', 0),
+                                    'sharpe_ratio': optimized_result.get('sharpe_ratio', 0)
+                                }
                                 capital_market_line = optimizer.calculate_capital_market_line(
                                     efficient_frontier=efficient_frontier,
-                                    risk_free_rate=optimizer.risk_free_rate
+                                    risk_free_rate=optimizer.risk_free_rate,
+                                    market_portfolio=market_portfolio_metrics
                                 )
                             except Exception as e:
                                 logger.warning(f"⚠️ Could not calculate CML: {e}")
@@ -3964,6 +3993,678 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to perform triple optimization: {str(e)}")
+
+@router.post("/stress-test")
+def run_stress_test(request: Dict[str, Any]):
+    """
+    Run stress test scenarios on selected portfolio.
+    
+    Request Body:
+    {
+        "tickers": ["AAPL", "MSFT", "GOOGL"],
+        "weights": {"AAPL": 0.4, "MSFT": 0.35, "GOOGL": 0.25},
+        "scenarios": ["covid19", "2008_crisis"],
+        "capital": 8000,
+        "risk_profile": "moderate"
+    }
+    
+    Returns:
+    {
+        "portfolio_summary": {...},
+        "scenarios": {
+            "covid19": {...},
+            "2008_crisis": {...}
+        },
+        "resilience_score": 75.0,
+        "overall_assessment": "..."
+    }
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        from utils.stress_test_analyzer import StressTestAnalyzer
+        
+        # Parse request
+        tickers = [t.upper().strip() for t in request.get('tickers', [])]
+        weights_raw = request.get('weights', {})
+        scenarios = request.get('scenarios', [])
+        capital = request.get('capital', 0)
+        risk_profile = request.get('risk_profile', 'moderate')
+        
+        # Validation
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required for stress test")
+        
+        if not scenarios:
+            raise HTTPException(status_code=400, detail="At least one scenario must be selected")
+        
+        # Normalize weights: ensure ticker keys are uppercase and match tickers list
+        weights = {}
+        for ticker in tickers:
+            # Try uppercase key first, then lowercase, then original
+            weight = weights_raw.get(ticker, weights_raw.get(ticker.lower(), weights_raw.get(ticker.upper(), 0.0)))
+            if weight > 0:
+                weights[ticker] = float(weight)
+        
+        # If no weights provided or all zero, use equal weights
+        total_weight = sum(weights.values())
+        if total_weight <= 0:
+            logger.warning(f"⚠️ No valid weights provided, using equal weights")
+            weights = {t: 1.0 / len(tickers) for t in tickers}
+        elif abs(total_weight - 1.0) > 0.1:
+            logger.warning(f"⚠️ Weights sum to {total_weight}, normalizing...")
+            weights = {t: w / total_weight for t, w in weights.items()}
+        
+        # Optional: Warm cache for portfolio tickers (non-blocking, improves first-run performance)
+        try:
+            logger.info(f"🔥 Pre-warming cache for {len(tickers)} tickers...")
+            warm_start = time.time()
+            for ticker in tickers:
+                try:
+                    # Pre-warm monthly data and ticker info (Redis-first approach)
+                    _ = _rds.get_monthly_data(ticker)
+                    _ = _rds.get_ticker_info(ticker)
+                except Exception:
+                    pass  # Continue even if some tickers fail
+            warm_time = time.time() - warm_start
+            if warm_time > 0.1:  # Only log if it took meaningful time
+                logger.info(f"✅ Cache warmed in {warm_time:.3f}s")
+        except Exception as e:
+            logger.debug(f"Cache warm-up skipped: {e}")
+        
+        # Initialize analyzer
+        analyzer = StressTestAnalyzer()
+        
+        # Run selected scenarios
+        scenario_results = {}
+        
+        for scenario in scenarios:
+            try:
+                scenario_start = time.time()
+                logger.info(f"⏱️ Starting {scenario} scenario analysis...")
+                
+                if scenario == 'covid19':
+                    result = analyzer.analyze_covid19_scenario(tickers, weights)
+                    scenario_results['covid19'] = result
+                elif scenario == '2008_crisis':
+                    result = analyzer.analyze_2008_crisis_scenario(tickers, weights)
+                    scenario_results['2008_crisis'] = result
+                else:
+                    logger.warning(f"⚠️ Unknown scenario: {scenario}")
+                    continue
+                
+                scenario_time = time.time() - scenario_start
+                logger.info(f"✅ {scenario} scenario completed in {scenario_time:.3f}s")
+            except Exception as e:
+                logger.error(f"❌ Error running {scenario} scenario: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue with other scenarios
+                continue
+        
+        if not scenario_results:
+            raise HTTPException(status_code=500, detail="Failed to run any stress test scenarios")
+        
+        # Calculate resilience score
+        # Resilience Score Formula (0-100 scale):
+        # - Drawdown Score (40%): Based on maximum drawdown during crisis
+        #   - 0% drawdown = 100 points (perfect)
+        #   - 10% drawdown = 90 points
+        #   - 30% drawdown = 70 points
+        #   - 50% drawdown = 50 points
+        #   Formula: 100 - (abs(drawdown) * 100)
+        #
+        # - Recovery Score (40%): Based on recovery time
+        #   - Instant recovery (0 months) = 100 points
+        #   - 3 months = 94 points (100 - 3*2)
+        #   - 6 months = 88 points
+        #   - 12+ months = 76 points (capped)
+        #   Formula: 100 - (recovery_months * 2), max 100, min 0
+        #
+        # - Volatility Score (20%): Based on volatility ratio vs normal
+        #   - 1.0x (normal) = 100 points
+        #   - 1.5x = 75 points (100 - (1.5-1)*50)
+        #   - 2.0x = 50 points
+        #   - 0.5x = 100 points (capped - less volatile is good)
+        #   Formula: max(0, 100 - ((volatility_ratio - 1) * 50)), capped at 100
+        
+        resilience_scores = []
+        for scenario_name, scenario_data in scenario_results.items():
+            metrics = scenario_data.get('metrics', {})
+            max_drawdown = metrics.get('max_drawdown', 0)  # Negative value (e.g., -0.30 for 30% loss)
+            recovery_months = metrics.get('recovery_months')
+            volatility_ratio = metrics.get('volatility_ratio', 1.0)
+            recovered = metrics.get('recovered', False)
+            
+            # Drawdown score: Convert negative drawdown to positive loss percentage
+            # max_drawdown is negative (e.g., -0.30 for 30% loss)
+            # Score = 100 - (loss percentage * 100)
+            # Example: -0.30 drawdown = 30% loss = 70 points
+            drawdown_loss_pct = abs(max_drawdown)  # Convert to positive percentage
+            drawdown_score = max(0, min(100, 100 - (drawdown_loss_pct * 100)))
+            
+            # Recovery score: Penalize longer recovery times
+            # 0 months = 100 points, 1 month = 98 points, 6 months = 88 points, 12+ months = 76 points
+            if recovered and recovery_months is not None and recovery_months >= 0:
+                recovery_score = max(0, min(100, 100 - (recovery_months * 2)))
+            elif not recovered:
+                # Not recovered: Use projected recovery time if available
+                trajectory_projections = metrics.get('trajectory_projections', {})
+                projected_months = trajectory_projections.get('realistic_months')
+                if projected_months is not None and projected_months >= 0:
+                    # Penalize projected recovery time more heavily (factor of 2.5 instead of 2)
+                    recovery_score = max(0, min(100, 100 - (projected_months * 2.5)))
+                else:
+                    # No recovery projection available: assign low score
+                    recovery_score = 20  # Low score for no recovery
+            else:
+                recovery_score = 0
+            
+            # Volatility score: Penalize higher volatility during crisis
+            # Normal volatility (1.0x) = 100 points
+            # Higher volatility reduces score
+            # Lower volatility (good) is capped at 100
+            volatility_penalty = max(0, (volatility_ratio - 1) * 50)  # Penalty for volatility > 1.0
+            volatility_score = max(0, min(100, 100 - volatility_penalty))
+            
+            # Scenario score: weighted average of three components
+            scenario_score = (drawdown_score * 0.4 + recovery_score * 0.4 + volatility_score * 0.2)
+            # Ensure score is between 0 and 100
+            scenario_score = max(0, min(100, scenario_score))
+            resilience_scores.append(scenario_score)
+        
+        # Overall resilience score - average of scenario scores, capped at 100
+        resilience_score = max(0, min(100, sum(resilience_scores) / len(resilience_scores) if resilience_scores else 0.0))
+        
+        # Generate overall assessment
+        if resilience_score >= 70:
+            assessment = f"Your portfolio shows strong resilience (score: {resilience_score:.0f}/100). It has demonstrated good performance during historical market crises."
+        elif resilience_score >= 50:
+            assessment = f"Your portfolio shows moderate resilience (score: {resilience_score:.0f}/100). Consider reviewing the stress test results to understand potential risks."
+        else:
+            assessment = f"Your portfolio shows weak resilience (score: {resilience_score:.0f}/100). The stress test reveals significant vulnerabilities. Consider adjusting your portfolio composition or risk profile."
+        
+        # Portfolio summary (from optimization step data if available)
+        portfolio_summary = {
+            'tickers': tickers,
+            'weights': weights,
+            'capital': capital,
+            'risk_profile': risk_profile
+        }
+        
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Stress test completed in {processing_time:.3f}s ({len(scenario_results)} scenarios)")
+        
+        response = {
+            'portfolio_summary': portfolio_summary,
+            'scenarios': scenario_results,
+            'resilience_score': round(resilience_score, 1),
+            'overall_assessment': assessment,
+            'processing_time_seconds': round(processing_time, 3)
+        }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in stress test: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to run stress test: {str(e)}")
+
+@router.post("/what-if-scenario")
+def run_what_if_scenario(request: Dict[str, Any]):
+    """
+    Run What-If scenario simulation with custom parameters.
+    Also supports hypothetical scenarios via scenario_type parameter.
+    
+    Request Body (What-If mode):
+    {
+        "tickers": ["AAPL", "MSFT", "GOOGL"],
+        "weights": {"AAPL": 0.4, "MSFT": 0.35, "GOOGL": 0.25},
+        "volatility_multiplier": 2.0,
+        "return_adjustment": -0.15,
+        "time_horizon_months": 12,
+        "capital": 8000
+    }
+    
+    Request Body (Hypothetical mode):
+    {
+        "tickers": ["AAPL", "MSFT", "GOOGL"],
+        "weights": {"AAPL": 0.4, "MSFT": 0.35, "GOOGL": 0.25},
+        "scenario_type": "tech_crash",  # tech_crash, inflation, geopolitical, recession
+        "market_decline": -0.30,
+        "duration_months": 6,
+        "recovery_rate": "moderate",
+        "capital": 8000
+    }
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        from utils.port_analytics import PortfolioAnalytics
+        
+        # Check if this is a hypothetical scenario request
+        scenario_type = request.get('scenario_type')
+        if scenario_type:
+            # Handle hypothetical scenario
+            return _handle_hypothetical_scenario(request, start_time)
+        
+        # Parse request (What-If mode)
+        tickers = [t.upper().strip() for t in request.get('tickers', [])]
+        weights_raw = request.get('weights', {})
+        volatility_multiplier = float(request.get('volatility_multiplier', 1.5))
+        return_adjustment = float(request.get('return_adjustment', 0.0))
+        time_horizon_months = float(request.get('time_horizon_months', 12))
+        capital = request.get('capital', 0)
+        
+        # Validation
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required")
+        
+        if volatility_multiplier < 0.1 or volatility_multiplier > 10:
+            raise HTTPException(status_code=400, detail="Volatility multiplier must be between 0.1 and 10")
+        
+        if time_horizon_months < 1 or time_horizon_months > 60:
+            raise HTTPException(status_code=400, detail="Time horizon must be between 1 and 60 months")
+        
+        # Normalize weights
+        weights = {}
+        for ticker in tickers:
+            weight = weights_raw.get(ticker, weights_raw.get(ticker.lower(), weights_raw.get(ticker.upper(), 0.0)))
+            if weight > 0:
+                weights[ticker] = float(weight)
+        
+        total_weight = sum(weights.values())
+        if total_weight <= 0:
+            logger.warning(f"⚠️ No valid weights provided, using equal weights")
+            weights = {t: 1.0 / len(tickers) for t in tickers}
+        elif abs(total_weight - 1.0) > 0.1:
+            logger.warning(f"⚠️ Weights sum to {total_weight}, normalizing...")
+            weights = {t: w / total_weight for t, w in weights.items()}
+        
+        # Calculate baseline portfolio metrics
+        try:
+            from utils.redis_first_data_service import redis_first_data_service
+            data_service = redis_first_data_service
+            
+            # Optimized: Batch retrieve price data (Redis-first approach handles caching)
+            # Sequential loop is fine here as Redis cache makes subsequent calls instant
+            all_prices = {}
+            import time as time_module
+            data_start = time_module.time()
+            
+            for ticker in tickers:
+                try:
+                    # Redis-first approach: get_monthly_data uses cached data when available
+                    ticker_data = data_service.get_monthly_data(ticker)
+                    if ticker_data and ticker_data.get('prices'):
+                        prices = ticker_data['prices']
+                        # Convert to dict format if needed
+                        if isinstance(prices, pd.Series):
+                            prices_dict = {str(date): float(price) for date, price in prices.items()}
+                        elif isinstance(prices, dict):
+                            prices_dict = prices
+                        else:
+                            continue
+                        # Get last 12 months of data
+                        sorted_dates = sorted(prices_dict.keys(), reverse=True)[:12]
+                        all_prices[ticker] = {date: prices_dict[date] for date in sorted_dates}
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not fetch prices for {ticker}: {e}")
+            
+            data_time = time_module.time() - data_start
+            if data_time > 1.0:  # Log if data retrieval takes more than 1 second
+                logger.debug(f"⏱️ Price data retrieval: {data_time:.3f}s for {len(tickers)} tickers")
+            
+            if not all_prices:
+                raise HTTPException(status_code=500, detail="Could not fetch price data for portfolio")
+            
+            # Calculate portfolio returns
+            analytics = PortfolioAnalytics()
+            portfolio_returns = []
+            dates = sorted(set([d for ticker_prices in all_prices.values() for d in ticker_prices.keys()]))
+            
+            if len(dates) < 2:
+                raise HTTPException(status_code=500, detail="Insufficient price data for analysis")
+            
+            for i in range(1, len(dates)):
+                portfolio_return = 0.0
+                for ticker, weight in weights.items():
+                    if ticker in all_prices and dates[i] in all_prices[ticker] and dates[i-1] in all_prices[ticker]:
+                        price_change = (all_prices[ticker][dates[i]] - all_prices[ticker][dates[i-1]]) / all_prices[ticker][dates[i-1]]
+                        portfolio_return += weight * price_change
+                portfolio_returns.append(portfolio_return)
+            
+            # Calculate baseline metrics
+            baseline_expected_return = float(np.mean(portfolio_returns) * 12) if portfolio_returns else 0.12  # Annualized
+            baseline_volatility = float(np.std(portfolio_returns) * np.sqrt(12)) if len(portfolio_returns) > 1 else 0.20  # Annualized
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate baseline metrics, using defaults: {e}")
+            baseline_expected_return = 0.12  # 12% default
+            baseline_volatility = 0.20  # 20% default
+        
+        # Apply adjustments
+        adjusted_expected_return = baseline_expected_return + return_adjustment
+        adjusted_volatility = baseline_volatility * volatility_multiplier
+        time_horizon_years = time_horizon_months / 12.0
+        
+        # Run Monte Carlo simulation
+        analytics = PortfolioAnalytics()
+        # Optimized: reduced from 10,000 to 5,000 iterations for better performance
+        monte_carlo = analytics.run_monte_carlo_simulation(
+            expected_return=adjusted_expected_return,
+            risk=adjusted_volatility,
+            num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+            time_horizon_years=time_horizon_years
+        )
+        
+        # Calculate summary metrics
+        simulated_returns = monte_carlo.get('simulated_returns', [])
+        percentiles = monte_carlo.get('percentiles', {})
+        
+        metrics = {
+            'expected_return': adjusted_expected_return,
+            'volatility': adjusted_volatility,
+            'baseline_expected_return': baseline_expected_return,
+            'baseline_volatility': baseline_volatility,
+            'return_adjustment': return_adjustment,
+            'volatility_multiplier': volatility_multiplier,
+            'time_horizon_months': time_horizon_months,
+            'probability_positive': monte_carlo.get('probability_positive', 0.5),
+            'probability_loss_10pct': monte_carlo.get('probability_loss_thresholds', {}).get('loss_10pct', 0.0),
+            'probability_loss_20pct': monte_carlo.get('probability_loss_thresholds', {}).get('loss_20pct', 0.0),
+            'percentiles': percentiles
+        }
+        
+        processing_time = time.time() - start_time
+        logger.info(f"✅ What-If scenario completed in {processing_time:.3f}s")
+        
+        return {
+            'portfolio_summary': {
+                'tickers': tickers,
+                'weights': weights,
+                'capital': capital
+            },
+            'scenario_name': 'Custom What-If Scenario',
+            'parameters': {
+                'volatility_multiplier': volatility_multiplier,
+                'return_adjustment': return_adjustment,
+                'time_horizon_months': time_horizon_months
+            },
+            'monte_carlo': monte_carlo,
+            'metrics': metrics,
+            'processing_time_seconds': round(processing_time, 3)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in What-If scenario: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to run What-If scenario: {str(e)}")
+
+def _handle_hypothetical_scenario(request: Dict[str, Any], start_time: float):
+    """Handle hypothetical scenario logic (called from what-if endpoint)"""
+    import time
+    try:
+        from utils.port_analytics import PortfolioAnalytics
+        
+        # Parse request
+        tickers = [t.upper().strip() for t in request.get('tickers', [])]
+        weights_raw = request.get('weights', {})
+        scenario_type = request.get('scenario_type', 'tech_crash')
+        market_decline = float(request.get('market_decline', -0.30))
+        duration_months = int(request.get('duration_months', 6))
+        recovery_rate = request.get('recovery_rate', 'moderate')
+        capital = float(request.get('capital', 0))
+        
+        # Validation
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required")
+        
+        if market_decline > 0 or market_decline < -1:
+            raise HTTPException(status_code=400, detail="Market decline must be between -100% and 0%")
+        
+        # Normalize weights
+        weights = {}
+        for ticker in tickers:
+            weight = weights_raw.get(ticker, weights_raw.get(ticker.lower(), weights_raw.get(ticker.upper(), 0.0)))
+            if weight > 0:
+                weights[ticker] = float(weight)
+        
+        total_weight = sum(weights.values())
+        if total_weight <= 0:
+            weights = {t: 1.0 / len(tickers) for t in tickers}
+        elif abs(total_weight - 1.0) > 0.1:
+            weights = {t: w / total_weight for t, w in weights.items()}
+        
+        # Scenario-specific parameters
+        scenario_configs = {
+            'tech_crash': {'volatility_mult': 2.5, 'sector_impacts': {'Technology': -0.50, 'Communication Services': -0.40, 'Consumer Discretionary': -0.30, 'default': -0.20}},
+            'inflation': {'volatility_mult': 2.0, 'sector_impacts': {'Real Estate': -0.35, 'Utilities': -0.25, 'Consumer Staples': -0.15, 'default': -0.20}},
+            'geopolitical': {'volatility_mult': 3.0, 'sector_impacts': {'Energy': 0.20, 'Industrials': -0.30, 'Financials': -0.25, 'default': -0.25}},
+            'recession': {'volatility_mult': 2.2, 'sector_impacts': {'Consumer Discretionary': -0.40, 'Financials': -0.35, 'Real Estate': -0.30, 'default': -0.25}}
+        }
+        
+        config = scenario_configs.get(scenario_type, scenario_configs['recession'])
+        
+        # Calculate sector-weighted portfolio impact
+        try:
+            from utils.redis_first_data_service import redis_first_data_service
+            data_service = redis_first_data_service
+            
+            sector_impact = {}
+            portfolio_weighted_decline = 0.0
+            
+            for ticker, weight in weights.items():
+                try:
+                    ticker_info = data_service.get_ticker_info(ticker)
+                    sector = ticker_info.get('sector', 'Unknown') if ticker_info else 'Unknown'
+                    sector_decline = config['sector_impacts'].get(sector, config['sector_impacts']['default'])
+                    sector_impact[sector] = sector_decline
+                    portfolio_weighted_decline += weight * sector_decline
+                except Exception:
+                    portfolio_weighted_decline += weight * config['sector_impacts']['default']
+            
+            estimated_loss = market_decline + (portfolio_weighted_decline * 0.5)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate sector impact: {e}")
+            estimated_loss = market_decline
+            sector_impact = {}
+        
+        # Recovery time estimation
+        recovery_multipliers = {'slow': 2.0, 'moderate': 1.0, 'fast': 0.5}
+        base_recovery_months = abs(market_decline) * 100 * 0.5
+        estimated_recovery_months = int(base_recovery_months * recovery_multipliers.get(recovery_rate, 1.0))
+        
+        # Capital at risk
+        capital_at_risk = capital * abs(estimated_loss)
+        
+        # Run Monte Carlo with scenario parameters
+        analytics = PortfolioAnalytics()
+        adjusted_volatility = 0.20 * config['volatility_mult']
+        
+        # Optimized: reduced from 10,000 to 5,000 iterations for better performance
+        monte_carlo = analytics.run_monte_carlo_simulation(
+            expected_return=estimated_loss,
+            risk=adjusted_volatility,
+            num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+            time_horizon_years=duration_months / 12.0
+        )
+        
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Hypothetical scenario completed in {processing_time:.3f}s")
+        
+        return {
+            'scenario_type': scenario_type,
+            'parameters': {
+                'market_decline': market_decline,
+                'duration_months': duration_months,
+                'recovery_rate': recovery_rate
+            },
+            'estimated_loss': estimated_loss,
+            'capital_at_risk': round(capital_at_risk, 2),
+            'estimated_recovery_months': estimated_recovery_months,
+            'sector_impact': sector_impact,
+            'monte_carlo': monte_carlo,
+            'processing_time_seconds': round(processing_time, 3)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in hypothetical scenario: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to run hypothetical scenario: {str(e)}")
+
+@router.post("/hypothetical-scenario")
+def run_hypothetical_scenario(request: Dict[str, Any]):
+    """
+    Run hypothetical stress test scenario with custom parameters.
+    
+    Request Body:
+    {
+        "tickers": ["AAPL", "MSFT", "GOOGL"],
+        "weights": {"AAPL": 0.4, "MSFT": 0.35, "GOOGL": 0.25},
+        "scenario_type": "tech_crash",  # tech_crash, inflation, geopolitical, recession
+        "market_decline": -0.30,  # -30%
+        "duration_months": 6,
+        "recovery_rate": "moderate",  # slow, moderate, fast
+        "capital": 8000
+    }
+    """
+    import time
+    start_time = time.time()
+    
+    try:
+        from utils.port_analytics import PortfolioAnalytics
+        
+        # Parse request
+        tickers = [t.upper().strip() for t in request.get('tickers', [])]
+        weights_raw = request.get('weights', {})
+        scenario_type = request.get('scenario_type', 'tech_crash')
+        market_decline = float(request.get('market_decline', -0.30))
+        duration_months = int(request.get('duration_months', 6))
+        recovery_rate = request.get('recovery_rate', 'moderate')
+        capital = float(request.get('capital', 0))
+        
+        # Validation
+        if len(tickers) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 tickers required")
+        
+        if market_decline > 0 or market_decline < -1:
+            raise HTTPException(status_code=400, detail="Market decline must be between -100% and 0%")
+        
+        # Normalize weights
+        weights = {}
+        for ticker in tickers:
+            weight = weights_raw.get(ticker, weights_raw.get(ticker.lower(), weights_raw.get(ticker.upper(), 0.0)))
+            if weight > 0:
+                weights[ticker] = float(weight)
+        
+        total_weight = sum(weights.values())
+        if total_weight <= 0:
+            weights = {t: 1.0 / len(tickers) for t in tickers}
+        elif abs(total_weight - 1.0) > 0.1:
+            weights = {t: w / total_weight for t, w in weights.items()}
+        
+        # Scenario-specific parameters
+        scenario_configs = {
+            'tech_crash': {'volatility_mult': 2.5, 'sector_impacts': {'Technology': -0.50, 'Communication Services': -0.40, 'Consumer Discretionary': -0.30, 'default': -0.20}},
+            'inflation': {'volatility_mult': 2.0, 'sector_impacts': {'Real Estate': -0.35, 'Utilities': -0.25, 'Consumer Staples': -0.15, 'default': -0.20}},
+            'geopolitical': {'volatility_mult': 3.0, 'sector_impacts': {'Energy': 0.20, 'Industrials': -0.30, 'Financials': -0.25, 'default': -0.25}},
+            'recession': {'volatility_mult': 2.2, 'sector_impacts': {'Consumer Discretionary': -0.40, 'Financials': -0.35, 'Real Estate': -0.30, 'default': -0.25}}
+        }
+        
+        config = scenario_configs.get(scenario_type, scenario_configs['recession'])
+        
+        # Calculate sector-weighted portfolio impact
+        try:
+            from utils.redis_first_data_service import redis_first_data_service
+            data_service = redis_first_data_service
+            
+            # Optimized: Batch retrieve sector info (Redis-first approach handles caching)
+            sector_impact = {}
+            portfolio_weighted_decline = 0.0
+            import time as time_module
+            sector_start = time_module.time()
+            
+            for ticker, weight in weights.items():
+                try:
+                    # Redis-first approach: get_ticker_info uses cached data when available
+                    ticker_info = data_service.get_ticker_info(ticker)
+                    sector = ticker_info.get('sector', 'Unknown') if ticker_info else 'Unknown'
+                    sector_decline = config['sector_impacts'].get(sector, config['sector_impacts']['default'])
+                    sector_impact[sector] = sector_decline
+                    portfolio_weighted_decline += weight * sector_decline
+                except Exception:
+                    portfolio_weighted_decline += weight * config['sector_impacts']['default']
+            
+            sector_time = time_module.time() - sector_start
+            if sector_time > 0.5:  # Log if sector retrieval takes more than 0.5 seconds
+                logger.debug(f"⏱️ Sector info retrieval: {sector_time:.3f}s for {len(weights)} tickers")
+            
+            # Apply market-wide decline as baseline
+            estimated_loss = market_decline + (portfolio_weighted_decline * 0.5)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate sector impact: {e}")
+            estimated_loss = market_decline
+            sector_impact = {}
+        
+        # Recovery time estimation
+        recovery_multipliers = {'slow': 2.0, 'moderate': 1.0, 'fast': 0.5}
+        base_recovery_months = abs(market_decline) * 100 * 0.5  # ~0.5 months per 1% decline
+        estimated_recovery_months = int(base_recovery_months * recovery_multipliers.get(recovery_rate, 1.0))
+        
+        # Capital at risk
+        capital_at_risk = capital * abs(estimated_loss)
+        
+        # Run Monte Carlo with scenario parameters
+        analytics = PortfolioAnalytics()
+        adjusted_volatility = 0.20 * config['volatility_mult']  # Base 20% volatility * multiplier
+        
+        # Optimized: reduced from 10,000 to 5,000 iterations for better performance
+        monte_carlo = analytics.run_monte_carlo_simulation(
+            expected_return=estimated_loss,
+            risk=adjusted_volatility,
+            num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+            time_horizon_years=duration_months / 12.0
+        )
+        
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Hypothetical scenario completed in {processing_time:.3f}s")
+        
+        return {
+            'scenario_type': scenario_type,
+            'parameters': {
+                'market_decline': market_decline,
+                'duration_months': duration_months,
+                'recovery_rate': recovery_rate
+            },
+            'estimated_loss': estimated_loss,
+            'capital_at_risk': round(capital_at_risk, 2),
+            'estimated_recovery_months': estimated_recovery_months,
+            'sector_impact': sector_impact,
+            'monte_carlo': monte_carlo,
+            'processing_time_seconds': round(processing_time, 3)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in hypothetical scenario: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to run hypothetical scenario: {str(e)}")
 
 @router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
 def get_portfolio_recommendations(risk_profile: str):
@@ -4165,7 +4866,8 @@ def _ensure_missing_portfolios_generated(risk_profile: str) -> dict:
             from utils.port_analytics import PortfolioAnalytics
 
             gen_start = time.time()
-            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+            # Use conservative approach + Strategy 5 for aggressive profiles
+            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics(), use_conservative_approach=True)
             logger.info(f"⏱️  [{risk_profile}] Starting portfolio generation...")
             generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
             gen_time = time.time() - gen_start
@@ -4216,7 +4918,8 @@ def _ensure_missing_portfolios_generated(risk_profile: str) -> dict:
             from utils.port_analytics import PortfolioAnalytics
 
             gen_start = time.time()
-            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics())
+            # Use conservative approach + Strategy 5 for aggressive profiles
+            generator = EnhancedPortfolioGenerator(redis_first_data_service, PortfolioAnalytics(), use_conservative_approach=True)
             logger.info(f"⏱️  [{risk_profile}] Starting portfolio generation for {len(missing_ids)} missing slots...")
             generated = generator.generate_portfolio_bucket(risk_profile, use_parallel=True)
             gen_time = time.time() - gen_start
@@ -5750,7 +6453,8 @@ async def regenerate_recommendation_portfolios(risk_profile: str = None):
         
         risk_profiles = [risk_profile] if risk_profile else ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         
-        generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics)
+        # Use conservative approach + Strategy 5 for aggressive profiles
+        generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics, use_conservative_approach=True)
         results = {}
         total_portfolios = 0
         
@@ -5819,7 +6523,8 @@ async def regenerate_all_portfolios():
         # Initialize services
         redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
         portfolio_manager = RedisPortfolioManager(redis_client)
-        portfolio_generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics)
+        # Use conservative approach + Strategy 5 for aggressive profiles
+        portfolio_generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics, use_conservative_approach=True)
         
         risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
         total_portfolios = 0
@@ -5886,7 +6591,7 @@ async def get_ticker_table_data():
     Returns: Ticker information with essential metrics for the ticker table
     """
     try:
-        import json
+        import json as _json
         import gzip
         from datetime import datetime
         
@@ -6992,7 +7697,7 @@ async def risk_decomposition(allocations: str):
     """
     try:
         # Parse allocations
-        import json
+        import json as _json
         try:
             allocation_data = json.loads(allocations)
         except:
@@ -7409,7 +8114,7 @@ def get_auto_refresh_service():
     return auto_refresh_service
 
 @router.get("/ticker-table/enhanced")
-async def get_enhanced_ticker_table():
+def get_enhanced_ticker_table():
     """Get enhanced ticker table with ID column and quality indicators"""
     try:
         # Get all ticker information with enhanced features
@@ -7816,7 +8521,7 @@ def smart_monthly_refresh():
 
 # New: Table-friendly portfolios endpoint (all profiles + strategy portfolios)
 @router.get("/portfolios-table/data")
-async def get_all_portfolios_table_data():
+def get_all_portfolios_table_data():
     """
     Get all portfolios for all risk profiles in a table-friendly format.
     Includes both regular portfolios and strategy portfolios (pure + personalized).
@@ -7824,6 +8529,24 @@ async def get_all_portfolios_table_data():
     """
     try:
         from datetime import datetime
+        import math
+
+        def _safe_num(value, *, mult: float = 1.0, digits: int | None = None, default: float = 0.0) -> float:
+            """
+            Ensure returned numbers are JSON-compliant (no NaN/Infinity).
+            FastAPI's JSON rendering will raise if floats are out of range.
+            """
+            try:
+                v = float(value)
+            except Exception:
+                v = default
+            if math.isnan(v) or math.isinf(v):
+                v = default
+            v = v * mult
+            if digits is not None:
+                v = round(v, digits)
+            return v
+
         if not redis_manager:
             return {
                 "status": "error",
@@ -7873,9 +8596,9 @@ async def get_all_portfolios_table_data():
                     "strategy": None,
                     "variation_id": p.get('variation_id', idx),
                     "stock_count": len(allocations),
-                    "expected_return": round(p.get('expectedReturn', 0) * 100, 2),
-                    "risk": round(p.get('risk', 0) * 100, 2),
-                    "diversification_score": round(p.get('diversificationScore', 0) or 0, 1),
+                    "expected_return": _safe_num(p.get('expectedReturn', 0), mult=100.0, digits=2),
+                    "risk": _safe_num(p.get('risk', 0), mult=100.0, digits=2),
+                    "diversification_score": _safe_num(p.get('diversificationScore', 0) or 0, digits=1),
                     "top_stocks": top_preview,
                 }
                 all_rows.append(row)
@@ -7907,9 +8630,9 @@ async def get_all_portfolios_table_data():
                         "strategy": strategy.title(),
                         "variation_id": None,
                         "stock_count": len(allocations),
-                        "expected_return": round(metrics.get('expected_return', 0) * 100, 2),
-                        "risk": round(metrics.get('risk', 0) * 100, 2),
-                        "diversification_score": round(metrics.get('diversification_score', 0) or 0, 1),
+                        "expected_return": _safe_num(metrics.get('expected_return', 0), mult=100.0, digits=2),
+                        "risk": _safe_num(metrics.get('risk', 0), mult=100.0, digits=2),
+                        "diversification_score": _safe_num(metrics.get('diversification_score', 0) or 0, digits=1),
                         "top_stocks": top_preview,
                     }
                     all_rows.append(row)
@@ -7934,21 +8657,64 @@ async def get_all_portfolios_table_data():
                             "strategy": strategy.title(),
                             "variation_id": None,
                             "stock_count": len(allocations),
-                            "expected_return": round(metrics.get('expected_return', 0) * 100, 2),
-                            "risk": round(metrics.get('risk', 0) * 100, 2),
-                            "diversification_score": round(metrics.get('diversification_score', 0) or 0, 1),
+                            "expected_return": _safe_num(metrics.get('expected_return', 0), mult=100.0, digits=2),
+                            "risk": _safe_num(metrics.get('risk', 0), mult=100.0, digits=2),
+                            "diversification_score": _safe_num(metrics.get('diversification_score', 0) or 0, digits=1),
                             "top_stocks": top_preview,
                         }
                         all_rows.append(row)
         except Exception as e:
             logger.warning(f"⚠️ Error fetching strategy portfolios for table: {e}")
 
-        return {
+        # Final safety pass: ensure we never emit NaN/Infinity (FastAPI will error).
+        import numbers
+        for row in all_rows:
+            for k, v in list(row.items()):
+                if isinstance(v, bool) or v is None:
+                    continue
+                if isinstance(v, numbers.Real):
+                    try:
+                        fv = float(v)
+                    except Exception:
+                        continue
+                    if math.isnan(fv) or math.isinf(fv):
+                        row[k] = 0.0
+
+        import json as _json
+
+        def _sanitize_json_numbers(obj):
+            if isinstance(obj, dict):
+                return {k: _sanitize_json_numbers(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_sanitize_json_numbers(v) for v in obj]
+            if isinstance(obj, bool) or obj is None:
+                return obj
+            # Covers float, int, numpy numeric types
+            import numbers as _numbers
+            if isinstance(obj, _numbers.Real):
+                try:
+                    fv = float(obj)
+                except Exception:
+                    return obj
+                if math.isnan(fv) or math.isinf(fv):
+                    return 0.0
+                return fv
+            return obj
+
+        result = {
             "status": "success",
             "portfolios": all_rows,
             "total_count": len(all_rows),
             "timestamp": datetime.now().isoformat(),
         }
+
+        # Validate + sanitize for strict JSON (no NaN/Inf)
+        try:
+            _json.dumps(result, allow_nan=False)
+        except ValueError:
+            result = _sanitize_json_numbers(result)
+
+        return result
 
     except Exception as e:
         logger.error(f"Error getting portfolios table data: {e}")
@@ -9035,7 +9801,7 @@ async def get_consolidated_table_html():
         ticker_payload = await get_ticker_table_data()
         tickers = ticker_payload.get('tickers', [])
 
-        portfolio_payload = await get_all_portfolios_table_data()
+        portfolio_payload = get_all_portfolios_table_data()  # Not async
         portfolios = portfolio_payload.get('portfolios', [])
 
         html = f"""

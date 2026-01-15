@@ -5034,37 +5034,55 @@ export const PortfolioOptimization = ({
                         
                           {/* Loss Probability Scenarios */}
                           <div className="space-y-3">
-                            <div className="text-sm font-medium text-gray-700 flex items-center gap-1 group relative">
+                            <div className="text-sm font-medium text-gray-700 flex items-center gap-1">
                               Loss Probability Scenarios
-                              <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-72 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
-                                <div className="font-semibold mb-1">Loss Probability Scenarios</div>
-                                <div>Based on Monte Carlo simulations, these show the probability that your portfolio will experience losses exceeding the specified thresholds over a 1-year period. Lower percentages indicate better downside protection. For example, a 5% probability of 10%+ loss means there's a 5% chance your portfolio could lose 10% or more in a year.</div>
-                              </div>
-                              <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Info className="h-3 w-3 text-gray-400 cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" className="max-w-xs">
+                                    <div className="font-semibold mb-1">Loss Probability Scenarios</div>
+                                    <div>Based on Monte Carlo simulations, these show the probability that your portfolio will experience losses exceeding the specified thresholds over a 1-year period. Lower percentages indicate better downside protection. For example, a 5% probability of 10%+ loss means there's a 5% chance your portfolio could lose 10% or more in a year.</div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
-                              <div className="p-3 rounded-lg bg-red-50 border border-red-200 group relative">
+                              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
                                 <div className="text-xs font-medium text-red-700 mb-2 flex items-center gap-1">
                                   10% Loss Threshold
-                                  <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
-                                    <div className="font-semibold mb-1">10% Loss Threshold</div>
-                                    <div>The probability that your portfolio will lose 10% or more in value over a 1-year period, based on Monte Carlo simulations. This helps assess downside risk.</div>
-                                  </div>
-                                  <Info className="h-3 w-3 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Info className="h-3 w-3 text-red-500 cursor-help" />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="max-w-xs">
+                                        <div className="font-semibold mb-1">10% Loss Threshold</div>
+                                        <div>The probability that your portfolio will lose 10% or more in value over a 1-year period, based on Monte Carlo simulations. This helps assess downside risk.</div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </div>
                                 <div className="text-2xl font-bold text-red-800">
                                   {selectedMonteCarlo.probability_loss_thresholds?.loss_10pct?.toFixed(1) || 0}%
                                   </div>
                                 <div className="text-xs text-red-600 mt-1">Probability of 10%+ loss</div>
-                                  </div>
-                              <div className="p-3 rounded-lg bg-red-50 border border-red-200 group relative">
+                              </div>
+                              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
                                 <div className="text-xs font-medium text-red-700 mb-2 flex items-center gap-1">
                                   20% Loss Threshold
-                                  <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
-                                    <div className="font-semibold mb-1">20% Loss Threshold</div>
-                                    <div>The probability that your portfolio will lose 20% or more in value over a 1-year period, based on Monte Carlo simulations. This represents significant downside risk.</div>
-                                  </div>
-                                  <Info className="h-3 w-3 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Info className="h-3 w-3 text-red-500 cursor-help" />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="max-w-xs">
+                                        <div className="font-semibold mb-1">20% Loss Threshold</div>
+                                        <div>The probability that your portfolio will lose 20% or more in value over a 1-year period, based on Monte Carlo simulations. This represents significant downside risk.</div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </div>
                                 <div className="text-2xl font-bold text-red-800">
                                   {selectedMonteCarlo.probability_loss_thresholds?.loss_20pct?.toFixed(1) || 0}%
@@ -5173,10 +5191,23 @@ export const PortfolioOptimization = ({
                 // Build selected portfolio data based on user selection
                 let portfolioData: SelectedPortfolioData;
                 
-                if (selectedPortfolio === 'market' && mvoResults?.optimized_portfolio) {
+                if (selectedPortfolio === 'market' && tripleOptimizationResults?.market_optimized_portfolio?.optimized_portfolio) {
                   // User selected the market-optimized portfolio
+                  const marketOpt = tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio;
                   portfolioData = {
-                    source: 'optimized',
+                    source: 'market',
+                    tickers: marketOpt.tickers || [],
+                    weights: marketOpt.weights || {},
+                    metrics: {
+                      expected_return: marketOpt.metrics?.expected_return || 0,
+                      risk: marketOpt.metrics?.risk || 0,
+                      sharpe_ratio: marketOpt.metrics?.sharpe_ratio || 0,
+                    }
+                  };
+                } else if (selectedPortfolio === 'market' && mvoResults?.optimized_portfolio) {
+                  // Fallback: legacy MVO optimized portfolio
+                  portfolioData = {
+                    source: 'market',
                     tickers: mvoResults.optimized_portfolio.tickers || [],
                     weights: mvoResults.optimized_portfolio.weights || {},
                     metrics: {
@@ -5189,7 +5220,7 @@ export const PortfolioOptimization = ({
                   // User selected the weights-optimized portfolio
                   const weightsOpt = tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio;
                   portfolioData = {
-                    source: 'optimized',
+                    source: 'weights',
                     tickers: weightsOpt.tickers || [],
                     weights: weightsOpt.weights || {},
                     metrics: {
@@ -5205,14 +5236,30 @@ export const PortfolioOptimization = ({
                   currentPortfolio?.forEach(s => {
                     currentWeights[s.symbol] = s.allocation / 100;
                   });
+                  
+                  // Get metrics from triple optimization if available, otherwise from dual or current
+                  let expectedReturn = currentMetrics?.expectedReturn || 0;
+                  let risk = currentMetrics?.risk || 0;
+                  let sharpeRatio = 0;
+                  
+                  if (tripleOptimizationResults?.current_portfolio?.metrics) {
+                    expectedReturn = tripleOptimizationResults.current_portfolio.metrics.expected_return || expectedReturn;
+                    risk = tripleOptimizationResults.current_portfolio.metrics.risk || risk;
+                    sharpeRatio = tripleOptimizationResults.current_portfolio.metrics.sharpe_ratio || sharpeRatio;
+                  } else if (dualOptimizationResults?.current_portfolio?.metrics) {
+                    expectedReturn = dualOptimizationResults.current_portfolio.metrics.expected_return || expectedReturn;
+                    risk = dualOptimizationResults.current_portfolio.metrics.risk || risk;
+                    sharpeRatio = dualOptimizationResults.current_portfolio.metrics.sharpe_ratio || sharpeRatio;
+                  }
+                  
                   portfolioData = {
                     source: 'current',
                     tickers: currentTickers,
                     weights: currentWeights,
                     metrics: {
-                      expected_return: dualOptimizationResults?.current_portfolio?.metrics?.expected_return || currentMetrics?.expectedReturn || 0,
-                      risk: dualOptimizationResults?.current_portfolio?.metrics?.risk || currentMetrics?.risk || 0,
-                      sharpe_ratio: dualOptimizationResults?.current_portfolio?.metrics?.sharpe_ratio || 0,
+                      expected_return: expectedReturn,
+                      risk: risk,
+                      sharpe_ratio: sharpeRatio,
                     }
                   };
                 }
@@ -5240,7 +5287,9 @@ export const PortfolioOptimization = ({
                 // Base validation: portfolio must exist and have at least 3 stocks
                 !currentPortfolio || currentPortfolio.length < 3 ||
                 // In optimization tab: must have run optimization before continuing
-                (activeTab === 'optimization' && !mvoResults && !dualOptimizationResults && !tripleOptimizationResults)
+                (activeTab === 'optimization' && !mvoResults && !dualOptimizationResults && !tripleOptimizationResults) ||
+                // In analysis tab: must have selected a portfolio before continuing
+                (activeTab === 'analysis' && !selectedPortfolio)
               }
             >
               Continue

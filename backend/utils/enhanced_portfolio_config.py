@@ -1,110 +1,69 @@
 #!/usr/bin/env python3
 """
 Enhanced Portfolio Configuration
-Implements the proposed return ranges and portfolio variation strategies
+================================
+Implements portfolio variation strategies using configuration from risk_profile_config.py
+
+All return ranges, risk parameters, and targets are imported from the centralized
+risk_profile_config.py to ensure consistency across the application.
 """
+
+from typing import Dict, Tuple, List
+
+# Import from unified configuration (SINGLE SOURCE OF TRUTH)
+from .risk_profile_config import (
+    UNIFIED_RISK_PROFILE_CONFIG,
+    RISK_PROFILE_RETURN_RANGES,
+    RISK_PROFILE_RETURN_TARGETS,
+    RISK_PROFILE_QUALITY_CONTROL,
+)
+
 
 class EnhancedPortfolioConfig:
     """
     Enhanced portfolio configuration with:
-    1. Updated return ranges as proposed
+    1. Return ranges imported from unified config
     2. Diversification score variation within profiles
     3. Stock count variation within profiles  
     4. Return target gradation to ensure uniqueness
+    
+    All return ranges and risk parameters are imported from risk_profile_config.py
+    to maintain consistency across the application.
     """
     
-    # Data-informed non-overlapping return ranges (Strategy 1B) - OPTIMIZED for 85%+ compliance
-    # Based on actual stock universe analysis: 789 stocks, 0.54% - 167.41% range
-    # Expanded ranges to improve compliance while maintaining non-overlapping structure
-    ENHANCED_RETURN_RANGES = {
-        'very-conservative': (0.04, 0.14),    # 4-14% (expanded from 5-13% for better compliance)
-        'conservative': (0.12, 0.22),         # 12-22% (expanded from 13-20% for better compliance)
-        'moderate': (0.18, 0.28),             # FIXED: 18-28% (reduces overlap with aggressive)
-        'aggressive': (0.22, 0.32),           # EXPANDED: 22-32% (increased from 30% to 32% for more flexibility)
-        'very-aggressive': (0.26, 0.40)       # EXPANDED: 26-40% (increased from 38% to 40% for more flexibility)
+    # ==========================================================================
+    # RETURN RANGES - Imported from unified config
+    # ==========================================================================
+    ENHANCED_RETURN_RANGES: Dict[str, Tuple[float, float]] = RISK_PROFILE_RETURN_RANGES
+    
+    # ==========================================================================
+    # DIVERSIFICATION VARIATION - Natural variation within profiles
+    # ==========================================================================
+    DIVERSIFICATION_VARIATION: Dict[str, Tuple[float, float]] = {
+        profile: config['diversification_range']
+        for profile, config in UNIFIED_RISK_PROFILE_CONFIG.items()
     }
     
-    # Diversification score variation (NO FIXED RANGES - let it vary naturally)
-    DIVERSIFICATION_VARIATION = {
-        'very-conservative': (50.0, 100.0),   # Wide variation (50-100%)
-        'conservative': (50.0, 100.0),        # Wide variation (50-100%)
-        'moderate': (50.0, 100.0),            # Wide variation (50-100%)
-        'aggressive': (30.0, 100.0),          # Wide variation (30-100%)
-        'very-aggressive': (20.0, 100.0)      # Wide variation (20-100%)
+    # ==========================================================================
+    # STOCK COUNT RANGES - Imported from unified config
+    # ==========================================================================
+    STOCK_COUNT_RANGES: Dict[str, Tuple[int, int]] = {
+        profile: config['stock_count_range']
+        for profile, config in UNIFIED_RISK_PROFILE_CONFIG.items()
     }
     
-    # Stock count variation within profiles (capped at 4 stocks max)
-    STOCK_COUNT_RANGES = {
-        'very-conservative': (3, 4),          # 3-4 stocks (conservative diversification)
-        'conservative': (3, 4),               # 3-4 stocks (moderate concentration)
-        'moderate': (3, 4),                   # 3-4 stocks (balanced flexibility)
-        'aggressive': (3, 4),                 # 3-4 stocks (focused concentration)
-        'very-aggressive': (3, 3)            # 3 stocks (maximum concentration)
-    }
-    
-    # Return target gradation - DISTRIBUTED EVENLY across full ranges for improved diversity
-    # Targets are spread evenly to maximize portfolio diversity while maintaining risk profile boundaries
-    RETURN_TARGET_GRADATION = {
-        'very-conservative': [4.0, 5.5, 7.0, 8.5, 10.0, 11.5, 13.0, 14.0, 6.0, 8.0, 10.5, 12.5],  # 4% to 14%
-        'conservative': [12.0, 13.5, 15.0, 16.5, 18.0, 19.5, 21.0, 22.0, 12.5, 14.5, 16.5, 18.5], # 12% to 22%
-        'moderate': [
-            # Distribute evenly across full range (18-28%) for improved diversity
-            18.0, 18.5, 19.0, 19.5, 20.0, 20.5, 21.0, 21.5, 22.0, 22.5, 23.0, 23.5,
-            24.0, 24.5, 25.0, 25.5, 26.0, 26.5, 27.0, 27.5, 28.0
-        ],
-        'aggressive': [
-            # Distribute evenly across full range (22-32%) for improved diversity
-            22.0, 22.5, 23.0, 23.5, 24.0, 24.5, 25.0, 25.5, 26.0, 26.5, 27.0, 27.5,
-            28.0, 28.5, 29.0, 29.5, 30.0, 30.5, 31.0, 31.5, 32.0
-        ],
-        'very-aggressive': [
-            # Distribute evenly across full range (26-40%) for improved diversity
-            26.0, 26.5, 27.0, 27.5, 28.0, 28.5, 29.0, 29.5, 30.0, 30.5, 31.0, 31.5,
-            32.0, 32.5, 33.0, 33.5, 34.0, 34.5, 35.0, 35.5, 36.0, 36.5, 37.0, 37.5, 38.0, 38.5, 39.0, 39.5, 40.0
-        ]
-    }
+    # ==========================================================================
+    # RETURN TARGET GRADATION - Imported from unified config
+    # ==========================================================================
+    RETURN_TARGET_GRADATION: Dict[str, List[float]] = RISK_PROFILE_RETURN_TARGETS
     
     # Test configuration for 30 portfolios (50% of total)
     TEST_PORTFOLIOS_PER_PROFILE = 6  # 6 per profile × 5 profiles = 30 total
     
-    # Strategy 1B Quality control configuration - OPTIMIZED NON-OVERLAPPING ranges for 85%+ compliance
-    ENHANCED_QUALITY_CONTROL = {
-        'very-conservative': {
-            'return_range': (0.04, 0.14),    # Strategy 1B OPTIMIZED: 4% to 14% (expanded for compliance)
-            'risk_range': (0.128, 0.179),    # Realistic: 12.8-17.9%
-            'max_return_variance': 0.04,     # Tight tolerance for non-overlapping ranges
-            'max_risk_variance': 0.05,       # Standard tolerance
-            # NO DIVERSIFICATION LIMITS - let it vary naturally
-        },
-        'conservative': {
-            'return_range': (0.12, 0.22),    # Strategy 1B OPTIMIZED: 12% to 22% (expanded for compliance)
-            'risk_range': (0.151, 0.250),    # Realistic: 15.1-25.0%
-            'max_return_variance': 0.04,
-            'max_risk_variance': 0.05,
-            # NO DIVERSIFICATION LIMITS - let it vary naturally
-        },
-        'moderate': {
-            'return_range': (0.18, 0.28),    # FIXED: 18% to 28% (reduces overlap with aggressive)
-            'risk_range': (0.220, 0.320),    # Realistic: 22.0-32.0%
-            'max_return_variance': 0.04,
-            'max_risk_variance': 0.05,
-            # NO DIVERSIFICATION LIMITS - let it vary naturally
-        },
-        'aggressive': {
-            'return_range': (0.22, 0.32),    # EXPANDED: 22% to 32% (increased from 30% for more flexibility - 70 tickers available)
-            'risk_range': (0.28, 0.42),       # ALIGNED: 28-42% (matches risk_profile_config.py RISK_PROFILE_VOLATILITY)
-            'max_return_variance': 0.08,     # More tolerance for aggressive
-            'max_risk_variance': 0.05,       # Moderate risk tolerance
-            # NO DIVERSIFICATION LIMITS - let it vary naturally
-        },
-        'very-aggressive': {
-            'return_range': (0.26, 0.40),    # EXPANDED: 26% to 40% (increased from 38% for more flexibility - 36 tickers available)
-            'risk_range': (0.32, 0.55),       # ALIGNED: 32-55% (matches risk_profile_config.py RISK_PROFILE_VOLATILITY, adjusted min from 38% to 32%)
-            'max_return_variance': 0.10,     # Higher tolerance for very-aggressive
-            'max_risk_variance': 0.06,       # Moderate risk tolerance
-            # NO DIVERSIFICATION LIMITS - let it vary naturally
-        }
-    }
+    # ==========================================================================
+    # QUALITY CONTROL - Imported from unified config
+    # ==========================================================================
+    ENHANCED_QUALITY_CONTROL: Dict[str, Dict] = RISK_PROFILE_QUALITY_CONTROL
     
     @classmethod
     def get_return_target(cls, risk_profile: str, portfolio_index: int) -> float:

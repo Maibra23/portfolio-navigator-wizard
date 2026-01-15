@@ -29,6 +29,89 @@ class RedisPortfolioManager:
         if not self.redis_client:
             logger.warning("⚠️ Redis client not available, portfolio caching disabled")
     
+    def _validate_portfolio_compliance(self, portfolio: Dict, risk_profile: str) -> bool:
+        """
+        Final compliance check using three-tier system.
+        Accepts portfolios with violations ≤2% (COMPLIANT or ACCEPTABLE).
+        """
+        try:
+            from .risk_profile_config import UNIFIED_RISK_PROFILE_CONFIG
+            
+            config = UNIFIED_RISK_PROFILE_CONFIG.get(risk_profile)
+            if not config:
+                logger.warning(f"No config found for {risk_profile}")
+                return False
+            
+            # Get metrics (handle both decimal and percentage formats)
+            ret = portfolio.get('expectedReturn', 0)
+            risk = portfolio.get('risk', 0)
+            
+            # Convert to decimal if in percentage format
+            if ret > 1.0:  # Assume percentage if > 1
+                ret = ret / 100
+            if risk > 1.0:  # Assume percentage if > 1
+                risk = risk / 100
+            
+            # CRITICAL: Reject portfolios with non-positive returns
+            if ret <= 0:
+                logger.error(
+                    f"🔴 Storage REJECTED portfolio: Non-positive return {ret*100:.2f}% "
+                    f"for {risk_profile}. Stocks: {[a.get('symbol') for a in portfolio.get('allocations', [])[:3]]}"
+                )
+                return False
+            
+            # Get valid ranges (these are in decimals)
+            min_ret, max_ret = config['return_range']
+            min_risk, max_risk = config['quality_risk_range']
+            max_risk_variance = config.get('max_risk_variance', 0.05)
+            risk_max = max_risk + max_risk_variance
+            
+            # Calculate violations (in percentage points)
+            return_violation_pct = 0
+            if ret < min_ret:
+                return_violation_pct = (min_ret - ret) * 100
+            elif ret > max_ret:
+                return_violation_pct = (ret - max_ret) * 100
+            
+            risk_violation_pct = 0
+            if risk < min_risk:
+                risk_violation_pct = (min_risk - risk) * 100
+            elif risk > risk_max:
+                risk_violation_pct = (risk - risk_max) * 100
+            
+            max_violation_pct = max(return_violation_pct, risk_violation_pct)
+            
+            # Accept if violation ≤ 2% (COMPLIANT or ACCEPTABLE)
+            if max_violation_pct <= 2.0:
+                return True
+            
+            # Reject if violation > 2%
+            logger.warning(
+                f"Storage rejected portfolio: max_violation={max_violation_pct:.2f}%, "
+                f"return={ret*100:.2f}%, risk={risk*100:.2f}%"
+            )
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error validating portfolio: {e}")
+            return False
+
+    def _filter_valid_portfolios(self, portfolios: List[Dict], risk_profile: str) -> List[Dict]:
+        """Filter portfolios to only include compliant ones"""
+        validated = []
+        rejected = 0
+        
+        for portfolio in portfolios:
+            if self._validate_portfolio_compliance(portfolio, risk_profile):
+                validated.append(portfolio)
+            else:
+                rejected += 1
+        
+        if rejected > 0:
+            logger.warning(f"Rejected {rejected} non-compliant portfolios before storage for {risk_profile}")
+        
+        return validated
+
     def store_portfolio_bucket(self, risk_profile: str, portfolios: List[Dict]) -> bool:
         """Store 12 portfolios for a risk profile in Redis"""
         if not self.redis_client:
@@ -36,11 +119,66 @@ class RedisPortfolioManager:
             return False
         
         try:
+            # CRITICAL: First pass - reject any portfolio with non-positive returns
+            # These should have been filtered during generation, but double-check here
+            clean_portfolios = []
+            rejected_count = 0
+            for p in portfolios:
+                ret = p.get('expectedReturn', 0)
+                if ret > 1.0:
+                    ret = ret / 100
+                
+                if ret > 0:
+                    clean_portfolios.append(p)
+                else:
+                    rejected_count += 1
+                    logger.error(
+                        f"🔴 PRE-STORAGE REJECTION: Portfolio with return {ret*100:.2f}% "
+                        f"for {risk_profile}. Stocks: {[a.get('symbol') for a in p.get('allocations', [])[:3]]}"
+                    )
+            
+            if rejected_count > 0:
+                logger.error(
+                    f"🔴 {rejected_count} portfolios rejected for non-positive returns in {risk_profile}"
+                )
+            
+            # Second pass - validate against profile constraints
+            validated_portfolios = self._filter_valid_portfolios(clean_portfolios, risk_profile)
+            
+            if len(validated_portfolios) < 8:  # Require at least 8 valid portfolios
+                logger.error(
+                    f"Insufficient valid portfolios for {risk_profile}: "
+                    f"{len(validated_portfolios)}/12 passed validation (rejected {rejected_count} for negative returns)"
+                )
+                return False
+            
+            if len(validated_portfolios) < len(portfolios):
+                logger.warning(
+                    f"Using {len(validated_portfolios)}/{len(portfolios)} portfolios "
+                    f"after validation for {risk_profile}"
+                )
+            
+            # Use validated portfolios instead of original
+            portfolios = validated_portfolios
+
             bucket_key = f"portfolio_bucket:{risk_profile}"
             
-            # Store each portfolio
+            # Store each portfolio with FINAL validation
+            stored_count = 0
             for i, portfolio in enumerate(portfolios):
-                portfolio_key = f"{bucket_key}:{i}"
+                # FINAL CHECK: Absolutely no negative returns allowed
+                final_ret = portfolio.get('expectedReturn', 0)
+                if final_ret > 1.0:
+                    final_ret = final_ret / 100
+                
+                if final_ret <= 0:
+                    logger.error(
+                        f"🔴 FINAL STORAGE BLOCK: Portfolio {i+1} has non-positive return "
+                        f"{final_ret*100:.2f}%. NOT storing this portfolio."
+                    )
+                    continue  # Skip this portfolio
+                
+                portfolio_key = f"{bucket_key}:{stored_count}"
                 portfolio_json = json.dumps(portfolio, default=str)
                 
                 self.redis_client.setex(
@@ -49,14 +187,22 @@ class RedisPortfolioManager:
                     portfolio_json
                 )
                 
-                logger.debug(f"✅ Stored portfolio {i + 1} for {risk_profile}")
+                stored_count += 1
+                logger.debug(f"✅ Stored portfolio {stored_count} for {risk_profile}")
+            
+            # Check if we stored enough portfolios
+            if stored_count < 8:
+                logger.error(
+                    f"🔴 Only stored {stored_count} portfolios for {risk_profile} (need at least 8)"
+                )
+                return False
             
             # Store metadata
             metadata = {
                 'risk_profile': risk_profile,
-                'portfolio_count': len(portfolios),
+                'portfolio_count': stored_count,
                 'generated_at': datetime.now().isoformat(),
-                'data_dependency_hash': portfolios[0].get('data_dependency_hash', 'unknown'),
+                'data_dependency_hash': portfolios[0].get('data_dependency_hash', 'unknown') if portfolios else 'unknown',
                 'ttl_days': self.PORTFOLIO_TTL_DAYS,
                 'last_updated': datetime.now().isoformat()
             }
@@ -67,7 +213,7 @@ class RedisPortfolioManager:
                 json.dumps(metadata, default=str)
             )
             
-            logger.info(f"✅ Successfully stored {len(portfolios)} portfolios for {risk_profile} in Redis")
+            logger.info(f"✅ Successfully stored {stored_count} portfolios for {risk_profile} in Redis")
             
             # Auto-update PORTFOLIOS_IN_REDIS.md
             try:

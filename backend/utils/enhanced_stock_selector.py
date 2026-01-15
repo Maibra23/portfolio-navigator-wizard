@@ -116,6 +116,27 @@ class EnhancedStockSelector(PortfolioStockSelector):
             
             if not selected_stocks:
                 logger.warning(f"⚠️ No stocks selected, using fallback")
+                fallback = self._get_fallback_portfolio(risk_profile, portfolio_size)
+                logger.warning(f"🔴 FALLBACK USED for {risk_profile} - {len(fallback)} allocations")
+                return fallback
+            
+            # POST-SELECTION VALIDATION: Ensure selected stocks match profile requirements
+            volatility_range = self.RISK_PROFILE_VOLATILITY[risk_profile]
+            validated_stocks = self._validate_selected_stocks(selected_stocks, risk_profile, volatility_range)
+            
+            if not validated_stocks or len(validated_stocks) < portfolio_size:
+                logger.warning(f"⚠️ Selected stocks failed validation ({len(validated_stocks)}/{portfolio_size}), using fallback")
+                fallback = self._get_fallback_portfolio(risk_profile, portfolio_size)
+                logger.warning(f"🔴 FALLBACK USED for {risk_profile} - {len(fallback)} allocations")
+                return fallback
+            
+            selected_stocks = validated_stocks
+            
+            # POST-SELECTION VALIDATION: Ensure selected stocks match profile requirements
+            selected_stocks = self._validate_selected_stocks(selected_stocks, risk_profile, volatility_range)
+            
+            if not selected_stocks:
+                logger.warning(f"⚠️ Selected stocks failed validation, using fallback")
                 return self._get_fallback_portfolio(risk_profile, portfolio_size)
             
             # FIXED: Use dynamic weighting with flexible return targeting
@@ -149,17 +170,60 @@ class EnhancedStockSelector(PortfolioStockSelector):
     def _enhanced_stock_filtering(self, available_stocks: List[Dict], risk_profile: str, 
                                 portfolio_size: int, return_target: float = None) -> List[Dict]:
         """
-        Enhanced stock filtering that maximizes pool utilization
+        Enhanced stock filtering with STRICT volatility range enforcement
         """
         try:
             logger.debug(f"🔍 Enhanced filtering for {risk_profile} (need {portfolio_size} stocks)")
             
-            # Step 1: Filter by volatility range
+            # Step 1: Filter by volatility range - STRICT ENFORCEMENT
             volatility_range = self.RISK_PROFILE_VOLATILITY[risk_profile]
-            volatility_filtered = self._filter_stocks_by_volatility(available_stocks, volatility_range)
-            logger.debug(f"  After volatility filtering: {len(volatility_filtered)} stocks")
+            min_vol, max_vol = volatility_range
             
-            # Step 2: Apply return-based filtering with profile-specific flexibility for improved diversity
+            # STRICT: Only include stocks within volatility range
+            volatility_filtered = []
+            for stock in available_stocks:
+                stock_vol = stock.get('volatility', 0)
+                # Handle both decimal (0.25) and percentage (25.0) formats
+                if stock_vol > 1.0:
+                    stock_vol = stock_vol / 100
+                
+                if min_vol <= stock_vol <= max_vol:
+                    volatility_filtered.append(stock)
+            
+            logger.debug(f"  After STRICT volatility filtering ({min_vol:.1%}-{max_vol:.1%}): {len(volatility_filtered)} stocks")
+            
+            # VALIDATION: Verify all filtered stocks are actually in range
+            for stock in volatility_filtered[:5]:  # Check first 5
+                stock_vol = stock.get('volatility', 0)
+                if stock_vol > 1.0:
+                    stock_vol = stock_vol / 100
+                if not (min_vol <= stock_vol <= max_vol):
+                    logger.error(f"  ⚠️ VALIDATION FAILED: Stock {stock.get('symbol')} has volatility {stock_vol:.1%} outside range {min_vol:.1%}-{max_vol:.1%}")
+            
+            # Step 2: STRICT: Filter out negative returns - NEVER allow them
+            positive_return_stocks = []
+            for stock in volatility_filtered:
+                stock_return = stock.get('return', 0)
+                # Handle both decimal (0.15) and percentage (15.0) formats
+                if stock_return > 1.0:
+                    stock_return = stock_return / 100
+                
+                if stock_return > 0:  # STRICT: Must be positive
+                    positive_return_stocks.append(stock)
+                else:
+                    logger.debug(f"  Rejected {stock.get('symbol')}: non-positive return {stock_return:.2%}")
+            
+            logger.debug(f"  After positive return filtering: {len(positive_return_stocks)} stocks")
+            
+            if len(positive_return_stocks) < portfolio_size:
+                logger.error(
+                    f"  ⚠️ INSUFFICIENT POSITIVE RETURN STOCKS: "
+                    f"Only {len(positive_return_stocks)}/{len(volatility_filtered)} stocks have positive returns. "
+                    f"Need at least {portfolio_size} for portfolio size {portfolio_size}."
+                )
+                return []  # Return empty - let generation fail rather than create bad portfolio
+            
+            # Step 3: Apply return-based filtering with profile-specific flexibility
             if return_target is not None:
                 # Increase tolerance for higher-risk profiles to allow more diverse stock combinations
                 tolerance_map = {
@@ -171,34 +235,70 @@ class EnhancedStockSelector(PortfolioStockSelector):
                 }
                 return_tolerance = tolerance_map.get(risk_profile, 0.05)
                 
-                # Always use all volatility-filtered stocks, but prioritize by return proximity to target
-                # This allows more diverse combinations while still targeting desired returns
-                volatility_filtered.sort(
+                # Prioritize by return proximity to target
+                positive_return_stocks.sort(
                     key=lambda s: abs(s.get('return', 0) - return_target)
                 )
                 
-                logger.debug(f"  Using {len(volatility_filtered)} stocks, prioritized by return proximity to {return_target:.2%} (tolerance: {return_tolerance:.2%})")
-                return volatility_filtered
+                logger.debug(f"  Using {len(positive_return_stocks)} stocks, prioritized by return proximity to {return_target:.2%} (tolerance: {return_tolerance:.2%})")
+                return positive_return_stocks
             
-            # Step 3: Standard filtering (no return target)
-            # Filter out negative returns if we have enough positive return stocks
-            positive_return_stocks = [s for s in volatility_filtered if s.get('return', 0) > 0]
-            
-            if len(positive_return_stocks) >= portfolio_size * 2:  # Need 2x portfolio size for good selection
+            # Step 4: Standard filtering (no return target) - already filtered for positive returns
                 logger.debug(f"  Using {len(positive_return_stocks)} stocks with positive returns")
                 return positive_return_stocks
-            elif len(positive_return_stocks) >= portfolio_size:
-                logger.debug(f"  Using {len(positive_return_stocks)} positive return stocks (minimum needed)")
-                return positive_return_stocks
-            else:
-                logger.debug(f"  Only {len(positive_return_stocks)} positive return stocks, using all {len(volatility_filtered)} stocks")
-                return volatility_filtered
                 
         except Exception as e:
             logger.error(f"❌ Enhanced filtering failed: {e}")
             # Fallback to basic volatility filtering
             volatility_range = self.RISK_PROFILE_VOLATILITY[risk_profile]
             return self._filter_stocks_by_volatility(available_stocks, volatility_range)
+    
+    def _validate_selected_stocks(self, selected_stocks: List[Dict], risk_profile: str, 
+                                  volatility_range: Tuple[float, float]) -> List[Dict]:
+        """
+        Validate that selected stocks match profile requirements:
+        - All stocks within volatility range
+        - All stocks have positive returns
+        """
+        if not selected_stocks:
+            return []
+        
+        min_vol, max_vol = volatility_range
+        validated_stocks = []
+        
+        for stock in selected_stocks:
+            # Check volatility
+            stock_vol = stock.get('volatility', 0)
+            if stock_vol > 1.0:
+                stock_vol = stock_vol / 100
+            
+            if not (min_vol <= stock_vol <= max_vol):
+                logger.warning(
+                    f"  ⚠️ Rejected {stock.get('symbol')}: volatility {stock_vol:.1%} "
+                    f"outside range {min_vol:.1%}-{max_vol:.1%}"
+                )
+                continue
+            
+            # Check return
+            stock_return = stock.get('return', 0)
+            if stock_return > 1.0:
+                stock_return = stock_return / 100
+            
+            if stock_return <= 0:
+                logger.warning(
+                    f"  ⚠️ Rejected {stock.get('symbol')}: non-positive return {stock_return:.2%}"
+                )
+                continue
+            
+            validated_stocks.append(stock)
+        
+        if len(validated_stocks) < len(selected_stocks):
+            logger.warning(
+                f"  ⚠️ Validation removed {len(selected_stocks) - len(validated_stocks)} stocks "
+                f"({len(validated_stocks)}/{len(selected_stocks)} remain)"
+            )
+        
+        return validated_stocks
     
     def _create_dynamic_allocations(self, selected_stocks: List[Dict], 
                                   return_target: float) -> List[Dict]:

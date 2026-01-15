@@ -9,6 +9,7 @@ import { RiskProfiler } from './wizard/RiskProfiler';
 import { CapitalInput } from './wizard/CapitalInput';
 import { StockSelection } from './wizard/StockSelection';
 import { PortfolioOptimization } from './wizard/PortfolioOptimization';
+import { StressTest } from './wizard/StressTest';
 
 export type RiskProfile = 'very-conservative' | 'conservative' | 'moderate' | 'aggressive' | 'very-aggressive' | null;
 
@@ -28,7 +29,7 @@ export interface PortfolioMetrics {
 
 // Selected portfolio data from optimization step
 export interface SelectedPortfolioData {
-  source: 'current' | 'optimized';
+  source: 'current' | 'weights' | 'market';
   tickers: string[];
   weights: Record<string, number>;
   metrics: {
@@ -151,6 +152,17 @@ export const PortfolioWizard = () => {
               console.log('📊 Portfolio selection received:', portfolio.source, portfolio.tickers);
               updateWizardData({ selectedPortfolio: portfolio });
             }}
+          />
+        );
+      case 'stress-test':
+        console.log('📱 Rendering StressTest component');
+        return (
+          <StressTest
+            onNext={nextStep}
+            onPrev={prevStep}
+            selectedPortfolio={wizardData.selectedPortfolio}
+            capital={wizardData.capital}
+            riskProfile={wizardData.riskProfile || 'moderate'}
           />
         );
       default:

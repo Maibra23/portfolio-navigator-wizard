@@ -39,7 +39,8 @@ def main():
     
     portfolio_manager = RedisPortfolioManager(redis_client)
     portfolio_analytics = PortfolioAnalytics()
-    portfolio_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_analytics)
+    # Use conservative approach + Strategy 5 for aggressive profiles
+    portfolio_generator = EnhancedPortfolioGenerator(redis_first_data_service, portfolio_analytics, use_conservative_approach=True)
     
     print("✅ Services initialized")
     print()

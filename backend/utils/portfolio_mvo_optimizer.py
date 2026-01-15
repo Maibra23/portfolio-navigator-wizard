@@ -152,33 +152,94 @@ class PortfolioMVOptimizer:
                 if 'max_weight' in constraints:
                     ef.add_constraint(lambda w: w <= constraints['max_weight'])
             
-            # Perform optimization based on type
+            # Perform optimization based on type with fallback mechanisms
             if optimization_type == "max_sharpe":
-                weights = ef.max_sharpe(risk_free_rate=self.risk_free_rate)
-                weights = ef.clean_weights()
+                strategy_name = "Maximum Sharpe Ratio"
+                optimization_successful = False
+                
+                # Try max_sharpe optimization with progressive fallback
+                try:
+                    weights = ef.max_sharpe(risk_free_rate=self.risk_free_rate)
+                    weights = ef.clean_weights()
+                    optimization_successful = True
+                except Exception as e:
+                    logger.warning(f"⚠️ max_sharpe optimization failed: {e}, trying fallback strategies...")
+                    optimization_successful = False
                 
                 # Check if risk profile constraint is violated and enforce it
-                if risk_profile and max_risk is not None:
+                if optimization_successful and risk_profile and max_risk is not None:
                     # Calculate portfolio metrics to check risk
                     portfolio_risk_check = ef.portfolio_performance(verbose=False)[1]
                     if portfolio_risk_check > max_risk:
                         # Re-optimize with risk constraint: create new EfficientFrontier instance
                         # to avoid "already solved problem" error
-                        ef_constrained = EfficientFrontier(mu, sigma_df)
-                        # Apply same constraints if any
-                        if constraints:
-                            if 'min_weight' in constraints:
-                                ef_constrained.add_constraint(lambda w: w >= constraints['min_weight'])
-                            if 'max_weight' in constraints:
-                                ef_constrained.add_constraint(lambda w: w <= constraints['max_weight'])
-                        weights = ef_constrained.efficient_risk(max_risk)
-                        weights = ef_constrained.clean_weights()
-                        ef = ef_constrained  # Use constrained optimizer for metrics calculation
-                        strategy_name = f"Maximum Sharpe Ratio (Risk-Constrained ≤{max_risk:.1%})"
-                    else:
-                        strategy_name = "Maximum Sharpe Ratio"
-                else:
-                    strategy_name = "Maximum Sharpe Ratio"
+                        try:
+                            ef_constrained = EfficientFrontier(mu, sigma_df)
+                            # Apply same constraints if any
+                            if constraints:
+                                if 'min_weight' in constraints:
+                                    ef_constrained.add_constraint(lambda w: w >= constraints['min_weight'])
+                                if 'max_weight' in constraints:
+                                    ef_constrained.add_constraint(lambda w: w <= constraints['max_weight'])
+                            weights = ef_constrained.efficient_risk(max_risk)
+                            weights = ef_constrained.clean_weights()
+                            ef = ef_constrained  # Use constrained optimizer for metrics calculation
+                            strategy_name = f"Maximum Sharpe Ratio (Risk-Constrained ≤{max_risk:.1%})"
+                        except Exception as e:
+                            logger.warning(f"⚠️ efficient_risk optimization failed: {e}, trying relaxed constraints...")
+                            optimization_successful = False
+                
+                # PRIORITY 1: Constraint relaxation with progressive fallback
+                if not optimization_successful:
+                    relaxation_attempts = [
+                        (1.05, "5% relaxation"),
+                        (1.10, "10% relaxation"),
+                        (1.15, "15% relaxation"),
+                        (None, "min_variance fallback")
+                    ]
+                    
+                    for relaxation_factor, description in relaxation_attempts:
+                        try:
+                            if relaxation_factor is not None and max_risk is not None:
+                                # Try with relaxed risk constraint
+                                relaxed_risk = max_risk * relaxation_factor
+                                # Check if relaxed risk is still within reasonable bounds
+                                profile_max = self._get_max_risk_for_profile(risk_profile) if risk_profile else 0.50
+                                if relaxed_risk <= profile_max * 1.2:  # Allow up to 20% over profile max
+                                    logger.info(f"🔄 Attempting optimization with {description} (risk: {max_risk:.2%} → {relaxed_risk:.2%})")
+                                    ef_relaxed = EfficientFrontier(mu, sigma_df)
+                                    if constraints:
+                                        if 'min_weight' in constraints:
+                                            ef_relaxed.add_constraint(lambda w: w >= constraints['min_weight'])
+                                        if 'max_weight' in constraints:
+                                            ef_relaxed.add_constraint(lambda w: w <= constraints['max_weight'])
+                                    weights = ef_relaxed.efficient_risk(relaxed_risk)
+                                    weights = ef_relaxed.clean_weights()
+                                    ef = ef_relaxed
+                                    strategy_name = f"Maximum Sharpe Ratio ({description}, Risk ≤{relaxed_risk:.1%})"
+                                    optimization_successful = True
+                                    break
+                            else:
+                                # Final fallback: min_variance
+                                logger.info(f"🔄 Attempting {description}...")
+                                ef_fallback = EfficientFrontier(mu, sigma_df)
+                                if constraints:
+                                    if 'min_weight' in constraints:
+                                        ef_fallback.add_constraint(lambda w: w >= constraints['min_weight'])
+                                    if 'max_weight' in constraints:
+                                        ef_fallback.add_constraint(lambda w: w <= constraints['max_weight'])
+                                weights = ef_fallback.min_volatility()
+                                weights = ef_fallback.clean_weights()
+                                ef = ef_fallback
+                                strategy_name = "Minimum Variance (Fallback)"
+                                optimization_successful = True
+                                break
+                        except Exception as e:
+                            logger.debug(f"⚠️ {description} failed: {e}")
+                            continue
+                    
+                    if not optimization_successful:
+                        raise Exception("All optimization strategies failed, including fallbacks")
             elif optimization_type == "min_variance":
                 weights = ef.min_volatility()
                 strategy_name = "Minimum Variance"
@@ -648,9 +709,10 @@ class PortfolioMVOptimizer:
     
     def calculate_capital_market_line(self, 
                                      efficient_frontier: List[Dict[str, Any]],
-                                     risk_free_rate: Optional[float] = None) -> List[Dict[str, Any]]:
+                                     risk_free_rate: Optional[float] = None,
+                                     market_portfolio: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Calculate Capital Market Line (CML) from efficient frontier
+        Calculate Capital Market Line (CML) from efficient frontier or market portfolio
         
         CML formula: Return = Rf + (Rm - Rf) / σm * σ
         Where:
@@ -662,32 +724,53 @@ class PortfolioMVOptimizer:
         Args:
             efficient_frontier: List of efficient frontier points
             risk_free_rate: Risk-free rate (uses self.risk_free_rate if None)
+            market_portfolio: Optional market-optimized portfolio dict with 'return' and 'risk' keys.
+                            If provided, CML will be calculated from this portfolio instead of
+                            finding the tangent portfolio from the efficient frontier.
+                            This ensures CML always connects Rf to the market-optimized portfolio.
             
         Returns:
             List of CML points with risk and return
         """
         try:
-            if not efficient_frontier or len(efficient_frontier) < 2:
-                logger.warning("⚠️ Insufficient frontier points for CML calculation")
-                return []
-            
             rf = risk_free_rate if risk_free_rate is not None else self.risk_free_rate
             
-            # Find tangent portfolio (maximum Sharpe ratio on efficient frontier)
-            tangent_portfolio = max(
-                efficient_frontier,
-                key=lambda p: p.get('sharpe_ratio', 0) if p.get('sharpe_ratio') is not None else 0
-            )
-            
-            market_return = tangent_portfolio.get('return', 0)
-            market_risk = tangent_portfolio.get('risk', 0)
-            
-            if market_risk <= 0:
-                logger.warning("⚠️ Invalid market risk for CML calculation")
-                return []
-            
-            # Calculate market portfolio Sharpe ratio
-            market_sharpe = (market_return - rf) / market_risk if market_risk > 0 else 0
+            # If market portfolio is provided, use it directly (ensures CML connects to market-opt portfolio)
+            if market_portfolio is not None:
+                market_return = market_portfolio.get('return', 0)
+                market_risk = market_portfolio.get('risk', 0)
+                
+                if market_risk <= 0:
+                    logger.warning("⚠️ Invalid market portfolio risk for CML calculation")
+                    return []
+                
+                # Calculate market portfolio Sharpe ratio
+                market_sharpe = (market_return - rf) / market_risk if market_risk > 0 else 0
+                
+                logger.info(f"📈 Calculating CML from market-optimized portfolio: {market_return:.2%} return, {market_risk:.2%} risk")
+            else:
+                # Fallback: Find tangent portfolio from efficient frontier
+                if not efficient_frontier or len(efficient_frontier) < 2:
+                    logger.warning("⚠️ Insufficient frontier points for CML calculation")
+                    return []
+                
+                # Find tangent portfolio (maximum Sharpe ratio on efficient frontier)
+                tangent_portfolio = max(
+                    efficient_frontier,
+                    key=lambda p: p.get('sharpe_ratio', 0) if p.get('sharpe_ratio') is not None else 0
+                )
+                
+                market_return = tangent_portfolio.get('return', 0)
+                market_risk = tangent_portfolio.get('risk', 0)
+                
+                if market_risk <= 0:
+                    logger.warning("⚠️ Invalid market risk for CML calculation")
+                    return []
+                
+                # Calculate market portfolio Sharpe ratio
+                market_sharpe = (market_return - rf) / market_risk if market_risk > 0 else 0
+                
+                logger.info(f"📈 Calculating CML from efficient frontier tangent portfolio: {market_return:.2%} return, {market_risk:.2%} risk")
             
             # Generate CML points
             # CML extends from risk-free rate (0 risk) to 1.5x market risk
@@ -705,7 +788,7 @@ class PortfolioMVOptimizer:
                     'sharpe_ratio': market_sharpe if risk > 0 else None
                 })
             
-            logger.info(f"✅ Generated CML with {len(cml_points)} points (tangent portfolio: {market_return:.2%} return, {market_risk:.2%} risk)")
+            logger.info(f"✅ Generated CML with {len(cml_points)} points (market portfolio: {market_return:.2%} return, {market_risk:.2%} risk, Sharpe: {market_sharpe:.3f})")
             return cml_points
             
         except Exception as e:

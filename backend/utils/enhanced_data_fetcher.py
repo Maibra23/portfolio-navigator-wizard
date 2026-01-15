@@ -413,8 +413,16 @@ class EnhancedDataFetcher:
                 
                 # Use lightweight validation for price data
                 if self._validate_and_cache_price_data(ticker, prices_dict):
-                    # Auto-calculate and save metrics
-                    self._calculate_and_save_metrics(ticker, prices_series)
+                    # Auto-calculate and save metrics (standard approach)
+                    # This ensures metrics are always computed when data is fetched
+                    try:
+                        metrics_saved = self._calculate_and_save_metrics(ticker, prices_series)
+                        if not metrics_saved:
+                            logger.warning(f"⚠️ {ticker}: Metrics calculation failed, but price data was cached")
+                        # Continue even if metrics fail - price data is still valid
+                    except Exception as metrics_error:
+                        logger.warning(f"⚠️ {ticker}: Error computing metrics: {metrics_error}, but price data was cached")
+                        # Don't fail the entire cache operation if metrics fail
                 else:
                     logger.warning(f"⚠️ {ticker}: Price data validation failed")
                     return False
@@ -479,22 +487,31 @@ class EnhancedDataFetcher:
         return None
 
     def _calculate_and_save_metrics(self, ticker: str, prices: pd.Series) -> bool:
-        """Calculate and save risk/return metrics for a ticker"""
+        """Calculate and save risk/return metrics for a ticker - STANDARD FORMAT"""
         try:
-            if len(prices) < 12:  # Need at least 12 months
-                logger.warning(f"⚠️ {ticker}: Insufficient data for metrics calculation ({len(prices)} < 12)")
+            if len(prices) < 2:  # Need at least 2 data points for returns calculation
+                logger.warning(f"⚠️ {ticker}: Insufficient data for metrics calculation ({len(prices)} < 2)")
                 return False
             
             # Calculate returns
             returns = prices.pct_change().dropna()
             
-            # Calculate metrics (using consistent naming: 'risk' not 'volatility')
+            if len(returns) < 2:
+                logger.warning(f"⚠️ {ticker}: Insufficient returns data for metrics calculation")
+                return False
+            
+            # Calculate monthly metrics
             monthly_return = returns.mean()
             monthly_risk = returns.std()
             
-            # Annualize metrics
-            annual_return = (1 + monthly_return) ** 12 - 1  # Compound annual return
-            annual_risk = monthly_risk * (12 ** 0.5)  # Annualized risk
+            # Annualize metrics - use simple multiplication for consistency with system expectations
+            # For small returns, compound and simple are similar; for large returns, simple is more stable
+            if abs(monthly_return) < 0.1:  # Small returns, compound is fine
+                annual_return = (1 + monthly_return) ** 12 - 1
+            else:  # Large returns, use simple multiplication to avoid extreme values
+                annual_return = monthly_return * 12
+            
+            annual_risk = monthly_risk * (12 ** 0.5)  # Annualized volatility
             
             # Calculate max drawdown
             cumulative = (1 + returns).cumprod()
@@ -502,11 +519,27 @@ class EnhancedDataFetcher:
             drawdowns = (cumulative - rolling_max) / rolling_max
             max_drawdown = drawdowns.min()
             
-            # Create metrics dictionary
+            # Calculate sharpe ratio (assuming risk-free rate of 0 for simplicity)
+            sharpe_ratio = (annual_return / annual_risk) if annual_risk > 0 else None
+            
+            # Calculate skewness and kurtosis
+            skewness = returns.skew()
+            kurtosis = returns.kurtosis()
+            
+            # Create metrics dictionary - STANDARD FORMAT with both naming conventions for compatibility
             metrics = {
-                'annualized_return': float(annual_return),
-                'risk': float(annual_risk),  # Consistent naming: 'risk' not 'volatility'
-                'max_drawdown': float(max_drawdown),
+                # Standard format (primary) - used by optimization and portfolio systems
+                'expected_return': float(annual_return),
+                'volatility': float(annual_risk),
+                # Legacy format (secondary) - for backward compatibility
+                'annualized_return': float(annual_return * 100),  # Percentage format
+                'risk': float(annual_risk),  # Alternative naming
+                # Additional metrics
+                'max_drawdown': float(max_drawdown) if not pd.isna(max_drawdown) else None,
+                'sharpe_ratio': float(sharpe_ratio) if sharpe_ratio is not None and not pd.isna(sharpe_ratio) else None,
+                'skewness': float(skewness) if not pd.isna(skewness) else None,
+                'kurtosis': float(kurtosis) if not pd.isna(kurtosis) else None,
+                # Metadata
                 'data_points': len(prices),
                 'last_price': float(prices.iloc[-1]),
                 'calculation_date': datetime.now().isoformat(),
@@ -518,11 +551,13 @@ class EnhancedDataFetcher:
             metrics_data = json.dumps(metrics).encode()
             self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), metrics_data)
             
-            logger.debug(f"✅ {ticker}: Metrics calculated and cached")
+            logger.debug(f"✅ {ticker}: Metrics calculated and cached (return={annual_return:.4f}, volatility={annual_risk:.4f})")
             return True
             
         except Exception as e:
             logger.error(f"❌ Failed to calculate metrics for {ticker}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return False
 
     def get_cached_metrics(self, ticker: str) -> Optional[Dict[str, Any]]:

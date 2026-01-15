@@ -1,0 +1,1516 @@
+"""
+Stress Test Analyzer Module
+Analyzes portfolio performance during historical market crises
+"""
+
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Any
+from datetime import datetime, timedelta
+import logging
+import time
+from .redis_first_data_service import redis_first_data_service
+try:
+    from dateutil.relativedelta import relativedelta
+except ImportError:
+    # Fallback if dateutil not available
+    relativedelta = None
+
+logger = logging.getLogger(__name__)
+
+class StressTestAnalyzer:
+    """
+    Analyzes portfolio resilience during historical market stress scenarios
+    """
+    
+    def __init__(self):
+        self.data_service = redis_first_data_service
+        # Cache for portfolio value calculations to avoid redundant computations
+        self._portfolio_value_cache = {}
+    
+    def filter_prices_by_date_range(
+        self, 
+        prices: Dict[str, float], 
+        start_date: str, 
+        end_date: str
+    ) -> Dict[str, float]:
+        """
+        Filter price dictionary by date range.
+        
+        Args:
+            prices: Dict with date strings as keys (format: 'YYYY-MM-DD') and float prices as values
+            start_date: Start date string (format: 'YYYY-MM-DD')
+            end_date: End date string (format: 'YYYY-MM-DD')
+        
+        Returns:
+            Filtered price dictionary with only dates within range (inclusive)
+        """
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            
+            filtered = {}
+            for date_str, price in prices.items():
+                try:
+                    date_dt = datetime.strptime(date_str, '%Y-%m-%d')
+                    if start_dt <= date_dt <= end_dt:
+                        filtered[date_str] = price
+                except (ValueError, TypeError):
+                    # Skip invalid date formats
+                    continue
+            
+            return filtered
+        except Exception as e:
+            logger.warning(f"⚠️ Error filtering prices by date range: {e}")
+            return {}
+    
+    def detect_peaks_and_troughs(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        crisis_start_date: Optional[str] = None,
+        crisis_end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Detect peaks and troughs in portfolio value series.
+
+        This helper is used in multiple contexts:
+        - For crisis analysis, we want a **pre-crisis peak** and **crisis trough**
+        - For generic usage, we fall back to the simple global peak/trough logic
+
+        Args:
+            portfolio_values: List of portfolio values (normalized, starting at 1.0)
+            dates: List of date strings corresponding to values (format: 'YYYY-MM-DD')
+            crisis_start_date: Optional crisis start date to anchor the peak
+            crisis_end_date: Optional crisis end date to bound the trough search
+
+        Returns:
+            Dict with peak, trough, recovery_peak, all_peaks, all_troughs
+        """
+        try:
+            if len(portfolio_values) == 0 or len(dates) == 0:
+                return {
+                    'peak': None,
+                    'trough': None,
+                    'recovery_peak': None,
+                    'all_peaks': [],
+                    'all_troughs': []
+                }
+
+            values_array = np.array(portfolio_values)
+
+            # --- Determine analysis window for crisis-aware mode ---
+            if crisis_start_date is not None or crisis_end_date is not None:
+                # Parse dates once
+                parsed_dates = [datetime.strptime(d, '%Y-%m-%d') for d in dates]
+
+                if crisis_start_date is not None:
+                    crisis_start_dt = datetime.strptime(crisis_start_date, '%Y-%m-%d')
+                    start_idx_candidates = [
+                        i for i, dt in enumerate(parsed_dates) if dt >= crisis_start_dt
+                    ]
+                    start_idx = start_idx_candidates[0] if start_idx_candidates else 0
+                else:
+                    start_idx = 0
+
+                if crisis_end_date is not None:
+                    crisis_end_dt = datetime.strptime(crisis_end_date, '%Y-%m-%d')
+                    end_idx_candidates = [
+                        i for i, dt in enumerate(parsed_dates) if dt <= crisis_end_dt
+                    ]
+                    end_idx = end_idx_candidates[-1] if end_idx_candidates else len(values_array) - 1
+                else:
+                    end_idx = len(values_array) - 1
+
+                # Ensure valid window
+                if start_idx >= len(values_array):
+                    start_idx = 0
+                if end_idx < start_idx:
+                    end_idx = len(values_array) - 1
+
+                # Pre-crisis peak: value at crisis start (or first available in window)
+                peak_idx = start_idx
+                peak = {
+                    'value': float(values_array[peak_idx]),
+                    'date': dates[peak_idx],
+                    'index': peak_idx,
+                }
+
+                # Crisis trough: minimum value within crisis window [start_idx, end_idx]
+                if end_idx > start_idx:
+                    window_values = values_array[start_idx:end_idx + 1]
+                    trough_relative_idx = int(np.argmin(window_values))
+                    trough_idx = start_idx + trough_relative_idx
+                else:
+                    trough_idx = peak_idx
+
+                trough = {
+                    'value': float(values_array[trough_idx]),
+                    'date': dates[trough_idx],
+                    'index': trough_idx,
+                }
+            else:
+                # --- Generic global peak / post-peak trough (legacy behaviour) ---
+                peak_idx = int(np.argmax(values_array))
+                peak = {
+                    'value': float(values_array[peak_idx]),
+                    'date': dates[peak_idx],
+                    'index': peak_idx
+                }
+
+                if peak_idx < len(values_array) - 1:
+                    post_peak_values = values_array[peak_idx + 1:]
+                    if len(post_peak_values) > 0:
+                        trough_relative_idx = int(np.argmin(post_peak_values))
+                        trough_idx = peak_idx + 1 + trough_relative_idx
+                    else:
+                        trough_idx = peak_idx
+                else:
+                    trough_idx = peak_idx
+
+                trough = {
+                    'value': float(values_array[trough_idx]),
+                    'date': dates[trough_idx],
+                    'index': trough_idx
+                }
+
+            # Find recovery peak (maximum value after trough) - post-recovery peak
+            recovery_peak = None
+            if trough['index'] < len(values_array) - 1:
+                post_trough_values = values_array[trough['index'] + 1:]
+                if len(post_trough_values) > 0:
+                    recovery_relative_idx = int(np.argmax(post_trough_values))
+                    recovery_idx = trough['index'] + 1 + recovery_relative_idx
+                    recovery_value = float(values_array[recovery_idx])
+                    # Only consider it recovery if it's at least 95% of peak value
+                    if recovery_value >= peak['value'] * 0.95:
+                        recovery_peak = {
+                            'value': recovery_value,
+                            'date': dates[recovery_idx],
+                            'index': recovery_idx
+                        }
+
+            # Detect local peaks and troughs using simple neighbour comparison
+            all_peaks: List[Dict[str, Any]] = []
+            all_troughs: List[Dict[str, Any]] = []
+
+            for i in range(1, len(values_array) - 1):
+                if values_array[i] > values_array[i - 1] and values_array[i] > values_array[i + 1]:
+                    all_peaks.append({
+                        'value': float(values_array[i]),
+                        'date': dates[i],
+                        'index': i,
+                    })
+
+                if values_array[i] < values_array[i - 1] and values_array[i] < values_array[i + 1]:
+                    all_troughs.append({
+                        'value': float(values_array[i]),
+                        'date': dates[i],
+                        'index': i,
+                    })
+
+            return {
+                'peak': peak,
+                'trough': trough,
+                'recovery_peak': recovery_peak,
+                'all_peaks': all_peaks,
+                'all_troughs': all_troughs,
+            }
+        except Exception as e:
+            logger.error(f"❌ Error detecting peaks and troughs: {e}")
+            return {
+                'peak': None,
+                'trough': None,
+                'recovery_peak': None,
+                'all_peaks': [],
+                'all_troughs': []
+            }
+    
+    def calculate_portfolio_values_over_period(
+        self,
+        tickers: List[str],
+        weights: Dict[str, float],
+        start_date: str,
+        end_date: str,
+        include_recovery: bool = True,
+        use_cache: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Calculate portfolio values over a specific time period.
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Dict mapping ticker to weight (e.g., {'AAPL': 0.4, 'MSFT': 0.6})
+            start_date: Start date string (format: 'YYYY-MM-DD')
+            end_date: End date string (format: 'YYYY-MM-DD')
+            include_recovery: If True, extend 6 months past end_date to capture recovery
+            use_cache: If True, use cached results for identical requests
+        
+        Returns:
+            Dict with dates, values, monthly_returns, data_availability
+        """
+        try:
+            # Check cache first (if enabled and same parameters)
+            if use_cache:
+                cache_key = (
+                    tuple(sorted(tickers)),
+                    tuple(sorted(weights.items())),
+                    start_date,
+                    end_date,
+                    include_recovery
+                )
+                if cache_key in self._portfolio_value_cache:
+                    logger.debug(f"📦 Using cached portfolio values for period {start_date} to {end_date}")
+                    return self._portfolio_value_cache[cache_key]
+            # Extend end date if recovery period requested
+            if include_recovery:
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                recovery_end_dt = end_dt + timedelta(days=180)  # 6 months
+                recovery_end_date = recovery_end_dt.strftime('%Y-%m-%d')
+            else:
+                recovery_end_date = end_date
+            
+            # Step 1: Retrieve and filter price data for all tickers
+            import time
+            data_start = time.time()
+            ticker_prices = {}
+            data_availability = {}
+            
+            for ticker in tickers:
+                ticker_start = time.time()
+                ticker_data = self.data_service.get_monthly_data(ticker)
+                ticker_time = time.time() - ticker_start
+                if ticker_time > 0.5:  # Log slow data retrievals
+                    logger.debug(f"⏱️ {ticker} data retrieved in {ticker_time:.3f}s")
+                if ticker_data and ticker_data.get('prices'):
+                    prices = ticker_data['prices']
+                    # Convert to dict if it's a Series
+                    if isinstance(prices, pd.Series):
+                        prices_dict = {str(date): float(price) for date, price in prices.items()}
+                    elif isinstance(prices, dict):
+                        prices_dict = prices
+                    elif isinstance(prices, list):
+                        # If it's a list, we need dates - try to get from ticker_data
+                        dates = ticker_data.get('dates', [])
+                        if len(dates) == len(prices):
+                            prices_dict = {str(date): float(price) for date, price in zip(dates, prices)}
+                        else:
+                            logger.warning(f"⚠️ {ticker}: Mismatch between dates and prices")
+                            data_availability[ticker] = False
+                            continue
+                    else:
+                        logger.warning(f"⚠️ {ticker}: Unsupported price data format")
+                        data_availability[ticker] = False
+                        continue
+                    
+                    # Filter by date range
+                    filtered_prices = self.filter_prices_by_date_range(
+                        prices_dict, 
+                        start_date, 
+                        recovery_end_date
+                    )
+                    
+                    if len(filtered_prices) > 0:
+                        ticker_prices[ticker] = filtered_prices
+                        data_availability[ticker] = True
+                    else:
+                        data_availability[ticker] = False
+                else:
+                    data_availability[ticker] = False
+            
+            data_time = time.time() - data_start
+            if data_time > 1.0:  # Log if data retrieval takes more than 1 second
+                logger.debug(f"⏱️ Total data retrieval time: {data_time:.3f}s for {len(tickers)} tickers")
+            
+            # Step 2: Find common dates (dates present in all tickers with data)
+            if not ticker_prices:
+                return {
+                    'dates': [],
+                    'values': [],
+                    'monthly_returns': [],
+                    'data_availability': data_availability
+                }
+            
+            # Get all unique dates from all tickers
+            all_dates = set()
+            for prices in ticker_prices.values():
+                all_dates.update(prices.keys())
+            
+            # Sort dates chronologically
+            sorted_dates = sorted(all_dates, key=lambda x: datetime.strptime(x, '%Y-%m-%d'))
+            
+            # Step 3: Calculate portfolio value for each date
+            portfolio_values = []
+            valid_dates = []
+            
+            # Normalize weights to sum to 1.0 (only for tickers with data)
+            available_tickers = [t for t in tickers if data_availability.get(t, False)]
+            if not available_tickers:
+                return {
+                    'dates': [],
+                    'values': [],
+                    'monthly_returns': [],
+                    'data_availability': data_availability
+                }
+            
+            total_weight = sum(weights.get(t, 0.0) for t in available_tickers)
+            if total_weight <= 0:
+                # Fallback to equal weights
+                normalized_weights = {t: 1.0 / len(available_tickers) for t in available_tickers}
+            else:
+                normalized_weights = {t: weights.get(t, 0.0) / total_weight for t in available_tickers}
+            
+            # Track last known prices for missing dates
+            last_known_prices = {}
+            
+            for date_str in sorted_dates:
+                portfolio_value = 0.0
+                date_valid = True
+                
+                for ticker in available_tickers:
+                    if ticker in ticker_prices:
+                        prices = ticker_prices[ticker]
+                        if date_str in prices:
+                            price = prices[date_str]
+                            last_known_prices[ticker] = price
+                        elif ticker in last_known_prices:
+                            # Use last known price if date missing
+                            price = last_known_prices[ticker]
+                        else:
+                            # No data for this ticker on this date, skip date
+                            date_valid = False
+                            break
+                        
+                        portfolio_value += price * normalized_weights[ticker]
+                
+                if date_valid and portfolio_value > 0:
+                    portfolio_values.append(portfolio_value)
+                    valid_dates.append(date_str)
+            
+            # Step 4: Normalize values to start at 1.0
+            if len(portfolio_values) > 0:
+                initial_value = portfolio_values[0]
+                normalized_values = [v / initial_value for v in portfolio_values]
+            else:
+                normalized_values = []
+            
+            # Step 5: Calculate monthly returns
+            monthly_returns = []
+            for i in range(1, len(normalized_values)):
+                if normalized_values[i-1] > 0:
+                    monthly_return = (normalized_values[i] - normalized_values[i-1]) / normalized_values[i-1]
+                    monthly_returns.append(monthly_return)
+                else:
+                    monthly_returns.append(0.0)
+            
+            # Add 0.0 for first month (no return yet)
+            if len(monthly_returns) < len(normalized_values):
+                monthly_returns.insert(0, 0.0)
+            
+            result = {
+                'dates': valid_dates,
+                'values': normalized_values,
+                'monthly_returns': monthly_returns,
+                'data_availability': data_availability
+            }
+            
+            # Cache result if enabled
+            if use_cache:
+                cache_key = (
+                    tuple(sorted(tickers)),
+                    tuple(sorted(weights.items())),
+                    start_date,
+                    end_date,
+                    include_recovery
+                )
+                self._portfolio_value_cache[cache_key] = result
+            
+            return result
+        except Exception as e:
+            logger.error(f"❌ Error calculating portfolio values: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'dates': [],
+                'values': [],
+                'monthly_returns': [],
+                'data_availability': {t: False for t in tickers}
+            }
+    
+    def calculate_maximum_drawdown(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        crisis_start_date: Optional[str] = None,
+        crisis_end_date: Optional[str] = None,
+        drawdown_threshold: float = 0.03
+    ) -> Dict[str, Any]:
+        """
+        Calculate maximum drawdown from peak to trough.
+        
+        Drawdown is calculated as: (Trough Value - Peak Value) / Peak Value
+        Only meaningful if drawdown exceeds threshold (default 3%).
+        
+        Args:
+            portfolio_values: List of normalized portfolio values
+            dates: List of date strings
+            crisis_start_date: Optional crisis start date to find pre-crisis peak
+            crisis_end_date: Optional crisis end date to limit trough search
+            drawdown_threshold: Minimum drawdown percentage to be considered meaningful (default 3%)
+        
+        Returns:
+            Dict with max_drawdown, peak_value, peak_date, trough_value, trough_date,
+            drawdown_duration_months, is_significant (bool)
+        """
+        try:
+            # Use crisis-aware peak/trough detection when boundaries are provided
+            peaks_troughs = self.detect_peaks_and_troughs(
+                portfolio_values,
+                dates,
+                crisis_start_date=crisis_start_date,
+                crisis_end_date=crisis_end_date,
+            )
+
+            if not peaks_troughs['peak'] or not peaks_troughs['trough']:
+                return {
+                    'max_drawdown': 0.0,
+                    'peak_value': 1.0,
+                    'peak_date': dates[0] if dates else '',
+                    'trough_value': 1.0,
+                    'trough_date': dates[0] if dates else '',
+                    'drawdown_duration_months': 0,
+                    'is_significant': False,
+                }
+
+            peak = peaks_troughs['peak']
+            trough = peaks_troughs['trough']
+
+            # Calculate drawdown: (Trough - Peak) / Peak
+            # Negative value means portfolio dropped
+            if peak['value'] > 0:
+                max_drawdown = (trough['value'] - peak['value']) / peak['value']
+            else:
+                max_drawdown = 0.0
+
+            # Check if drawdown is significant (exceeds threshold)
+            is_significant = abs(max_drawdown) >= drawdown_threshold
+
+            # Calculate duration in months between peak and trough indices
+            drawdown_duration_months = trough['index'] - peak['index']
+
+            return {
+                'max_drawdown': float(max_drawdown),
+                'peak_value': peak['value'],
+                'peak_date': peak['date'],
+                'trough_value': trough['value'],
+                'trough_date': trough['date'],
+                'drawdown_duration_months': drawdown_duration_months,
+                'is_significant': is_significant,
+            }
+        except Exception as e:
+            logger.error(f"❌ Error calculating maximum drawdown: {e}")
+            return {
+                'max_drawdown': 0.0,
+                'peak_value': 1.0,
+                'peak_date': '',
+                'trough_value': 1.0,
+                'trough_date': '',
+                'drawdown_duration_months': 0
+            }
+    
+    def calculate_trajectory_projection(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        peak_value: float,
+        lookback_months: int = 6
+    ) -> Dict[str, Any]:
+        """
+        Calculate trajectory-based recovery projections to peak using trend analysis.
+        
+        Uses linear regression on recent data to project three scenarios:
+        - Optimistic: Upper bound projection
+        - Realistic: Mean projection
+        - Pessimistic: Lower bound projection
+        
+        Args:
+            portfolio_values: List of normalized portfolio values
+            dates: List of date strings
+            peak_value: Peak value to recover to (100%)
+            lookback_months: Number of recent months to use for trend (default 6)
+        
+        Returns:
+            Dict with optimistic_months, realistic_months, pessimistic_months,
+            and trajectory_data for plotting
+        """
+        try:
+            if len(portfolio_values) < 2:
+                return {
+                    'optimistic_months': None,
+                    'realistic_months': None,
+                    'pessimistic_months': None,
+                    'trajectory_data': []
+                }
+            
+            # Use last N months for trend analysis
+            recent_values = portfolio_values[-min(lookback_months, len(portfolio_values)):]
+            recent_indices = list(range(len(portfolio_values) - len(recent_values), len(portfolio_values)))
+            
+            if len(recent_values) < 2:
+                return {
+                    'optimistic_months': None,
+                    'realistic_months': None,
+                    'pessimistic_months': None,
+                    'trajectory_data': []
+                }
+            
+            # Linear regression: y = mx + b
+            x = np.array(recent_indices)
+            y = np.array(recent_values)
+            
+            # Calculate slope and intercept
+            n = len(x)
+            sum_x = np.sum(x)
+            sum_y = np.sum(y)
+            sum_xy = np.sum(x * y)
+            sum_x2 = np.sum(x * x)
+            
+            denominator = n * sum_x2 - sum_x * sum_x
+            if abs(denominator) < 1e-10:
+                # No trend, use average return
+                avg_return = (y[-1] - y[0]) / len(y) if len(y) > 1 else 0
+                slope = avg_return
+                intercept = y[-1] - slope * x[-1]
+            else:
+                slope = (n * sum_xy - sum_x * sum_y) / denominator
+                intercept = (sum_y - slope * sum_x) / n
+            
+            # Calculate standard error for confidence intervals
+            y_pred = slope * x + intercept
+            residuals = y - y_pred
+            mse = np.mean(residuals ** 2) if len(residuals) > 0 else 0
+            std_error = np.sqrt(mse) if mse > 0 else 0
+            
+            # Current position
+            current_idx = len(portfolio_values) - 1
+            current_value = portfolio_values[-1]
+            
+            # Project forward to reach peak
+            if abs(slope) < 1e-10:
+                # Flat trend - cannot project
+                return {
+                    'optimistic_months': None,
+                    'realistic_months': None,
+                    'pessimistic_months': None,
+                    'trajectory_data': []
+                }
+            
+            # Realistic: Mean projection
+            if slope > 0:  # Positive trend
+                months_to_peak_realistic = (peak_value - current_value) / slope if slope > 0 else None
+            else:
+                months_to_peak_realistic = None
+            
+            # Optimistic: Upper bound (slope + 1 std error)
+            optimistic_slope = slope + std_error if std_error > 0 else slope * 1.2
+            if optimistic_slope > 0:
+                months_to_peak_optimistic = (peak_value - current_value) / optimistic_slope if optimistic_slope > 0 else None
+            else:
+                months_to_peak_optimistic = None
+            
+            # Pessimistic: Lower bound (slope - 1 std error, or slower recovery)
+            pessimistic_slope = max(0, slope - std_error) if std_error > 0 else slope * 0.8
+            if pessimistic_slope > 0:
+                months_to_peak_pessimistic = (peak_value - current_value) / pessimistic_slope if pessimistic_slope > 0 else None
+            else:
+                months_to_peak_pessimistic = None
+            
+            # Generate trajectory data points for plotting (next 24 months)
+            trajectory_data = []
+            for months_ahead in range(1, 25):
+                future_idx = current_idx + months_ahead
+                
+                # Realistic trajectory
+                realistic_value = current_value + slope * months_ahead
+                realistic_value = min(realistic_value, peak_value * 1.1)  # Cap at 110% of peak
+                
+                # Optimistic trajectory
+                optimistic_value = current_value + optimistic_slope * months_ahead
+                optimistic_value = min(optimistic_value, peak_value * 1.1)
+                
+                # Pessimistic trajectory
+                pessimistic_value = current_value + pessimistic_slope * months_ahead
+                pessimistic_value = min(pessimistic_value, peak_value * 1.1)
+                
+                trajectory_data.append({
+                    'months_ahead': months_ahead,
+                    'realistic': float(realistic_value),
+                    'optimistic': float(optimistic_value),
+                    'pessimistic': float(pessimistic_value)
+                })
+            
+            return {
+                'optimistic_months': float(months_to_peak_optimistic) if months_to_peak_optimistic is not None and months_to_peak_optimistic > 0 else None,
+                'realistic_months': float(months_to_peak_realistic) if months_to_peak_realistic is not None and months_to_peak_realistic > 0 else None,
+                'pessimistic_months': float(months_to_peak_pessimistic) if months_to_peak_pessimistic is not None and months_to_peak_pessimistic > 0 else None,
+                'trajectory_data': trajectory_data,
+                'current_slope': float(slope),
+                'current_value': float(current_value)
+            }
+        except Exception as e:
+            logger.error(f"❌ Error calculating trajectory projection: {e}")
+            return {
+                'optimistic_months': None,
+                'realistic_months': None,
+                'pessimistic_months': None,
+                'trajectory_data': []
+            }
+    
+    def calculate_recovery_time(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        peak_value: float,
+        trough_index: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Calculate time to recover to peak value at multiple thresholds (90%, 95%, 100%).
+
+        Args:
+            portfolio_values: List of normalized portfolio values
+            dates: List of date strings
+            peak_value: Peak value to recover to
+            trough_index: Optional index of crisis trough (if already known)
+
+        Returns:
+            Dict with recovery_months, recovery_date, recovery_index, recovered, recovery_trajectory,
+            and recovery_thresholds (90%, 95%, 100%)
+        """
+        try:
+            # Prefer explicit trough index from crisis-aware drawdown calculation
+            if trough_index is not None and 0 <= trough_index < len(portfolio_values):
+                trough_idx = trough_index
+                trough_value = float(portfolio_values[trough_idx])
+            else:
+                peaks_troughs = self.detect_peaks_and_troughs(portfolio_values, dates)
+
+                if not peaks_troughs['trough']:
+                    return {
+                        'recovery_months': None,
+                        'recovery_date': None,
+                        'recovery_index': None,
+                        'recovered': False,
+                        'recovery_trajectory': 'No Recovery',
+                        'recovery_thresholds': {
+                            '90': None,
+                            '95': None,
+                            '100': None,
+                        },
+                        'recovery_needed_pct': 0.0,
+                        'trajectory_projections': {},
+                    }
+
+                trough = peaks_troughs['trough']
+                trough_idx = trough['index']
+                trough_value = trough['value']
+
+            # Calculate recovery needed percentage
+            current_value = portfolio_values[-1] if portfolio_values else trough_value
+            recovery_needed_pct = ((peak_value - current_value) / peak_value) * 100 if peak_value > 0 else 0
+
+            # Calculate trajectory-based projections to peak
+            trajectory_projections = self.calculate_trajectory_projection(
+                portfolio_values,
+                dates,
+                peak_value,
+                lookback_months=6,
+            )
+
+            # Calculate recovery times for multiple thresholds (including 100% = peak)
+            recovery_thresholds: Dict[str, Any] = {
+                '90': None,
+                '95': None,
+                '100': None,  # Full recovery to peak
+            }
+
+            # Recovery thresholds: percentage of peak to recover to
+            # 90% = recover to 90% of peak (10% below peak)
+            # 95% = recover to 95% of peak (5% below peak)
+            # 100% = recover to 100% of peak (full recovery) - PRIMARY TARGET
+            thresholds = {
+                '90': 0.90,   # 10% below peak
+                '95': 0.95,   # 5% below peak
+                '100': 1.0,   # 100% of peak (full recovery)
+            }
+
+            # Search for recovery after trough for each threshold
+            for threshold_key, threshold_pct in thresholds.items():
+                threshold_value = peak_value * threshold_pct
+                recovery_idx = None
+
+                # Only search if trough is below threshold
+                if trough_value < threshold_value:
+                    for i in range(trough_idx + 1, len(portfolio_values)):
+                        if portfolio_values[i] >= threshold_value:
+                            recovery_idx = i
+                            break
+
+                    if recovery_idx is not None:
+                        months_to_recover = recovery_idx - trough_idx
+                        recovery_thresholds[threshold_key] = {
+                            'months': months_to_recover,
+                            'date': dates[recovery_idx],
+                            'index': recovery_idx,
+                            'recovered': True,
+                            'progress_pct': 100.0,
+                        }
+                    else:
+                        # Not recovered yet - calculate progress towards threshold
+                        final_value = portfolio_values[-1] if portfolio_values else trough_value
+                        if final_value > trough_value and threshold_value > trough_value:
+                            progress_pct = ((final_value - trough_value) / (threshold_value - trough_value)) * 100
+                            progress_pct = float(max(0.0, min(100.0, progress_pct)))
+                        else:
+                            progress_pct = 0.0
+
+                        recovery_thresholds[threshold_key] = {
+                            'months': None,
+                            'date': None,
+                            'index': None,
+                            'recovered': False,
+                            'progress_pct': progress_pct,
+                        }
+                else:
+                    # Trough is already above threshold, recovery is immediate
+                    recovery_thresholds[threshold_key] = {
+                        'months': 0,
+                        'date': dates[trough_idx] if trough_idx < len(dates) else dates[0],
+                        'index': trough_idx,
+                        'recovered': True,
+                        'progress_pct': 100.0,
+                    }
+
+            # Primary recovery metric: 100% recovery to peak (full recovery)
+            primary_recovery = recovery_thresholds.get('100') or recovery_thresholds.get('95')
+            if primary_recovery and primary_recovery.get('recovered'):
+                recovery_months = primary_recovery['months']
+                recovery_date = primary_recovery['date']
+                recovery_idx = primary_recovery['index']
+                recovered = True
+
+                # Determine trajectory pattern
+                if recovery_months is not None:
+                    if recovery_months <= 6:
+                        trajectory = 'V-shaped'
+                    elif recovery_months <= 12:
+                        trajectory = 'U-shaped'
+                    else:
+                        trajectory = 'L-shaped'
+                else:
+                    trajectory = 'Unknown'
+            else:
+                # Not recovered yet - use trajectory projections
+                recovery_months = trajectory_projections.get('realistic_months')
+                recovery_date = None
+                recovery_idx = None
+                recovered = False
+
+                # Determine trajectory based on projections
+                realistic_months = trajectory_projections.get('realistic_months')
+                if realistic_months:
+                    if realistic_months <= 6:
+                        trajectory = 'V-shaped (projected)'
+                    elif realistic_months <= 12:
+                        trajectory = 'U-shaped (projected)'
+                    else:
+                        trajectory = 'L-shaped (projected)'
+                else:
+                    trajectory = 'L-shaped (projected)'
+
+            return {
+                'recovery_months': recovery_months,
+                'recovery_date': recovery_date,
+                'recovery_index': recovery_idx,
+                'recovered': recovered,
+                'recovery_trajectory': trajectory,
+                'recovery_needed_pct': float(recovery_needed_pct),
+                'trajectory_projections': trajectory_projections,
+                'recovery_thresholds': recovery_thresholds,
+            }
+        except Exception as e:
+            logger.error(f"❌ Error calculating recovery time: {e}")
+            return {
+                'recovery_months': None,
+                'recovery_date': None,
+                'recovery_index': None,
+                'recovered': False,
+                'recovery_trajectory': 'No Recovery',
+                'recovery_thresholds': {
+                    '90': None,
+                    '95': None,
+                    '100': None,
+                },
+                'recovery_needed_pct': 0.0,
+                'trajectory_projections': {},
+            }
+    
+    def calculate_correlation_breakdown(
+        self,
+        tickers: List[str],
+        weights: Dict[str, float],
+        crisis_period: Tuple[str, str],
+        normal_period: Tuple[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Calculate correlation during crisis vs. normal period.
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Dict mapping ticker to weight
+            crisis_period: Tuple of (start_date, end_date) for crisis
+            normal_period: Tuple of (start_date, end_date) for normal period
+        
+        Returns:
+            Dict with correlation metrics
+        """
+        try:
+            # Get returns for both periods
+            crisis_data = self.calculate_portfolio_values_over_period(
+                tickers, weights, crisis_period[0], crisis_period[1], include_recovery=False
+            )
+            normal_data = self.calculate_portfolio_values_over_period(
+                tickers, weights, normal_period[0], normal_period[1], include_recovery=False
+            )
+            
+            # Get individual ticker returns for correlation calculation
+            crisis_returns = {}
+            normal_returns = {}
+            
+            for ticker in tickers:
+                ticker_data = self.data_service.get_monthly_data(ticker)
+                if ticker_data and ticker_data.get('prices'):
+                    prices = ticker_data['prices']
+                    if isinstance(prices, pd.Series):
+                        prices_dict = {str(date): float(price) for date, price in prices.items()}
+                    elif isinstance(prices, dict):
+                        prices_dict = prices
+                    else:
+                        continue
+                    
+                    # Filter and calculate returns for crisis period
+                    crisis_prices = self.filter_prices_by_date_range(
+                        prices_dict, crisis_period[0], crisis_period[1]
+                    )
+                    if len(crisis_prices) > 1:
+                        sorted_crisis = sorted(crisis_prices.items(), key=lambda x: x[0])
+                        crisis_ret = []
+                        for i in range(1, len(sorted_crisis)):
+                            if sorted_crisis[i-1][1] > 0:
+                                ret = (sorted_crisis[i][1] - sorted_crisis[i-1][1]) / sorted_crisis[i-1][1]
+                                crisis_ret.append(ret)
+                        if len(crisis_ret) > 0:
+                            crisis_returns[ticker] = crisis_ret
+                    
+                    # Filter and calculate returns for normal period
+                    normal_prices = self.filter_prices_by_date_range(
+                        prices_dict, normal_period[0], normal_period[1]
+                    )
+                    if len(normal_prices) > 1:
+                        sorted_normal = sorted(normal_prices.items(), key=lambda x: x[0])
+                        normal_ret = []
+                        for i in range(1, len(sorted_normal)):
+                            if sorted_normal[i-1][1] > 0:
+                                ret = (sorted_normal[i][1] - sorted_normal[i-1][1]) / sorted_normal[i-1][1]
+                                normal_ret.append(ret)
+                        if len(normal_ret) > 0:
+                            normal_returns[ticker] = normal_ret
+            
+            # Calculate correlation matrices
+            crisis_correlation = 0.0
+            normal_correlation = 0.0
+            
+            if len(crisis_returns) >= 2:
+                # Align returns to same length
+                min_length = min(len(ret) for ret in crisis_returns.values())
+                aligned_crisis = {t: ret[:min_length] for t, ret in crisis_returns.items()}
+                
+                # Calculate pairwise correlations
+                ticker_list = list(aligned_crisis.keys())
+                correlations = []
+                for i in range(len(ticker_list)):
+                    for j in range(i + 1, len(ticker_list)):
+                        ticker1, ticker2 = ticker_list[i], ticker_list[j]
+                        corr = np.corrcoef(aligned_crisis[ticker1], aligned_crisis[ticker2])[0, 1]
+                        if not np.isnan(corr):
+                            correlations.append(corr)
+                
+                if len(correlations) > 0:
+                    crisis_correlation = float(np.mean(correlations))
+            
+            if len(normal_returns) >= 2:
+                # Align returns to same length
+                min_length = min(len(ret) for ret in normal_returns.values())
+                aligned_normal = {t: ret[:min_length] for t, ret in normal_returns.items()}
+                
+                # Calculate pairwise correlations
+                ticker_list = list(aligned_normal.keys())
+                correlations = []
+                for i in range(len(ticker_list)):
+                    for j in range(i + 1, len(ticker_list)):
+                        ticker1, ticker2 = ticker_list[i], ticker_list[j]
+                        corr = np.corrcoef(aligned_normal[ticker1], aligned_normal[ticker2])[0, 1]
+                        if not np.isnan(corr):
+                            correlations.append(corr)
+                
+                if len(correlations) > 0:
+                    normal_correlation = float(np.mean(correlations))
+            
+            correlation_increase = crisis_correlation - normal_correlation
+            diversification_effectiveness = max(0.0, min(100.0, 100 - (crisis_correlation * 100)))
+            
+            return {
+                'crisis_correlation': float(crisis_correlation),
+                'normal_correlation': float(normal_correlation),
+                'correlation_increase': float(correlation_increase),
+                'diversification_effectiveness': float(diversification_effectiveness)
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Error calculating correlation breakdown: {e}")
+            return {
+                'crisis_correlation': 0.5,
+                'normal_correlation': 0.3,
+                'correlation_increase': 0.2,
+                'diversification_effectiveness': 50.0
+            }
+    
+    def calculate_sector_impact(
+        self,
+        tickers: List[str],
+        weights: Dict[str, float],
+        period: Tuple[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Calculate sector-specific returns during period.
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Dict mapping ticker to weight
+            period: Tuple of (start_date, end_date)
+        
+        Returns:
+            Dict with sector returns, worst_sector, best_sector, sector_exposure
+        """
+        try:
+            sector_data = {}
+            sector_weights = {}
+            
+            # Get sector and return data for each ticker
+            for ticker in tickers:
+                ticker_data = self.data_service.get_monthly_data(ticker)
+                if not ticker_data:
+                    continue
+                
+                sector = ticker_data.get('sector', 'Unknown')
+                weight = weights.get(ticker, 0.0)
+                
+                # Get prices and calculate return
+                prices = ticker_data.get('prices')
+                if prices:
+                    if isinstance(prices, pd.Series):
+                        prices_dict = {str(date): float(price) for date, price in prices.items()}
+                    elif isinstance(prices, dict):
+                        prices_dict = prices
+                    else:
+                        continue
+                    
+                    filtered_prices = self.filter_prices_by_date_range(
+                        prices_dict, period[0], period[1]
+                    )
+                    
+                    if len(filtered_prices) >= 2:
+                        sorted_prices = sorted(filtered_prices.items(), key=lambda x: x[0])
+                        start_price = sorted_prices[0][1]
+                        end_price = sorted_prices[-1][1]
+                        
+                        if start_price > 0:
+                            ticker_return = (end_price - start_price) / start_price
+                            
+                            if sector not in sector_data:
+                                sector_data[sector] = []
+                                sector_weights[sector] = []
+                            
+                            sector_data[sector].append(ticker_return)
+                            sector_weights[sector].append(weight)
+            
+            # Calculate weighted average return per sector
+            sector_returns = {}
+            sector_exposure = {}
+            
+            for sector, returns in sector_data.items():
+                weights_list = sector_weights[sector]
+                total_weight = sum(weights_list)
+                
+                if total_weight > 0:
+                    # Weighted average return
+                    weighted_return = sum(r * w for r, w in zip(returns, weights_list)) / total_weight
+                    sector_returns[sector] = float(weighted_return)
+                    sector_exposure[sector] = float(total_weight)
+            
+            # Find worst and best sectors
+            worst_sector = None
+            best_sector = None
+            
+            if sector_returns:
+                worst_sector_name = min(sector_returns.keys(), key=lambda k: sector_returns[k])
+                best_sector_name = max(sector_returns.keys(), key=lambda k: sector_returns[k])
+                
+                worst_sector = {
+                    'name': worst_sector_name,
+                    'return': sector_returns[worst_sector_name],
+                    'weight_in_portfolio': sector_exposure.get(worst_sector_name, 0.0)
+                }
+                
+                best_sector = {
+                    'name': best_sector_name,
+                    'return': sector_returns[best_sector_name],
+                    'weight_in_portfolio': sector_exposure.get(best_sector_name, 0.0)
+                }
+            
+            return {
+                'sector_returns': sector_returns,
+                'worst_sector': worst_sector,
+                'best_sector': best_sector,
+                'sector_exposure': sector_exposure
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Error calculating sector impact: {e}")
+            return {
+                'sector_returns': {},
+                'worst_sector': None,
+                'best_sector': None,
+                'sector_exposure': {}
+            }
+    
+    def analyze_covid19_scenario(
+        self,
+        tickers: List[str],
+        weights: Dict[str, float]
+    ) -> Dict[str, Any]:
+        """
+        Analyze portfolio performance during COVID-19 crash (Feb-Apr 2020).
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Dict mapping ticker to weight
+        
+        Returns:
+            Complete scenario analysis dict
+        """
+        try:
+            import time
+            op_start = time.time()
+            
+            # Scenario periods
+            crisis_start = '2020-02-01'
+            crisis_end = '2020-04-30'
+            recovery_end = '2020-08-31'
+            normal_start = '2019-02-01'
+            normal_end = '2020-01-31'
+            # Start graph from January 2020 to show pre-crisis baseline
+            graph_start = '2020-01-01'
+            
+            # Calculate portfolio values - start from January 2020 to show pre-crisis baseline
+            logger.info(f"⏱️ Calculating portfolio values for crisis period (starting from {graph_start})...")
+            portfolio_data = self.calculate_portfolio_values_over_period(
+                tickers, weights, graph_start, recovery_end, include_recovery=True
+            )
+            logger.info(f"⏱️ Portfolio values calculated in {time.time() - op_start:.3f}s")
+            
+            if len(portfolio_data['values']) == 0:
+                raise ValueError("No portfolio data available for COVID-19 scenario")
+            
+            # Detect peaks and troughs using crisis-aware window
+            peaks_troughs = self.detect_peaks_and_troughs(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                crisis_start_date=crisis_start,
+                crisis_end_date=crisis_end,
+            )
+            
+            # Calculate metrics
+            total_return = (portfolio_data['values'][-1] - portfolio_data['values'][0]) / portfolio_data['values'][0]
+            
+            max_drawdown_data = self.calculate_maximum_drawdown(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                crisis_start_date=crisis_start,
+                crisis_end_date=crisis_end,
+            )
+            
+            # Use crisis-aware peak and trough for recovery calculations
+            peak_value = max_drawdown_data['peak_value']
+            trough_date = max_drawdown_data['trough_date']
+            trough_index = next(
+                (i for i, d in enumerate(portfolio_data['dates']) if d == trough_date),
+                None,
+            )
+            recovery_data = self.calculate_recovery_time(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                peak_value,
+                trough_index=trough_index,
+            )
+            
+            # Volatility calculations
+            crisis_returns = portfolio_data['monthly_returns'][:3]  # First 3 months
+            if len(crisis_returns) > 1:
+                volatility_during_crisis = float(np.std(crisis_returns) * np.sqrt(12))
+            else:
+                volatility_during_crisis = 0.0
+            
+            # Calculate normal period volatility
+            op_start = time.time()
+            logger.info(f"⏱️ Calculating normal period volatility (COVID-19)...")
+            normal_data = self.calculate_portfolio_values_over_period(
+                tickers, weights, normal_start, normal_end, include_recovery=False
+            )
+            logger.info(f"⏱️ Normal period calculated in {time.time() - op_start:.3f}s")
+            if len(normal_data['monthly_returns']) > 1:
+                volatility_normal = float(np.std(normal_data['monthly_returns']) * np.sqrt(12))
+            else:
+                volatility_normal = 0.2  # Default
+            
+            volatility_ratio = volatility_during_crisis / volatility_normal if volatility_normal > 0 else 1.0
+            
+            worst_month_return = min(portfolio_data['monthly_returns']) if portfolio_data['monthly_returns'] else 0.0
+            
+            # Advanced Risk Metrics
+            advanced_risk = self.calculate_advanced_risk_metrics(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                portfolio_data['monthly_returns'],
+                market_returns=None  # Could add market index returns later
+            )
+            
+            # Monte Carlo Simulation for crisis period
+            monte_carlo = None
+            try:
+                op_start = time.time()
+                logger.info(f"⏱️ Running Monte Carlo simulation (5,000 iterations)...")
+                from utils.port_analytics import PortfolioAnalytics
+                analytics = PortfolioAnalytics()
+                # Use crisis volatility and expected return for Monte Carlo
+                crisis_expected_return = float(np.mean(portfolio_data['monthly_returns']) * 12) if len(portfolio_data['monthly_returns']) > 0 else 0.0
+                # Reduced from 10,000 to 5,000 for better performance (still statistically significant)
+                monte_carlo = analytics.run_monte_carlo_simulation(
+                    expected_return=crisis_expected_return,
+                    risk=volatility_during_crisis,
+                    num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+                    time_horizon_years=1.0
+                )
+                logger.info(f"⏱️ Monte Carlo completed in {time.time() - op_start:.3f}s")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not run Monte Carlo for COVID-19: {e}")
+            
+            # Sector impact
+            sector_impact = self.calculate_sector_impact(
+                tickers, weights, (crisis_start, crisis_end)
+            )
+            
+            # Monthly performance data
+            monthly_performance = []
+            for i, date in enumerate(portfolio_data['dates']):
+                if i < len(portfolio_data['values']) and i < len(portfolio_data['monthly_returns']):
+                    monthly_performance.append({
+                        'month': date[:7],  # YYYY-MM format
+                        'return': portfolio_data['monthly_returns'][i],
+                        'value': portfolio_data['values'][i]
+                    })
+            
+            return {
+                'scenario_name': '2020 COVID-19 Crash',
+                'period': {
+                    'start': crisis_start,
+                    'end': crisis_end,
+                    'recovery_end': recovery_end
+                },
+                'metrics': {
+                    'total_return': float(total_return),
+                    'worst_month_return': float(worst_month_return),
+                    'max_drawdown': max_drawdown_data['max_drawdown'],
+                    'max_drawdown_data': max_drawdown_data,  # Include full drawdown data
+                    'volatility_during_crisis': float(volatility_during_crisis),
+                    'volatility_normal_period': float(volatility_normal),
+                    'volatility_ratio': float(volatility_ratio),
+                    'recovery_months': recovery_data['recovery_months'] if max_drawdown_data.get('is_significant', False) else None,
+                    'recovery_date': recovery_data['recovery_date'] if max_drawdown_data.get('is_significant', False) else None,
+                    'recovery_pattern': recovery_data['recovery_trajectory'] if max_drawdown_data.get('is_significant', False) else 'No Significant Drawdown',
+                    'recovered': recovery_data['recovered'] if max_drawdown_data.get('is_significant', False) else False,
+                    'recovery_thresholds': recovery_data.get('recovery_thresholds', {}) if max_drawdown_data.get('is_significant', False) else {},
+                    'recovery_needed_pct': recovery_data.get('recovery_needed_pct', 0.0) if max_drawdown_data.get('is_significant', False) else 0.0,
+                    'trajectory_projections': recovery_data.get('trajectory_projections', {}) if max_drawdown_data.get('is_significant', False) else {},
+                    'advanced_risk': advanced_risk
+                },
+                'monte_carlo': monte_carlo,
+                'peaks_troughs': peaks_troughs,
+                'sector_impact': sector_impact,
+                'monthly_performance': monthly_performance,
+                'data_availability': portfolio_data['data_availability']
+            }
+        except Exception as e:
+            logger.error(f"❌ Error analyzing COVID-19 scenario: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+    
+    def analyze_2008_crisis_scenario(
+        self,
+        tickers: List[str],
+        weights: Dict[str, float]
+    ) -> Dict[str, Any]:
+        """
+        Analyze portfolio performance during 2008 Financial Crisis (Sep 2008 - Mar 2010).
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Dict mapping ticker to weight
+        
+        Returns:
+            Complete scenario analysis dict
+        """
+        try:
+            import time
+            op_start = time.time()
+            
+            # Scenario periods
+            crisis_start = '2008-09-01'
+            crisis_end = '2010-03-31'
+            recovery_end = '2010-09-30'
+            normal_start = '2007-09-01'
+            normal_end = '2008-08-31'
+            
+            # Calculate portfolio values
+            logger.info(f"⏱️ Calculating portfolio values for crisis period...")
+            portfolio_data = self.calculate_portfolio_values_over_period(
+                tickers, weights, crisis_start, recovery_end, include_recovery=True
+            )
+            logger.info(f"⏱️ Portfolio values calculated in {time.time() - op_start:.3f}s")
+            
+            if len(portfolio_data['values']) == 0:
+                raise ValueError("No portfolio data available for 2008 Crisis scenario")
+            
+            # Detect peaks and troughs using crisis-aware window
+            peaks_troughs = self.detect_peaks_and_troughs(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                crisis_start_date=crisis_start,
+                crisis_end_date=crisis_end,
+            )
+            
+            # Calculate metrics
+            total_return = (portfolio_data['values'][-1] - portfolio_data['values'][0]) / portfolio_data['values'][0]
+            
+            max_drawdown_data = self.calculate_maximum_drawdown(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                crisis_start_date=crisis_start,
+                crisis_end_date=crisis_end,
+            )
+            
+            # Use crisis-aware peak and trough for recovery calculations
+            peak_value = max_drawdown_data['peak_value']
+            trough_date = max_drawdown_data['trough_date']
+            trough_index = next(
+                (i for i, d in enumerate(portfolio_data['dates']) if d == trough_date),
+                None,
+            )
+            recovery_data = self.calculate_recovery_time(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                peak_value,
+                trough_index=trough_index,
+            )
+            
+            # Volatility calculations
+            crisis_returns = portfolio_data['monthly_returns'][:18]  # First 18 months
+            if len(crisis_returns) > 1:
+                volatility_during_crisis = float(np.std(crisis_returns) * np.sqrt(12))
+            else:
+                volatility_during_crisis = 0.0
+            
+            # Calculate normal period volatility
+            op_start = time.time()
+            logger.info(f"⏱️ Calculating normal period volatility (2008 Crisis)...")
+            normal_data = self.calculate_portfolio_values_over_period(
+                tickers, weights, normal_start, normal_end, include_recovery=False
+            )
+            logger.info(f"⏱️ Normal period calculated in {time.time() - op_start:.3f}s")
+            if len(normal_data['monthly_returns']) > 1:
+                volatility_normal = float(np.std(normal_data['monthly_returns']) * np.sqrt(12))
+            else:
+                volatility_normal = 0.2  # Default
+            
+            volatility_ratio = volatility_during_crisis / volatility_normal if volatility_normal > 0 else 1.0
+            
+            worst_month_return = min(portfolio_data['monthly_returns']) if portfolio_data['monthly_returns'] else 0.0
+            
+            # Advanced Risk Metrics
+            advanced_risk = self.calculate_advanced_risk_metrics(
+                portfolio_data['values'],
+                portfolio_data['dates'],
+                portfolio_data['monthly_returns'],
+                market_returns=None  # Could add market index returns later
+            )
+            
+            # Monte Carlo Simulation for crisis period
+            monte_carlo = None
+            try:
+                op_start = time.time()
+                logger.info(f"⏱️ Running Monte Carlo simulation (5,000 iterations) for 2008 Crisis...")
+                from utils.port_analytics import PortfolioAnalytics
+                analytics = PortfolioAnalytics()
+                # Use crisis volatility and expected return for Monte Carlo
+                crisis_expected_return = float(np.mean(portfolio_data['monthly_returns']) * 12) if len(portfolio_data['monthly_returns']) > 0 else 0.0
+                # Reduced from 10,000 to 5,000 for better performance (still statistically significant)
+                monte_carlo = analytics.run_monte_carlo_simulation(
+                    expected_return=crisis_expected_return,
+                    risk=volatility_during_crisis,
+                    num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+                    time_horizon_years=1.0
+                )
+                logger.info(f"⏱️ Monte Carlo completed in {time.time() - op_start:.3f}s")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not run Monte Carlo for 2008 Crisis: {e}")
+            
+            # Correlation breakdown
+            correlation_breakdown = self.calculate_correlation_breakdown(
+                tickers, weights,
+                (crisis_start, crisis_end),
+                (normal_start, normal_end)
+            )
+            
+            # Sector impact
+            sector_impact = self.calculate_sector_impact(
+                tickers, weights, (crisis_start, crisis_end)
+            )
+            
+            # Monthly performance data
+            monthly_performance = []
+            for i, date in enumerate(portfolio_data['dates']):
+                if i < len(portfolio_data['values']) and i < len(portfolio_data['monthly_returns']):
+                    monthly_performance.append({
+                        'month': date[:7],  # YYYY-MM format
+                        'return': portfolio_data['monthly_returns'][i],
+                        'value': portfolio_data['values'][i]
+                    })
+            
+            return {
+                'scenario_name': '2008 Financial Crisis',
+                'period': {
+                    'start': crisis_start,
+                    'end': crisis_end,
+                    'recovery_end': recovery_end
+                },
+                'metrics': {
+                    'total_return': float(total_return),
+                    'worst_month_return': float(worst_month_return),
+                    'max_drawdown': max_drawdown_data['max_drawdown'],
+                    'max_drawdown_data': max_drawdown_data,  # Include full drawdown data
+                    'volatility_during_crisis': float(volatility_during_crisis),
+                    'volatility_normal_period': float(volatility_normal),
+                    'volatility_ratio': float(volatility_ratio),
+                    'recovery_months': recovery_data['recovery_months'] if max_drawdown_data.get('is_significant', False) else None,
+                    'recovery_date': recovery_data['recovery_date'] if max_drawdown_data.get('is_significant', False) else None,
+                    'recovery_pattern': recovery_data['recovery_trajectory'] if max_drawdown_data.get('is_significant', False) else 'No Significant Drawdown',
+                    'recovered': recovery_data['recovered'] if max_drawdown_data.get('is_significant', False) else False,
+                    'recovery_thresholds': recovery_data.get('recovery_thresholds', {}) if max_drawdown_data.get('is_significant', False) else {},
+                    'recovery_needed_pct': recovery_data.get('recovery_needed_pct', 0.0) if max_drawdown_data.get('is_significant', False) else 0.0,
+                    'trajectory_projections': recovery_data.get('trajectory_projections', {}) if max_drawdown_data.get('is_significant', False) else {},
+                    'correlation_breakdown': correlation_breakdown,
+                    'advanced_risk': advanced_risk
+                },
+                'monte_carlo': monte_carlo,
+                'peaks_troughs': peaks_troughs,
+                'sector_impact': sector_impact,
+                'monthly_performance': monthly_performance,
+                'data_availability': portfolio_data['data_availability']
+            }
+        except Exception as e:
+            logger.error(f"❌ Error analyzing 2008 Crisis scenario: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+    
+    def calculate_advanced_risk_metrics(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        returns: List[float],
+        market_returns: Optional[List[float]] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculate advanced risk metrics: VaR, CVaR, Beta, Tail Risk
+        
+        Args:
+            portfolio_values: List of normalized portfolio values
+            dates: List of date strings
+            returns: List of monthly returns
+            market_returns: Optional list of market returns for Beta calculation
+        
+        Returns:
+            Dict with VaR, CVaR, Beta, Tail Risk metrics
+        """
+        try:
+            if len(returns) == 0:
+                return {
+                    'var_95': 0.0,
+                    'cvar_95': 0.0,
+                    'beta': 1.0,
+                    'tail_risk': 0.0,
+                    'downside_deviation': 0.0
+                }
+            
+            returns_array = np.array(returns)
+            
+            # Value at Risk (VaR) - 95th percentile (5% worst case)
+            var_95 = float(np.percentile(returns_array, 5))
+            
+            # Conditional VaR (CVaR) - Expected loss beyond VaR threshold
+            cvar_95 = float(np.mean(returns_array[returns_array <= var_95])) if len(returns_array[returns_array <= var_95]) > 0 else var_95
+            
+            # Beta calculation (if market returns provided)
+            beta = 1.0
+            if market_returns and len(market_returns) == len(returns):
+                market_array = np.array(market_returns)
+                if np.std(market_array) > 0:
+                    covariance = np.cov(returns_array, market_array)[0, 1]
+                    market_variance = np.var(market_array)
+                    beta = float(covariance / market_variance) if market_variance > 0 else 1.0
+            
+            # Tail Risk - Probability of extreme losses (beyond 2 standard deviations)
+            mean_return = np.mean(returns_array)
+            std_return = np.std(returns_array)
+            tail_threshold = mean_return - (2 * std_return)
+            tail_risk = float(np.sum(returns_array < tail_threshold) / len(returns_array) * 100) if len(returns_array) > 0 else 0.0
+            
+            # Downside Deviation - Standard deviation of negative returns only
+            negative_returns = returns_array[returns_array < 0]
+            downside_deviation = float(np.std(negative_returns)) if len(negative_returns) > 0 else 0.0
+            
+            return {
+                'var_95': var_95,
+                'cvar_95': cvar_95,
+                'beta': beta,
+                'tail_risk': tail_risk,
+                'downside_deviation': downside_deviation
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Error calculating advanced risk metrics: {e}")
+            return {
+                'var_95': 0.0,
+                'cvar_95': 0.0,
+                'beta': 1.0,
+                'tail_risk': 0.0,
+                'downside_deviation': 0.0
+            }
+    

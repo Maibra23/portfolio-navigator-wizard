@@ -1,1059 +1,1060 @@
 # Portfolios in Redis
-Generated: 2025-12-19T14:30:46.123368
+Generated: 2026-01-14T12:12:59.501575
 
 ## very-conservative (12 portfolios)
 
-### 1. Wealth Preservation Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.3147159271052882
-- diversificationScore: 84.5
-- variation_id: 4
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:26.567140
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| ENGCON-B.ST | 48.0% | Industrials |  |
-| INGA.AS | 28.0% | Financial Services |  |
-| ECL | 24.0% | Basic Materials |  |
-
-### 2. Dividend Guardian Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.2236732218810562
+### 1. Dividend Guardian Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.16757055035283336
 - diversificationScore: 100.0
 - variation_id: 3
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:25.628714
+- generated_at: 2026-01-14T11:26:15.338591
 - risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| REL.L | 32.0% | Industrials |  |
-| GL | 28.0% | Financial Services |  |
-| COPN.SW | 25.0% | Healthcare |  |
-| ATO | 15.0% | Utilities |  |
+| SBUX | 27.0% | Consumer Cyclical |  |
+| PLAZ-B.ST | 28.0% | Real Estate |  |
+| AIZ | 25.0% | Financial Services |  |
+| EVT.DE | 20.0% | Healthcare |  |
 
-### 3. Safety Net Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.24916515179409873
-- diversificationScore: 97.8
-- variation_id: 5
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:28.337541
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| DOV | 38.0% | Industrials |  |
-| TXN | 27.0% | Technology |  |
-| CLAS-B.ST | 20.0% | Consumer Cyclical |  |
-| AXFO.ST | 15.0% | Consumer Defensive |  |
-
-### 4. Secure Income Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.13
-- risk: 0.2675063074291979
-- diversificationScore: 92.3
+### 2. Secure Income Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.18339277227911296
+- diversificationScore: 85.1
 - variation_id: 10
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:36.401062
+- generated_at: 2026-01-14T11:26:42.985309
 - risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| SYDB.CO | 32.0% | Financial Services |  |
-| ORNBV.HE | 38.0% | Healthcare |  |
-| ITX.MC | 30.0% | Consumer Cyclical |  |
+| PLAZ-B.ST | 45.0% | Real Estate |  |
+| AIZ | 35.0% | Financial Services |  |
+| BWY.L | 20.0% | Consumer Cyclical |  |
 
-### 5. Conservative Haven Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.12
-- risk: 0.29316295814454074
-- diversificationScore: 98.8
-- variation_id: 7
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:32.402232
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CME | 30.0% | Financial Services |  |
-| EPR.OL | 35.0% | Consumer Defensive |  |
-| NCLH | 20.0% | Consumer Cyclical |  |
-| SGE.L | 15.0% | Technology |  |
-
-### 6. Risk-Minimizer Portfolio
-- expectedReturn: 0.05
-- risk: 0.28457908773586144
-- diversificationScore: 93.0
+### 3. Risk-Minimizer Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.14379947602008689
+- diversificationScore: 94.0
 - variation_id: 8
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:33.589438
+- generated_at: 2026-01-14T11:26:35.970470
 - risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| NOKIA.HE | 35.0% | Technology |  |
-| TTE.PA | 35.0% | Energy |  |
-| CAF.MC | 30.0% | Industrials |  |
+| BILI-A.ST | 33.0% | Consumer Cyclical |  |
+| MMC | 33.0% | Financial Services |  |
+| PST.MI | 34.0% | Industrials |  |
 
-### 7. Steady Income Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.3091535633345975
-- diversificationScore: 93.0
-- variation_id: 6
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:30.955457
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CLAS-B.ST | 35.0% | Consumer Cyclical |  |
-| COPN.SW | 35.0% | Healthcare |  |
-| FI | 30.0% | Technology |  |
-
-### 8. Income Fortress Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.24269988627665062
+### 4. Income Fortress Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.1421014659963224
 - diversificationScore: 100.0
 - variation_id: 1
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:22.494355
+- generated_at: 2026-01-14T11:26:04.537830
 - risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| NSC | 25.0% | Industrials |  |
-| RF | 25.0% | Financial Services |  |
-| JKHY | 30.0% | Technology |  |
-| SBAC | 20.0% | Real Estate |  |
+| SCA-B.ST | 28.0% | Basic Materials |  |
+| BILI-A.ST | 32.0% | Consumer Cyclical |  |
+| MMC | 25.0% | Financial Services |  |
+| PST.MI | 15.0% | Industrials |  |
 
-### 9. Stability First Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.24852763948359619
-- diversificationScore: 93.1
-- variation_id: 2
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:23.891797
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| WM | 36.0% | Industrials |  |
-| ISP.MI | 32.0% | Financial Services |  |
-| FI | 32.0% | Technology |  |
-
-### 10. Low-Volatility Core Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.24401963280464856
-- diversificationScore: 100.0
-- variation_id: 11
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:39.525834
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| NSC | 27.0% | Industrials |  |
-| JKHY | 28.0% | Technology |  |
-| SBAC | 25.0% | Real Estate |  |
-| ISP.MI | 20.0% | Financial Services |  |
-
-### 11. Defensive Anchor Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.3129172817519714
-- diversificationScore: 90.5
-- variation_id: 9
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:35.154450
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| GE | 48.0% | Industrials |  |
-| HLE.DE | 18.0% | Consumer Cyclical |  |
-| QCOM | 17.0% | Technology |  |
-| RF | 17.0% | Financial Services |  |
-
-### 12. Capital Shield Portfolio ⚠️ Above cap (12%)
-- expectedReturn: 0.14
-- risk: 0.30946009149209525
-- diversificationScore: 90.4
-- variation_id: 0
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:20.729270
-- risk_profile: very-conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| GE | 37.0% | Industrials |  |
-| HLE.DE | 38.0% | Consumer Cyclical |  |
-| QCOM | 25.0% | Technology |  |
-
-## conservative (12 portfolios)
-
-### 1. Cautious Growth Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.36396188029782556
-- diversificationScore: 100.0
+### 5. Conservative Haven Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.202088517958866
+- diversificationScore: 88.0
 - variation_id: 7
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:03.825041
-- risk_profile: conservative
+- generated_at: 2026-01-14T11:26:34.696066
+- risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| DECK | 25.0% | Consumer Cyclical |  |
-| LDO.MI | 25.0% | Industrials |  |
-| STLD | 26.0% | Basic Materials |  |
-| BAKKA.OL | 24.0% | Consumer Defensive |  |
+| GNC.L | 50.0% | Consumer Defensive |  |
+| SAP.DE | 20.0% | Technology |  |
+| JCI | 15.0% | Industrials |  |
+| SCA-B.ST | 15.0% | Basic Materials |  |
 
-### 2. Quality Dividend Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.19
-- risk: 0.28466567663175085
-- diversificationScore: 92.3
-- variation_id: 2
+### 6. Defensive Anchor Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.1423782218419157
+- diversificationScore: 97.1
+- variation_id: 9
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:52.311210
-- risk_profile: conservative
+- generated_at: 2026-01-14T11:26:38.427060
+- risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| LONN.SW | 38.0% | Healthcare |  |
-| LEN | 32.0% | Consumer Cyclical |  |
-| AMP | 30.0% | Financial Services |  |
+| BLK | 40.0% | Financial Services |  |
+| CWK.L | 25.0% | Consumer Defensive |  |
+| AM.PA | 20.0% | Industrials |  |
+| SBUX | 15.0% | Consumer Cyclical |  |
 
-### 3. Conservative Accumulation Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.18
-- risk: 0.46882656282463936
-- diversificationScore: 87.1
-- variation_id: 4
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:55.315177
-- risk_profile: conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| DAL | 45.0% | Industrials |  |
-| DBV.PA | 30.0% | Healthcare |  |
-| DLG.MI | 25.0% | Consumer Cyclical |  |
-
-### 4. Stable Appreciation Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.17
-- risk: 0.28985093370777393
-- diversificationScore: 87.4
-- variation_id: 11
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:09.227608
-- risk_profile: conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| TREL-B.ST | 50.0% | Industrials |  |
-| STZ | 20.0% | Consumer Defensive |  |
-| BTRW.L | 15.0% | Consumer Cyclical |  |
-| UHS | 15.0% | Healthcare |  |
-
-### 5. Steady Builder Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.16
-- risk: 0.2927026596140837
-- diversificationScore: 100.0
-- variation_id: 3
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:53.873917
-- risk_profile: conservative
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CATE.ST | 28.0% | Real Estate |  |
-| DE | 27.0% | Industrials |  |
-| GTT.PA | 25.0% | Energy |  |
-| COF | 20.0% | Financial Services |  |
-
-### 6. Income Plus Growth Portfolio
-- expectedReturn: 0.13
-- risk: 0.2731567887693037
-- diversificationScore: 94.0
+### 7. Capital Shield Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.1794043900314784
+- diversificationScore: 93.3
 - variation_id: 0
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:49.321820
-- risk_profile: conservative
+- generated_at: 2026-01-14T11:25:58.369382
+- risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| SYDB.CO | 33.0% | Financial Services |  |
-| KLR.L | 34.0% | Industrials |  |
-| AWK | 33.0% | Utilities |  |
+| GNC.L | 32.0% | Consumer Defensive |  |
+| SAP.DE | 36.0% | Technology |  |
+| JCI | 32.0% | Industrials |  |
 
-### 7. Defensive Opportunity Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.34560417511707936
-- diversificationScore: 93.3
-- variation_id: 8
+### 8. Stability First Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.15032249828752717
+- diversificationScore: 84.5
+- variation_id: 2
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:05.501944
-- risk_profile: conservative
+- generated_at: 2026-01-14T11:26:09.306293
+- risk_profile: very-conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| INDT.ST | 36.0% | Industrials |  |
-| ENT.L | 32.0% | Consumer Cyclical |  |
-| MOH | 32.0% | Healthcare |  |
+| BLK | 48.0% | Financial Services |  |
+| CWK.L | 28.0% | Consumer Defensive |  |
+| AM.PA | 24.0% | Industrials |  |
 
-### 8. Income Stability Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.31493667627235133
+### 9. Low-Volatility Core Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.25037884636848157
+- diversificationScore: 90.4
+- variation_id: 11
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:26:49.234966
+- risk_profile: very-conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| SW | 48.0% | Consumer Cyclical |  |
+| EVT.DE | 18.0% | Healthcare |  |
+| LDOS | 17.0% | Technology |  |
+| BAC | 17.0% | Financial Services |  |
+
+### 10. Safety Net Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.14920936870651208
+- diversificationScore: 98.8
+- variation_id: 5
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:26:27.963443
+- risk_profile: very-conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| UBXN.SW | 30.0% | Technology |  |
+| NDSN | 35.0% | Industrials |  |
+| COO | 20.0% | Healthcare |  |
+| DRI | 15.0% | Consumer Cyclical |  |
+
+### 11. Steady Income Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.16369623081654805
 - diversificationScore: 91.4
 - variation_id: 6
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:01.615650
+- generated_at: 2026-01-14T11:26:32.774595
+- risk_profile: very-conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| BETS-B.ST | 30.0% | Consumer Cyclical |  |
+| DE | 40.0% | Industrials |  |
+| ELV | 30.0% | Healthcare |  |
+
+### 12. Wealth Preservation Portfolio ⚠️ Above cap (12%)
+- expectedReturn: 0.15
+- risk: 0.2189807974390767
+- diversificationScore: 71.0
+- variation_id: 4
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:26:19.921993
+- risk_profile: very-conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| BWY.L | 58.0% | Consumer Cyclical |  |
+| CAH | 28.0% | Healthcare |  |
+| LDOS | 14.0% | Technology |  |
+
+## conservative (12 portfolios)
+
+### 1. Conservative Accumulation Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.33455314781542356
+- diversificationScore: 91.4
+- variation_id: 4
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:19.375282
 - risk_profile: conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| BX | 40.0% | Financial Services |  |
-| AZO | 30.0% | Consumer Cyclical |  |
-| WDC | 30.0% | Technology |  |
+| JD.L | 30.0% | Consumer Cyclical |  |
+| KEMPOWR.HE | 40.0% | Industrials |  |
+| TTWO | 30.0% | Communication Services |  |
 
-### 9. Balanced Safety Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.3380205964875759
-- diversificationScore: 100.0
+### 2. Balanced Safety Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.23492364205019778
+- diversificationScore: 98.8
 - variation_id: 5
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:59.230296
+- generated_at: 2026-01-14T11:27:21.231722
 - risk_profile: conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| DECK | 28.0% | Consumer Cyclical |  |
-| STLD | 27.0% | Basic Materials |  |
-| BAKKA.OL | 25.0% | Consumer Defensive |  |
-| INDT.ST | 20.0% | Industrials |  |
+| DASH | 35.0% | Consumer Cyclical |  |
+| MCOV-B.ST | 30.0% | Healthcare |  |
+| EPRO-B.ST | 20.0% | Industrials |  |
+| MCO | 15.0% | Financial Services |  |
 
-### 10. Moderate Shield Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.317402184608447
-- diversificationScore: 98.8
-- variation_id: 1
+### 3. Steady Builder Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.22128321108673774
+- diversificationScore: 97.9
+- variation_id: 3
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:28:51.004159
+- generated_at: 2026-01-14T11:27:16.092155
 - risk_profile: conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| BX | 35.0% | Financial Services |  |
-| AZO | 30.0% | Consumer Cyclical |  |
-| WDC | 20.0% | Technology |  |
-| LDO.MI | 15.0% | Industrials |  |
+| EXPE | 38.0% | Consumer Cyclical |  |
+| PWR | 27.0% | Industrials |  |
+| IBKR | 20.0% | Financial Services |  |
+| MSFT | 15.0% | Technology |  |
 
-### 11. Reliable Returns Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.3337535734143194
-- diversificationScore: 98.8
+### 4. Income Plus Growth Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.3599710218949523
+- diversificationScore: 93.3
+- variation_id: 0
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:00.317678
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| BKT.MC | 32.0% | Financial Services |  |
+| TYL | 36.0% | Technology |  |
+| DESN.SW | 32.0% | Basic Materials |  |
+
+### 5. Cautious Growth Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.3599710218949523
+- diversificationScore: 100.0
+- variation_id: 7
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:26.410755
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| BKT.MC | 25.0% | Financial Services |  |
+| TYL | 25.0% | Technology |  |
+| DESN.SW | 26.0% | Basic Materials |  |
+| ORLY | 24.0% | Consumer Cyclical |  |
+
+### 6. Reliable Returns Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.286432058598224
+- diversificationScore: 98.3
 - variation_id: 9
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:07.005275
+- generated_at: 2026-01-14T11:27:29.750180
 - risk_profile: conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| ENT.L | 30.0% | Consumer Cyclical |  |
-| KOG.OL | 35.0% | Industrials |  |
-| MOH | 20.0% | Healthcare |  |
-| SALM.OL | 15.0% | Consumer Defensive |  |
+| SAAB-B.ST | 28.0% | Industrials |  |
+| WSM | 37.0% | Consumer Cyclical |  |
+| ISRG | 20.0% | Healthcare |  |
+| V | 15.0% | Financial Services |  |
 
-### 12. Conservative Advantage Portfolio ⚠️ Above cap (15%)
-- expectedReturn: 0.22
-- risk: 0.2796011447580321
-- diversificationScore: 94.1
+### 7. Quality Dividend Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.22979937581304308
+- diversificationScore: 84.5
+- variation_id: 2
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:09.982050
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| WSM | 48.0% | Consumer Cyclical |  |
+| SDIP-B.ST | 28.0% | Industrials |  |
+| V | 24.0% | Financial Services |  |
+
+### 8. Conservative Advantage Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.1934182722768395
+- diversificationScore: 90.1
 - variation_id: 10
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:08.154869
+- generated_at: 2026-01-14T11:27:31.238898
 - risk_profile: conservative
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| KOG.OL | 33.3% | Industrials |  |
-| SALM.OL | 33.3% | Consumer Defensive |  |
-| MCK | 33.4% | Healthcare |  |
+| EXPE | 35.0% | Consumer Cyclical |  |
+| SDIP-B.ST | 40.0% | Industrials |  |
+| MSFT | 25.0% | Technology |  |
+
+### 9. Moderate Shield Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.23
+- risk: 0.20611192084646945
+- diversificationScore: 100.0
+- variation_id: 1
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:06.235607
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| ORLY | 25.0% | Consumer Cyclical |  |
+| SAAB-B.ST | 30.0% | Industrials |  |
+| ISRG | 30.0% | Healthcare |  |
+| NP3.ST | 15.0% | Real Estate |  |
+
+### 10. Defensive Opportunity Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.17
+- risk: 0.20641380163293152
+- diversificationScore: 94.0
+- variation_id: 8
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:27.964079
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| KBC.BR | 33.0% | Financial Services |  |
+| CCC.L | 34.0% | Technology |  |
+| CHTR | 33.0% | Communication Services |  |
+
+### 11. Income Stability Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.25
+- risk: 0.29204271622474864
+- diversificationScore: 78.8
+- variation_id: 6
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:24.578752
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| PWR | 50.0% | Industrials |  |
+| NP3.ST | 35.0% | Real Estate |  |
+| IBKR | 15.0% | Financial Services |  |
+
+### 12. Stable Appreciation Portfolio ⚠️ Above cap (15%)
+- expectedReturn: 0.24
+- risk: 0.2606163036017884
+- diversificationScore: 98.8
+- variation_id: 11
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:32.935907
+- risk_profile: conservative
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| JD.L | 35.0% | Consumer Cyclical |  |
+| KEMPOWR.HE | 30.0% | Industrials |  |
+| TTWO | 20.0% | Communication Services |  |
+| MCOV-B.ST | 15.0% | Healthcare |  |
 
 ## moderate (12 portfolios)
 
 ### 1. Equilibrium Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.28
-- risk: 0.3234624758266377
-- diversificationScore: 93.3
+- expectedReturn: 0.33
+- risk: 0.33034727844488965
+- diversificationScore: 85.1
 - variation_id: 8
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:31.465883
+- generated_at: 2026-01-14T11:27:48.640978
 - risk_profile: moderate
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| MMGR-B.ST | 36.0% | Industrials |  |
-| DPZ | 32.0% | Consumer Cyclical |  |
-| IDXX | 32.0% | Healthcare |  |
+| VIT-B.ST | 45.0% | Technology |  |
+| URI | 35.0% | Industrials |  |
+| CAMX.ST | 20.0% | Healthcare |  |
 
-### 2. Moderate Accumulator Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.28
-- risk: 0.27603594705427553
-- diversificationScore: 96.6
-- variation_id: 7
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:30.457618
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CTAS | 38.0% | Industrials |  |
-| AMAT | 27.0% | Technology |  |
-| DPZ | 20.0% | Consumer Cyclical |  |
-| IDXX | 15.0% | Healthcare |  |
-
-### 3. All-Equity Balanced Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.27
-- risk: 0.3559874897447351
-- diversificationScore: 100.0
-- variation_id: 5
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:25.237747
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| IDXX | 32.0% | Healthcare |  |
-| MMGR-B.ST | 28.0% | Industrials |  |
-| LSEG.L | 25.0% | Financial Services |  |
-| KNOS.L | 15.0% | Technology |  |
-
-### 4. Growth & Income Portfolio
-- expectedReturn: 0.24
-- risk: 0.3892656957132281
-- diversificationScore: 88.5
-- variation_id: 2
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:19.015087
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| SDIP-B.ST | 43.0% | Industrials |  |
-| WOSG.L | 32.0% | Consumer Cyclical |  |
-| V | 25.0% | Financial Services |  |
-
-### 5. Long-Term Balance Portfolio
-- expectedReturn: 0.23
-- risk: 0.3311602599505664
-- diversificationScore: 93.8
-- variation_id: 10
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:33.902643
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| INDT.ST | 34.0% | Industrials |  |
-| MOH | 34.0% | Healthcare |  |
-| SALM.OL | 32.0% | Consumer Defensive |  |
-
-### 6. Core Diversification Portfolio
-- expectedReturn: 0.20
-- risk: 0.27677054150688984
-- diversificationScore: 98.3
-- variation_id: 1
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:17.961512
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| RSGN.SW | 28.0% | Industrials |  |
-| NDAQ | 37.0% | Financial Services |  |
-| PTC | 20.0% | Technology |  |
-| HLT | 15.0% | Consumer Cyclical |  |
-
-### 7. Multi-Strategy Core Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.29
-- risk: 0.4295071496611057
-- diversificationScore: 100.0
-- variation_id: 11
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:36.883148
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| RACE.MI | 28.0% | Consumer Cyclical |  |
-| SAVE.ST | 32.0% | Financial Services |  |
-| TEAM | 25.0% | Technology |  |
-| NEXT | 15.0% | Energy |  |
-
-### 8. Diversified Foundation Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.29
-- risk: 0.3444262954813068
-- diversificationScore: 99.6
-- variation_id: 9
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:32.530903
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| KALMAR.HE | 35.0% | Industrials |  |
-| TEAM | 25.0% | Technology |  |
-| AMZN | 25.0% | Consumer Cyclical |  |
-| SAVE.ST | 15.0% | Financial Services |  |
-
-### 9. All-Weather Equity Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.29
-- risk: 0.37838860929693974
-- diversificationScore: 85.2
-- variation_id: 6
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:28.920798
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| KALMAR.HE | 42.0% | Industrials |  |
-| EMBRAC-B.ST | 38.0% | Communication Services |  |
-| LLY | 20.0% | Healthcare |  |
-
-### 10. Diversified Opportunity Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.28
-- risk: 0.3054375494753119
-- diversificationScore: 94.0
-- variation_id: 4
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:24.448779
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| MMGR-B.ST | 34.0% | Industrials |  |
-| LLY | 33.0% | Healthcare |  |
-| DPZ | 33.0% | Consumer Cyclical |  |
-
-### 11. Strategic Balance Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.28
-- risk: 0.3359270083925278
-- diversificationScore: 100.0
-- variation_id: 3
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:21.396496
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CTAS | 32.0% | Industrials |  |
-| AMAT | 28.0% | Technology |  |
-| EMBRAC-B.ST | 25.0% | Communication Services |  |
-| LLY | 15.0% | Healthcare |  |
-
-### 12. Balanced Horizon Portfolio ⚠️ Above cap (25%)
-- expectedReturn: 0.28
-- risk: 0.35175013992145243
-- diversificationScore: 91.4
-- variation_id: 0
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:16.609305
-- risk_profile: moderate
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CTAS | 40.0% | Industrials |  |
-| AMAT | 30.0% | Technology |  |
-| EMBRAC-B.ST | 30.0% | Communication Services |  |
-
-## aggressive (12 portfolios)
-
-### 1. Expansion Portfolio
+### 2. All-Equity Balanced Portfolio ⚠️ Above cap (25%)
 - expectedReturn: 0.32
-- risk: 0.4624544495555451
-- diversificationScore: 94.0
-- variation_id: 10
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:58.773566
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| STX | 34.0% | Technology |  |
-| TRGP | 33.0% | Energy |  |
-| DXCM | 33.0% | Healthcare |  |
-
-### 2. Equity Advantage Portfolio
-- expectedReturn: 0.31
-- risk: 0.43976215951550424
-- diversificationScore: 97.9
-- variation_id: 9
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:57.585551
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CDNS | 38.0% | Technology |  |
-| TRGP | 27.0% | Energy |  |
-| DXCM | 20.0% | Healthcare |  |
-| OVZON.ST | 15.0% | Communication Services |  |
-
-### 3. Aggressive Builder Portfolio
-- expectedReturn: 0.31
-- risk: 0.4885539018668174
-- diversificationScore: 98.8
-- variation_id: 7
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:55.404077
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| VU.PA | 35.0% | Technology |  |
-| FANG | 30.0% | Energy |  |
-| GLPG.AS | 20.0% | Healthcare |  |
-| RUSTA.ST | 15.0% | Consumer Cyclical |  |
-
-### 4. Capital Appreciation Portfolio
-- expectedReturn: 0.31
-- risk: 0.49453906173690365
-- diversificationScore: 91.4
-- variation_id: 2
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:49.157213
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| VIT-B.ST | 30.0% | Technology |  |
-| FANG | 40.0% | Energy |  |
-| GLPG.AS | 30.0% | Healthcare |  |
-
-### 5. High-Octane Growth Portfolio
-- expectedReturn: 0.25
-- risk: 0.26788898719195203
-- diversificationScore: 99.6
-- variation_id: 3
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:50.672693
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CPRT | 35.0% | Industrials |  |
-| MNST | 25.0% | Consumer Defensive |  |
-| APH | 25.0% | Technology |  |
-| VRTX | 15.0% | Healthcare |  |
-
-### 6. Growth-Driven Portfolio
-- expectedReturn: 0.22
-- risk: 0.3405870668913928
-- diversificationScore: 93.8
-- variation_id: 11
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:00.845308
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| BX | 42.0% | Financial Services |  |
-| WDC | 22.0% | Technology |  |
-| STLD | 18.0% | Basic Materials |  |
-| INDT.ST | 18.0% | Industrials |  |
-
-### 7. Dynamic Growth Portfolio
-- expectedReturn: 0.33
-- risk: 0.2940585797689832
-- diversificationScore: 81.6
-- variation_id: 6
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:54.230092
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| VIT-B.ST | 50.0% | Technology |  |
-| MANTA.HE | 30.0% | Financial Services |  |
-| LAGR-B.ST | 20.0% | Industrials |  |
-
-### 8. Performance Seeker Portfolio
-- expectedReturn: 0.33
-- risk: 0.3573733528266982
-- diversificationScore: 98.8
+- risk: 0.18150650442521885
+- diversificationScore: 99.1
 - variation_id: 5
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:52.481474
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CDNS | 30.0% | Technology |  |
-| TE.PA | 35.0% | Energy |  |
-| RUSTA.ST | 20.0% | Consumer Cyclical |  |
-| DXCM | 15.0% | Healthcare |  |
-
-### 9. Growth Opportunity Portfolio
-- expectedReturn: 0.33
-- risk: 0.3577836575676341
-- diversificationScore: 94.0
-- variation_id: 8
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:56.222534
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| CDNS | 33.0% | Technology |  |
-| TE.PA | 33.0% | Energy |  |
-| RUSTA.ST | 34.0% | Consumer Cyclical |  |
-
-### 10. Growth Accelerator Portfolio
-- expectedReturn: 0.33
-- risk: 0.2980501625236095
-- diversificationScore: 91.4
-- variation_id: 0
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:46.777486
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| VU.PA | 30.0% | Technology |  |
-| MANTA.HE | 40.0% | Financial Services |  |
-| LAGR-B.ST | 30.0% | Industrials |  |
-
-### 11. Equity-Focused Portfolio
-- expectedReturn: 0.33
-- risk: 0.3190026458812989
-- diversificationScore: 98.3
-- variation_id: 1
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:48.023460
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| VU.PA | 28.0% | Technology |  |
-| MANTA.HE | 37.0% | Financial Services |  |
-| LAGR-B.ST | 20.0% | Industrials |  |
-| FANG | 15.0% | Energy |  |
-
-### 12. Growth Maximizer Portfolio
-- expectedReturn: 0.32
-- risk: 0.44335654235352273
-- diversificationScore: 91.4
-- variation_id: 4
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:29:51.552474
-- risk_profile: aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| VIT-B.ST | 40.0% | Technology |  |
-| TE.PA | 30.0% | Energy |  |
-| GLPG.AS | 30.0% | Healthcare |  |
-
-## very-aggressive (12 portfolios)
-
-### 1. Maximum Velocity Portfolio
-- expectedReturn: 0.37
-- risk: 0.38372935299375344
-- diversificationScore: 92.6
-- variation_id: 0
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:07.043484
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| MPWR | 32.0% | Technology |  |
-| SECT-B.ST | 36.0% | Healthcare |  |
-| MELI | 32.0% | Consumer Cyclical |  |
-
-### 2. Exponential Growth Portfolio
-- expectedReturn: 0.37
-- risk: 0.41236956473567876
-- diversificationScore: 91.4
-- variation_id: 3
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:12.936220
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| MPWR | 30.0% | Technology |  |
-| MELI | 40.0% | Consumer Cyclical |  |
-| ALIF-B.ST | 30.0% | Healthcare |  |
-
-### 3. High-Conviction Equity Portfolio
-- expectedReturn: 0.37
-- risk: 0.47811032037044543
-- diversificationScore: 84.5
-- variation_id: 4
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:13.809996
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| ALIF-B.ST | 48.0% | Healthcare |  |
-| QTCOM.HE | 28.0% | Technology |  |
-| RBW.WA | 24.0% | Consumer Cyclical |  |
-
-### 4. Frontier Growth Portfolio
-- expectedReturn: 0.37
-- risk: 0.4939666821103434
-- diversificationScore: 84.5
-- variation_id: 5
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:15.095190
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| QTCOM.HE | 48.0% | Technology |  |
-| RBW.WA | 28.0% | Consumer Cyclical |  |
-| MYCR.ST | 24.0% | Industrials |  |
-
-### 5. Ultra-Growth Portfolio
-- expectedReturn: 0.33
-- risk: 0.2891768470621775
-- diversificationScore: 94.0
-- variation_id: 1
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:08.048573
-- risk_profile: very-aggressive
+- generated_at: 2026-01-14T11:27:42.988476
+- risk_profile: moderate
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
 | VIT-B.ST | 33.0% | Technology |  |
-| MANTA.HE | 33.0% | Financial Services |  |
-| LAGR-B.ST | 34.0% | Industrials |  |
+| CAMX.ST | 32.0% | Healthcare |  |
+| EXA.PA | 20.0% | Industrials |  |
+| MANTA.HE | 15.0% | Financial Services |  |
 
-### 6. Maximum Alpha Portfolio
-- expectedReturn: 0.30
-- risk: 0.5232848758701527
-- diversificationScore: 92.3
-- variation_id: 7
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:20.724629
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| STX | 32.0% | Technology |  |
-| FANG | 38.0% | Energy |  |
-| GLPG.AS | 30.0% | Healthcare |  |
-
-### 7. Acceleration Portfolio ⚠️ Above cap (45%)
-- expectedReturn: 0.45
-- risk: 0.4993672023060082
-- diversificationScore: 93.0
-- variation_id: 6
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:19.598980
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| AMD | 35.0% | Technology |  |
-| HWM | 35.0% | Industrials |  |
-| NFLX | 30.0% | Communication Services |  |
-
-### 8. Breakout Opportunity Portfolio ⚠️ Above cap (45%)
-- expectedReturn: 0.45
-- risk: 0.5040063619951483
-- diversificationScore: 92.3
-- variation_id: 9
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:33.670784
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| REY.MI | 38.0% | Technology | Reply S.p.A. |
-| HWM | 32.0% | Industrials |  |
-| NFLX | 30.0% | Communication Services |  |
-
-### 9. Momentum Maximizer Portfolio ⚠️ Above cap (45%)
-- expectedReturn: 0.45
-- risk: 0.4948071294664834
-- diversificationScore: 87.0
+### 3. Multi-Strategy Core Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.31
+- risk: 0.3376454799345774
+- diversificationScore: 99.6
 - variation_id: 11
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:45.980102
-- risk_profile: very-aggressive
+- generated_at: 2026-01-14T11:27:56.388577
+- risk_profile: moderate
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| REY.MI | 40.0% | Technology | Reply S.p.A. |
-| HWM | 40.0% | Industrials |  |
-| NFLX | 20.0% | Communication Services |  |
+| IVSO.ST | 35.0% | Technology |  |
+| GLPG.AS | 25.0% | Healthcare |  |
+| EXA.PA | 25.0% | Industrials |  |
+| MANTA.HE | 15.0% | Financial Services |  |
 
-### 10. Next-Generation Portfolio ⚠️ Above cap (45%)
-- expectedReturn: 0.45
-- risk: 0.5025390622817167
-- diversificationScore: 85.1
-- variation_id: 10
+### 4. Strategic Balance Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.31
+- risk: 0.3951590626975221
+- diversificationScore: 100.0
+- variation_id: 3
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:39.267819
-- risk_profile: very-aggressive
+- generated_at: 2026-01-14T11:27:40.465459
+- risk_profile: moderate
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| REY.MI | 45.0% | Technology | Reply S.p.A. |
-| HWM | 35.0% | Industrials |  |
-| NFLX | 20.0% | Communication Services |  |
+| VU.PA | 28.0% | Technology |  |
+| URI | 32.0% | Industrials |  |
+| GLPG.AS | 25.0% | Healthcare |  |
+| VST | 15.0% | Utilities |  |
 
-### 11. Elite Growth Portfolio
-- expectedReturn: 0.45
-- risk: 0.5041249922695712
+### 5. Diversified Opportunity Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.31
+- risk: 0.4042934773348388
+- diversificationScore: 94.0
+- variation_id: 4
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:41.664975
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| VU.PA | 34.0% | Technology |  |
+| GLPG.AS | 33.0% | Healthcare |  |
+| VST | 33.0% | Utilities |  |
+
+### 6. Diversified Foundation Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.29
+- risk: 0.2283969558038213
+- diversificationScore: 100.0
+- variation_id: 9
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:50.654647
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| MCAP.ST | 25.0% | Healthcare |  |
+| SAGA-B.ST | 30.0% | Real Estate |  |
+| DPZ | 25.0% | Consumer Cyclical |  |
+| TEAM | 20.0% | Technology |  |
+
+### 7. Growth & Income Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.26
+- risk: 0.2007217827569607
 - diversificationScore: 78.8
-- variation_id: 8
-- data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:27.584547
-- risk_profile: very-aggressive
-
-Allocations:
-
-| Symbol | Allocation | Sector | Name |
-|---|---:|---|---|
-| REY.MI | 50.0% | Technology | Reply S.p.A. |
-| HWM | 35.0% | Industrials |  |
-| NFLX | 15.0% | Communication Services |  |
-
-### 12. Peak Performance Portfolio
-- expectedReturn: 0.43
-- risk: 0.4794193197847536
-- diversificationScore: 81.6
 - variation_id: 2
 - data_dependency_hash: None
-- generated_at: 2025-12-19T14:30:11.869897
+- generated_at: 2026-01-14T11:27:38.827957
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| EXE | 50.0% | Energy |  |
+| BALD-B.ST | 35.0% | Real Estate |  |
+| TER | 15.0% | Technology |  |
+
+### 8. Balanced Horizon Portfolio
+- expectedReturn: 0.23
+- risk: 0.28
+- diversificationScore: 75.0
+- variation_id: 0
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:36.872148
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| IVSO.ST | 35.0% | Technology |  |
+| SINCH.ST | 35.0% | Communication Services |  |
+| MIPS.ST | 30.0% | Consumer Cyclical |  |
+
+### 9. Core Diversification Portfolio
+- expectedReturn: 0.23
+- risk: 0.28
+- diversificationScore: 75.0
+- variation_id: 1
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:37.617742
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| IVSO.ST | 25.0% | Technology |  |
+| SINCH.ST | 30.0% | Communication Services |  |
+| MIPS.ST | 25.0% | Consumer Cyclical |  |
+| URI | 20.0% | Industrials |  |
+
+### 10. Moderate Accumulator Portfolio
+- expectedReturn: 0.18
+- risk: 0.24596560708784937
+- diversificationScore: 98.8
+- variation_id: 7
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:46.107689
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| FRAS.L | 30.0% | Consumer Cyclical |  |
+| DAY | 35.0% | Technology |  |
+| CBRE | 20.0% | Real Estate |  |
+| AAK.ST | 15.0% | Consumer Defensive |  |
+
+### 11. Long-Term Balance Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.33
+- risk: 0.32170418757117447
+- diversificationScore: 90.1
+- variation_id: 10
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:54.970504
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| CAMX.ST | 40.0% | Healthcare |  |
+| NEM.DE | 35.0% | Technology |  |
+| VST | 25.0% | Utilities |  |
+
+### 12. All-Weather Equity Portfolio ⚠️ Above cap (25%)
+- expectedReturn: 0.33
+- risk: 0.33034727844488965
+- diversificationScore: 88.5
+- variation_id: 6
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:27:44.529847
+- risk_profile: moderate
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| SINCH.ST | 43.0% | Communication Services |  |
+| VIT-B.ST | 32.0% | Technology |  |
+| MIPS.ST | 25.0% | Consumer Cyclical |  |
+
+## aggressive (12 portfolios)
+
+### 1. Aggressive Builder Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.38
+- risk: 0.22327460397035787
+- diversificationScore: 98.8
+- variation_id: 7
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:13.283449
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| DDOG | 35.0% | Technology |  |
+| DNP.WA | 30.0% | Consumer Defensive |  |
+| SECT-B.ST | 20.0% | Healthcare |  |
+| MELI | 15.0% | Consumer Cyclical |  |
+
+### 2. Growth Maximizer Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.37
+- risk: 0.21860393162699754
+- diversificationScore: 91.4
+- variation_id: 4
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:06.409376
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| FICO | 40.0% | Technology |  |
+| SECT-B.ST | 30.0% | Healthcare |  |
+| MELI | 30.0% | Consumer Cyclical |  |
+
+### 3. Growth Opportunity Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.37
+- risk: 0.2410977735998169
+- diversificationScore: 86.4
+- variation_id: 8
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:14.486243
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| FICO | 42.0% | Technology |  |
+| ALIF-B.ST | 38.0% | Healthcare |  |
+| RBW.WA | 20.0% | Consumer Cyclical |  |
+
+### 4. Performance Seeker Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.37
+- risk: 0.2145398993306044
+- diversificationScore: 99.1
+- variation_id: 5
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:08.338192
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| FICO | 33.0% | Technology |  |
+| MELI | 32.0% | Consumer Cyclical |  |
+| ALIF-B.ST | 20.0% | Healthcare |  |
+| MYCR.ST | 15.0% | Industrials |  |
+
+### 5. Equity Advantage Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.36
+- risk: 0.3209107249131867
+- diversificationScore: 90.5
+- variation_id: 9
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:15.938999
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| MU | 48.0% | Technology |  |
+| VITR.ST | 18.0% | Healthcare |  |
+| ALLEI.ST | 17.0% | Basic Materials |  |
+| MYCR.ST | 17.0% | Industrials |  |
+
+### 6. Expansion Portfolio
+- expectedReturn: 0.34
+- risk: 0.32253382166578953
+- diversificationScore: 94.0
+- variation_id: 10
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:16.641429
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| DELL | 34.0% | Technology |  |
+| IPCO.ST | 33.0% | Energy |  |
+| COIN | 33.0% | Financial Services |  |
+
+### 7. Growth-Driven Portfolio
+- expectedReturn: 0.28
+- risk: 0.22307620727331706
+- diversificationScore: 100.0
+- variation_id: 11
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:18.073668
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| LRCX | 27.0% | Technology |  |
+| URW.PA | 28.0% | Real Estate |  |
+| CTAS | 25.0% | Industrials |  |
+| PODD | 20.0% | Healthcare |  |
+
+### 8. Growth-Driven Portfolio
+- expectedReturn: 0.28
+- risk: 0.22307620727331706
+- diversificationScore: 100.0
+- variation_id: 11
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:18.073668
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| LRCX | 27.0% | Technology |  |
+| URW.PA | 28.0% | Real Estate |  |
+| CTAS | 25.0% | Industrials |  |
+| PODD | 20.0% | Healthcare |  |
+
+### 9. Equity-Focused Portfolio
+- expectedReturn: 0.15
+- risk: 0.21678934398852953
+- diversificationScore: 99.6
+- variation_id: 1
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:01.771994
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| IAG | 25.0% | Basic Materials |  |
+| SPIE.PA | 35.0% | Industrials |  |
+| LIO.L | 25.0% | Financial Services |  |
+| LDOS | 15.0% | Technology |  |
+
+### 10. Capital Appreciation Portfolio
+- expectedReturn: 0.13
+- risk: 0.19510559475621664
+- diversificationScore: 93.0
+- variation_id: 2
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:03.082108
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| KGX.DE | 35.0% | Industrials |  |
+| NEE | 35.0% | Utilities |  |
+| OKE | 30.0% | Energy |  |
+
+### 11. Growth Accelerator Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.40
+- risk: 0.3441730328483698
+- diversificationScore: 69.1
+- variation_id: 0
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:00.089466
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| DDOG | 60.0% | Technology |  |
+| HLAG.DE | 25.0% | Industrials |  |
+| DNP.WA | 15.0% | Consumer Defensive |  |
+
+### 12. High-Octane Growth Portfolio ⚠️ Above cap (35%)
+- expectedReturn: 0.39
+- risk: 0.23173746017809832
+- diversificationScore: 100.0
+- variation_id: 3
+- data_dependency_hash: None
+- generated_at: 2026-01-14T11:28:04.634234
+- risk_profile: aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| DDOG | 25.0% | Technology |  |
+| HLAG.DE | 30.0% | Industrials |  |
+| DNP.WA | 25.0% | Consumer Defensive |  |
+| SECT-B.ST | 20.0% | Healthcare |  |
+
+## very-aggressive (12 portfolios)
+
+### 1. Exponential Growth Portfolio ⚠️ Above cap (45%)
+- expectedReturn: 0.52
+- risk: 0.24028556741400062
+- diversificationScore: 90.1
+- variation_id: 3
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:42.475748
 - risk_profile: very-aggressive
 
 Allocations:
 
 | Symbol | Allocation | Sector | Name |
 |---|---:|---|---|
-| AMD | 50.0% | Technology |  |
-| HWM | 30.0% | Industrials |  |
-| SECT-B.ST | 20.0% | Healthcare |  |
+| ZS | 35.0% | Technology |  |
+| MILDEF.ST | 40.0% | Industrials |  |
+| LTMC.MI | 25.0% | Consumer Cyclical |  |
+
+### 2. Maximum Velocity Portfolio ⚠️ Above cap (45%)
+- expectedReturn: 0.52
+- risk: 0.37299809877201334
+- diversificationScore: 87.0
+- variation_id: 0
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:39.177879
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| AXON | 40.0% | Industrials |  |
+| MSTR | 40.0% | Technology |  |
+| EVO.ST | 20.0% | Consumer Cyclical |  |
+
+### 3. Peak Performance Portfolio ⚠️ Above cap (45%)
+- expectedReturn: 0.52
+- risk: 0.4798921605344499
+- diversificationScore: 69.1
+- variation_id: 2
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:42.016927
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| MSTR | 60.0% | Technology |  |
+| EVO.ST | 25.0% | Consumer Cyclical |  |
+| MILDEF.ST | 15.0% | Industrials |  |
+
+### 4. High-Conviction Equity Portfolio ⚠️ Above cap (45%)
+- expectedReturn: 0.50
+- risk: 0.341577695886996
+- diversificationScore: 93.3
+- variation_id: 4
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:43.147627
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| PDD | 36.0% | Consumer Cyclical |  |
+| BONEX.ST | 32.0% | Healthcare |  |
+| NORBT.OL | 32.0% | Technology |  |
+
+### 5. Momentum Maximizer Portfolio
+- expectedReturn: 0.43
+- risk: 0.3605102735308428
+- diversificationScore: 84.5
+- variation_id: 11
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:59.471149
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| HLAG.DE | 48.0% | Industrials |  |
+| AMD | 28.0% | Technology |  |
+| NFLX | 24.0% | Communication Services |  |
+
+### 6. Momentum Maximizer Portfolio
+- expectedReturn: 0.43
+- risk: 0.3605102735308428
+- diversificationScore: 84.5
+- variation_id: 11
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:59.471149
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| HLAG.DE | 48.0% | Industrials |  |
+| AMD | 28.0% | Technology |  |
+| NFLX | 24.0% | Communication Services |  |
+
+### 7. Breakout Opportunity Portfolio
+- expectedReturn: 0.40
+- risk: 0.2950057542139844
+- diversificationScore: 91.4
+- variation_id: 9
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:53.001282
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| DDOG | 30.0% | Technology |  |
+| HLAG.DE | 40.0% | Industrials |  |
+| DNP.WA | 30.0% | Consumer Defensive |  |
+
+### 8. Elite Growth Portfolio
+- expectedReturn: 0.31
+- risk: 0.31496172326001154
+- diversificationScore: 94.0
+- variation_id: 8
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:50.017049
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| EXA.PA | 33.0% | Industrials |  |
+| KLAC | 33.0% | Technology |  |
+| GLPG.AS | 34.0% | Healthcare |  |
+
+### 9. Next-Generation Portfolio
+- expectedReturn: 0.25
+- risk: 0.3022680102023284
+- diversificationScore: 93.0
+- variation_id: 10
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:54.728330
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| TKO | 35.0% | Communication Services |  |
+| MPC | 35.0% | Energy |  |
+| RCL | 30.0% | Consumer Cyclical |  |
+
+### 10. Next-Generation Portfolio
+- expectedReturn: 0.25
+- risk: 0.3022680102023284
+- diversificationScore: 93.0
+- variation_id: 10
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:54.728330
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| TKO | 35.0% | Communication Services |  |
+| MPC | 35.0% | Energy |  |
+| RCL | 30.0% | Consumer Cyclical |  |
+
+### 11. Frontier Growth Portfolio ⚠️ Above cap (45%)
+- expectedReturn: 0.54
+- risk: 0.2688111343660312
+- diversificationScore: 94.1
+- variation_id: 5
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:44.173508
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| PDD | 33.3% | Consumer Cyclical |  |
+| DOFG.OL | 33.3% | Industrials |  |
+| SDZ.SW | 33.4% | Healthcare |  |
+
+### 12. Ultra-Growth Portfolio ⚠️ Above cap (45%)
+- expectedReturn: 0.52
+- risk: 0.23943108506460012
+- diversificationScore: 94.0
+- variation_id: 1
+- data_dependency_hash: None
+- generated_at: 2026-01-14T12:12:41.109216
+- risk_profile: very-aggressive
+
+Allocations:
+
+| Symbol | Allocation | Sector | Name |
+|---|---:|---|---|
+| LTMC.MI | 33.0% | Consumer Cyclical |  |
+| ZS | 34.0% | Technology |  |
+| AXON | 33.0% | Industrials |  |
 
 
 Total portfolios exported: 60

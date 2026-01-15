@@ -127,7 +127,7 @@ dev: check-cache
 	@echo "📊 Backend: http://localhost:8000"
 	@echo "🌐 Frontend: http://localhost:8080"
 	@echo "=================================================="
-	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 & \
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 & \
 	cd frontend && npm run dev
 
  
@@ -145,24 +145,54 @@ full-dev: check-cache stop
 	@echo "\ud83d\ude80 Starting servers with full data mode (lazy initialization)..."
 	# Preflight import check to fail fast on syntax/indent errors
 	@cd backend && $(PYTHON_EXEC) -c "import importlib; importlib.import_module('routers.portfolio')" || { echo "❌ portfolio.py import failed"; exit 1; }
-	@cd backend && PYTHONPATH=$(PWD)/backend FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
+	@cd backend && PYTHONPATH=$(PWD)/backend FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --host 127.0.0.1 --port 8000 & \
 	cd frontend && npm run dev & \
 	true
 	@echo "⏳ Waiting for backend server to be ready..."
-	@for i in {1..15}; do \
+	@BACKEND_READY=0; \
+	for i in {1..15}; do \
 		if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
 			echo "✅ Backend server ready!"; \
+			BACKEND_READY=1; \
 			break; \
 		fi; \
 		echo "  Attempt $$i/15..."; \
 		sleep 2; \
-	done
+	done; \
+	if [ $$BACKEND_READY -eq 0 ]; then \
+		echo "❌ Backend server failed to start!"; \
+		echo "   Check if port 8000 is already in use: lsof -i :8000"; \
+		exit 1; \
+	fi
+	@echo "⏳ Waiting for frontend server to be ready..."
+	@FRONTEND_READY=0; \
+	for i in {1..15}; do \
+		if curl -s http://localhost:8080/ > /dev/null 2>&1; then \
+			echo "✅ Frontend server ready!"; \
+			FRONTEND_READY=1; \
+			break; \
+		fi; \
+		echo "  Attempt $$i/15..."; \
+		sleep 2; \
+	done; \
+	if [ $$FRONTEND_READY -eq 0 ]; then \
+		echo "⚠️  Frontend server not ready, but continuing..."; \
+	fi
 	@echo "🔥 Warming mini-lesson assets cache..."
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		curl -s http://localhost:8000/api/portfolio/mini-lesson/assets > /dev/null 2>&1 && echo "✅ Mini-lesson cache warmed!" || echo "⚠️ Failed to warm mini-lesson cache"; \
+		if curl -s http://localhost:8000/api/portfolio/mini-lesson/assets > /dev/null 2>&1; then \
+			echo "✅ Mini-lesson cache warmed!"; \
+		else \
+			echo "⚠️ Failed to warm mini-lesson cache (endpoint returned error)"; \
+		fi; \
 	else \
-		echo "⚠️ Backend not healthy yet; skipping mini-lesson warm"; \
+		echo "❌ Backend health check failed - cannot warm cache"; \
+		exit 1; \
 	fi
+	@echo ""
+	@echo "✅ Both servers are ready!"
+	@echo "📊 Backend: http://localhost:8000"
+	@echo "🌐 Frontend: http://localhost:8080"
 
 # Backend only (FAST startup with lazy stock selection)
 backend: check-cache
@@ -172,7 +202,7 @@ backend: check-cache
 	@echo "📊 Server: http://localhost:8000"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
-	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 # Backend with full ticker list (FAST startup with lazy initialization)
 backend-full: check-cache
@@ -182,7 +212,7 @@ backend-full: check-cache
 	@echo "📊 Server: http://localhost:8000 (with all tickers)"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
-	cd backend && FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 # Frontend only
 frontend:
@@ -231,9 +261,26 @@ status:
 # Stop all running servers
 stop:
 	@echo "🛑 Stopping all servers..."
-	pkill -f uvicorn || true
-	pkill -f "npm run dev" || true
-	pkill -f "ticker_table_server.py" || true
+	@pkill -f uvicorn || true
+	@pkill -f "npm run dev" || true
+	@pkill -f "ticker_table_server.py" || true
+	@pkill -f "vite" || true
+	@echo "⏳ Waiting for processes to terminate..."
+	@for i in {1..5}; do \
+		if ! lsof -i :8000 -P > /dev/null 2>&1 && ! lsof -i :8080 -P > /dev/null 2>&1; then \
+			break; \
+		fi; \
+		sleep 1; \
+	done
+	@if lsof -i :8000 -P > /dev/null 2>&1; then \
+		echo "⚠️  Port 8000 still in use, force killing..."; \
+		lsof -ti :8000 | xargs kill -9 2>/dev/null || true; \
+	fi
+	@if lsof -i :8080 -P > /dev/null 2>&1; then \
+		echo "⚠️  Port 8080 still in use, force killing..."; \
+		lsof -ti :8080 | xargs kill -9 2>/dev/null || true; \
+	fi
+	@sleep 1
 	@echo "✅ All servers stopped!"
 
 # Clean up and stop servers
@@ -320,7 +367,7 @@ check-redis:
 
  
 ### Consolidated view (Tickers + Portfolios in one HTML page)
-consolidated-view: check-cache
+consolidated-view: check-cache stop
 	@echo "🚀 Starting Consolidated Data Tables..."
 	@echo "=================================================="
 	@echo "📋 This will:"
@@ -338,7 +385,7 @@ consolidated-view: check-cache
 	LOG_FILE="$$ROOT_DIR/backend/logs/consolidated-view.log"; \
 	mkdir -p "$$ROOT_DIR/backend/logs"; \
 	echo "📝 Streaming backend output to $$LOG_FILE"; \
-	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --host 0.0.0.0 --port 8000 > "$$LOG_FILE" 2>&1 & \
+	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --host 127.0.0.1 --port 8000 > "$$LOG_FILE" 2>&1 & \
 	BACKEND_PID=$$!; \
 	echo "✅ Backend server started (PID: $$BACKEND_PID)"; \
 	echo "$$BACKEND_PID" > "$$ROOT_DIR/backend/logs/consolidated-view.pid"; \
@@ -418,7 +465,7 @@ enhanced: check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting backend server..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@echo ""
 	@echo "🔄 Step 3: Starting server (this may take a few seconds)..."
@@ -469,7 +516,7 @@ enhanced-quick: check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting backend server..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@echo ""
 	@echo "🔄 Step 3: Opening enhanced table in browser..."
@@ -516,7 +563,7 @@ enhanced-complete: check-cache
 	@echo ""
 	@echo "🔄 Step 1: Starting backend server..."
 	@echo "📊 Starting main backend server on port 8000..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Backend server started (PID: $$!)"
 	@echo ""
 	@echo "🔄 Step 2: Waiting for backend server to be ready..."
@@ -640,7 +687,7 @@ backend-enhanced: check-cache
 	@echo ""
 	@echo "🔄 Starting enhanced backend server..."
 	@echo "📊 Starting enhanced backend server on port 8000..."
-	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+	@cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 > /dev/null 2>&1 &
 	@echo "✅ Enhanced backend server started (PID: $$!)"
 	@echo ""
 	@echo "🎯 ENHANCED BACKEND SERVER STARTING!"
