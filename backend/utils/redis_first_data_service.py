@@ -37,9 +37,15 @@ class RedisFirstDataService:
         logger.info("✅ Redis-First Data Service initialized")
     
     def _init_redis(self, host: str, port: int) -> Optional[redis.Redis]:
-        """Initialize Redis connection"""
+        """Initialize Redis connection with explicit timeouts"""
         try:
-            r = redis.Redis(host=host, port=port, decode_responses=False)
+            r = redis.Redis(
+                host=host,
+                port=port,
+                decode_responses=False,
+                socket_timeout=5,        # 5 second timeout for operations
+                socket_connect_timeout=3  # 3 second timeout for connection
+            )
             r.ping()
             logger.info("✅ Redis connection established")
             return r
@@ -64,12 +70,36 @@ class RedisFirstDataService:
                 return None
         return self._enhanced_data_fetcher
     
+    def _load_master_ticker_list_from_file(self) -> Optional[List[str]]:
+        """Load master ticker list from master_ticker_list.txt file"""
+        try:
+            import os
+            # Try multiple possible locations
+            possible_paths = [
+                os.path.join(os.path.dirname(__file__), "..", "..", "master_ticker_list.txt"),
+                os.path.join(os.path.dirname(__file__), "..", "..", "..", "master_ticker_list.txt"),
+                "master_ticker_list.txt",
+                os.path.join(os.getcwd(), "master_ticker_list.txt"),
+            ]
+            
+            for file_path in possible_paths:
+                abs_path = os.path.abspath(file_path)
+                if os.path.exists(abs_path):
+                    with open(abs_path, 'r', encoding='utf-8') as f:
+                        tickers = [line.strip() for line in f if line.strip()]
+                    logger.info(f"✅ Loaded {len(tickers)} tickers from master_ticker_list.txt ({abs_path})")
+                    return tickers
+            return None
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load master_ticker_list.txt: {e}")
+            return None
+    
     @property
     def all_tickers(self) -> List[str]:
-        """Get all tickers (cached)"""
+        """Get all tickers (cached) - Priority: Redis -> File -> Cached tickers -> Empty list"""
         if self._ticker_list is None:
+            # Priority 1: Try Redis cache
             if self.redis_client:
-                # Try multiple Redis keys in order of preference
                 ticker_keys = [
                     "master_ticker_list",           # Primary key
                     "master_ticker_list_validated", # Validated list (fallback)
@@ -85,42 +115,49 @@ class RedisFirstDataService:
                                 import gzip
                                 decompressed = gzip.decompress(cached_tickers)
                                 self._ticker_list = json.loads(decompressed.decode())
-                                logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache ({ticker_key}, compressed)")
+                                logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache ({ticker_key}, compressed)")
                                 return self._ticker_list
                             except Exception:
                                 # Fallback to uncompressed (old format)
                                 self._ticker_list = json.loads(cached_tickers.decode())
-                                logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache ({ticker_key}, uncompressed)")
+                                logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from Redis cache ({ticker_key}, uncompressed)")
                                 return self._ticker_list
                         except Exception as e:
                             logger.warning(f"⚠️ Failed to load cached tickers from {ticker_key}: {e}")
                             continue
                 
-                # If no Redis key found, try to get from cached tickers in Redis
+                # Priority 2: Try to get from cached tickers in Redis
                 try:
                     cached_tickers_list = self.list_cached_tickers()
                     if cached_tickers_list and len(cached_tickers_list) > 0:
                         self._ticker_list = cached_tickers_list
-                        logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from cached ticker data")
+                        logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from cached ticker data")
                         return self._ticker_list
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to load from cached tickers: {e}")
-                
-                # Fallback to EnhancedDataFetcher
-                if self.enhanced_data_fetcher:
-                    self._ticker_list = self.enhanced_data_fetcher.all_tickers
-                    # Cache the ticker list
-                    if self.redis_client and self._ticker_list:
-                        try:
-                            self.redis_client.setex(
-                                "master_ticker_list", 
-                                timedelta(hours=24),  # Cache for 24 hours
-                                json.dumps(self._ticker_list).encode()
-                            )
-                        except Exception as e:
-                            logger.warning(f"⚠️ Failed to cache ticker list: {e}")
-                else:
-                    self._ticker_list = []
+            
+            # Priority 3: Load from master_ticker_list.txt file (PRIMARY SOURCE)
+            file_tickers = self._load_master_ticker_list_from_file()
+            if file_tickers and len(file_tickers) > 0:
+                self._ticker_list = file_tickers
+                # Cache in Redis for future use
+                if self.redis_client:
+                    try:
+                        import gzip
+                        compressed_data = gzip.compress(json.dumps(self._ticker_list).encode())
+                        self.redis_client.setex(
+                            "master_ticker_list",
+                            timedelta(hours=24 * 365),  # Cache for 1 year
+                            compressed_data
+                        )
+                        logger.info(f"✅ Cached {len(self._ticker_list)} tickers from file to Redis")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to cache ticker list to Redis: {e}")
+                return self._ticker_list
+            
+            # Priority 4: Empty list (no fallback to EnhancedDataFetcher to avoid circular dependency)
+            logger.warning("⚠️ No ticker list found in Redis or file, using empty list")
+            self._ticker_list = []
         
         return self._ticker_list
     

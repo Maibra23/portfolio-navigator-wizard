@@ -1,0 +1,133 @@
+[10920] 18 Jan 16:54:23.892 # --- Memurai is starting ---
+[10920] 18 Jan 16:54:23.894 # Memurai Developer version=4.1.2, API=7.2.5, instance-name=, pid=10920, just started
+[10920] 18 Jan 16:54:23.894 # Usage of Memurai Developer Edition in a production environment is prohibited; it also automatically shuts down after 10 days. For more details see: https://www.memurai.com/faq
+[10920] 18 Jan 16:54:23.895 # Configuration loaded
+[10920] 18 Jan 16:54:23.896 * monotonic clock: Windows QueryPerformanceCounter
+[10920] 18 Jan 16:54:23.897 * Running mode=standalone, port=6379.
+[10920] 18 Jan 16:54:23.903 # Memurai QID = AC15ED642DA4C367;7005FBD58B1420E5;42513DDAD0DF0184;7005FBD58B1420E5
+[10920] 18 Jan 16:54:23.905 * Server initialized
+[10920] 18 Jan 16:54:23.905 * Ready to accept connections tcp
+[10920] 18 Jan 17:16:05.121 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 17:16:05.121 * Background saving started by pid 12348
+[12348] 18 Jan 17:16:05.197 * DB saved on disk
+[10920] 18 Jan 17:16:05.226 * Background saving terminated with success
+[10920] 18 Jan 17:21:06.095 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 17:21:06.095 * Background saving started by pid 17188
+[17188] 18 Jan 17:21:06.158 * DB saved on disk
+[10920] 18 Jan 17:21:06.206 * Background saving terminated with success
+[10920] 18 Jan 17:41:43.151 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 17:41:43.155 * Background saving started by pid 4052
+[4052] 18 Jan 17:41:43.220 * DB saved on disk
+[10920] 18 Jan 17:41:43.262 * Background saving terminated with success
+[10920] 18 Jan 17:46:44.092 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 17:46:44.096 * Background saving started by pid 23088
+[23088] 18 Jan 17:46:44.183 * DB saved on disk
+[10920] 18 Jan 17:46:44.202 * Background saving terminated with success
+[10920] 18 Jan 17:51:45.084 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 17:51:45.089 * Background saving started by pid 21668
+[21668] 18 Jan 17:51:45.173 * DB saved on disk
+[10920] 18 Jan 17:51:45.193 * Background saving terminated with success
+[10920] 18 Jan 17:56:46.076 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 17:56:46.077 * Background saving started by pid 22660
+[22660] 18 Jan 17:56:46.162 * DB saved on disk
+[10920] 18 Jan 17:56:46.187 * Background saving terminated with success
+[10920] 18 Jan 18:01:47.004 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:01:47.008 * Background saving started by pid 23516
+[23516] 18 Jan 18:01:47.098 * DB saved on disk
+[10920] 18 Jan 18:01:47.120 * Background saving terminated with success
+[10920] 18 Jan 18:06:48.074 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:06:48.078 * Background saving started by pid 13448
+[13448] 18 Jan 18:06:48.166 * DB saved on disk
+[10920] 18 Jan 18:06:48.193 * Background saving terminated with success
+[10920] 18 Jan 18:11:49.065 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:11:49.069 * Background saving started by pid 22616
+[22616] 18 Jan 18:11:49.149 * DB saved on disk
+[10920] 18 Jan 18:11:49.176 * Background saving terminated with success
+[10920] 18 Jan 18:16:50.004 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:16:50.004 * Background saving started by pid 17604
+[17604] 18 Jan 18:16:50.067 * DB saved on disk
+[10920] 18 Jan 18:16:50.115 * Background saving terminated with success
+[10920] 18 Jan 18:21:51.056 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:21:51.056 * Background saving started by pid 22192
+[22192] 18 Jan 18:21:51.155 * DB saved on disk
+[10920] 18 Jan 18:21:51.271 * Background saving terminated with success
+[10920] 18 Jan 18:26:52.092 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:26:52.093 * Background saving started by pid 23160
+[23160] 18 Jan 18:26:52.188 * DB saved on disk
+[10920] 18 Jan 18:26:52.203 * Background saving terminated with success
+[10920] 18 Jan 18:31:53.060 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:31:53.062 * Background saving started by pid 23008
+[23008] 18 Jan 18:31:53.151 * DB saved on disk
+[10920] 18 Jan 18:31:53.168 * Background saving terminated with success
+[10920] 18 Jan 18:36:54.009 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:36:54.012 * Background saving started by pid 22640
+[22640] 18 Jan 18:36:54.104 * DB saved on disk
+[10920] 18 Jan 18:36:54.120 * Background saving terminated with success
+[10920] 18 Jan 18:41:55.051 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:41:55.051 * Background saving started by pid 14688
+[14688] 18 Jan 18:41:55.150 * DB saved on disk
+[10920] 18 Jan 18:41:55.162 * Background saving terminated with success
+[10920] 18 Jan 18:46:56.027 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:46:56.030 * Background saving started by pid 348
+[348] 18 Jan 18:46:56.123 * DB saved on disk
+[10920] 18 Jan 18:46:56.137 * Background saving terminated with success
+[10920] 18 Jan 18:51:57.099 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:51:57.100 * Background saving started by pid 3564
+[3564] 18 Jan 18:51:57.198 * DB saved on disk
+[10920] 18 Jan 18:51:57.205 * Background saving terminated with success
+[10920] 18 Jan 18:56:58.100 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 18:56:58.104 * Background saving started by pid 17760
+[17760] 18 Jan 18:56:58.197 * DB saved on disk
+[10920] 18 Jan 18:56:58.208 * Background saving terminated with success
+[10920] 18 Jan 19:01:59.025 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:01:59.025 * Background saving started by pid 268
+[268] 18 Jan 19:01:59.104 * DB saved on disk
+[10920] 18 Jan 19:01:59.136 * Background saving terminated with success
+[10920] 18 Jan 19:07:00.072 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:07:00.087 * Background saving started by pid 19072
+[19072] 18 Jan 19:07:00.182 * DB saved on disk
+[10920] 18 Jan 19:07:00.198 * Background saving terminated with success
+[10920] 18 Jan 19:12:01.096 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:12:01.096 * Background saving started by pid 23348
+[23348] 18 Jan 19:12:01.175 * DB saved on disk
+[10920] 18 Jan 19:12:01.207 * Background saving terminated with success
+[10920] 18 Jan 19:17:02.022 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:17:02.022 * Background saving started by pid 1256
+[1256] 18 Jan 19:17:02.101 * DB saved on disk
+[10920] 18 Jan 19:17:02.133 * Background saving terminated with success
+[10920] 18 Jan 19:22:03.022 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:22:03.022 * Background saving started by pid 19008
+[19008] 18 Jan 19:22:03.101 * DB saved on disk
+[10920] 18 Jan 19:22:03.133 * Background saving terminated with success
+[10920] 18 Jan 19:27:04.052 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:27:04.052 * Background saving started by pid 18704
+[18704] 18 Jan 19:27:04.131 * DB saved on disk
+[10920] 18 Jan 19:27:04.162 * Background saving terminated with success
+[10920] 18 Jan 19:45:10.613 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 19:45:10.794 * Background saving started by pid 23804
+[23804] 18 Jan 19:45:11.356 * DB saved on disk
+[10920] 18 Jan 19:45:11.446 * Background saving terminated with success
+[10920] 18 Jan 20:09:37.867 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 20:09:37.872 * Background saving started by pid 19092
+[19092] 18 Jan 20:09:37.989 * DB saved on disk
+[10920] 18 Jan 20:09:38.084 * Background saving terminated with success
+[10920] 18 Jan 20:14:39.095 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 20:14:39.098 * Background saving started by pid 4452
+[4452] 18 Jan 20:14:39.201 * DB saved on disk
+[10920] 18 Jan 20:14:39.214 * Background saving terminated with success
+[10920] 18 Jan 20:19:40.063 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 20:19:40.064 * Background saving started by pid 21128
+[21128] 18 Jan 20:19:40.167 * DB saved on disk
+[10920] 18 Jan 20:19:40.178 * Background saving terminated with success
+[10920] 18 Jan 20:24:41.109 * 100 changes in 300 seconds. Saving...
+[10920] 18 Jan 20:24:41.111 * Background saving started by pid 24252
+[24252] 18 Jan 20:24:41.230 * DB saved on disk
+[10920] 18 Jan 20:24:41.334 * Background saving terminated with success
+[10920] 18 Jan 21:24:59.611 * 1 changes in 3600 seconds. Saving...
+[10920] 18 Jan 21:24:59.786 * Background saving started by pid 23788
+[23788] 18 Jan 21:25:00.926 * DB saved on disk
+[10920] 18 Jan 21:25:01.002 * Background saving terminated with success
+[10920] 18 Jan 22:27:24.804 * 1 changes in 3600 seconds. Saving...
+[10920] 18 Jan 22:27:24.813 * Background saving started by pid 20396
+[20396] 18 Jan 22:27:24.921 * DB saved on disk
+[10920] 18 Jan 22:27:25.021 * Background saving terminated with success

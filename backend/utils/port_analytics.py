@@ -16,7 +16,13 @@ class PortfolioAnalytics:
     
     def __init__(self):
         self.risk_free_rate = 0.038  # 4% risk-free rate
-        qs.extend_pandas()  # Extend pandas with QuantStats methods
+        self._pandas_extended = False  # Lazy loading flag
+    
+    def _ensure_pandas_extended(self):
+        """Lazy load quantstats pandas extension - only extend when needed"""
+        if not self._pandas_extended:
+            qs.extend_pandas()  # Extend pandas with QuantStats methods
+            self._pandas_extended = True
     
     def calculate_asset_metrics(self, prices: List[float]) -> Dict:
         """
@@ -26,6 +32,7 @@ class PortfolioAnalytics:
         Returns:
             Dict with comprehensive asset metrics
         """
+        self._ensure_pandas_extended()  # Lazy load quantstats extension
         try:
             # Convert to pandas Series with datetime index
             price_series = pd.Series(prices)
@@ -207,6 +214,7 @@ class PortfolioAnalytics:
         Returns:
             Dict with portfolio metrics
         """
+        self._ensure_pandas_extended()  # Lazy load quantstats extension
         try:
             # Ensure all return series have datetime index
             aligned_returns = []
@@ -656,6 +664,7 @@ class PortfolioAnalytics:
         return selected_assets
     
     def calculate_real_portfolio_metrics(self, portfolio_data: Dict, risk_profile: str = None) -> Dict:
+        self._ensure_pandas_extended()  # Lazy load quantstats extension
         """Calculate portfolio metrics using real data from portfolio allocations"""
         def get_ticker_monthly_data(ticker: str) -> Optional[Dict[str, Any]]:
             """

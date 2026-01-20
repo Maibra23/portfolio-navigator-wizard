@@ -3,3 +3,25 @@
 .git/index binary
 .git/objects/** binary
 
+# Text files - enforce LF line endings for consistency across platforms
+*.py text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Shell scripts - platform-specific line endings
+*.sh text eol=lf
+*.ps1 text eol=crlf
+
+# Data files
+*.csv text eol=lf
+*.txt text eol=lf
+
+# Configuration files
+Makefile text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf

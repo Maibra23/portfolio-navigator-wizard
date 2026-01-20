@@ -1,0 +1,27 @@
+{
+  "failed_count": 20,
+  "failed_tickers": [
+    "AGRP.L",
+    "ALPH.L",
+    "COLOB.CO",
+    "CPI.L",
+    "CRDA.L",
+    "FI",
+    "GAW.L",
+    "L'OREAL",
+    "LIO.L",
+    "LOTB.BR",
+    "LPP",
+    "LSEG.L",
+    "NXT.L",
+    "ROO.L",
+    "SPT.L",
+    "SPX.L",
+    "TEL.OL",
+    "TELIA.ST",
+    "TKWY.AS",
+    "VIRI.PA"
+  ],
+  "timestamp": "2026-01-18T20:24:13.235142",
+  "can_retry_later": true
+}

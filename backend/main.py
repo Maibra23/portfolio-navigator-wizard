@@ -38,6 +38,16 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Portfolio Navigator Wizard Backend...")
     
     try:
+        # Fast fail: Check Redis availability first (early health check)
+        try:
+            import redis
+            r_test = redis.Redis(host='localhost', port=6379, socket_connect_timeout=2, socket_timeout=2)
+            r_test.ping()
+            logger.info("✅ Early Redis health check: connected")
+        except Exception as e:
+            logger.warning(f"⚠️ Early Redis health check failed: {e}")
+            logger.warning("⚠️ Continuing with degraded mode - some features may be unavailable")
+        
         # Initialize Redis-first data service (fast, no external API calls)
         global redis_first_data_service
         from utils.redis_first_data_service import RedisFirstDataService
@@ -350,172 +360,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ Eligible tickers cache check failed: {e}")
             logger.info("💡 Eligible tickers will be computed on-demand if needed")
-        
-        # Check and generate missing portfolios on startup (lazy generation integration)
-        logger.info("🚀 Checking portfolio recommendations cache...")
-        try:
-            risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
-            total_portfolios = 0
-            profiles_needing_generation = []
-            
-            for risk_profile in risk_profiles:
-                portfolio_count = redis_manager.get_portfolio_count(risk_profile)
-                total_portfolios += portfolio_count
-                
-                if portfolio_count < 12:  # Need at least 12 portfolios per profile
-                    profiles_needing_generation.append(risk_profile)
-                    logger.info(f"📊 {risk_profile}: {portfolio_count}/12 portfolios - needs generation")
-                else:
-                    logger.debug(f"✅ {risk_profile}: {portfolio_count}/12 portfolios - sufficient")
-            
-            logger.info(f"📊 Total portfolios in Redis: {total_portfolios}/60")
-        
-            # Schedule background generation for missing portfolios (non-blocking)
-            if profiles_needing_generation:
-                logger.warning(f"⚠️ Missing portfolios detected for {len(profiles_needing_generation)} profiles")
-                logger.info("⏱️  Background generation will take ~2-3 minutes; API stays responsive")
-                
-                async def background_generate_missing_portfolios():
-                    """Background portfolio generation with comprehensive monitoring and statistics"""
-                    import time
-                    overall_start = time.time()
-                    
-                    # Overall statistics
-                    overall_stats = {
-                        'start_time': datetime.now().isoformat(),
-                        'end_time': None,
-                        'total_processing_time_seconds': 0.0,
-                        'profiles_processed': 0,
-                        'profiles_successful': 0,
-                        'profiles_failed': 0,
-                        'total_portfolios_generated': 0,
-                        'total_portfolios_stored': 0,
-                        'total_portfolios_failed': 0,
-                        'profile_stats': {},
-                        'errors': []
-                    }
-                    
-                    try:
-                        logger.info("="*80)
-                        logger.info("🚀 BACKGROUND PORTFOLIO GENERATION STARTED")
-                        logger.info("="*80)
-                        logger.info(f"📊 Profiles to process: {len(profiles_needing_generation)}")
-                        logger.info(f"   {', '.join(profiles_needing_generation)}")
-                        logger.info("="*80)
-                        
-                        from routers.portfolio import _ensure_missing_portfolios_generated
-                        
-                        # Process each risk profile
-                        for idx, risk_profile in enumerate(profiles_needing_generation, 1):
-                            try:
-                                logger.info("")
-                                logger.info(f"[{idx}/{len(profiles_needing_generation)}] Processing {risk_profile}...")
-                                
-                                # Call lazy generation (now returns statistics)
-                                profile_stats = await asyncio.to_thread(_ensure_missing_portfolios_generated, risk_profile)
-                                
-                                # Update overall statistics
-                                overall_stats['profiles_processed'] += 1
-                                overall_stats['profile_stats'][risk_profile] = profile_stats
-                                
-                                if profile_stats.get('success', False):
-                                    overall_stats['profiles_successful'] += 1
-                                else:
-                                    overall_stats['profiles_failed'] += 1
-                                    if profile_stats.get('errors'):
-                                        overall_stats['errors'].extend(profile_stats['errors'])
-                                
-                                overall_stats['total_portfolios_generated'] += profile_stats.get('portfolios_generated', 0)
-                                overall_stats['total_portfolios_stored'] += profile_stats.get('portfolios_stored', 0)
-                                overall_stats['total_portfolios_failed'] += profile_stats.get('portfolios_failed', 0)
-                                
-                                # Log profile summary
-                                if profile_stats.get('success'):
-                                    logger.info(f"✅ [{risk_profile}] Completed successfully")
-                                    logger.info(f"   📊 Generated: {profile_stats.get('portfolios_generated', 0)}")
-                                    logger.info(f"   💾 Stored: {profile_stats.get('portfolios_stored', 0)}")
-                                    logger.info(f"   ⏱️  Time: {profile_stats.get('processing_time_seconds', 0):.2f}s")
-                                else:
-                                    logger.warning(f"⚠️ [{risk_profile}] Completed with errors")
-                                    logger.warning(f"   📊 Generated: {profile_stats.get('portfolios_generated', 0)}")
-                                    logger.warning(f"   💾 Stored: {profile_stats.get('portfolios_stored', 0)}")
-                                    logger.warning(f"   ❌ Failed: {profile_stats.get('portfolios_failed', 0)}")
-                                    logger.warning(f"   ⏱️  Time: {profile_stats.get('processing_time_seconds', 0):.2f}s")
-                                
-                            except Exception as e:
-                                overall_stats['profiles_failed'] += 1
-                                error_msg = f"Error processing {risk_profile}: {e}"
-                                overall_stats['errors'].append(error_msg)
-                                logger.error(f"❌ [{risk_profile}] {error_msg}")
-                                import traceback
-                                traceback.print_exc()
-                                continue
-                        
-                        # Calculate final statistics
-                        overall_elapsed = time.time() - overall_start
-                        overall_stats['end_time'] = datetime.now().isoformat()
-                        overall_stats['total_processing_time_seconds'] = round(overall_elapsed, 3)
-            
-                        # Final summary
-                        logger.info("")
-                        logger.info("="*80)
-                        logger.info("✅ BACKGROUND PORTFOLIO GENERATION COMPLETED!")
-                        logger.info("="*80)
-                        logger.info(f"📊 OVERALL STATISTICS:")
-                        logger.info(f"   ⏱️  Total Processing Time: {overall_elapsed:.2f}s ({overall_elapsed/60:.2f} minutes)")
-                        logger.info(f"   📋 Profiles Processed: {overall_stats['profiles_processed']}/{len(profiles_needing_generation)}")
-                        logger.info(f"   ✅ Profiles Successful: {overall_stats['profiles_successful']}")
-                        logger.info(f"   ❌ Profiles Failed: {overall_stats['profiles_failed']}")
-                        logger.info(f"   📊 Total Portfolios Generated: {overall_stats['total_portfolios_generated']}")
-                        logger.info(f"   💾 Total Portfolios Stored: {overall_stats['total_portfolios_stored']}")
-                        logger.info(f"   ❌ Total Portfolios Failed: {overall_stats['total_portfolios_failed']}")
-                        
-                        if overall_stats['profiles_processed'] > 0:
-                            avg_time_per_profile = overall_elapsed / overall_stats['profiles_processed']
-                            logger.info(f"   ⏱️  Average Time per Profile: {avg_time_per_profile:.2f}s")
-                        
-                        if overall_stats['total_portfolios_generated'] > 0:
-                            avg_time_per_portfolio = overall_elapsed / overall_stats['total_portfolios_generated']
-                            logger.info(f"   ⏱️  Average Time per Portfolio: {avg_time_per_portfolio:.2f}s")
-                        
-                        if overall_stats['errors']:
-                            logger.warning(f"   ⚠️  Total Errors: {len(overall_stats['errors'])}")
-                            for error in overall_stats['errors'][:5]:  # Show first 5 errors
-                                logger.warning(f"      - {error}")
-                            if len(overall_stats['errors']) > 5:
-                                logger.warning(f"      ... and {len(overall_stats['errors']) - 5} more errors")
-                        
-                        logger.info("="*80)
-                        logger.info("✅ Portfolio recommendations are now ready!")
-                        logger.info("="*80)
-                        
-                    except Exception as e:
-                        overall_stats['end_time'] = datetime.now().isoformat()
-                        overall_stats['total_processing_time_seconds'] = round(time.time() - overall_start, 3)
-                        error_msg = f"Background portfolio generation failed: {e}"
-                        overall_stats['errors'].append(error_msg)
-                        logger.error(f"❌ {error_msg}")
-                        import traceback
-                        traceback.print_exc()
-                
-                asyncio.create_task(background_generate_missing_portfolios())
-                logger.info("✅ API will serve using lazy generation until portfolios are ready")
-            else:
-                logger.info("✅ All portfolios available - no generation needed")
-            
-            # Verify Redis health
-            try:
-                redis_status = redis_manager.redis_client.ping() if redis_manager.redis_client else False
-                if redis_status:
-                    logger.info("✅ Redis health check: connected and responsive")
-                else:
-                    logger.warning("⚠️ Redis health check: not responsive")
-            except Exception as e:
-                logger.warning(f"⚠️ Redis health check failed: {e}")
-        
-        except Exception as e:
-            logger.error(f"❌ Portfolio cache check failed: {e}")
-            logger.info("💡 Portfolios will be generated on-demand via lazy generation")
         
         logger.info("✅ Enhanced portfolio system initialized successfully")
         

@@ -8531,7 +8531,7 @@ def get_all_portfolios_table_data():
         from datetime import datetime
         import math
 
-        def _safe_num(value, *, mult: float = 1.0, digits: int | None = None, default: float = 0.0) -> float:
+        def _safe_num(value, *, mult: float = 1.0, digits: Optional[int] = None, default: float = 0.0) -> float:
             """
             Ensure returned numbers are JSON-compliant (no NaN/Infinity).
             FastAPI's JSON rendering will raise if floats are out of range.

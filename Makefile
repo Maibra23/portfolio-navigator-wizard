@@ -1,10 +1,43 @@
 # Makefile for Portfolio Navigator Wizard
+# Cross-platform compatible (macOS, Linux, Windows)
 
-# Python interpreter standardization
-# Prefer Homebrew Python 3.11 when available, otherwise fall back to python3 in PATH
-PYTHON_BIN ?= /usr/local/bin/python3.11
-PYTHON_FALLBACK ?= python3
-PYTHON_EXEC := $(shell if [ -x "$(PYTHON_BIN)" ]; then echo "$(PYTHON_BIN)"; else echo "$(PYTHON_FALLBACK)"; fi)
+# Detect operating system
+ifeq ($(OS),Windows_NT)
+    DETECTED_OS := Windows
+    PYTHON_EXEC := python
+    VENV_ACTIVATE := backend\venv\Scripts\activate.bat
+    VENV_PYTHON := backend\venv\Scripts\python.exe
+    PATH_SEP := \\
+    RM := del /Q
+    RMDIR := rmdir /S /Q
+    PKILL := taskkill /F /IM
+    OPEN := start
+    # Ensure recipes run under cmd.exe (not sh) so Windows paths/redirection work reliably
+    SHELL := cmd.exe
+    .SHELLFLAGS := /C
+    # Force UTF-8 mode for inline Python (prevents UnicodeEncodeError in Windows consoles)
+    WIN_PY_ARGS := -X utf8
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+        DETECTED_OS := macOS
+        PYTHON_BIN := /usr/local/bin/python3.11
+        PYTHON_FALLBACK := python3
+        PYTHON_EXEC := $(shell if [ -x "$(PYTHON_BIN)" ]; then echo "$(PYTHON_BIN)"; else echo "$(PYTHON_FALLBACK)"; fi)
+        OPEN := open
+    else
+        DETECTED_OS := Linux
+        PYTHON_EXEC := python3
+        OPEN := xdg-open
+    endif
+    VENV_ACTIVATE := backend/venv/bin/activate
+    VENV_PYTHON := backend/venv/bin/python
+    PATH_SEP := /
+    RM := rm -f
+    RMDIR := rm -rf
+    PKILL := pkill -f
+endif
+
 .ONESHELL:
 CHECK_CACHE_CMD = "from utils.redis_first_data_service import RedisFirstDataService; service = RedisFirstDataService(); status = service.get_health_metrics(); print('Redis Status:', status.get('redis_status')); cov = status.get('cache_coverage',{}); print('Price Coverage %:', round(cov.get('price_cache_coverage', 0),1)); print('Fast Startup: No external API calls during startup')"
 CHECK_STATUS_CMD = "from utils.redis_first_data_service import redis_first_data_service as s; inv = s.get_cache_inventory(); print(f'\\nRedis: {inv.get(\"redis\") }'); cov = inv.get('coverage',{}); print(f'Joined tickers: {cov.get(\"joined_tickers\",0)}'); print(f'Prices keys: {cov.get(\"prices\",0)}, Sector keys: {cov.get(\"sector\",0)}, Metrics keys: {cov.get(\"metrics\",0)}'); print(f'TTL sample: {inv.get(\"ttl_sample\", [])[:3]}')"
@@ -16,6 +49,7 @@ CHECK_STATUS_CMD = "from utils.redis_first_data_service import redis_first_data_
 help:
 	@echo "🚀 Portfolio Navigator Wizard - Available Commands"
 	@echo "=================================================="
+	@echo "Detected OS: $(DETECTED_OS)"
 	@echo ""
 	@echo "📋 Development Commands:"
 	@echo "  make dev          - Start both backend and frontend (FAST startup with lazy stock selection)"
@@ -117,42 +151,85 @@ help:
 check-cache:
 	@echo "🔍 Checking Redis cache status (LIGHTWEIGHT)..."
 	@echo "⚡ Using Lazy Stock Selection - no heavy cache warming"
+ifeq ($(DETECTED_OS),Windows)
+	@make check-redis >nul
+	@cd backend && venv\Scripts\python.exe $(WIN_PY_ARGS) -c $(CHECK_CACHE_CMD)
+else
 	@cd backend && $(PYTHON_EXEC) -c $(CHECK_CACHE_CMD)
+endif
 
 # Development: run both backend and frontend (FAST startup with lazy stock selection)
 dev: check-cache
-	@echo "🚀 Starting Portfolio Navigator Wizard (FAST STARTUP)..."
-	@echo "⚡ Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
-	@echo "🔍 Enhanced Fuzzy Search: Smart search with relevance scoring"
-	@echo "📊 Backend: http://localhost:8000"
-	@echo "🌐 Frontend: http://localhost:8080"
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Starting Portfolio Navigator Wizard (FAST STARTUP)..."
+	@echo "Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
+	@echo "Enhanced Fuzzy Search: Smart search with relevance scoring"
+	@echo "Backend: http://localhost:8000"
+	@echo "Frontend: http://localhost:8080"
+	@echo "=================================================="
+	@echo "Starting backend server..."
+	@start /B cmd /c "cd backend && $(VENV_PYTHON) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000"
+	@echo "Starting frontend server..."
+	cd frontend && npm run dev
+else
+	@echo "Starting Portfolio Navigator Wizard (FAST STARTUP)..."
+	@echo "Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
+	@echo "Enhanced Fuzzy Search: Smart search with relevance scoring"
+	@echo "Backend: http://localhost:8000"
+	@echo "Frontend: http://localhost:8080"
 	@echo "=================================================="
 	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 & \
 	cd frontend && npm run dev
+endif
 
  
 
 # Full development: run with all tickers and complete cache (FAST startup with lazy initialization)
 full-dev: check-cache stop
-	@echo "\ud83d\ude80 Starting Portfolio Navigator Wizard (Full Mode - FAST STARTUP)..."
-	@echo "⚡ Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
-	@echo "🔍 Enhanced Fuzzy Search: Smart search with relevance scoring"
-	@echo "📊 Backend: http://localhost:8000 (with all tickers)"
-	@echo "🌐 Frontend: http://localhost:8080"
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Starting Portfolio Navigator Wizard (Full Mode - FAST STARTUP)..."
+	@echo "Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
+	@echo "Enhanced Fuzzy Search: Smart search with relevance scoring"
+	@echo "Backend: http://localhost:8000 (with all tickers)"
+	@echo "Frontend: http://localhost:8080"
 	@echo "=================================================="
-	@echo "\ud83d\udd04 Checking Redis status..."
+	@echo "Ensuring Redis (Memurai) is running..."
+	@powershell -ExecutionPolicy Bypass -File ".\start-redis.ps1"
+	@echo "Checking Redis status..."
+	@cd backend && venv\Scripts\python.exe $(WIN_PY_ARGS) -c $(CHECK_STATUS_CMD) || echo "[INFO] Redis check skipped - will use application fallbacks"
+	@echo "Starting servers with full data mode (lazy initialization)..."
+	@cd backend && venv\Scripts\python.exe $(WIN_PY_ARGS) -c "import importlib; importlib.import_module('routers.portfolio')" || (echo "portfolio.py import failed" && exit 1)
+	@echo "Starting backend server..."
+	@powershell -Command "$$backendDir = Join-Path $$PWD 'backend'; $$env:PYTHONPATH = $$backendDir; $$env:FAST_STARTUP = 'true'; Start-Process -FilePath (Join-Path $$backendDir 'venv\Scripts\python.exe') -ArgumentList '-m','uvicorn','main:app','--host','127.0.0.1','--port','8000' -WorkingDirectory $$backendDir -WindowStyle Hidden"
+	@echo "Starting frontend server..."
+	@start /B cmd /c "cd frontend && npm run dev"
+	@echo "Waiting for backend server to be ready (may take 1-2 minutes during initial startup)..."
+	@powershell -Command "$$ready=0; for($$i=1; $$i -le 60; $$i++) { try { $$response = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop; Write-Host 'Backend server ready!'; $$ready=1; break; } catch { Write-Host \"  Attempt $$i/60...\"; Start-Sleep -Seconds 2 } }; if($$ready -eq 0) { Write-Host 'Backend server failed to start after 2 minutes!'; Write-Host 'Check backend_startup.log or run backend manually to see errors'; exit 1 }"
+	@echo "Waiting for frontend server to be ready..."
+	@powershell -Command "$$ready=0; for($$i=1; $$i -le 15; $$i++) { try { $$response = Invoke-WebRequest -Uri 'http://localhost:8080' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host 'Frontend server ready!'; $$ready=1; break; } catch { Write-Host \"  Attempt $$i/15...\"; Start-Sleep -Seconds 2 } }; if($$ready -eq 0) { Write-Host 'Frontend server not ready, but continuing...' }"
+	@echo ""
+	@echo "Both servers are ready!"
+	@echo "Backend: http://localhost:8000"
+	@echo "Frontend: http://localhost:8080"
+else
+	@echo "Starting Portfolio Navigator Wizard (Full Mode - FAST STARTUP)..."
+	@echo "Lazy Stock Selection: Stock data loads on-demand (no startup delays)"
+	@echo "Enhanced Fuzzy Search: Smart search with relevance scoring"
+	@echo "Backend: http://localhost:8000 (with all tickers)"
+	@echo "Frontend: http://localhost:8080"
+	@echo "=================================================="
+	@echo "Checking Redis status..."
 	@cd backend && $(PYTHON_EXEC) -c $(CHECK_STATUS_CMD)
-	@echo "\ud83d\ude80 Starting servers with full data mode (lazy initialization)..."
-	# Preflight import check to fail fast on syntax/indent errors
-	@cd backend && $(PYTHON_EXEC) -c "import importlib; importlib.import_module('routers.portfolio')" || { echo "❌ portfolio.py import failed"; exit 1; }
+	@echo "Starting servers with full data mode (lazy initialization)..."
+	@cd backend && $(PYTHON_EXEC) -c "import importlib; importlib.import_module('routers.portfolio')" || { echo "portfolio.py import failed"; exit 1; }
 	@cd backend && PYTHONPATH=$(PWD)/backend FAST_STARTUP=true $(PYTHON_EXEC) -m uvicorn main:app --host 127.0.0.1 --port 8000 & \
 	cd frontend && npm run dev & \
 	true
-	@echo "⏳ Waiting for backend server to be ready..."
+	@echo "Waiting for backend server to be ready..."
 	@BACKEND_READY=0; \
 	for i in {1..15}; do \
 		if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-			echo "✅ Backend server ready!"; \
+			echo "Backend server ready!"; \
 			BACKEND_READY=1; \
 			break; \
 		fi; \
@@ -160,15 +237,15 @@ full-dev: check-cache stop
 		sleep 2; \
 	done; \
 	if [ $$BACKEND_READY -eq 0 ]; then \
-		echo "❌ Backend server failed to start!"; \
+		echo "Backend server failed to start!"; \
 		echo "   Check if port 8000 is already in use: lsof -i :8000"; \
 		exit 1; \
 	fi
-	@echo "⏳ Waiting for frontend server to be ready..."
+	@echo "Waiting for frontend server to be ready..."
 	@FRONTEND_READY=0; \
 	for i in {1..15}; do \
 		if curl -s http://localhost:8080/ > /dev/null 2>&1; then \
-			echo "✅ Frontend server ready!"; \
+			echo "Frontend server ready!"; \
 			FRONTEND_READY=1; \
 			break; \
 		fi; \
@@ -176,23 +253,13 @@ full-dev: check-cache stop
 		sleep 2; \
 	done; \
 	if [ $$FRONTEND_READY -eq 0 ]; then \
-		echo "⚠️  Frontend server not ready, but continuing..."; \
-	fi
-	@echo "🔥 Warming mini-lesson assets cache..."
-	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		if curl -s http://localhost:8000/api/portfolio/mini-lesson/assets > /dev/null 2>&1; then \
-			echo "✅ Mini-lesson cache warmed!"; \
-		else \
-			echo "⚠️ Failed to warm mini-lesson cache (endpoint returned error)"; \
-		fi; \
-	else \
-		echo "❌ Backend health check failed - cannot warm cache"; \
-		exit 1; \
+		echo "Frontend server not ready, but continuing..."; \
 	fi
 	@echo ""
-	@echo "✅ Both servers are ready!"
-	@echo "📊 Backend: http://localhost:8000"
-	@echo "🌐 Frontend: http://localhost:8080"
+	@echo "Both servers are ready!"
+	@echo "Backend: http://localhost:8000"
+	@echo "Frontend: http://localhost:8080"
+endif
 
 # Backend only (FAST startup with lazy stock selection)
 backend: check-cache
@@ -233,34 +300,45 @@ install:
 
 # Check status of servers
 status:
-	@echo "📊 Checking Server Status..."
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Checking Server Status..."
 	@echo "=================================================="
 	@echo "Python Version:"
-	@python3 --version 2>/dev/null || echo "  ❌ Python3 not found - please install Python 3.9+"
+	@python --version 2>nul || echo "  Python not found - please install Python 3.9+"
+	@echo ""
+	@echo "Backend (port 8000):"
+	@powershell -Command "try { $$r = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Running - healthy' } catch { Write-Host '  Not running' }"
+	@echo "Frontend (port 8080):"
+	@powershell -Command "try { $$r = Invoke-WebRequest -Uri 'http://localhost:8080' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '  Running' } catch { Write-Host '  Not running' }"
+	@echo "=================================================="
+else
+	@echo "Checking Server Status..."
+	@echo "=================================================="
+	@echo "Python Version:"
+	@python3 --version 2>/dev/null || echo "  Python3 not found - please install Python 3.9+"
 	@echo ""
 	@echo "Backend (port 8000):"
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		echo "  ✅ Running - $(curl -s http://localhost:8000/health | grep -o '"status":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "healthy")"; \
+		echo "  Running - $(curl -s http://localhost:8000/health | grep -o '"status":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "healthy")"; \
 	else \
-		echo "  ❌ Not running"; \
+		echo "  Not running"; \
 	fi
 	@echo "Frontend (port 8080):"
 	@if curl -s http://localhost:8080 > /dev/null 2>&1; then \
-		echo "  ✅ Running"; \
+		echo "  Running"; \
 	else \
-		echo "  ❌ Not running"; \
-	fi
-	@echo "Ticker Table (port 8081):"
-	@if curl -s http://localhost:8081/health > /dev/null 2>&1; then \
-		echo "  ✅ Running - $(curl -s http://localhost:8081/health | grep -o '"status":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "healthy")"; \
-	else \
-		echo "  ❌ Not running"; \
+		echo "  Not running"; \
 	fi
 	@echo "=================================================="
+endif
 
 # Stop all running servers
 stop:
 	@echo "🛑 Stopping all servers..."
+ifeq ($(DETECTED_OS),Windows)
+	@taskkill /F /IM python.exe 2>nul || echo "No Python processes found"
+	@taskkill /F /IM node.exe 2>nul || echo "No Node processes found"
+else
 	@pkill -f uvicorn || true
 	@pkill -f "npm run dev" || true
 	@pkill -f "ticker_table_server.py" || true
@@ -281,6 +359,7 @@ stop:
 		lsof -ti :8080 | xargs kill -9 2>/dev/null || true; \
 	fi
 	@sleep 1
+endif
 	@echo "✅ All servers stopped!"
 
 # Clean up and stop servers
@@ -346,6 +425,11 @@ test-search:
 check-redis:
 	@echo "🔍 Checking Redis status..."
 	@echo "=================================================="
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Detected OS: Windows"
+	@powershell -ExecutionPolicy Bypass -File ".\start-redis.ps1"
+	@$(VENV_PYTHON) $(WIN_PY_ARGS) -c "import redis; r = redis.Redis(host='127.0.0.1', port=6379, socket_connect_timeout=2); print('Redis connection: OK'); print('Redis keys:', r.dbsize())" || (echo "Redis connection failed (unexpected after start-redis.ps1)" && exit 1)
+else
 	@if redis-cli ping > /dev/null 2>&1; then \
 		echo "✅ Redis is running and accessible"; \
 		echo "📊 Redis Info:"; \
@@ -363,6 +447,7 @@ check-redis:
 		echo ""; \
 		echo "💡 After starting Redis, run: make check-redis"; \
 	fi
+endif
 	@echo "==================================================" 
 
  
@@ -381,6 +466,19 @@ consolidated-view: check-cache stop
 	@make check-cache
 	@echo ""
 	@echo "🔄 Step 2: Starting backend server with consolidated logging..."
+ifeq ($(DETECTED_OS),Windows)
+	@powershell -Command "$$rootDir = Get-Location | Select-Object -ExpandProperty Path; $$logDir = Join-Path $$rootDir 'backend\logs'; New-Item -ItemType Directory -Force -Path $$logDir | Out-Null; $$logFile = Join-Path $$logDir 'consolidated-view.log'; Write-Host (\"📝 Streaming backend output to \" + $$logFile); $$backendDir = Join-Path $$rootDir 'backend'; $$pythonExe = Join-Path $$backendDir 'venv\Scripts\python.exe'; if (-not (Test-Path $$pythonExe)) { Write-Host \"❌ Python not found at: $$pythonExe\"; exit 1 }; Write-Host '🚀 Starting backend server...'; $$process = Start-Process -FilePath $$pythonExe -ArgumentList '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000' -WorkingDirectory $$backendDir -RedirectStandardOutput $$logFile -RedirectStandardError $$logFile -WindowStyle Hidden -PassThru; Start-Sleep -Seconds 3; if ($$process -and -not $$process.HasExited) { Write-Host (\"✅ Backend server started (PID: \" + $$process.Id + \")\") } else { Write-Host '⚠️ Backend process may have exited - check logs'; if (Test-Path $$logFile) { Write-Host 'Last 5 lines of log:'; Get-Content $$logFile -Tail 5 } }; Write-Host (\"📄 Backend logs: \" + $$logFile)"
+	@echo ""
+	@echo "🔄 Step 3: Waiting for backend to be ready..."
+	@powershell -Command "$$ready=0; for($$i=1; $$i -le 30; $$i++) { try { $$response = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '✅ Backend server ready!'; $$ready=1; break; } catch { Write-Host \"  Attempt $$i/30...\"; Start-Sleep -Seconds 2 } }; if($$ready -eq 0) { Write-Host '⚠️ Backend may not be ready yet' }"
+	@echo ""
+	@echo "🔄 Step 4: Log monitoring instructions..."
+	@powershell -Command "$$rootDir = Get-Location | Select-Object -ExpandProperty Path; Write-Host '📡 Monitor backend logs: Get-Content -Path \"$$rootDir\backend\logs\consolidated-view.log\" -Wait -Tail 50'; Write-Host '📈 Monitor smart-refresh logs: Get-Content -Path \"$$rootDir\backend\logs\smart_refresh.log\" -Wait -Tail 50'; Write-Host '💧 Monitor full-refresh logs: Get-Content -Path \"$$rootDir\backend\logs\full_refresh.log\" -Wait -Tail 50'; Write-Host '🧬 Monitor portfolio regeneration logs: Get-Content -Path \"$$rootDir\backend\logs\portfolio_regeneration.log\" -Wait -Tail 50'"
+	@echo ""
+	@echo "🔄 Step 5: Opening consolidated table..."
+	@start http://localhost:8000/api/portfolio/consolidated-table
+	@echo "✅ Consolidated table opened in browser!"
+else
 	@ROOT_DIR="$$PWD"; \
 	LOG_FILE="$$ROOT_DIR/backend/logs/consolidated-view.log"; \
 	mkdir -p "$$ROOT_DIR/backend/logs"; \
@@ -444,8 +542,9 @@ consolidated-view: check-cache stop
 	fi
 	@echo ""
 	@echo "🔄 Step 5: Opening consolidated table..."
-	@open "http://localhost:8000/api/portfolio/consolidated-table"
+	@$(OPEN) "http://localhost:8000/api/portfolio/consolidated-table"
 	@echo "✅ Consolidated table opened in browser!"
+endif
 
 # 🚀 ENHANCED: Start enhanced ticker table system (FAST startup with lazy stock selection)
 enhanced: check-cache
@@ -789,6 +888,9 @@ regenerate-portfolios:
 	@echo ""
 	@echo "⏰ Estimated time: ~40-60 seconds (with parallel generation)"
 	@echo ""
+ifeq ($(DETECTED_OS),Windows)
+	@powershell -Command "try { $$r = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '✅ Backend server is running'; Write-Host ''; Write-Host '🔄 Triggering portfolio regeneration...'; $$response = Invoke-RestMethod -Uri 'http://localhost:8000/api/portfolio/regenerate' -Method Post -ContentType 'application/json'; $$response | ConvertTo-Json -Depth 10 | Write-Host; Write-Host ''; Write-Host '✅ Portfolio regeneration completed!'; Write-Host ''; Write-Host '🔍 Verifying results...'; make verify-portfolios } catch { Write-Host '❌ Backend server not running on port 8000'; Write-Host ''; Write-Host '📋 To start the backend:'; Write-Host '  make backend'; Write-Host ''; Write-Host '📋 Or start full system:'; Write-Host '  make dev'; Write-Host ''; Write-Host '💡 Then run: make regenerate-portfolios' }"
+else
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
 		echo "✅ Backend server is running"; \
 		echo ""; \
@@ -810,6 +912,7 @@ regenerate-portfolios:
 		echo ""; \
 		echo "💡 Then run: make regenerate-portfolios"; \
 	fi
+endif
 
 # 🆕 Regenerate portfolios for specific risk profile
 regenerate-profile:
@@ -833,6 +936,9 @@ regenerate-profile:
 	@echo "Portfolios to generate: 12"
 	@echo "=================================================="
 	@echo ""
+ifeq ($(DETECTED_OS),Windows)
+	@powershell -Command "try { $$r = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; Write-Host '✅ Backend server is running'; Write-Host ''; Write-Host '🔄 Generating 12 portfolios for $(PROFILE)...'; $$response = Invoke-RestMethod -Uri 'http://localhost:8000/api/portfolio/regenerate?risk_profile=$(PROFILE)' -Method Post -ContentType 'application/json'; $$response | ConvertTo-Json -Depth 10 | Write-Host; Write-Host ''; Write-Host '✅ Portfolio regeneration completed!' } catch { Write-Host '❌ Backend server not running on port 8000'; Write-Host ''; Write-Host '📋 To start the backend:'; Write-Host '  make backend'; Write-Host ''; Write-Host '💡 Then run: make regenerate-profile PROFILE=$(PROFILE)' }"
+else
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
 		echo "✅ Backend server is running"; \
 		echo ""; \
@@ -847,6 +953,7 @@ regenerate-profile:
 		echo "❌ Backend server not running on port 8000"; \
 		echo "💡 Start backend first: make backend"; \
 	fi
+endif
 
 # 🆕 Verify portfolio counts and status for all profiles
 verify-portfolios:

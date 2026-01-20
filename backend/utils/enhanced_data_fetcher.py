@@ -115,10 +115,21 @@ class EnhancedDataFetcher:
             else:
                 # Use current inference path with full master list
                 logger.info("📋 Using full master list with inference path (USE_VALIDATED_MASTER_LIST=False)")
-            master = _rds.all_tickers
-            if not master:
-                master = _rds.list_cached_tickers()
-            self.all_tickers = list(master) if master else []
+                # Load from RedisFirstDataService, but avoid circular dependency
+                # by checking if _rds is already initialized and has tickers
+                try:
+                    # Access all_tickers property which will load from file if Redis is empty
+                    master = _rds.all_tickers if hasattr(_rds, '_ticker_list') or _rds.redis_client else []
+                    if not master:
+                        # Try to get from cached tickers without triggering EnhancedDataFetcher initialization
+                        try:
+                            master = _rds.list_cached_tickers()
+                        except Exception:
+                            master = []
+                    self.all_tickers = list(master) if master else []
+                except Exception as e:
+                    logger.warning(f"⚠️ Error loading ticker list from RedisFirstDataService: {e}")
+                    self.all_tickers = []
         except Exception as e:
             logger.warning(f"⚠️ Error loading ticker list: {e}")
             self.all_tickers = []

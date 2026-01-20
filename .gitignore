@@ -33,7 +33,6 @@ backend/.env
 venv/
 
 API_CONTRACT.md
-backend/.env.example
 
 # Temporary OneDrive sync issues
 backend/.server.pid
