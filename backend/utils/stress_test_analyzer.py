@@ -1227,6 +1227,46 @@ class StressTestAnalyzer:
                         'value': portfolio_data['values'][i]
                     })
             
+            # Determine recovery metrics based on drawdown significance
+            is_significant = max_drawdown_data.get('is_significant', False)
+            
+            if is_significant:
+                # Significant drawdown: use actual recovery data
+                recovery_months = recovery_data['recovery_months']
+                recovery_date = recovery_data['recovery_date']
+                recovery_pattern = recovery_data['recovery_trajectory']
+                recovered = recovery_data['recovered']
+                recovery_thresholds = recovery_data.get('recovery_thresholds', {})
+                recovery_needed_pct = recovery_data.get('recovery_needed_pct', 0.0)
+                trajectory_projections = recovery_data.get('trajectory_projections', {})
+            else:
+                # Minor drawdown (<3%): show minimal recovery or immediate recovery
+                drawdown_pct = abs(max_drawdown_data['max_drawdown']) * 100
+                
+                if drawdown_pct < 0.5:
+                    # Negligible drawdown (<0.5%)
+                    recovery_months = 0
+                    recovery_date = max_drawdown_data['trough_date']
+                    recovery_pattern = 'Minimal Impact'
+                    recovered = True
+                else:
+                    # Minor drawdown (0.5% - 3%)
+                    # Check if portfolio actually recovered
+                    if recovery_data['recovered']:
+                        recovery_months = recovery_data['recovery_months']
+                        recovery_date = recovery_data['recovery_date']
+                        recovery_pattern = f"Quick Recovery ({recovery_data['recovery_trajectory']})"
+                        recovered = True
+                    else:
+                        recovery_months = recovery_data['recovery_months']
+                        recovery_date = recovery_data['recovery_date']
+                        recovery_pattern = 'Minor Drawdown (Recovering)'
+                        recovered = False
+                
+                recovery_thresholds = recovery_data.get('recovery_thresholds', {})
+                recovery_needed_pct = recovery_data.get('recovery_needed_pct', 0.0)
+                trajectory_projections = recovery_data.get('trajectory_projections', {})
+            
             return {
                 'scenario_name': '2020 COVID-19 Crash',
                 'period': {
@@ -1238,17 +1278,17 @@ class StressTestAnalyzer:
                     'total_return': float(total_return),
                     'worst_month_return': float(worst_month_return),
                     'max_drawdown': max_drawdown_data['max_drawdown'],
-                    'max_drawdown_data': max_drawdown_data,  # Include full drawdown data
+                    'max_drawdown_data': max_drawdown_data,
                     'volatility_during_crisis': float(volatility_during_crisis),
                     'volatility_normal_period': float(volatility_normal),
                     'volatility_ratio': float(volatility_ratio),
-                    'recovery_months': recovery_data['recovery_months'] if max_drawdown_data.get('is_significant', False) else None,
-                    'recovery_date': recovery_data['recovery_date'] if max_drawdown_data.get('is_significant', False) else None,
-                    'recovery_pattern': recovery_data['recovery_trajectory'] if max_drawdown_data.get('is_significant', False) else 'No Significant Drawdown',
-                    'recovered': recovery_data['recovered'] if max_drawdown_data.get('is_significant', False) else False,
-                    'recovery_thresholds': recovery_data.get('recovery_thresholds', {}) if max_drawdown_data.get('is_significant', False) else {},
-                    'recovery_needed_pct': recovery_data.get('recovery_needed_pct', 0.0) if max_drawdown_data.get('is_significant', False) else 0.0,
-                    'trajectory_projections': recovery_data.get('trajectory_projections', {}) if max_drawdown_data.get('is_significant', False) else {},
+                    'recovery_months': recovery_months,
+                    'recovery_date': recovery_date,
+                    'recovery_pattern': recovery_pattern,
+                    'recovered': recovered,
+                    'recovery_thresholds': recovery_thresholds,
+                    'recovery_needed_pct': recovery_needed_pct,
+                    'trajectory_projections': trajectory_projections,
                     'advanced_risk': advanced_risk
                 },
                 'monte_carlo': monte_carlo,
@@ -1404,6 +1444,41 @@ class StressTestAnalyzer:
                         'value': portfolio_data['values'][i]
                     })
             
+            # Determine recovery metrics based on drawdown significance (same logic as COVID-19)
+            is_significant = max_drawdown_data.get('is_significant', False)
+            
+            if is_significant:
+                recovery_months_2008 = recovery_data['recovery_months']
+                recovery_date_2008 = recovery_data['recovery_date']
+                recovery_pattern_2008 = recovery_data['recovery_trajectory']
+                recovered_2008 = recovery_data['recovered']
+                recovery_thresholds_2008 = recovery_data.get('recovery_thresholds', {})
+                recovery_needed_pct_2008 = recovery_data.get('recovery_needed_pct', 0.0)
+                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {})
+            else:
+                drawdown_pct = abs(max_drawdown_data['max_drawdown']) * 100
+                
+                if drawdown_pct < 0.5:
+                    recovery_months_2008 = 0
+                    recovery_date_2008 = max_drawdown_data['trough_date']
+                    recovery_pattern_2008 = 'Minimal Impact'
+                    recovered_2008 = True
+                else:
+                    if recovery_data['recovered']:
+                        recovery_months_2008 = recovery_data['recovery_months']
+                        recovery_date_2008 = recovery_data['recovery_date']
+                        recovery_pattern_2008 = f"Quick Recovery ({recovery_data['recovery_trajectory']})"
+                        recovered_2008 = True
+                    else:
+                        recovery_months_2008 = recovery_data['recovery_months']
+                        recovery_date_2008 = recovery_data['recovery_date']
+                        recovery_pattern_2008 = 'Minor Drawdown (Recovering)'
+                        recovered_2008 = False
+                
+                recovery_thresholds_2008 = recovery_data.get('recovery_thresholds', {})
+                recovery_needed_pct_2008 = recovery_data.get('recovery_needed_pct', 0.0)
+                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {})
+            
             return {
                 'scenario_name': '2008 Financial Crisis',
                 'period': {
@@ -1415,17 +1490,17 @@ class StressTestAnalyzer:
                     'total_return': float(total_return),
                     'worst_month_return': float(worst_month_return),
                     'max_drawdown': max_drawdown_data['max_drawdown'],
-                    'max_drawdown_data': max_drawdown_data,  # Include full drawdown data
+                    'max_drawdown_data': max_drawdown_data,
                     'volatility_during_crisis': float(volatility_during_crisis),
                     'volatility_normal_period': float(volatility_normal),
                     'volatility_ratio': float(volatility_ratio),
-                    'recovery_months': recovery_data['recovery_months'] if max_drawdown_data.get('is_significant', False) else None,
-                    'recovery_date': recovery_data['recovery_date'] if max_drawdown_data.get('is_significant', False) else None,
-                    'recovery_pattern': recovery_data['recovery_trajectory'] if max_drawdown_data.get('is_significant', False) else 'No Significant Drawdown',
-                    'recovered': recovery_data['recovered'] if max_drawdown_data.get('is_significant', False) else False,
-                    'recovery_thresholds': recovery_data.get('recovery_thresholds', {}) if max_drawdown_data.get('is_significant', False) else {},
-                    'recovery_needed_pct': recovery_data.get('recovery_needed_pct', 0.0) if max_drawdown_data.get('is_significant', False) else 0.0,
-                    'trajectory_projections': recovery_data.get('trajectory_projections', {}) if max_drawdown_data.get('is_significant', False) else {},
+                    'recovery_months': recovery_months_2008,
+                    'recovery_date': recovery_date_2008,
+                    'recovery_pattern': recovery_pattern_2008,
+                    'recovered': recovered_2008,
+                    'recovery_thresholds': recovery_thresholds_2008,
+                    'recovery_needed_pct': recovery_needed_pct_2008,
+                    'trajectory_projections': trajectory_projections_2008,
                     'correlation_breakdown': correlation_breakdown,
                     'advanced_risk': advanced_risk
                 },

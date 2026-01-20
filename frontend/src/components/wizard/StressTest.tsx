@@ -964,50 +964,67 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       />
                                     </>
                                   )}
-                                  {stressTestResults.scenarios.covid19.peaks_troughs?.peak && (() => {
-                                    // Normalize peak value to match chart normalization
+                                  {(() => {
+                                    // Calculate both peak and trough values first to detect overlap
                                     const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
                                     const normalizationFactor = 1.0 / jan2020Value;
-                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
-                                    const peakDateFull = stressTestResults.scenarios.covid19.peaks_troughs.peak.date || '';
-                                    const peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
-                                    // Peak value normalized to chart scale (peak is pre-crisis value, typically at crisis start)
-                                    const peakValueRaw = stressTestResults.scenarios.covid19.peaks_troughs.peak.value || 1.0;
-                                    const peakValue = (peakValueRaw * normalizationFactor) * 100;
                                     
-                                    // Always render peak marker
-                                    return (
-                                      <ReferenceDot 
-                                        x={peakDate} 
-                                        y={peakValue}
-                                        r={8}
-                                        fill="#22c55e"
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                        label={{ value: `Peak (${peakValue.toFixed(1)}%)`, position: 'top', fill: '#22c55e', fontSize: 10 }}
-                                      />
-                                    );
-                                  })()}
-                                  {stressTestResults.scenarios.covid19.peaks_troughs?.trough && (() => {
-                                    // Normalize trough value to match chart normalization
-                                    const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
-                                    const normalizationFactor = 1.0 / jan2020Value;
-                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
-                                    const troughDateFull = stressTestResults.scenarios.covid19.peaks_troughs.trough.date || '';
-                                    const troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
-                                    const troughValue = ((stressTestResults.scenarios.covid19.peaks_troughs.trough.value || 0) * normalizationFactor) * 100;
+                                    const peak = stressTestResults.scenarios.covid19.peaks_troughs?.peak;
+                                    const trough = stressTestResults.scenarios.covid19.peaks_troughs?.trough;
                                     
-                                    // Always render trough marker
+                                    if (!peak && !trough) return null;
+                                    
+                                    let peakValue = 0;
+                                    let troughValue = 0;
+                                    let peakDate = '';
+                                    let troughDate = '';
+                                    
+                                    if (peak) {
+                                      const peakDateFull = peak.date || '';
+                                      peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
+                                      const peakValueRaw = peak.value || 1.0;
+                                      peakValue = (peakValueRaw * normalizationFactor) * 100;
+                                    }
+                                    
+                                    if (trough) {
+                                      const troughDateFull = trough.date || '';
+                                      troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
+                                      troughValue = ((trough.value || 0) * normalizationFactor) * 100;
+                                    }
+                                    
+                                    // Detect if peak and trough are visually close (within 5% on the chart)
+                                    const valueDiff = Math.abs(peakValue - troughValue);
+                                    const isOverlapping = valueDiff < 5.0;
+                                    
+                                    // Adjust label positions to avoid overlap
+                                    const peakLabelPos = isOverlapping ? 'topRight' : 'top';
+                                    const troughLabelPos = isOverlapping ? 'bottomLeft' : 'bottom';
+                                    
                                     return (
-                                      <ReferenceDot 
-                                        x={troughDate} 
-                                        y={troughValue}
-                                        r={8}
-                                        fill="#ef4444"
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                        label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: 'bottom', fill: '#ef4444', fontSize: 10 }}
-                                      />
+                                      <>
+                                        {peak && (
+                                          <ReferenceDot 
+                                            x={peakDate} 
+                                            y={peakValue}
+                                            r={8}
+                                            fill="#22c55e"
+                                            stroke="#fff"
+                                            strokeWidth={2}
+                                            label={{ value: `Peak (${peakValue.toFixed(1)}%)`, position: peakLabelPos, fill: '#22c55e', fontSize: 10 }}
+                                          />
+                                        )}
+                                        {trough && (
+                                          <ReferenceDot 
+                                            x={troughDate} 
+                                            y={troughValue}
+                                            r={8}
+                                            fill="#ef4444"
+                                            stroke="#fff"
+                                            strokeWidth={2}
+                                            label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: troughLabelPos, fill: '#ef4444', fontSize: 10 }}
+                                          />
+                                        )}
+                                      </>
                                     );
                                   })()}
                                   {stressTestResults.scenarios.covid19.peaks_troughs?.recovery_peak && (() => {
