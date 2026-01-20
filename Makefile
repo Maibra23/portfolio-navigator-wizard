@@ -167,8 +167,8 @@ ifeq ($(DETECTED_OS),Windows)
 	@echo "Backend: http://localhost:8000"
 	@echo "Frontend: http://localhost:8080"
 	@echo "=================================================="
-	@echo "Starting backend server..."
-	@start /B cmd /c "cd backend && $(VENV_PYTHON) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000"
+	@echo "Starting backend server in new window (logs visible)..."
+	@start "Backend Server" cmd /c "cd backend && venv\Scripts\activate.bat && python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000"
 	@echo "Starting frontend server..."
 	cd frontend && npm run dev
 else
@@ -199,10 +199,10 @@ ifeq ($(DETECTED_OS),Windows)
 	@cd backend && venv\Scripts\python.exe $(WIN_PY_ARGS) -c $(CHECK_STATUS_CMD) || echo "[INFO] Redis check skipped - will use application fallbacks"
 	@echo "Starting servers with full data mode (lazy initialization)..."
 	@cd backend && venv\Scripts\python.exe $(WIN_PY_ARGS) -c "import importlib; importlib.import_module('routers.portfolio')" || (echo "portfolio.py import failed" && exit 1)
-	@echo "Starting backend server..."
-	@powershell -Command "$$backendDir = Join-Path $$PWD 'backend'; $$env:PYTHONPATH = $$backendDir; $$env:FAST_STARTUP = 'true'; Start-Process -FilePath (Join-Path $$backendDir 'venv\Scripts\python.exe') -ArgumentList '-m','uvicorn','main:app','--host','127.0.0.1','--port','8000' -WorkingDirectory $$backendDir -WindowStyle Hidden"
-	@echo "Starting frontend server..."
-	@start /B cmd /c "cd frontend && npm run dev"
+	@echo "Starting backend server in new window (logs visible)..."
+	@start "Backend Server" cmd /c "cd backend && venv\Scripts\activate.bat && set PYTHONPATH=%CD% && set FAST_STARTUP=true && python -m uvicorn main:app --host 127.0.0.1 --port 8000"
+	@echo "Starting frontend server in new window..."
+	@start "Frontend Server" cmd /c "cd frontend && npm run dev"
 	@echo "Waiting for backend server to be ready (may take 1-2 minutes during initial startup)..."
 	@powershell -Command "$$ready=0; for($$i=1; $$i -le 60; $$i++) { try { $$response = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop; Write-Host 'Backend server ready!'; $$ready=1; break; } catch { Write-Host \"  Attempt $$i/60...\"; Start-Sleep -Seconds 2 } }; if($$ready -eq 0) { Write-Host 'Backend server failed to start after 2 minutes!'; Write-Host 'Check backend_startup.log or run backend manually to see errors'; exit 1 }"
 	@echo "Waiting for frontend server to be ready..."

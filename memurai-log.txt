@@ -131,3 +131,22 @@
 [10920] 18 Jan 22:27:24.813 * Background saving started by pid 20396
 [20396] 18 Jan 22:27:24.921 * DB saved on disk
 [10920] 18 Jan 22:27:25.021 * Background saving terminated with success
+[9612] 20 Jan 22:59:32.974 # --- Memurai is starting ---
+[9612] 20 Jan 22:59:32.974 # Memurai Developer version=4.1.2, API=7.2.5, instance-name=, pid=9612, just started
+[9612] 20 Jan 22:59:32.974 # Usage of Memurai Developer Edition in a production environment is prohibited; it also automatically shuts down after 10 days. For more details see: https://www.memurai.com/faq
+[9612] 20 Jan 22:59:32.974 # Configuration loaded
+[9612] 20 Jan 22:59:32.977 * monotonic clock: Windows QueryPerformanceCounter
+[9612] 20 Jan 22:59:32.977 * Running mode=standalone, port=6379.
+[9612] 20 Jan 22:59:32.984 # Memurai QID = 7005FBD58B1420E5;AC15ED642DA4C367;7005FBD58B1420E5;42513DDAD0DF0184
+[9612] 20 Jan 22:59:32.986 * Server initialized
+[9612] 20 Jan 22:59:32.987 * Loading RDB produced by version 7.2.5
+[9612] 20 Jan 22:59:32.988 * RDB age 174728 seconds
+[9612] 20 Jan 22:59:32.989 * RDB memory usage when created 0.00 Mb
+[9612] 20 Jan 22:59:33.006 * RDB file was saved with checksum disabled: no check performed.
+[9612] 20 Jan 22:59:33.007 * Done loading RDB, keys loaded: 4285, keys expired: 2.
+[9612] 20 Jan 22:59:33.007 * DB loaded from disk: 0.021 seconds
+[9612] 20 Jan 22:59:33.009 * Ready to accept connections tcp
+[9612] 20 Jan 23:59:33.099 * 1 changes in 3600 seconds. Saving...
+[9612] 20 Jan 23:59:33.099 * Background saving started by pid 21780
+[21780] 20 Jan 23:59:33.204 * DB saved on disk
+[9612] 20 Jan 23:59:33.225 * Background saving terminated with success
