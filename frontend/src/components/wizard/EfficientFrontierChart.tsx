@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { Button } from '@/components/ui/button';
+import { ZoomOut } from 'lucide-react';
 
 interface PortfolioPoint {
   risk: number;
@@ -16,11 +18,14 @@ interface EfficientFrontierChartProps {
   className?: string;
 }
 
-export const EfficientFrontierChart = ({ 
-  currentPortfolio, 
-  recommendedPortfolios, 
-  className 
+export const EfficientFrontierChart = ({
+  currentPortfolio,
+  recommendedPortfolios,
+  className
 }: EfficientFrontierChartProps) => {
+  const [isZoomedOut, setIsZoomedOut] = useState(false);
+  const [hasZoomedOut, setHasZoomedOut] = useState(false);
+
   // Generate efficient frontier curve points
   const frontierPoints: PortfolioPoint[] = [
     { risk: 5, return: 4, name: 'Conservative', type: 'frontier' },
@@ -31,9 +36,31 @@ export const EfficientFrontierChart = ({
     { risk: 25, return: 14, name: 'Very Aggressive', type: 'frontier' },
   ];
 
+  // Extended frontier points for zoomed-out view
+  const extendedFrontierPoints: PortfolioPoint[] = [
+    { risk: 2, return: 2, name: 'Ultra Conservative', type: 'frontier' },
+    { risk: 5, return: 4, name: 'Conservative', type: 'frontier' },
+    { risk: 8, return: 6, name: 'Moderate Conservative', type: 'frontier' },
+    { risk: 12, return: 8, name: 'Moderate', type: 'frontier' },
+    { risk: 16, return: 10, name: 'Moderate Aggressive', type: 'frontier' },
+    { risk: 20, return: 12, name: 'Aggressive', type: 'frontier' },
+    { risk: 25, return: 14, name: 'Very Aggressive', type: 'frontier' },
+    { risk: 30, return: 15, name: 'High Risk High Reward', type: 'frontier' },
+    { risk: 35, return: 16, name: 'Speculative', type: 'frontier' },
+  ];
+
+  const handleZoomOut = () => {
+    if (!hasZoomedOut) {
+      setIsZoomedOut(true);
+      setHasZoomedOut(true);
+    }
+  };
+
+  const displayFrontierPoints = isZoomedOut ? extendedFrontierPoints : frontierPoints;
+
   // Combine all data points
   const allData = [
-    ...frontierPoints,
+    ...displayFrontierPoints,
     ...recommendedPortfolios,
     ...(currentPortfolio ? [currentPortfolio] : [])
   ];
@@ -56,10 +83,30 @@ export const EfficientFrontierChart = ({
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle className="text-lg">Efficient Frontier</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Risk vs. Return analysis of your portfolio
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Efficient Frontier</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Risk vs. Return analysis of your portfolio
+            </p>
+          </div>
+          {!hasZoomedOut && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleZoomOut}
+              className="flex items-center gap-2"
+            >
+              <ZoomOut className="h-4 w-4" />
+              Zoom Out
+            </Button>
+          )}
+          {hasZoomedOut && (
+            <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+              Zoomed Out View
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig}>
@@ -75,11 +122,12 @@ export const EfficientFrontierChart = ({
                 unit="%" 
                 label={{ value: 'Risk (Standard Deviation)', position: 'bottom' }}
               />
-              <YAxis 
-                dataKey="return" 
-                name="Return" 
-                unit="%" 
+              <YAxis
+                dataKey="return"
+                name="Return"
+                unit="%"
                 label={{ value: 'Expected Return', angle: -90, position: 'left' }}
+                domain={isZoomedOut ? [0, 18] : [0, 16]}
               />
               <ChartTooltip
                 content={({ active, payload }) => {
@@ -100,7 +148,7 @@ export const EfficientFrontierChart = ({
               
               {/* Efficient Frontier */}
               <Scatter
-                data={frontierPoints}
+                data={displayFrontierPoints}
                 fill="#94a3b8"
                 stroke="#64748b"
                 strokeWidth={2}

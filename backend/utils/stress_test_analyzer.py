@@ -128,8 +128,21 @@ class StressTestAnalyzer:
                 if end_idx < start_idx:
                     end_idx = len(values_array) - 1
 
-                # Pre-crisis peak: value at crisis start (or first available in window)
-                peak_idx = start_idx
+                # Pre-crisis peak: find the highest value before crisis start (pre-crisis peak).
+                # Use the highest value in the interval before start_idx if available,
+                # otherwise fall back to the first available value in the window.
+                if start_idx > 0:
+                    pre_crisis_values = values_array[:start_idx]
+                    if len(pre_crisis_values) > 0:
+                        peak_relative_idx = int(np.argmax(pre_crisis_values))
+                        peak_idx = peak_relative_idx
+                    else:
+                        # No data before crisis start, use start_idx as fallback
+                        peak_idx = start_idx
+                else:
+                    # Crisis starts at or before the first data point, use first value
+                    peak_idx = 0
+
                 peak = {
                     'value': float(values_array[peak_idx]),
                     'date': dates[peak_idx],
@@ -282,6 +295,30 @@ class StressTestAnalyzer:
                 ticker_time = time.time() - ticker_start
                 if ticker_time > 0.5:  # Log slow data retrievals
                     logger.debug(f"⏱️ {ticker} data retrieved in {ticker_time:.3f}s")
+
+                # If cached data exists but does not reach far enough back for the requested window,
+                # try fetching fuller history via EnhancedDataFetcher (without deleting anything from Redis).
+                try:
+                    req_start = start_date  # 'YYYY-MM-DD'
+                    td_dates = ticker_data.get('dates') if isinstance(ticker_data, dict) else None
+                    if td_dates and isinstance(td_dates, list):
+                        cached_min_date = min(td_dates) if td_dates else None
+                        if cached_min_date and cached_min_date > req_start:
+                            fetcher = getattr(self.data_service, 'enhanced_data_fetcher', None)
+                            if fetcher:
+                                logger.info(
+                                    f"🔄 {ticker}: Cached history starts at {cached_min_date}, "
+                                    f"but scenario needs {req_start}. Fetching fuller history..."
+                                )
+                                # Force a targeted refetch (overwrites cached ticker_data:prices:* for this ticker)
+                                # so that older stress-test windows (e.g. 2008) can be modeled accurately.
+                                fetcher.refresh_specific_tickers([ticker])
+                                refreshed = self.data_service.get_monthly_data(ticker)
+                                if refreshed and isinstance(refreshed, dict) and refreshed.get('prices') and refreshed.get('dates'):
+                                    ticker_data = refreshed
+                except Exception as e:
+                    logger.debug(f"⚠️ {ticker}: Could not refresh fuller history: {e}")
+
                 if ticker_data and ticker_data.get('prices'):
                     prices = ticker_data['prices']
                     # Convert to dict if it's a Series
@@ -322,7 +359,16 @@ class StressTestAnalyzer:
             if data_time > 1.0:  # Log if data retrieval takes more than 1 second
                 logger.debug(f"⏱️ Total data retrieval time: {data_time:.3f}s for {len(tickers)} tickers")
             
-            # Step 2: Find common dates (dates present in all tickers with data)
+            # Step 2: Build a canonical monthly date grid for the requested window.
+            #
+            # IMPORTANT:
+            # - We intentionally do NOT rely on "union of available dates" here.
+            # - Some holdings (e.g. newer IPOs / foreign listings) may only have prices
+            #   starting years after `start_date`. If we only use union-of-dates, the
+            #   entire portfolio series can begin late (e.g. 2011) and the "2008 crisis"
+            #   graph becomes misleading.
+            # - By using a fixed monthly grid and backfilling leading gaps (see above),
+            #   we can always render the scenario starting at the intended crisis window.
             if not ticker_prices:
                 return {
                     'dates': [],
@@ -330,15 +376,24 @@ class StressTestAnalyzer:
                     'monthly_returns': [],
                     'data_availability': data_availability
                 }
-            
-            # Get all unique dates from all tickers
-            all_dates = set()
-            for prices in ticker_prices.values():
-                all_dates.update(prices.keys())
-            
-            # Sort dates chronologically
-            sorted_dates = sorted(all_dates, key=lambda x: datetime.strptime(x, '%Y-%m-%d'))
-            
+
+            # Detect if cached data is month-start or month-end and build matching grid
+            date_freq = 'MS'  # month start
+            try:
+                sample_prices = next(iter(ticker_prices.values()))
+                sample_date = next(iter(sample_prices.keys()))
+                if isinstance(sample_date, str) and len(sample_date) >= 10:
+                    day = sample_date[8:10]
+                    date_freq = 'MS' if day == '01' else 'M'
+            except Exception:
+                date_freq = 'MS'
+
+            grid = pd.date_range(start=start_date, end=recovery_end_date, freq=date_freq)
+            sorted_dates = [d.strftime('%Y-%m-%d') for d in grid]
+
+            # NEW: Impute missing data for individual tickers before portfolio aggregation
+            ticker_prices = self._impute_ticker_price_gaps(ticker_prices, sorted_dates)
+
             # Step 3: Calculate portfolio value for each date
             portfolio_values = []
             valid_dates = []
@@ -362,6 +417,18 @@ class StressTestAnalyzer:
             
             # Track last known prices for missing dates
             last_known_prices = {}
+
+            # Backfill leading gaps so the series can start at `start_date`.
+            # Without this, if any ticker's first available price is later (e.g. 2011),
+            # the entire portfolio series will be skipped until that point.
+            # We approximate pre-inception performance as flat at the first available price.
+            for ticker in available_tickers:
+                if ticker in ticker_prices and ticker_prices[ticker]:
+                    first_date = min(
+                        ticker_prices[ticker].keys(),
+                        key=lambda x: datetime.strptime(x, '%Y-%m-%d')
+                    )
+                    last_known_prices[ticker] = ticker_prices[ticker][first_date]
             
             for date_str in sorted_dates:
                 portfolio_value = 0.0
@@ -632,15 +699,15 @@ class StressTestAnalyzer:
                 
                 # Realistic trajectory
                 realistic_value = current_value + slope * months_ahead
-                realistic_value = min(realistic_value, peak_value * 1.1)  # Cap at 110% of peak
-                
+                # No cap for educational trajectory projections
+
                 # Optimistic trajectory
                 optimistic_value = current_value + optimistic_slope * months_ahead
-                optimistic_value = min(optimistic_value, peak_value * 1.1)
-                
+                # No cap for educational trajectory projections
+
                 # Pessimistic trajectory
                 pessimistic_value = current_value + pessimistic_slope * months_ahead
-                pessimistic_value = min(pessimistic_value, peak_value * 1.1)
+                # No cap for educational trajectory projections
                 
                 trajectory_data.append({
                     'months_ahead': months_ahead,
@@ -665,6 +732,427 @@ class StressTestAnalyzer:
                 'pessimistic_months': None,
                 'trajectory_data': []
             }
+
+    def calculate_enhanced_trajectory_projections(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        peak_value: float,
+        lookback_months: int = 6
+    ) -> Dict[str, Any]:
+        """
+        Enhanced trajectory calculation with adaptive lookback, imputation, and confidence levels.
+
+        Calculates three recovery scenarios using linear regression with robust data handling:
+        - Conservative: Slower recovery (lower confidence bound)
+        - Moderate: Realistic recovery (mean projection)
+        - Aggressive: Faster recovery (upper confidence bound)
+
+        Features:
+        - Adaptive lookback window (uses available data, minimum 2 months)
+        - Multi-level data imputation for missing values
+        - Confidence levels based on data quality and regression fit
+        - Graceful degradation with fallbacks
+
+        Args:
+            portfolio_values: List of normalized portfolio values (can contain None for missing data)
+            dates: List of date strings
+            peak_value: Peak value to recover to (100%)
+            lookback_months: Desired number of recent months to use (default 6)
+
+        Returns:
+            Dict with conservative_months, moderate_months, aggressive_months, trajectory_data,
+            and regression_quality metrics
+        """
+        try:
+            # 1. Data Quality Assessment
+            data_quality = self._assess_portfolio_data_quality(portfolio_values, dates)
+
+            # 2. Handle missing values with imputation
+            imputed_values, imputed_dates = self._impute_missing_portfolio_values(
+                portfolio_values, dates, method='linear_interpolation'
+            )
+
+            # 3. Adaptive Lookback Window Selection
+            available_months = len(imputed_values)
+
+            if available_months < 2:
+                return self._get_fallback_trajectory("insufficient_data")
+
+            # Use what's available, minimum 2 months, warn if < 6 months
+            effective_lookback = min(lookback_months, available_months)
+
+            if effective_lookback < 6:
+                logger.warning(
+                    f"⚠️ Limited data: Only {effective_lookback} months available for trajectory. "
+                    f"Using all available data (lower confidence)."
+                )
+
+            # 4. Use imputed data for regression
+            recent_values = imputed_values[-effective_lookback:]
+            recent_indices = list(range(len(imputed_values) - len(recent_values), len(imputed_values)))
+
+            if len(recent_values) < 2:
+                return self._get_fallback_trajectory("insufficient_data")
+
+            # 5. Multiple Regression Windows (if enough data)
+            regressions = {}
+            for window in [3, 6, 12]:
+                if len(imputed_values) >= window:
+                    window_values = imputed_values[-window:]
+                    window_indices = list(range(len(imputed_values) - len(window_values), len(imputed_values)))
+
+                    regression_result = self._calculate_linear_regression(window_indices, window_values)
+                    if regression_result and regression_result['r_squared'] > 0.1:  # Minimum quality
+                        regressions[window] = regression_result
+
+            # 6. Select Best Regression (prefer 6-month, fallback to 3 or 12)
+            base_regression = (
+                regressions.get(6) or
+                regressions.get(3) or
+                regressions.get(12) or
+                self._calculate_linear_regression(recent_indices, recent_values)
+            )
+
+            if not base_regression or base_regression['slope'] <= 0:
+                return self._get_fallback_trajectory("negative_trend")
+
+            # 7. Calculate trajectories with confidence intervals
+            base_slope = base_regression['slope']
+            base_std_error = base_regression['std_error']
+
+            current_idx = len(imputed_values) - 1
+            current_value = imputed_values[-1]
+
+            # Conservative: Lower bound (slope - 1.5 * std_error, or 0.7x slope)
+            # Ensure minimum 15% divergence from moderate for visual distinction
+            conservative_slope_calc = max(0.001, base_slope - 1.5 * base_std_error) if base_std_error > 0 else base_slope * 0.7
+            conservative_slope = min(conservative_slope_calc, base_slope * 0.85)  # At least 15% slower than moderate
+
+            # Moderate: Mean (base slope)
+            moderate_slope = base_slope
+
+            # Aggressive: Upper bound (slope + 1.5 * std_error, or 1.3x slope)
+            # Ensure minimum 15% divergence from moderate for visual distinction
+            aggressive_slope_calc = base_slope + 1.5 * base_std_error if base_std_error > 0 else base_slope * 1.3
+            aggressive_slope = max(aggressive_slope_calc, base_slope * 1.15)  # At least 15% faster than moderate
+
+            # 8. Calculate months to peak for each scenario
+            months_to_peak_conservative = (peak_value - current_value) / conservative_slope if conservative_slope > 0 else None
+            months_to_peak_moderate = (peak_value - current_value) / moderate_slope if moderate_slope > 0 else None
+            months_to_peak_aggressive = (peak_value - current_value) / aggressive_slope if aggressive_slope > 0 else None
+
+            # 9. Generate trajectory data (24 months forward)
+            trajectory_data = []
+            for months_ahead in range(1, 25):
+                # Conservative trajectory
+                conservative_value = current_value + conservative_slope * months_ahead
+                # No cap for educational trajectory projections
+
+                # Moderate trajectory
+                moderate_value = current_value + moderate_slope * months_ahead
+                # No cap for educational trajectory projections
+
+                # Aggressive trajectory
+                aggressive_value = current_value + aggressive_slope * months_ahead
+                # No cap for educational trajectory projections
+
+                trajectory_data.append({
+                    'months_ahead': months_ahead,
+                    'conservative': float(conservative_value),
+                    'moderate': float(moderate_value),
+                    'aggressive': float(aggressive_value)
+                })
+
+            # 10. Calculate confidence level
+            confidence_level = self._calculate_confidence_level(effective_lookback, base_regression['r_squared'])
+
+            return {
+                'conservative_months': float(months_to_peak_conservative) if months_to_peak_conservative and months_to_peak_conservative > 0 else None,
+                'moderate_months': float(months_to_peak_moderate) if months_to_peak_moderate and months_to_peak_moderate > 0 else None,
+                'aggressive_months': float(months_to_peak_aggressive) if months_to_peak_aggressive and months_to_peak_aggressive > 0 else None,
+                'trajectory_data': trajectory_data,
+                'regression_quality': {
+                    'r_squared': float(base_regression['r_squared']),
+                    'std_error': float(base_std_error),
+                    'data_points_used': effective_lookback,
+                    'confidence_level': confidence_level,
+                    'imputation_used': len(imputed_values) > len([v for v in portfolio_values if v is not None]),
+                    'data_quality': data_quality
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Error calculating enhanced trajectory: {e}")
+            return self._get_fallback_trajectory("error")
+
+    def _assess_portfolio_data_quality(self, portfolio_values: List[float], dates: List[str]) -> str:
+        """Assess the quality of portfolio data."""
+        if not portfolio_values:
+            return "empty"
+
+        total_points = len(portfolio_values)
+        missing_points = sum(1 for v in portfolio_values if v is None)
+        missing_percentage = missing_points / total_points
+
+        if missing_percentage > 0.5:
+            return "poor"
+        elif missing_percentage > 0.2:
+            return "fair"
+        elif total_points >= 12:
+            return "good"
+        else:
+            return "limited"
+
+    def _impute_missing_portfolio_values(
+        self,
+        portfolio_values: List[float],
+        dates: List[str],
+        method: str = 'linear_interpolation'
+    ) -> Tuple[List[float], List[str]]:
+        """
+        Impute missing portfolio values using linear interpolation.
+        """
+        if len(portfolio_values) == len(dates) and not any(v is None for v in portfolio_values):
+            return portfolio_values, dates
+
+        imputed_values = []
+        imputed_dates = []
+
+        for i, (value, date) in enumerate(zip(portfolio_values, dates)):
+            if value is not None:
+                imputed_values.append(value)
+                imputed_dates.append(date)
+            else:
+                # Missing value - apply linear interpolation
+                if method == 'linear_interpolation':
+                    # Find previous and next non-null values
+                    prev_value = None
+                    next_value = None
+
+                    # Find previous non-null value
+                    for j in range(i - 1, -1, -1):
+                        if portfolio_values[j] is not None:
+                            prev_value = portfolio_values[j]
+                            break
+
+                    # Find next non-null value
+                    for j in range(i + 1, len(portfolio_values)):
+                        if portfolio_values[j] is not None:
+                            next_value = portfolio_values[j]
+                            break
+
+                    if prev_value is not None and next_value is not None:
+                        # Linear interpolation
+                        gap_size = (i - (i - 1 - (i - 1 - j))) if j < i else 1
+                        interpolated = prev_value + (next_value - prev_value) / gap_size
+                        imputed_values.append(interpolated)
+                        imputed_dates.append(date)
+                    elif prev_value is not None:
+                        # Forward fill
+                        imputed_values.append(prev_value)
+                        imputed_dates.append(date)
+                    elif next_value is not None:
+                        # Backward fill
+                        imputed_values.append(next_value)
+                        imputed_dates.append(date)
+                    else:
+                        # No surrounding data - use average of all available
+                        available_values = [v for v in portfolio_values if v is not None]
+                        if available_values:
+                            imputed_values.append(np.mean(available_values))
+                            imputed_dates.append(date)
+                        else:
+                            # Last resort: use 1.0 (100% baseline)
+                            imputed_values.append(1.0)
+                            imputed_dates.append(date)
+
+        return imputed_values, imputed_dates
+
+    def _calculate_linear_regression(self, indices: List[int], values: List[float]) -> Optional[Dict[str, float]]:
+        """Calculate linear regression for given data points."""
+        try:
+            if len(indices) < 2 or len(values) < 2:
+                return None
+
+            x = np.array(indices, dtype=float)
+            y = np.array(values, dtype=float)
+
+            n = len(x)
+            sum_x = np.sum(x)
+            sum_y = np.sum(y)
+            sum_xy = np.sum(x * y)
+            sum_x2 = np.sum(x * x)
+
+            denominator = n * sum_x2 - sum_x * sum_x
+            if abs(denominator) < 1e-10:
+                # No trend, use average return
+                avg_return = (y[-1] - y[0]) / len(y) if len(y) > 1 else 0
+                slope = avg_return
+                intercept = y[-1] - slope * x[-1]
+                r_squared = 0.0
+            else:
+                slope = (n * sum_xy - sum_x * sum_y) / denominator
+                intercept = (sum_y - slope * sum_x) / n
+
+                # Calculate R-squared
+                y_pred = slope * x + intercept
+                ss_res = np.sum((y - y_pred) ** 2)
+                ss_tot = np.sum((y - np.mean(y)) ** 2)
+                r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+
+            # Calculate standard error
+            residuals = y - y_pred
+            mse = np.mean(residuals ** 2) if len(residuals) > 0 else 0
+            std_error = np.sqrt(mse) if mse > 0 else 0
+
+            return {
+                'slope': float(slope),
+                'intercept': float(intercept),
+                'r_squared': float(r_squared),
+                'std_error': float(std_error)
+            }
+        except Exception as e:
+            logger.warning(f"Error in linear regression: {e}")
+            return None
+
+    def _calculate_confidence_level(self, data_points: int, r_squared: float) -> str:
+        """Calculate confidence level for trajectory projection."""
+        if data_points >= 12 and r_squared >= 0.7:
+            return 'high'
+        elif data_points >= 6 and r_squared >= 0.5:
+            return 'medium'
+        elif data_points >= 3 and r_squared >= 0.3:
+            return 'low'
+        else:
+            return 'very_low'
+
+    def _get_fallback_trajectory(self, reason: str) -> Dict[str, Any]:
+        """Provide fallback trajectory when calculation fails."""
+        fallback_scenarios = {
+            'insufficient_data': {
+                'conservative_months': None,
+                'moderate_months': None,
+                'aggressive_months': None,
+                'trajectory_data': [],
+                'regression_quality': {
+                    'r_squared': 0.0,
+                    'std_error': 0.0,
+                    'data_points_used': 0,
+                    'confidence_level': 'very_low',
+                    'fallback_reason': 'insufficient_data'
+                }
+            },
+            'negative_trend': {
+                # Use historical average recovery time
+                'conservative_months': 24.0,
+                'moderate_months': 18.0,
+                'aggressive_months': 12.0,
+                'trajectory_data': self._generate_flat_trajectory(),
+                'regression_quality': {
+                    'r_squared': 0.0,
+                    'std_error': 0.0,
+                    'confidence_level': 'very_low',
+                    'fallback_reason': 'negative_trend'
+                }
+            },
+            'error': {
+                'conservative_months': None,
+                'moderate_months': None,
+                'aggressive_months': None,
+                'trajectory_data': [],
+                'regression_quality': {
+                    'confidence_level': 'error',
+                    'fallback_reason': 'calculation_error'
+                }
+            }
+        }
+
+        return fallback_scenarios.get(reason, fallback_scenarios['error'])
+
+    def _generate_flat_trajectory(self) -> List[Dict[str, Any]]:
+        """Generate flat trajectory data for fallback."""
+        return [
+            {
+                'months_ahead': months,
+                'conservative': 1.0,
+                'moderate': 1.0,
+                'aggressive': 1.0
+            } for months in range(1, 25)
+        ]
+
+    def _impute_ticker_price_gaps(
+        self,
+        ticker_prices: Dict[str, Dict[str, float]],
+        sorted_dates: List[str]
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Impute missing price data for individual tickers using linear interpolation.
+        This fills gaps in ticker price series before portfolio aggregation.
+        """
+        try:
+            imputed_ticker_prices = {}
+
+            for ticker, prices in ticker_prices.items():
+                # Check if ticker has data for all dates
+                if len(prices) == len(sorted_dates) and all(date in prices for date in sorted_dates):
+                    # No imputation needed
+                    imputed_ticker_prices[ticker] = prices
+                    continue
+
+                # Impute missing dates
+                imputed_prices = {}
+
+                for i, date_str in enumerate(sorted_dates):
+                    if date_str in prices:
+                        imputed_prices[date_str] = prices[date_str]
+                    else:
+                        # Missing price - interpolate
+                        prev_price = None
+                        next_price = None
+
+                        # Find previous available price
+                        for j in range(i - 1, -1, -1):
+                            if sorted_dates[j] in prices:
+                                prev_price = prices[sorted_dates[j]]
+                                prev_idx = j
+                                break
+
+                        # Find next available price
+                        for j in range(i + 1, len(sorted_dates)):
+                            if sorted_dates[j] in prices:
+                                next_price = prices[sorted_dates[j]]
+                                next_idx = j
+                                break
+
+                        if prev_price is not None and next_price is not None:
+                            # Linear interpolation
+                            total_gap = next_idx - prev_idx
+                            current_gap = i - prev_idx
+                            interpolated_price = prev_price + (next_price - prev_price) * (current_gap / total_gap)
+                            imputed_prices[date_str] = interpolated_price
+                        elif prev_price is not None:
+                            # Forward fill
+                            imputed_prices[date_str] = prev_price
+                        elif next_price is not None:
+                            # Backward fill
+                            imputed_prices[date_str] = next_price
+                        else:
+                            # No surrounding data - use average of available prices
+                            available_prices = list(prices.values())
+                            if available_prices:
+                                imputed_prices[date_str] = np.mean(available_prices)
+                            else:
+                                # Last resort: skip this date (will be handled in portfolio calculation)
+                                continue
+
+                imputed_ticker_prices[ticker] = imputed_prices
+
+            return imputed_ticker_prices
+
+        except Exception as e:
+            logger.warning(f"⚠️ Error in ticker price imputation: {e}")
+            return ticker_prices  # Return original data on error
     
     def calculate_recovery_time(
         self,
@@ -672,6 +1160,7 @@ class StressTestAnalyzer:
         dates: List[str],
         peak_value: float,
         trough_index: Optional[int] = None,
+        lookback_months: int = 6,
     ) -> Dict[str, Any]:
         """
         Calculate time to recover to peak value at multiple thresholds (90%, 95%, 100%).
@@ -681,6 +1170,7 @@ class StressTestAnalyzer:
             dates: List of date strings
             peak_value: Peak value to recover to
             trough_index: Optional index of crisis trough (if already known)
+            lookback_months: Number of months to use for trajectory regression (default 6, use 12 for longer crises like 2008)
 
         Returns:
             Dict with recovery_months, recovery_date, recovery_index, recovered, recovery_trajectory,
@@ -718,12 +1208,12 @@ class StressTestAnalyzer:
             current_value = portfolio_values[-1] if portfolio_values else trough_value
             recovery_needed_pct = ((peak_value - current_value) / peak_value) * 100 if peak_value > 0 else 0
 
-            # Calculate trajectory-based projections to peak
-            trajectory_projections = self.calculate_trajectory_projection(
+            # Calculate trajectory-based projections to peak with adaptive lookback
+            trajectory_projections = self.calculate_enhanced_trajectory_projections(
                 portfolio_values,
                 dates,
                 peak_value,
-                lookback_months=6,
+                lookback_months=lookback_months,
             )
 
             # Calculate recovery times for multiple thresholds (including 100% = peak)
@@ -1154,11 +1644,13 @@ class StressTestAnalyzer:
                 (i for i, d in enumerate(portfolio_data['dates']) if d == trough_date),
                 None,
             )
+            # Use 6-month lookback for COVID-19 (shorter crisis with limited data - 8 months total)
             recovery_data = self.calculate_recovery_time(
                 portfolio_data['values'],
                 portfolio_data['dates'],
                 peak_value,
                 trough_index=trough_index,
+                lookback_months=6,  # Standard lookback for shorter crises
             )
             
             # Volatility calculations
@@ -1238,11 +1730,12 @@ class StressTestAnalyzer:
                 recovered = recovery_data['recovered']
                 recovery_thresholds = recovery_data.get('recovery_thresholds', {})
                 recovery_needed_pct = recovery_data.get('recovery_needed_pct', 0.0)
+                # Include trajectory projections for significant drawdowns (educational purposes)
                 trajectory_projections = recovery_data.get('trajectory_projections', {})
             else:
                 # Minor drawdown (<3%): show minimal recovery or immediate recovery
                 drawdown_pct = abs(max_drawdown_data['max_drawdown']) * 100
-                
+
                 if drawdown_pct < 0.5:
                     # Negligible drawdown (<0.5%)
                     recovery_months = 0
@@ -1262,9 +1755,10 @@ class StressTestAnalyzer:
                         recovery_date = recovery_data['recovery_date']
                         recovery_pattern = 'Minor Drawdown (Recovering)'
                         recovered = False
-                
+
                 recovery_thresholds = recovery_data.get('recovery_thresholds', {})
                 recovery_needed_pct = recovery_data.get('recovery_needed_pct', 0.0)
+                # Include trajectory projections for significant drawdowns (educational purposes)
                 trajectory_projections = recovery_data.get('trajectory_projections', {})
             
             return {
@@ -1325,19 +1819,73 @@ class StressTestAnalyzer:
             # Scenario periods
             crisis_start = '2008-09-01'
             crisis_end = '2010-03-31'
-            recovery_end = '2010-09-30'
+            # Extend recovery_end to 2011-03-31 to provide more data for trajectory calculations
+            # This ensures at least 6 months of post-recovery data for accurate projections
+            recovery_end = '2011-03-31'
             normal_start = '2007-09-01'
             normal_end = '2008-08-31'
+            # Start graph from August 2008 to show pre-crisis baseline (1 month before crisis)
+            graph_start = '2008-08-01'
             
-            # Calculate portfolio values
-            logger.info(f"⏱️ Calculating portfolio values for crisis period...")
+            # Calculate portfolio values - start from August 2008 to show pre-crisis baseline
+            logger.info(f"⏱️ Calculating portfolio values for crisis period (starting from {graph_start})...")
             portfolio_data = self.calculate_portfolio_values_over_period(
-                tickers, weights, crisis_start, recovery_end, include_recovery=True
+                tickers, weights, graph_start, recovery_end, include_recovery=True
             )
             logger.info(f"⏱️ Portfolio values calculated in {time.time() - op_start:.3f}s")
             
             if len(portfolio_data['values']) == 0:
-                raise ValueError("No portfolio data available for 2008 Crisis scenario")
+                # Graceful fallback: do not crash the whole stress test if a portfolio has
+                # insufficient historical coverage (e.g., newer IPOs / listings).
+                return {
+                    'scenario_name': '2008 Financial Crisis',
+                    'period': {
+                        'start': crisis_start,
+                        'end': crisis_end,
+                        'recovery_end': recovery_end
+                    },
+                    'metrics': {
+                        'total_return': 0.0,
+                        'worst_month_return': 0.0,
+                        'max_drawdown': 0.0,
+                        'max_drawdown_data': {
+                            'max_drawdown': 0.0,
+                            'is_significant': False,
+                            'peak_value': 1.0,
+                            'peak_date': None,
+                            'trough_value': 1.0,
+                            'trough_date': None,
+                            'drawdown_duration_months': 0,
+                        },
+                        'volatility_during_crisis': 0.0,
+                        'volatility_normal_period': 0.0,
+                        'volatility_ratio': 1.0,
+                        'recovery_months': None,
+                        'recovery_date': None,
+                        'recovery_pattern': 'N/A',
+                        'recovered': False,
+                        'recovery_thresholds': {
+                            '90': None,
+                            '95': None,
+                            '100': None,
+                        },
+                        'recovery_needed_pct': 0.0,
+                        'trajectory_projections': {},
+                        'advanced_risk': {},
+                    },
+                    'monte_carlo': None,
+                    'peaks_troughs': {
+                        'peak': None,
+                        'trough': None,
+                        'recovery_peak': None,
+                        'all_peaks': [],
+                        'all_troughs': [],
+                    },
+                    'sector_impact': None,
+                    'monthly_performance': [],
+                    'data_availability': portfolio_data.get('data_availability', {t: False for t in tickers}),
+                    'error': 'Insufficient historical price coverage to model the 2008 crisis for this portfolio.'
+                }
             
             # Detect peaks and troughs using crisis-aware window
             peaks_troughs = self.detect_peaks_and_troughs(
@@ -1364,11 +1912,13 @@ class StressTestAnalyzer:
                 (i for i, d in enumerate(portfolio_data['dates']) if d == trough_date),
                 None,
             )
+            # Use 12-month lookback for 2008 crisis (longer crisis with more data available - 32 months total)
             recovery_data = self.calculate_recovery_time(
                 portfolio_data['values'],
                 portfolio_data['dates'],
                 peak_value,
                 trough_index=trough_index,
+                lookback_months=12,  # Longer lookback for better regression quality
             )
             
             # Volatility calculations
@@ -1422,13 +1972,6 @@ class StressTestAnalyzer:
             except Exception as e:
                 logger.warning(f"⚠️ Could not run Monte Carlo for 2008 Crisis: {e}")
             
-            # Correlation breakdown
-            correlation_breakdown = self.calculate_correlation_breakdown(
-                tickers, weights,
-                (crisis_start, crisis_end),
-                (normal_start, normal_end)
-            )
-            
             # Sector impact
             sector_impact = self.calculate_sector_impact(
                 tickers, weights, (crisis_start, crisis_end)
@@ -1454,10 +1997,11 @@ class StressTestAnalyzer:
                 recovered_2008 = recovery_data['recovered']
                 recovery_thresholds_2008 = recovery_data.get('recovery_thresholds', {})
                 recovery_needed_pct_2008 = recovery_data.get('recovery_needed_pct', 0.0)
-                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {})
+                # Only include trajectory projections if portfolio hasn't fully recovered
+                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {}) if recovery_needed_pct_2008 > 0 else {}
             else:
                 drawdown_pct = abs(max_drawdown_data['max_drawdown']) * 100
-                
+
                 if drawdown_pct < 0.5:
                     recovery_months_2008 = 0
                     recovery_date_2008 = max_drawdown_data['trough_date']
@@ -1474,10 +2018,11 @@ class StressTestAnalyzer:
                         recovery_date_2008 = recovery_data['recovery_date']
                         recovery_pattern_2008 = 'Minor Drawdown (Recovering)'
                         recovered_2008 = False
-                
+
                 recovery_thresholds_2008 = recovery_data.get('recovery_thresholds', {})
                 recovery_needed_pct_2008 = recovery_data.get('recovery_needed_pct', 0.0)
-                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {})
+                # Only include trajectory projections if portfolio hasn't fully recovered
+                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {}) if recovery_needed_pct_2008 > 0 else {}
             
             return {
                 'scenario_name': '2008 Financial Crisis',
@@ -1501,7 +2046,6 @@ class StressTestAnalyzer:
                     'recovery_thresholds': recovery_thresholds_2008,
                     'recovery_needed_pct': recovery_needed_pct_2008,
                     'trajectory_projections': trajectory_projections_2008,
-                    'correlation_breakdown': correlation_breakdown,
                     'advanced_risk': advanced_risk
                 },
                 'monte_carlo': monte_carlo,

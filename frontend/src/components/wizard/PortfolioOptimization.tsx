@@ -1069,7 +1069,8 @@ export const PortfolioOptimization = ({
   
   const zoomOutEligibleTickers = useCallback(() => {
     setEligibleTickersZoomLevel(prev => {
-      const newLevel = Math.max(prev / 1.5, 1);
+      // Default is 0.5, allow only one zoom out to 0.333 (0.5 / 1.5)
+      const newLevel = Math.max(prev / 1.5, 0.333);
       console.log('[PortfolioOptimization] Zoom out:', { prev, newLevel });
       return newLevel;
     });
@@ -2502,7 +2503,7 @@ export const PortfolioOptimization = ({
                           onClick={zoomOutEligibleTickers}
                           className="h-7 w-7 p-0"
                           title="Zoom out (button)"
-                          disabled={eligibleTickersZoomLevel <= 0.125}
+                          disabled={eligibleTickersZoomLevel <= 0.333}
                         >
                           <ZoomOut className="h-3.5 w-3.5" />
                         </Button>

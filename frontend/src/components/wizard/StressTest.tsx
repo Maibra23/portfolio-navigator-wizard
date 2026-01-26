@@ -40,11 +40,7 @@ import {
   Building2,
   Check,
   Download,
-  Share2,
-  Settings,
-  Zap,
   Calendar,
-  GitCompare,
   FileText
 } from 'lucide-react';
 
@@ -89,14 +85,6 @@ export const StressTest: React.FC<StressTestProps> = ({
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeScenario, setActiveScenario] = useState<string | null>(null);
-  const [whatIfResults, setWhatIfResults] = useState<any>(null);
-  const [whatIfLoading, setWhatIfLoading] = useState(false);
-  const [whatIfParams, setWhatIfParams] = useState({
-    volatility_multiplier: 2.0,
-    return_adjustment: -0.15,
-    time_horizon_months: 12
-  });
-  const [showComparison, setShowComparison] = useState(false);
   const [hypotheticalParams, setHypotheticalParams] = useState({
     scenario_type: 'tech_crash',
     market_decline: -30,
@@ -106,7 +94,7 @@ export const StressTest: React.FC<StressTestProps> = ({
   });
   const [hypotheticalResults, setHypotheticalResults] = useState<any>(null);
   const [hypotheticalLoading, setHypotheticalLoading] = useState(false);
-  const [activeView, setActiveView] = useState<'overview' | 'comparison' | 'monte-carlo' | 'what-if' | 'hypothetical' | 'timeline'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'timeline' | 'monte-carlo' | 'hypothetical'>('overview');
   const [selectedTimelineEvent, setSelectedTimelineEvent] = useState<any>(null);
   // Toggle states for Interactive Timeline legend
   const [visibleEventTypes, setVisibleEventTypes] = useState<{
@@ -121,7 +109,7 @@ export const StressTest: React.FC<StressTestProps> = ({
     warning: true
   });
   const [showRecoveryThresholds, setShowRecoveryThresholds] = useState(true);
-  const [showRecoveryThresholdsOverview, setShowRecoveryThresholdsOverview] = useState(true);
+  // Keep Stress Test focused on 4 tabs: Overview, Timeline, Monte Carlo, Scenarios.
 
   // Cache warm-up: Pre-warm Redis cache when portfolio is available
   React.useEffect(() => {
@@ -428,12 +416,11 @@ export const StressTest: React.FC<StressTestProps> = ({
                           <h3 className="font-semibold text-lg">2008 Financial Crisis</h3>
                         </div>
                         <p className="text-xs text-gray-600 mb-3">
-                          Most severe crisis since Great Depression (Sep 2008 - Mar 2010). Tests prolonged drawdown and correlation breakdown.
+                          Most severe crisis since Great Depression (Sep 2008 - Mar 2010). Tests prolonged drawdown and recovery behavior.
                         </p>
                         <div className="space-y-1 text-xs text-gray-500">
                           <div>• Crisis Duration: 18 months</div>
                           <div>• Recovery Pattern: Prolonged</div>
-                          <div>• Correlation Breakdown: Yes</div>
                         </div>
                       </div>
                     </div>
@@ -497,15 +484,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowComparison(!showComparison)}
-                    disabled={Object.keys(stressTestResults.scenarios).length < 2}
-                  >
-                    <GitCompare className="h-4 w-4 mr-2" />
-                    {showComparison ? 'Hide Comparison' : 'Show Comparison'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     onClick={handleExportResults}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -519,7 +497,7 @@ export const StressTest: React.FC<StressTestProps> = ({
               
               {/* View Tabs */}
               <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
-                <TabsList className="grid w-full grid-cols-7">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="overview" className="flex items-center gap-1 text-xs">
                     <FileText className="h-3 w-3" />
                     Overview
@@ -528,17 +506,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                     <Calendar className="h-3 w-3" />
                     Timeline
                   </TabsTrigger>
-                  <TabsTrigger value="comparison" className="flex items-center gap-1 text-xs" disabled={!showComparison || Object.keys(stressTestResults.scenarios).length < 2}>
-                    <GitCompare className="h-3 w-3" />
-                    Compare
-                  </TabsTrigger>
                   <TabsTrigger value="monte-carlo" className="flex items-center gap-1 text-xs">
                     <BarChart3 className="h-3 w-3" />
                     Monte Carlo
-                  </TabsTrigger>
-                  <TabsTrigger value="what-if" className="flex items-center gap-1 text-xs">
-                    <Zap className="h-3 w-3" />
-                    What-If
                   </TabsTrigger>
                   <TabsTrigger value="hypothetical" className="flex items-center gap-1 text-xs">
                     <AlertTriangle className="h-3 w-3" />
@@ -713,8 +683,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                               {stressTestResults.scenarios.covid19.metrics.max_drawdown_data?.is_significant 
                                 ? (stressTestResults.scenarios.covid19.metrics.recovered
                                     ? `${stressTestResults.scenarios.covid19.metrics.recovery_months} mo`
-                                    : stressTestResults.scenarios.covid19.metrics.trajectory_projections?.realistic_months
-                                      ? `${stressTestResults.scenarios.covid19.metrics.trajectory_projections.realistic_months.toFixed(1)} mo (proj)`
+                                    : stressTestResults.scenarios.covid19.metrics.trajectory_projections?.moderate_months
+                                      ? `${stressTestResults.scenarios.covid19.metrics.trajectory_projections.moderate_months.toFixed(1)} mo (proj)`
                                       : 'N/A')
                                 : 'N/A'}
                             </span>
@@ -770,29 +740,39 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
-                                  <div className="font-semibold mb-1">Trajectory Projections</div>
-                                  <div className="mb-2">Estimated months to reach peak value based on current trend analysis.</div>
-                                  <div className="mb-1"><strong>Realistic:</strong> Mean projection based on linear regression</div>
-                                  <div className="mb-1"><strong>Optimistic:</strong> Upper bound (faster recovery)</div>
-                                  <div className="mb-1"><strong>Pessimistic:</strong> Lower bound (slower recovery)</div>
-                                  <div className="text-yellow-300 mt-2">Based on last 6 months trend</div>
+                                <TooltipContent className="w-80 p-4 bg-gray-900 text-white text-xs border-0">
+                                  <div className="font-semibold mb-2">Trajectory Projections</div>
+                                  <div className="mb-3">Forward-looking scenarios showing potential portfolio recovery paths based on current trends.</div>
+
+                                  <div className="mb-2"><strong>📈 Projection Types:</strong></div>
+                                  <div className="mb-1 text-green-400"><strong>Positive Values:</strong> Portfolio trending upward - expected growth</div>
+                                  <div className="mb-1 text-red-400"><strong>Negative Values:</strong> Portfolio trending downward - potential continued decline</div>
+                                  <div className="mb-3 text-gray-300">⚠️ Negative projections indicate the portfolio may lose value at this annualized rate if current trends continue</div>
+
+                                  <div className="mb-2"><strong>🎯 Scenarios:</strong></div>
+                                  <div className="mb-1"><strong className="text-green-400">Aggressive (A):</strong> Best-case recovery (fastest)</div>
+                                  <div className="mb-1"><strong className="text-blue-400">Moderate (M):</strong> Realistic scenario (typical)</div>
+                                  <div className="mb-1"><strong className="text-orange-400">Conservative (C):</strong> Worst-case recovery (slowest)</div>
+
+                                  <div className="text-yellow-300 mt-3 border-t border-gray-600 pt-2">
+                                    <strong>💡 Insight:</strong> Use these projections to understand risk and plan rebalancing. Negative trends may signal need for portfolio adjustments.
+                                  </div>
                                 </TooltipContent>
                               </UITooltip>
-                              <span className="text-xs text-indigo-600 font-medium">
-                                {stressTestResults.scenarios.covid19.metrics.trajectory_projections.optimistic_months 
-                                  ? `O:${stressTestResults.scenarios.covid19.metrics.trajectory_projections.optimistic_months.toFixed(1)}`
-                                  : 'O:N/A'}
+                              <span className="text-xs text-green-600 font-medium">
+                                {stressTestResults.scenarios.covid19.metrics.trajectory_projections.aggressive_months
+                                  ? `A:${stressTestResults.scenarios.covid19.metrics.trajectory_projections.aggressive_months.toFixed(1)}`
+                                  : 'A:N/A'}
                               </span>
-                              <span className="text-xs text-indigo-700 font-bold">
-                                {stressTestResults.scenarios.covid19.metrics.trajectory_projections.realistic_months 
-                                  ? `R:${stressTestResults.scenarios.covid19.metrics.trajectory_projections.realistic_months.toFixed(1)}`
-                                  : 'R:N/A'}
+                              <span className="text-xs text-blue-700 font-bold">
+                                {stressTestResults.scenarios.covid19.metrics.trajectory_projections.moderate_months
+                                  ? `M:${stressTestResults.scenarios.covid19.metrics.trajectory_projections.moderate_months.toFixed(1)}`
+                                  : 'M:N/A'}
                               </span>
-                              <span className="text-xs text-indigo-600 font-medium">
-                                {stressTestResults.scenarios.covid19.metrics.trajectory_projections.pessimistic_months 
-                                  ? `P:${stressTestResults.scenarios.covid19.metrics.trajectory_projections.pessimistic_months.toFixed(1)}`
-                                  : 'P:N/A'}
+                              <span className="text-xs text-orange-600 font-medium">
+                                {stressTestResults.scenarios.covid19.metrics.trajectory_projections.conservative_months
+                                  ? `C:${stressTestResults.scenarios.covid19.metrics.trajectory_projections.conservative_months.toFixed(1)}`
+                                  : 'C:N/A'}
                               </span>
                             </div>
                           )}
@@ -813,20 +793,52 @@ export const StressTest: React.FC<StressTestProps> = ({
                             <div className="text-sm font-medium text-center">Portfolio Value Over Time</div>
                             <div className="h-64 w-full -ml-4">
                               <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart 
-                                  data={(() => {
-                                    // Normalize data so January 2020 starts at 100%
-                                    const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
-                                    const normalizationFactor = 1.0 / jan2020Value;
-                                    
-                                    const baseData = stressTestResults.scenarios.covid19.monthly_performance.map((m: any) => ({
+                                {(() => {
+                                  // Normalize data so January 2020 starts at 100%
+                                  const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
+                                  const normalizationFactor = 1.0 / jan2020Value;
+                                  
+                                  // Store recovery peak info for rendering (if it exists)
+                                  let recoveryPeakInfo: { date: string; value: number } | null = null;
+
+                                    let baseData = stressTestResults.scenarios.covid19.monthly_performance.map((m: any) => ({
                                       date: m.month,
                                       value: ((m.value || 0) * normalizationFactor) * 100,
                                       return: (m.return || 0) * 100,
-                                      optimistic: null,
-                                      realistic: null,
-                                      pessimistic: null
+                                      aggressive: null,
+                                      moderate: null,
+                                      conservative: null
                                     }));
+
+                                    // Find recovery point and truncate chart to show only relevant period
+                                    // This prevents showing long periods of stable post-recovery data
+                                    const peakValue = 100; // Normalized peak (January 2020 = 100%)
+                                    const recoveryIndex = baseData.findIndex((d: any) => d.value >= peakValue);
+
+                                    // Check if recovery peak exists and find its index
+                                    let recoveryPeakIndex = -1;
+                                    if (stressTestResults.scenarios.covid19.peaks_troughs?.recovery_peak) {
+                                      const recoveryDateFull = stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date || '';
+                                      const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
+                                      recoveryPeakIndex = baseData.findIndex((d: any) => d.date === recoveryDate);
+                                    }
+
+                                    if (recoveryIndex !== -1) {
+                                      // Portfolio recovered - show 3-6 months after recovery, or up to recovery peak, or up to 24 months total
+                                      const endIndex = Math.min(
+                                        recoveryIndex + 3, // 3 months after recovery
+                                        recoveryPeakIndex !== -1 ? recoveryPeakIndex + 1 : baseData.length - 1, // Include recovery peak if it exists
+                                        baseData.length - 1, // Don't exceed available data
+                                        24 // Maximum 24 months total for chart readability
+                                      );
+                                      baseData = baseData.slice(0, endIndex + 1);
+                                    } else {
+                                      // No recovery found - limit to reasonable length anyway, but include recovery peak if it exists
+                                      const maxIndex = recoveryPeakIndex !== -1 
+                                        ? Math.max(recoveryPeakIndex + 1, Math.min(baseData.length, 24))
+                                        : Math.min(baseData.length, 24);
+                                      baseData = baseData.slice(0, maxIndex);
+                                    }
                                     
                                     // Ensure peak/trough dates exist in chart data for ReferenceDot rendering
                                     // This handles cases where dates might be slightly off or missing
@@ -835,7 +847,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       if (peakDate && !baseData.find((d: any) => d.date === peakDate)) {
                                         // Peak date not in data - find closest month or insert
                                         const peakValue = ((stressTestResults.scenarios.covid19.peaks_troughs.peak.value || 0) * normalizationFactor) * 100;
-                                        baseData.push({ date: peakDate, value: peakValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        baseData.push({ date: peakDate, value: peakValue, return: null, aggressive: null, moderate: null, conservative: null });
                                         baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
                                       }
                                     }
@@ -844,126 +856,251 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       const troughDate = stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(0, 7) || '';
                                       if (troughDate && !baseData.find((d: any) => d.date === troughDate)) {
                                         const troughValue = ((stressTestResults.scenarios.covid19.peaks_troughs.trough.value || 0) * normalizationFactor) * 100;
-                                        baseData.push({ date: troughDate, value: troughValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        baseData.push({ date: troughDate, value: troughValue, return: null, aggressive: null, moderate: null, conservative: null });
                                         baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                    }
+                                    
+                                    // Ensure recovery peak date exists in chart data for ReferenceDot rendering
+                                    if (stressTestResults.scenarios.covid19.peaks_troughs?.recovery_peak) {
+                                      const recoveryDateFull = stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date || '';
+                                      const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
+                                      const recoveryValue = ((stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.value || 0) * normalizationFactor) * 100;
+                                      
+                                      if (recoveryDate && !baseData.find((d: any) => d.date === recoveryDate)) {
+                                        // Recovery peak date not in data - insert it
+                                        baseData.push({ date: recoveryDate, value: recoveryValue, return: null, aggressive: null, moderate: null, conservative: null });
+                                        baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                      
+                                      // Store recovery peak info for rendering (check if it's in visible range after truncation)
+                                      const recoveryDataPoint = baseData.find((d: any) => d.date === recoveryDate);
+                                      if (recoveryDataPoint) {
+                                        recoveryPeakInfo = { date: recoveryDate, value: recoveryValue };
                                       }
                                     }
                                     
                                     // Add trajectory data if available
                                     // Projection lines should start from the end of the portfolio value line
+                                    // Convert backend's cumulative values to frontend's normalized percentage format
                                     if (stressTestResults.scenarios.covid19.metrics.max_drawdown_data?.is_significant && 
                                         stressTestResults.scenarios.covid19.metrics.trajectory_projections?.trajectory_data &&
                                         stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data.length > 0) {
                                       const lastDataPoint = baseData[baseData.length - 1];
                                       const lastDate = lastDataPoint?.date;
-                                      const lastValue = lastDataPoint?.value; // This is the last actual portfolio value
+                                      const lastValue = lastDataPoint?.value; // This is the last actual portfolio value (already normalized to %)
                                       
                                       if (lastDate && lastValue !== null && lastValue !== undefined) {
                                         const [year, month] = lastDate.split('-').map(Number);
                                         
+                                        // Get the backend's last value (current_value used for trajectory calculations)
+                                        // Backend values are in decimal form (0.95 = 95%), need to normalize to match frontend
+                                        const lastBackendValue = stressTestResults.scenarios.covid19.monthly_performance[stressTestResults.scenarios.covid19.monthly_performance.length - 1]?.value || 1.0;
+                                        const backendNormalizedLastValue = (lastBackendValue * normalizationFactor) * 100; // Convert to frontend's normalized %
+                                        
+                                        // Calculate offset to align backend's trajectory starting point with frontend's lastValue
+                                        // Backend's trajectory values are cumulative from backend's current_value
+                                        // We need to adjust them to start from frontend's lastValue
+                                        const valueOffset = lastValue - backendNormalizedLastValue;
+                                        
                                         // First point: connect to the last actual portfolio value
-                                        // This ensures smooth connection from actual data to projections
-                                        const firstProjectionPoint = stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data[0];
+                                        // Set all projection values to lastValue to ensure smooth connection
                                         baseData.push({
                                           date: lastDate, // Same date as last actual point
                                           value: lastValue, // Keep actual value for smooth connection
                                           return: null,
-                                          optimistic: (firstProjectionPoint?.optimistic || 0) * 100,
-                                          realistic: (firstProjectionPoint?.realistic || 0) * 100,
-                                          pessimistic: (firstProjectionPoint?.pessimistic || 0) * 100
+                                          aggressive: lastValue, // Start from lastValue
+                                          moderate: lastValue, // Start from lastValue
+                                          conservative: lastValue // Start from lastValue
                                         });
                                         
                                         // Add remaining projection points
-                                        stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data.slice(1).forEach((point: any, idx: number) => {
-                                          const futureMonth = month + idx + 2; // +2 because we already added first point
+                                        // Backend provides cumulative values from its current_value
+                                        // Convert them to frontend normalized percentage and adjust by offset
+                                        stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data.forEach((point: any, idx: number) => {
+                                          if (idx === 0) return; // Skip first point, already added
+                                          
+                                          const futureMonth = month + idx;
                                           const futureYear = year + Math.floor((futureMonth - 1) / 12);
                                           const futureMonthNormalized = ((futureMonth - 1) % 12) + 1;
                                           const futureDate = `${futureYear}-${String(futureMonthNormalized).padStart(2, '0')}`;
+                                          
+                                          // Convert backend values to frontend normalized percentage
+                                          // Backend values are cumulative from its current_value in decimal form
+                                          // Normalize them the same way as the actual data, then adjust by offset
+                                          const backendAggressive = (point.aggressive || 0) * normalizationFactor * 100;
+                                          const backendModerate = (point.moderate || 0) * normalizationFactor * 100;
+                                          const backendConservative = (point.conservative || 0) * normalizationFactor * 100;
+                                          
+                                          // Apply offset to align with frontend's lastValue
+                                          const aggressiveValue = backendAggressive + valueOffset;
+                                          const moderateValue = backendModerate + valueOffset;
+                                          const conservativeValue = backendConservative + valueOffset;
                                           
                                           baseData.push({
                                             date: futureDate,
                                             value: null, // No actual value, only projections
                                             return: null,
-                                            optimistic: (point.optimistic || 0) * 100,
-                                            realistic: (point.realistic || 0) * 100,
-                                            pessimistic: (point.pessimistic || 0) * 100
+                                            aggressive: aggressiveValue,
+                                            moderate: moderateValue,
+                                            conservative: conservativeValue
                                           });
                                         });
                                       }
                                     }
                                     
-                                    return baseData;
-                                  })()}
-                                  margin={{ left: 10, right: 10, top: 10, bottom: 10 }}
-                                >
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-                                  <XAxis 
-                                    dataKey="date" 
-                                    tick={{ fontSize: 10 }}
-                                    label={{ value: 'Month', position: 'insideBottom', offset: -5 }}
-                                  />
-                                  <YAxis 
-                                    tick={{ fontSize: 10 }}
-                                    tickFormatter={(value) => `${value.toFixed(0)}%`}
-                                    label={{ value: 'Portfolio Value (%)', angle: -90, position: 'left', offset: 0, style: { textAnchor: 'middle' } }}
-                                    domain={['dataMin', 'dataMax']}
-                                    width={70}
-                                  />
-                                  <Tooltip 
-                                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Portfolio Value']}
-                                    labelFormatter={(label) => `Month: ${label}`}
-                                  />
-                                  <Area 
-                                    type="monotone" 
-                                    dataKey="value" 
-                                    stroke="#3b82f6" 
-                                    fill="#3b82f6" 
-                                    fillOpacity={0.2}
-                                  />
-                                  {/* Recovery Threshold Lines removed from Portfolio Value Over Time - only show in Interactive Timeline */}
-                                  {/* Trajectory Projection Lines - Smooth lines starting from end of portfolio value */}
-                                  {stressTestResults.scenarios.covid19.metrics.max_drawdown_data?.is_significant && 
-                                   stressTestResults.scenarios.covid19.metrics.trajectory_projections?.trajectory_data &&
-                                   stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data.length > 0 && (
-                                    <>
-                                      {/* Optimistic Trajectory - Smooth line */}
-                                      <Line 
-                                        dataKey="optimistic" 
-                                        stroke="#22c55e"
-                                        strokeDasharray="4 4"
-                                        strokeWidth={1.5}
-                                        dot={false}
-                                        connectNulls={true}
-                                        type="monotone"
-                                        isAnimationActive={false}
-                                        name="Optimistic"
-                                      />
-                                      {/* Realistic Trajectory - Smooth line */}
-                                      <Line 
-                                        dataKey="realistic" 
-                                        stroke="#3b82f6"
-                                        strokeDasharray="4 4"
-                                        strokeWidth={2}
-                                        dot={false}
-                                        connectNulls={true}
-                                        type="monotone"
-                                        isAnimationActive={false}
-                                        name="Realistic"
-                                      />
-                                      {/* Pessimistic Trajectory - Smooth line */}
-                                      <Line 
-                                        dataKey="pessimistic" 
-                                        stroke="#f59e0b"
-                                        strokeDasharray="4 4"
-                                        strokeWidth={1.5}
-                                        dot={false}
-                                        connectNulls={true}
-                                        type="monotone"
-                                        isAnimationActive={false}
-                                        name="Pessimistic"
-                                      />
-                                    </>
-                                  )}
+                                    // Update recovery peak info after all data processing to ensure it's in visible range
+                                    if (stressTestResults.scenarios.covid19.peaks_troughs?.recovery_peak && !recoveryPeakInfo) {
+                                      const recoveryDateFull = stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date || '';
+                                      const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
+                                      const recoveryValue = ((stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.value || 0) * normalizationFactor) * 100;
+                                      
+                                      // Check if recovery date exists in the final chart data (after truncation and projection additions)
+                                      const recoveryDataPoint = baseData.find((d: any) => d.date === recoveryDate);
+                                      if (recoveryDataPoint) {
+                                        recoveryPeakInfo = { date: recoveryDate, value: recoveryValue };
+                                      }
+                                    }
+                                    
+                                    // Calculate dynamic domain based on data range
+                                    // Fixed Y-axis domain from 0% to 200%
+                                    const calculatedDomain: [number, number] = [0, 200];
+                                    
+                                    return (
+                                      <ComposedChart 
+                                        data={baseData}
+                                        margin={{ left: 10, right: 10, top: 10, bottom: 10 }}
+                                      >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                                        <XAxis
+                                          dataKey="date"
+                                          tick={{ fontSize: 10 }}
+                                          label={{ value: 'Month', position: 'insideBottom', offset: -5 }}
+                                        />
+                                        <YAxis
+                                          type="number"
+                                          tick={{ fontSize: 10 }}
+                                          tickFormatter={(value) => `${value.toFixed(0)}%`}
+                                          label={{ value: 'Portfolio Value (%)', angle: -90, position: 'left', offset: 0, style: { textAnchor: 'middle' } }}
+                                          domain={(_dataMin: number, _dataMax: number) => [0, 200]}
+                                          allowDataOverflow={true}
+                                          allowDecimals={false}
+                                          width={70}
+                                        />
+                                        <Tooltip
+                                          formatter={(value: number, name: string) => {
+                                            if (name === 'Aggressive' || name === 'Moderate' || name === 'Conservative') {
+                                              // This is a trajectory projection line
+                                              const isNegative = value < 0;
+                                              const insight = isNegative
+                                                ? `⚠️ Projected ${Math.abs(value).toFixed(1)}% annual decline - consider rebalancing`
+                                                : `📈 Projected ${value.toFixed(1)}% annual growth`;
+                                              return [`${value.toFixed(1)}%`, `${name} Trajectory`];
+                                            }
+                                            return [`${value.toFixed(1)}%`, 'Portfolio Value'];
+                                          }}
+                                          labelFormatter={(label) => `Month: ${label}`}
+                                          content={({ active, payload, label }) => {
+                                            if (!active || !payload || !payload.length) return null;
+
+                                            return (
+                                              <div className="bg-background border rounded-lg p-3 shadow-lg max-w-xs">
+                                                <p className="font-medium text-sm mb-2">{`Month: ${label}`}</p>
+                                                {payload.map((entry, index) => {
+                                                  const isTrajectory = entry.dataKey === 'aggressive' || entry.dataKey === 'moderate' || entry.dataKey === 'conservative';
+                                                  const value = entry.value as number;
+                                                  const name = entry.name as string;
+
+                                                  if (isTrajectory) {
+                                                    const isNegative = value < 0;
+                                                    return (
+                                                      <div key={index} className="mb-2 last:mb-0">
+                                                        <div className="flex items-center gap-2">
+                                                          <div
+                                                            className="w-3 h-3 rounded-full"
+                                                            style={{ backgroundColor: entry.color }}
+                                                          />
+                                                          <span className="font-medium text-sm capitalize">{name} Trajectory:</span>
+                                                          <span className={`font-bold ${isNegative ? 'text-red-600' : 'text-green-600'}`}>
+                                                            {value.toFixed(1)}%
+                                                          </span>
+                                                        </div>
+                                                        <div className={`text-xs mt-1 ${isNegative ? 'text-red-500' : 'text-green-500'}`}>
+                                                          {isNegative
+                                                            ? `⚠️ Projected ${Math.abs(value).toFixed(1)}% annual decline - consider rebalancing`
+                                                            : `📈 Projected ${value.toFixed(1)}% annual growth`
+                                                          }
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  } else {
+                                                    return (
+                                                      <div key={index} className="flex items-center gap-2">
+                                                        <div
+                                                          className="w-3 h-3 rounded-full"
+                                                          style={{ backgroundColor: entry.color }}
+                                                        />
+                                                        <span className="font-medium text-sm">{name}:</span>
+                                                        <span className="font-bold">{value.toFixed(1)}%</span>
+                                                      </div>
+                                                    );
+                                                  }
+                                                })}
+                                              </div>
+                                            );
+                                          }}
+                                        />
+                                        <Area
+                                          type="monotone"
+                                          dataKey="value"
+                                          stroke="#3b82f6"
+                                          strokeWidth={3}
+                                          fill="#3b82f6"
+                                          fillOpacity={0.35}
+                                        />
+                                        {/* Recovery Threshold Lines removed from Portfolio Value Over Time - only show in Interactive Timeline */}
+                                        {/* Trajectory Projection Lines - Smooth lines starting from end of portfolio value */}
+                                        {stressTestResults.scenarios.covid19.metrics.trajectory_projections?.trajectory_data &&
+                                         stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data.length > 0 && (
+                                          <>
+                                            {/* Aggressive Trajectory - Green (fastest recovery) */}
+                                            <Line
+                                              dataKey="aggressive"
+                                              stroke="#22c55e"
+                                              strokeDasharray="4 4"
+                                              strokeWidth={1.5}
+                                              dot={false}
+                                              connectNulls={true}
+                                              type="monotone"
+                                              isAnimationActive={false}
+                                              name="Aggressive"
+                                            />
+                                            {/* Moderate Trajectory - Blue (realistic recovery) */}
+                                            <Line
+                                              dataKey="moderate"
+                                              stroke="#3b82f6"
+                                              strokeDasharray="4 4"
+                                              strokeWidth={2}
+                                              dot={false}
+                                              connectNulls={true}
+                                              type="monotone"
+                                              isAnimationActive={false}
+                                              name="Moderate"
+                                            />
+                                            {/* Conservative Trajectory - Orange (slowest recovery) */}
+                                            <Line
+                                              dataKey="conservative"
+                                              stroke="#f59e0b"
+                                              strokeDasharray="4 4"
+                                              strokeWidth={1.5}
+                                              dot={false}
+                                              connectNulls={true}
+                                              type="monotone"
+                                              isAnimationActive={false}
+                                              name="Conservative"
+                                            />
+                                          </>
+                                        )}
                                   {(() => {
                                     // Calculate both peak and trough values first to detect overlap
                                     const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
@@ -982,8 +1119,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     if (peak) {
                                       const peakDateFull = peak.date || '';
                                       peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
-                                      const peakValueRaw = peak.value || 1.0;
-                                      peakValue = (peakValueRaw * normalizationFactor) * 100;
+                                      // Peak is always at 100% since we normalize to Jan 2020 = 100%
+                                      peakValue = 100.0;
                                     }
                                     
                                     if (trough) {
@@ -1006,72 +1143,102 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={8}
+                                            r={12}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={2}
-                                            label={{ value: `Peak (${peakValue.toFixed(1)}%)`, position: peakLabelPos, fill: '#22c55e', fontSize: 10 }}
+                                            strokeWidth={3}
+                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 11, fontWeight: 'bold' }}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={8}
+                                            r={12}
                                             fill="#ef4444"
                                             stroke="#fff"
-                                            strokeWidth={2}
-                                            label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: troughLabelPos, fill: '#ef4444', fontSize: 10 }}
+                                            strokeWidth={3}
+                                            label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: troughLabelPos, fill: '#ef4444', fontSize: 11, fontWeight: 'bold' }}
                                           />
                                         )}
                                       </>
                                     );
                                   })()}
-                                  {stressTestResults.scenarios.covid19.peaks_troughs?.recovery_peak && (() => {
-                                    // Normalize recovery peak value to match chart normalization
-                                    const jan2020Value = stressTestResults.scenarios.covid19.monthly_performance.find((m: any) => m.month === '2020-01')?.value || 1.0;
-                                    const normalizationFactor = 1.0 / jan2020Value;
-                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
-                                    const recoveryDateFull = stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date || '';
-                                    const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
-                                    const recoveryValue = ((stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.value || 0) * normalizationFactor) * 100;
-                                    
-                                    // Always render recovery peak marker
-                                    return (
-                                      <ReferenceDot 
-                                        x={recoveryDate} 
-                                        y={recoveryValue}
-                                        r={8}
-                                        fill="#9333ea"
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                        label={{ value: `Recovery (${recoveryValue.toFixed(1)}%)`, position: 'top', fill: '#9333ea', fontSize: 10 }}
-                                      />
+                                  {recoveryPeakInfo && (
+                                    <ReferenceDot 
+                                      x={recoveryPeakInfo.date} 
+                                      y={recoveryPeakInfo.value}
+                                      r={16}
+                                      fill="#9333ea"
+                                      stroke="#fff"
+                                      strokeWidth={4}
+                                      label={{ 
+                                        value: `Recovery (${recoveryPeakInfo.value.toFixed(1)}%)`, 
+                                        position: 'top', 
+                                        fill: '#9333ea', 
+                                        fontSize: 12, 
+                                        fontWeight: 'bold',
+                                        offset: 10
+                                      }}
+                                    />
+                                  )}
+                                      </ComposedChart>
                                     );
                                   })()}
-                                </ComposedChart>
                               </ResponsiveContainer>
                             </div>
                             {stressTestResults.scenarios.covid19.peaks_troughs && (
-                              <div className="flex items-center justify-center gap-4 text-xs">
-                                {stressTestResults.scenarios.covid19.peaks_troughs.peak && (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                    <span>Peak ({stressTestResults.scenarios.covid19.peaks_troughs.peak.date?.substring(0, 7) || 'N/A'})</span>
-                                  </div>
-                                )}
-                                {stressTestResults.scenarios.covid19.peaks_troughs.trough && (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                    <span>Trough ({stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(0, 7) || 'N/A'})</span>
-                                  </div>
-                                )}
-                                {stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak && (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#9333ea' }}></div>
-                                    <span>Recovery Peak ({stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date?.substring(0, 7) || 'N/A'})</span>
-                                  </div>
-                                )}
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-center gap-4 text-xs">
+                                  {stressTestResults.scenarios.covid19.peaks_troughs.peak && (
+                                    <UITooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2 cursor-help">
+                                          <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
+                                          <span className="font-medium">Peak ({stressTestResults.scenarios.covid19.peaks_troughs.peak.date?.substring(0, 7) || 'N/A'})</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                        <div className="font-semibold mb-1">Pre-Crisis Peak</div>
+                                        <div className="mb-2">The highest portfolio value before the crisis started. This represents your portfolio's value at its best point before market conditions deteriorated.</div>
+                                        <div className="text-yellow-300 mt-2">Used as baseline for calculating drawdown and recovery metrics.</div>
+                                      </TooltipContent>
+                                    </UITooltip>
+                                  )}
+                                  {stressTestResults.scenarios.covid19.peaks_troughs.trough && (
+                                    <UITooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2 cursor-help">
+                                          <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
+                                          <span className="font-medium">Trough ({stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(0, 7) || 'N/A'})</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                        <div className="font-semibold mb-1">Crisis Trough</div>
+                                        <div className="mb-2">The lowest portfolio value during the crisis period. This is the worst point your portfolio reached when market conditions were at their most adverse.</div>
+                                        <div className="text-yellow-300 mt-2">The difference between Peak and Trough determines your Maximum Drawdown.</div>
+                                      </TooltipContent>
+                                    </UITooltip>
+                                  )}
+                                  {stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak && (
+                                    <UITooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2 cursor-help">
+                                          <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: '#9333ea' }}></div>
+                                          <span className="font-medium">Recovery Peak ({stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date?.substring(0, 7) || 'N/A'})</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                        <div className="font-semibold mb-1">Recovery Peak</div>
+                                        <div className="mb-2">The highest portfolio value after the crisis trough, indicating full recovery. This shows when your portfolio returned to or exceeded its pre-crisis peak value.</div>
+                                        <div className="text-yellow-300 mt-2">Recovery Time is measured from Trough to Recovery Peak.</div>
+                                      </TooltipContent>
+                                    </UITooltip>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 text-center italic">
+                                  Hover over markers above for detailed definitions
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1089,7 +1256,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   sector: sector.length > 15 ? sector.substring(0, 15) + '...' : sector,
                                   return: return_pct * 100
                                 }))}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
                                   <XAxis 
                                     dataKey="sector" 
                                     tick={{ fontSize: 10 }}
@@ -1130,208 +1297,164 @@ export const StressTest: React.FC<StressTestProps> = ({
                     </p>
                       </CardHeader>
                       <CardContent className="space-y-6">
-                        {/* Key Metrics Grid */}
-                        <div className="grid grid-cols-4 gap-4">
-                          <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-                            <div className="text-xs text-red-700 mb-1 flex items-center gap-1">
-                              Total Return
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-red-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
-                                  Total return over the entire crisis period (from start to end date). Positive values indicate portfolio growth despite the crisis.
-                                </TooltipContent>
-                              </UITooltip>
-                            </div>
-                            <div className="text-xl font-bold text-red-800">
+                        {/* Key Metrics - Compact Horizontal Layout (matching COVID-19) */}
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200">
+                            <span className="text-xs text-red-700 font-medium">Total Return</span>
+                            <UITooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3 w-3 text-red-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
+                                Total return over the entire crisis period (from start to end date). Positive values indicate portfolio growth despite the crisis.
+                              </TooltipContent>
+                            </UITooltip>
+                            <span className="text-sm font-bold text-red-800">
                               {(stressTestResults.scenarios['2008_crisis'].metrics.total_return * 100).toFixed(1)}%
-                            </div>
+                            </span>
                           </div>
-                          <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                            <div className="text-xs text-orange-700 mb-1 flex items-center gap-1">
-                              Max Drawdown
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-orange-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
-                                  Maximum decline from peak to trough during the crisis. Negative value indicates loss from the highest point.
-                                </TooltipContent>
-                              </UITooltip>
-                            </div>
-                            <div className="text-xl font-bold text-orange-800">
+                          
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-orange-50 border border-orange-200">
+                            <span className="text-xs text-orange-700 font-medium">Max Drawdown</span>
+                            <UITooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3 w-3 text-orange-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                <div className="font-semibold mb-1">Maximum Drawdown</div>
+                                <div className="mb-2">Maximum decline from pre-crisis peak to crisis trough.</div>
+                                <div className="mb-1"><strong>Calculation:</strong> (Trough Value - Peak Value) / Peak Value</div>
+                                <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start (or max before crisis)</div>
+                                <div className="mb-1"><strong>Trough:</strong> Minimum value during crisis period</div>
+                                <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
+                              </TooltipContent>
+                            </UITooltip>
+                            <span className="text-sm font-bold text-orange-800">
                               {(stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown * 100).toFixed(1)}%
-                            </div>
+                            </span>
                           </div>
-                          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-                            <div className="text-xs text-blue-700 mb-1 flex items-center gap-1">
-                              Recovery Time
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-blue-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
-                                  Time to recover to 95% of peak value after the trough. N/A means portfolio did not recover within the analyzed period.
-                                </TooltipContent>
-                              </UITooltip>
-                            </div>
-                            <div className="text-xl font-bold text-blue-800">
+                          
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-blue-50 border border-blue-200">
+                            <span className="text-xs text-blue-700 font-medium">Recovery Time</span>
+                            <UITooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3 w-3 text-blue-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                <div className="font-semibold mb-1">Recovery Time to Peak</div>
+                                <div className="mb-2">Time to recover to 100% of pre-crisis peak value (full recovery).</div>
+                                <div className="mb-1"><strong>If Recovered:</strong> Actual months from trough to peak</div>
+                                <div className="mb-1"><strong>If Not Recovered:</strong> Projected months based on current trajectory (realistic scenario)</div>
+                                <div className="mb-1"><strong>Target:</strong> 100% of peak (full recovery)</div>
+                                <div className="text-yellow-300 mt-2">Only calculated if drawdown exceeds 3% threshold</div>
+                              </TooltipContent>
+                            </UITooltip>
+                            <span className="text-sm font-bold text-blue-800">
                               {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant 
                                 ? (stressTestResults.scenarios['2008_crisis'].metrics.recovered
-                                    ? `${stressTestResults.scenarios['2008_crisis'].metrics.recovery_months} months`
-                                    : stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections?.realistic_months
-                                      ? `${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.realistic_months.toFixed(1)} months (projected)`
+                                    ? `${stressTestResults.scenarios['2008_crisis'].metrics.recovery_months} mo`
+                                    : stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections?.moderate_months
+                                      ? `${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.moderate_months.toFixed(1)} mo (proj)`
                                       : 'N/A')
-                                : 'No Significant Drawdown'}
-                              {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
-                               !stressTestResults.scenarios['2008_crisis'].metrics.recovered && 
-                               !stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections?.realistic_months && (
-                                <div className="text-xs text-blue-600 mt-1 font-normal">
-                                  (Cannot project recovery)
-                                </div>
-                              )}
-                              {!stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && (
-                                <div className="text-xs text-blue-600 mt-1 font-normal">
-                                  (Drawdown &lt; 3% threshold)
-                                </div>
-                              )}
-                            </div>
+                                : 'N/A'}
+                            </span>
                           </div>
-                          <div className="p-3 rounded-lg bg-purple-50 border border-purple-200">
-                            <div className="text-xs text-purple-700 mb-1 flex items-center gap-1">
-                              Recovery Pattern
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-purple-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
-                                  V-shaped: Quick recovery (&lt;6 months). U-shaped: Moderate recovery (6-12 months). L-shaped: Slow or no recovery (&gt;12 months).
-                                </TooltipContent>
-                              </UITooltip>
-                            </div>
-                            <div className="text-sm font-bold text-purple-800">
+                          
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-purple-50 border border-purple-200">
+                            <span className="text-xs text-purple-700 font-medium">Pattern</span>
+                            <UITooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3 w-3 text-purple-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
+                                V-shaped: Quick recovery (&lt;6 months). U-shaped: Moderate recovery (6-12 months). L-shaped: Slow or no recovery (&gt;12 months).
+                              </TooltipContent>
+                            </UITooltip>
+                            <span className="text-sm font-bold text-purple-800">
                               {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant
-                                ? stressTestResults.scenarios['2008_crisis'].metrics.recovery_pattern
-                                : 'No Significant Drawdown'}
-                            </div>
+                                ? stressTestResults.scenarios['2008_crisis'].metrics.recovery_pattern.replace(' (projected)', '')
+                                : 'N/A'}
+                            </span>
                           </div>
-                          {/* Recovery Needed Metric */}
+                          
                           {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
                            stressTestResults.scenarios['2008_crisis'].metrics.recovery_needed_pct !== undefined && (
-                            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-                              <div className="text-xs text-amber-700 mb-1 flex items-center gap-1">
-                                Recovery Needed
-                                <UITooltip>
-                                  <TooltipTrigger asChild>
-                                    <Info className="h-3 w-3 text-amber-500 cursor-help" />
-                                  </TooltipTrigger>
-                                  <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
-                                    <div className="font-semibold mb-1">Recovery Needed</div>
-                                    <div className="mb-2">Percentage increase needed to restore portfolio to pre-crisis peak value.</div>
-                                    <div className="mb-1"><strong>Calculation:</strong> ((Peak Value - Current Value) / Peak Value) × 100</div>
-                                    <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start</div>
-                                    <div className="mb-1"><strong>Current:</strong> Latest portfolio value</div>
-                                    <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
-                                  </TooltipContent>
-                                </UITooltip>
-                              </div>
-                              <div className="text-xl font-bold text-amber-800">
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-50 border border-amber-200">
+                              <span className="text-xs text-amber-700 font-medium">Recovery Needed</span>
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3 w-3 text-amber-500 cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                  <div className="font-semibold mb-1">Recovery Needed</div>
+                                  <div className="mb-2">Percentage increase needed to restore portfolio to pre-crisis peak value.</div>
+                                  <div className="mb-1"><strong>Calculation:</strong> ((Peak Value - Current Value) / Peak Value) × 100</div>
+                                  <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start</div>
+                                  <div className="mb-1"><strong>Current:</strong> Latest portfolio value</div>
+                                  <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
+                                </TooltipContent>
+                              </UITooltip>
+                              <span className="text-sm font-bold text-amber-800">
                                 {stressTestResults.scenarios['2008_crisis'].metrics.recovery_needed_pct.toFixed(1)}%
-                              </div>
+                              </span>
                             </div>
                           )}
-                          {/* Trajectory Projections - Only show if recovery is needed and projections are available */}
+                          
+                          {/* Projections - Only show if recovery is needed (recovery_needed_pct > 0) */}
                           {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
                            stressTestResults.scenarios['2008_crisis'].metrics.recovery_needed_pct > 0 &&
                            stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections && (
-                            <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
-                              <div className="text-xs text-indigo-700 mb-2 flex items-center gap-1">
-                                Recovery Projections to Peak
-                                <UITooltip>
-                                  <TooltipTrigger asChild>
-                                    <Info className="h-3 w-3 text-indigo-500 cursor-help" />
-                                  </TooltipTrigger>
-                                  <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
-                                    <div className="font-semibold mb-1">Trajectory Projections</div>
-                                    <div className="mb-2">Estimated months to reach peak value based on current trend analysis.</div>
-                                    <div className="mb-1"><strong>Realistic:</strong> Mean projection based on linear regression</div>
-                                    <div className="mb-1"><strong>Optimistic:</strong> Upper bound (faster recovery)</div>
-                                    <div className="mb-1"><strong>Pessimistic:</strong> Lower bound (slower recovery)</div>
-                                    <div className="text-yellow-300 mt-2">Based on last 6 months trend</div>
-                                  </TooltipContent>
-                                </UITooltip>
-                              </div>
-                              <div className="grid grid-cols-3 gap-2 text-xs">
-                                <div className="text-center">
-                                  <div className="text-indigo-600 font-medium">Optimistic</div>
-                                  <div className="text-lg font-bold text-indigo-800">
-                                    {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.optimistic_months 
-                                      ? `${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.optimistic_months.toFixed(1)} mo`
-                                      : 'N/A'}
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-indigo-50 border border-indigo-200">
+                              <span className="text-xs text-indigo-700 font-medium">Projections</span>
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3 w-3 text-indigo-500 cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent className="w-80 p-4 bg-gray-900 text-white text-xs border-0">
+                                  <div className="font-semibold mb-2">Trajectory Projections</div>
+                                  <div className="mb-3">Forward-looking scenarios showing potential portfolio recovery paths based on current trends.</div>
+
+                                  <div className="mb-2"><strong>📈 Projection Types:</strong></div>
+                                  <div className="mb-1 text-green-400"><strong>Positive Values:</strong> Portfolio trending upward - expected growth</div>
+                                  <div className="mb-1 text-red-400"><strong>Negative Values:</strong> Portfolio trending downward - potential continued decline</div>
+                                  <div className="mb-3 text-gray-300">⚠️ Negative projections indicate the portfolio may lose value at this annualized rate if current trends continue</div>
+
+                                  <div className="mb-2"><strong>🎯 Scenarios:</strong></div>
+                                  <div className="mb-1"><strong className="text-green-400">Aggressive (A):</strong> Best-case recovery (fastest)</div>
+                                  <div className="mb-1"><strong className="text-blue-400">Moderate (M):</strong> Realistic scenario (typical)</div>
+                                  <div className="mb-1"><strong className="text-orange-400">Conservative (C):</strong> Worst-case recovery (slowest)</div>
+
+                                  <div className="text-yellow-300 mt-3 border-t border-gray-600 pt-2">
+                                    <strong>💡 Insight:</strong> Use these projections to understand risk and plan rebalancing. Negative trends may signal need for portfolio adjustments.
                                   </div>
-                                </div>
-                                <div className="text-center">
-                                  <div className="text-indigo-600 font-medium">Realistic</div>
-                                  <div className="text-lg font-bold text-indigo-800">
-                                    {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.realistic_months 
-                                      ? `${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.realistic_months.toFixed(1)} mo`
-                                      : 'N/A'}
-                                  </div>
-                                </div>
-                                <div className="text-center">
-                                  <div className="text-indigo-600 font-medium">Pessimistic</div>
-                                  <div className="text-lg font-bold text-indigo-800">
-                                    {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.pessimistic_months 
-                                      ? `${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.pessimistic_months.toFixed(1)} mo`
-                                      : 'N/A'}
-                                  </div>
-                                </div>
-                              </div>
+                                </TooltipContent>
+                              </UITooltip>
+                              <span className="text-xs text-green-600 font-medium">
+                                {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.aggressive_months
+                                  ? `A:${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.aggressive_months.toFixed(1)}`
+                                  : 'A:N/A'}
+                              </span>
+                              <span className="text-xs text-blue-700 font-bold">
+                                {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.moderate_months
+                                  ? `M:${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.moderate_months.toFixed(1)}`
+                                  : 'M:N/A'}
+                              </span>
+                              <span className="text-xs text-orange-600 font-medium">
+                                {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.conservative_months
+                                  ? `C:${stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.conservative_months.toFixed(1)}`
+                                  : 'C:N/A'}
+                              </span>
                             </div>
                           )}
                           {/* Show message when portfolio already recovered above peak */}
                           {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
                            stressTestResults.scenarios['2008_crisis'].metrics.recovery_needed_pct <= 0 && (
-                            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-                              <div className="text-xs text-green-700 flex items-center gap-2">
-                                <CheckCircle className="h-4 w-4" />
-                                <span>Portfolio has already recovered above pre-crisis peak. Recovery projections are not applicable.</span>
-                              </div>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-green-50 border border-green-200">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-xs text-green-700 font-medium">Already above peak - projections N/A</span>
                             </div>
                           )}
                         </div>
-
-                        {/* Correlation Breakdown */}
-                        {stressTestResults.scenarios['2008_crisis'].metrics.correlation_breakdown && (
-                          <div className="space-y-2">
-                            <div className="text-sm font-medium">Correlation Breakdown</div>
-                            <div className="grid grid-cols-3 gap-4">
-                              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-                                <div className="text-xs text-blue-700 mb-1">Crisis Correlation</div>
-                                <div className="text-lg font-bold text-blue-800">
-                                  {stressTestResults.scenarios['2008_crisis'].metrics.correlation_breakdown.crisis_correlation.toFixed(2)}
-                                </div>
-                              </div>
-                              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                                <div className="text-xs text-gray-700 mb-1">Normal Correlation</div>
-                                <div className="text-lg font-bold text-gray-800">
-                                  {stressTestResults.scenarios['2008_crisis'].metrics.correlation_breakdown.normal_correlation.toFixed(2)}
-                                </div>
-                              </div>
-                              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-                                <div className="text-xs text-red-700 mb-1">Diversification Effectiveness</div>
-                                <div className="text-lg font-bold text-red-800">
-                                  {stressTestResults.scenarios['2008_crisis'].metrics.correlation_breakdown.diversification_effectiveness.toFixed(0)}/100
-                                </div>
-                              </div>
-                            </div>
-                            <p className="text-xs text-gray-600">
-                              Higher correlation during crisis ({stressTestResults.scenarios['2008_crisis'].metrics.correlation_breakdown.correlation_increase.toFixed(2)} increase) 
-                              indicates diversification breakdown - assets moved together during crisis.
-                            </p>
-                          </div>
-                        )}
 
                         {/* Portfolio Value Timeline Chart */}
                         {stressTestResults.scenarios['2008_crisis'].monthly_performance && 
@@ -1340,24 +1463,73 @@ export const StressTest: React.FC<StressTestProps> = ({
                             <div className="text-sm font-medium text-center">Portfolio Value Over Time</div>
                             <div className="h-64 w-full -ml-4">
                               <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart 
-                                  data={(() => {
-                                    const baseData = stressTestResults.scenarios['2008_crisis'].monthly_performance.map((m: any) => ({
+                                {(() => {
+                                  // Normalize data so August 2008 starts at 100% (pre-crisis baseline)
+                                  const aug2008Value = stressTestResults.scenarios['2008_crisis'].monthly_performance.find((m: any) => m.month === '2008-08')?.value || 1.0;
+                                  const normalizationFactor = 1.0 / aug2008Value;
+                                  
+                                  // Store recovery peak info for rendering (if it exists)
+                                  let recoveryPeakInfo: { date: string; value: number } | null = null;
+
+                                  let baseData = stressTestResults.scenarios['2008_crisis'].monthly_performance.map((m: any) => ({
                                       date: m.month,
-                                      value: (m.value || 0) * 100,
+                                      value: ((m.value || 0) * normalizationFactor) * 100,
                                       return: (m.return || 0) * 100,
-                                      optimistic: null,
-                                      realistic: null,
-                                      pessimistic: null
+                                      aggressive: null,
+                                      moderate: null,
+                                      conservative: null
                                     }));
+
+                                    // Find recovery point and truncate chart to show only relevant period
+                                    // CRITICAL: Always show the full crisis period (Sep 2008 - Mar 2010 = 18 months from Aug 2008 baseline)
+                                    const peakValue = 100; // Normalized peak (August 2008 = 100%)
+                                    
+                                    // Find crisis end date (2010-03) to ensure we always show full crisis period
+                                    const crisisEndDate = '2010-03';
+                                    const crisisEndIndex = baseData.findIndex((d: any) => d.date === crisisEndDate);
+                                    
+                                    // Check if recovery peak exists and find its index
+                                    let recoveryPeakIndex = -1;
+                                    if (stressTestResults.scenarios['2008_crisis'].peaks_troughs?.recovery_peak) {
+                                      const recoveryDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date || '';
+                                      const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
+                                      recoveryPeakIndex = baseData.findIndex((d: any) => d.date === recoveryDate);
+                                    }
+                                    
+                                    const recoveryIndex = baseData.findIndex((d: any) => d.value >= peakValue);
+
+                                    // Calculate end index ensuring we show at least the full crisis period
+                                    let endIndex: number;
+                                    if (recoveryIndex !== -1) {
+                                      // Portfolio recovered - show recovery + 3 months, but ensure we show full crisis period
+                                      const recoveryEndIndex = Math.min(
+                                        recoveryIndex + 3, // 3 months after recovery
+                                        recoveryPeakIndex !== -1 ? recoveryPeakIndex + 1 : baseData.length - 1, // Include recovery peak if it exists
+                                        baseData.length - 1 // Don't exceed available data
+                                      );
+                                      // Ensure we show at least until crisis end (2010-03) + 3 months for recovery context
+                                      const minEndIndex = crisisEndIndex !== -1 ? crisisEndIndex + 3 : 20; // At least 20 months (crisis + recovery)
+                                      endIndex = Math.max(recoveryEndIndex, minEndIndex, 20); // Always show at least 20 months
+                                      endIndex = Math.min(endIndex, baseData.length - 1, 32); // Cap at 32 months (crisis + full recovery period)
+                                    } else {
+                                      // No recovery found - ensure we show full crisis period + recovery tracking period
+                                      const minEndIndex = crisisEndIndex !== -1 ? crisisEndIndex + 6 : 24; // Crisis end + 6 months recovery tracking
+                                      const maxIndex = recoveryPeakIndex !== -1 
+                                        ? Math.max(recoveryPeakIndex + 1, minEndIndex)
+                                        : minEndIndex;
+                                      endIndex = Math.min(maxIndex, baseData.length - 1, 32); // Cap at 32 months
+                                    }
+                                    
+                                    baseData = baseData.slice(0, endIndex + 1);
                                     
                                     // Ensure peak/trough dates exist in chart data for ReferenceDot rendering
                                     if (stressTestResults.scenarios['2008_crisis'].peaks_troughs?.peak) {
                                       const peakDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date || '';
                                       const peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
                                       if (peakDate && !baseData.find((d: any) => d.date === peakDate)) {
-                                        const peakValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.value || 0) * 100;
-                                        baseData.push({ date: peakDate, value: peakValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        // Peak is always at 100% since we normalize to Aug 2008 = 100%
+                                        const peakValue = 100.0;
+                                        baseData.push({ date: peakDate, value: peakValue, return: null, aggressive: null, moderate: null, conservative: null });
                                         baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
                                       }
                                     }
@@ -1366,9 +1538,28 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       const troughDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date || '';
                                       const troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
                                       if (troughDate && !baseData.find((d: any) => d.date === troughDate)) {
-                                        const troughValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.value || 0) * 100;
-                                        baseData.push({ date: troughDate, value: troughValue, return: null, optimistic: null, realistic: null, pessimistic: null });
+                                        const troughValue = ((stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.value || 0) * normalizationFactor) * 100;
+                                        baseData.push({ date: troughDate, value: troughValue, return: null, aggressive: null, moderate: null, conservative: null });
                                         baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                    }
+                                    
+                                    // Ensure recovery peak date exists in chart data for ReferenceDot rendering
+                                    if (stressTestResults.scenarios['2008_crisis'].peaks_troughs?.recovery_peak) {
+                                      const recoveryDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date || '';
+                                      const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
+                                      const recoveryValue = ((stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.value || 0) * normalizationFactor) * 100;
+                                      
+                                      if (recoveryDate && !baseData.find((d: any) => d.date === recoveryDate)) {
+                                        // Recovery peak date not in data - insert it
+                                        baseData.push({ date: recoveryDate, value: recoveryValue, return: null, aggressive: null, moderate: null, conservative: null });
+                                        baseData.sort((a: any, b: any) => a.date.localeCompare(b.date));
+                                      }
+                                      
+                                      // Store recovery peak info for rendering (check if it's in visible range after truncation)
+                                      const recoveryDataPoint = baseData.find((d: any) => d.date === recoveryDate);
+                                      if (recoveryDataPoint) {
+                                        recoveryPeakInfo = { date: recoveryDate, value: recoveryValue };
                                       }
                                     }
                                     
@@ -1376,215 +1567,355 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     if (stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
                                         stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections?.trajectory_data &&
                                         stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.trajectory_data.length > 0) {
-                                      const lastDate = baseData[baseData.length - 1]?.date;
-                                      if (lastDate) {
+                                      const lastDataPoint = baseData[baseData.length - 1];
+                                      const lastDate = lastDataPoint?.date;
+                                      const lastValue = lastDataPoint?.value;
+                                      
+                                      if (lastDate && lastValue !== null && lastValue !== undefined) {
                                         const [year, month] = lastDate.split('-').map(Number);
+                                        
+                                        // Get the backend's last value to calculate the offset
+                                        // Backend values are in decimal form (0.95 = 95%), need to normalize to match frontend
+                                        const lastBackendValue = stressTestResults.scenarios['2008_crisis'].monthly_performance[stressTestResults.scenarios['2008_crisis'].monthly_performance.length - 1]?.value || 1.0;
+                                        const backendNormalizedLastValue = (lastBackendValue * normalizationFactor) * 100; // Convert to frontend's normalized %
+                                        
+                                        // Calculate offset to align backend's trajectory starting point with frontend's lastValue
+                                        // Backend's trajectory values are cumulative from backend's current_value
+                                        // We need to adjust them to start from frontend's lastValue
+                                        const valueOffset = lastValue - backendNormalizedLastValue;
+                                        
+                                        // First point: connect to the last actual portfolio value
+                                        // Set all projection values to lastValue to ensure smooth connection
+                                        baseData.push({
+                                          date: lastDate, // Same date as last actual point
+                                          value: lastValue, // Keep actual value for smooth connection
+                                          return: null,
+                                          aggressive: lastValue, // Start from lastValue
+                                          moderate: lastValue, // Start from lastValue
+                                          conservative: lastValue // Start from lastValue
+                                        });
+                                        
+                                        // Add remaining projection points
+                                        // Backend provides cumulative values from its current_value
+                                        // Convert them to frontend normalized percentage and adjust by offset
                                         stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.trajectory_data.forEach((point: any, idx: number) => {
-                                          const futureMonth = month + idx + 1;
+                                          if (idx === 0) return; // Skip first point, already added
+                                          
+                                          const futureMonth = month + idx;
                                           const futureYear = year + Math.floor((futureMonth - 1) / 12);
                                           const futureMonthNormalized = ((futureMonth - 1) % 12) + 1;
                                           const futureDate = `${futureYear}-${String(futureMonthNormalized).padStart(2, '0')}`;
                                           
+                                          // Convert backend values to frontend normalized percentage
+                                          // Backend values are cumulative from its current_value in decimal form
+                                          // Normalize them the same way as the actual data, then adjust by offset
+                                          const backendAggressive = (point.aggressive || 0) * normalizationFactor * 100;
+                                          const backendModerate = (point.moderate || 0) * normalizationFactor * 100;
+                                          const backendConservative = (point.conservative || 0) * normalizationFactor * 100;
+                                          
+                                          // Apply offset to align with frontend's lastValue
+                                          const aggressiveValue = backendAggressive + valueOffset;
+                                          const moderateValue = backendModerate + valueOffset;
+                                          const conservativeValue = backendConservative + valueOffset;
+                                          
                                           baseData.push({
                                             date: futureDate,
-                                            value: null,
+                                            value: null, // No actual value, only projections
                                             return: null,
-                                            optimistic: (point.optimistic || 0) * 100,
-                                            realistic: (point.realistic || 0) * 100,
-                                            pessimistic: (point.pessimistic || 0) * 100
+                                            aggressive: aggressiveValue,
+                                            moderate: moderateValue,
+                                            conservative: conservativeValue
                                           });
                                         });
                                       }
                                     }
                                     
-                                    return baseData;
-                                  })()}
-                                  margin={{ left: 10, right: 10, top: 10, bottom: 10 }}
-                                >
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis 
-                                    dataKey="date" 
-                                    tick={{ fontSize: 10 }}
-                                    label={{ value: 'Month', position: 'insideBottom', offset: -5 }}
-                                  />
-                                  <YAxis 
-                                    tick={{ fontSize: 10 }}
-                                    tickFormatter={(value) => `${value.toFixed(0)}%`}
-                                    label={{ value: 'Portfolio Value (%)', angle: -90, position: 'left', offset: 0, style: { textAnchor: 'middle' } }}
-                                    domain={['dataMin', 'dataMax']}
-                                    width={70}
-                                  />
-                                  <Tooltip 
-                                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Portfolio Value']}
-                                    labelFormatter={(label) => `Month: ${label}`}
-                                  />
-                                  <Area 
-                                    type="monotone" 
-                                    dataKey="value" 
-                                    stroke="#f59e0b" 
-                                    fill="#f59e0b" 
-                                    fillOpacity={0.2}
-                                  />
-                                  {/* Recovery Threshold Lines - Only show if significant drawdown */}
-                                  {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
-                                   stressTestResults.scenarios['2008_crisis'].peaks_troughs?.peak && (() => {
-                                    const peakValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.value || 0) * 100;
-                                    const recoveryThresholds = stressTestResults.scenarios['2008_crisis'].metrics.recovery_thresholds || {};
+                                    // Update recovery peak info after all data processing to ensure it's in visible range
+                                    if (stressTestResults.scenarios['2008_crisis'].peaks_troughs?.recovery_peak && !recoveryPeakInfo) {
+                                      const recoveryDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date || '';
+                                      const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
+                                      const recoveryValue = ((stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.value || 0) * normalizationFactor) * 100;
+                                      
+                                      // Check if recovery date exists in the final chart data (after truncation and projection additions)
+                                      const recoveryDataPoint = baseData.find((d: any) => d.date === recoveryDate);
+                                      if (recoveryDataPoint) {
+                                        recoveryPeakInfo = { date: recoveryDate, value: recoveryValue };
+                                      }
+                                    }
+                                    
+                                    // Fixed Y-axis domain from 0% to 200%
+                                    const calculatedDomain: [number, number] = [0, 200];
+                                    
+                                    return (
+                                      <ComposedChart 
+                                        data={baseData}
+                                        margin={{ left: 10, right: 10, top: 10, bottom: 10 }}
+                                      >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+                                        <XAxis
+                                          dataKey="date"
+                                          tick={{ fontSize: 10 }}
+                                          label={{ value: 'Month', position: 'insideBottom', offset: -5 }}
+                                        />
+                                        <YAxis
+                                          type="number"
+                                          tick={{ fontSize: 10 }}
+                                          tickFormatter={(value) => `${value.toFixed(0)}%`}
+                                          label={{ value: 'Portfolio Value (%)', angle: -90, position: 'left', offset: 0, style: { textAnchor: 'middle' } }}
+                                          domain={(_dataMin: number, _dataMax: number) => [0, 200]}
+                                          allowDataOverflow={true}
+                                          allowDecimals={false}
+                                          width={70}
+                                        />
+                                        <Tooltip
+                                          formatter={(value: number, name: string) => {
+                                            if (name === 'Aggressive' || name === 'Moderate' || name === 'Conservative') {
+                                              // This is a trajectory projection line
+                                              const isNegative = value < 0;
+                                              return [`${value.toFixed(1)}%`, `${name} Trajectory`];
+                                            }
+                                            return [`${value.toFixed(1)}%`, 'Portfolio Value'];
+                                          }}
+                                          labelFormatter={(label) => `Month: ${label}`}
+                                          content={({ active, payload, label }) => {
+                                            if (!active || !payload || !payload.length) return null;
+
+                                            return (
+                                              <div className="bg-background border rounded-lg p-3 shadow-lg max-w-xs">
+                                                <p className="font-medium text-sm mb-2">{`Month: ${label}`}</p>
+                                                {payload.map((entry, index) => {
+                                                  const isTrajectory = entry.dataKey === 'aggressive' || entry.dataKey === 'moderate' || entry.dataKey === 'conservative';
+                                                  const value = entry.value as number;
+                                                  const name = entry.name as string;
+
+                                                  if (isTrajectory) {
+                                                    const isNegative = value < 0;
+                                                    return (
+                                                      <div key={index} className="mb-2 last:mb-0">
+                                                        <div className="flex items-center gap-2">
+                                                          <div
+                                                            className="w-3 h-3 rounded-full"
+                                                            style={{ backgroundColor: entry.color }}
+                                                          />
+                                                          <span className="font-medium text-sm capitalize">{name} Trajectory:</span>
+                                                          <span className={`font-bold ${isNegative ? 'text-red-600' : 'text-green-600'}`}>
+                                                            {value.toFixed(1)}%
+                                                          </span>
+                                                        </div>
+                                                        <div className={`text-xs mt-1 ${isNegative ? 'text-red-500' : 'text-green-500'}`}>
+                                                          {isNegative
+                                                            ? `⚠️ Projected ${Math.abs(value).toFixed(1)}% annual decline - consider rebalancing`
+                                                            : `📈 Projected ${value.toFixed(1)}% annual growth`
+                                                          }
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  } else {
+                                                    return (
+                                                      <div key={index} className="flex items-center gap-2">
+                                                        <div
+                                                          className="w-3 h-3 rounded-full"
+                                                          style={{ backgroundColor: entry.color }}
+                                                        />
+                                                        <span className="font-medium text-sm">{name}:</span>
+                                                        <span className="font-bold">{value.toFixed(1)}%</span>
+                                                      </div>
+                                                    );
+                                                  }
+                                                })}
+                                              </div>
+                                            );
+                                          }}
+                                        />
+                                        <Area
+                                          type="monotone"
+                                          dataKey="value"
+                                          stroke="#3b82f6"
+                                          strokeWidth={3}
+                                          fill="#3b82f6"
+                                          fillOpacity={0.35}
+                                        />
+                                        {/* Recovery Threshold Lines removed from Portfolio Value Over Time - only show in Interactive Timeline */}
+                                        {/* Trajectory Projection Lines - Smooth lines starting from end of portfolio value */}
+                                        {stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections?.trajectory_data &&
+                                         stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.trajectory_data.length > 0 && (
+                                          <>
+                                            {/* Aggressive Trajectory - Green (fastest recovery) */}
+                                            <Line
+                                              dataKey="aggressive"
+                                              stroke="#22c55e"
+                                              strokeDasharray="4 4"
+                                              strokeWidth={1.5}
+                                              dot={false}
+                                              connectNulls={true}
+                                              type="monotone"
+                                              isAnimationActive={false}
+                                              name="Aggressive"
+                                            />
+                                            {/* Moderate Trajectory - Blue (realistic recovery) */}
+                                            <Line
+                                              dataKey="moderate"
+                                              stroke="#3b82f6"
+                                              strokeDasharray="4 4"
+                                              strokeWidth={2}
+                                              dot={false}
+                                              connectNulls={true}
+                                              type="monotone"
+                                              isAnimationActive={false}
+                                              name="Moderate"
+                                            />
+                                            {/* Conservative Trajectory - Orange (slowest recovery) */}
+                                            <Line
+                                              dataKey="conservative"
+                                              stroke="#f59e0b"
+                                              strokeDasharray="4 4"
+                                              strokeWidth={1.5}
+                                              dot={false}
+                                              connectNulls={true}
+                                              type="monotone"
+                                              isAnimationActive={false}
+                                              name="Conservative"
+                                            />
+                                          </>
+                                        )}
+                                  {(() => {
+                                    // Calculate both peak and trough values first to detect overlap
+                                    const aug2008Value = stressTestResults.scenarios['2008_crisis'].monthly_performance.find((m: any) => m.month === '2008-08')?.value || 1.0;
+                                    const normalizationFactor = 1.0 / aug2008Value;
+                                    
+                                    const peak = stressTestResults.scenarios['2008_crisis'].peaks_troughs?.peak;
+                                    const trough = stressTestResults.scenarios['2008_crisis'].peaks_troughs?.trough;
+                                    
+                                    if (!peak && !trough) return null;
+                                    
+                                    let peakValue = 0;
+                                    let troughValue = 0;
+                                    let peakDate = '';
+                                    let troughDate = '';
+                                    
+                                    if (peak) {
+                                      const peakDateFull = peak.date || '';
+                                      peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
+                                      // Peak is always at 100% since we normalize to Aug 2008 = 100%
+                                      peakValue = 100.0;
+                                    }
+                                    
+                                    if (trough) {
+                                      const troughDateFull = trough.date || '';
+                                      troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
+                                      troughValue = ((trough.value || 0) * normalizationFactor) * 100;
+                                    }
+                                    
+                                    // Detect if peak and trough are visually close (within 5% on the chart)
+                                    const valueDiff = Math.abs(peakValue - troughValue);
+                                    const isOverlapping = valueDiff < 5.0;
+                                    
+                                    // Adjust label positions to avoid overlap
+                                    const peakLabelPos = isOverlapping ? 'topRight' : 'top';
+                                    const troughLabelPos = isOverlapping ? 'bottomLeft' : 'bottom';
+                                    
                                     return (
                                       <>
-                                        {/* 90% Recovery Threshold (10% below peak) */}
-                                        {recoveryThresholds['90'] && (
-                                          <ReferenceLine 
-                                            y={peakValue * 0.90}
-                                            stroke="#fbbf24"
-                                            strokeDasharray="3 3"
-                                            strokeWidth={1.5}
-                                            label={{ value: '90% Recovery', position: 'right', fill: '#fbbf24', fontSize: 9 }}
-                                          />
-                                        )}
-                                        {/* 95% Recovery Threshold (5% below peak - standard) */}
-                                        {recoveryThresholds['95'] && (
-                                          <ReferenceLine 
-                                            y={peakValue * 0.95}
-                                            stroke="#10b981"
-                                            strokeDasharray="3 3"
-                                            strokeWidth={2}
-                                            label={{ value: '95% Recovery', position: 'right', fill: '#10b981', fontSize: 9, fontWeight: 'bold' }}
-                                          />
-                                        )}
-                                        {/* 100% Recovery Threshold (Peak - Full Recovery Target) */}
-                                        {recoveryThresholds['100'] && (
-                                          <ReferenceLine 
+                                        {peak && (
+                                          <ReferenceDot 
+                                            x={peakDate} 
                                             y={peakValue}
-                                            stroke="#3b82f6"
-                                            strokeDasharray="5 5"
-                                            strokeWidth={2.5}
-                                            label={{ value: 'Peak (100%)', position: 'right', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold' }}
+                                            r={12}
+                                            fill="#22c55e"
+                                            stroke="#fff"
+                                            strokeWidth={3}
+                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 11, fontWeight: 'bold' }}
+                                          />
+                                        )}
+                                        {trough && (
+                                          <ReferenceDot 
+                                            x={troughDate} 
+                                            y={troughValue}
+                                            r={12}
+                                            fill="#ef4444"
+                                            stroke="#fff"
+                                            strokeWidth={3}
+                                            label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: troughLabelPos, fill: '#ef4444', fontSize: 11, fontWeight: 'bold' }}
                                           />
                                         )}
                                       </>
                                     );
                                   })()}
-                                  {/* Trajectory Projection Lines */}
-                                  {stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown_data?.is_significant && 
-                                   stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections?.trajectory_data &&
-                                   stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.trajectory_data.length > 0 && (
-                                    <>
-                                      {/* Optimistic Trajectory */}
-                                      <Line 
-                                        dataKey="optimistic" 
-                                        stroke="#22c55e"
-                                        strokeDasharray="4 4"
-                                        strokeWidth={1.5}
-                                        dot={false}
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                        name="Optimistic"
-                                      />
-                                      {/* Realistic Trajectory */}
-                                      <Line 
-                                        dataKey="realistic" 
-                                        stroke="#3b82f6"
-                                        strokeDasharray="4 4"
-                                        strokeWidth={2}
-                                        dot={false}
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                        name="Realistic"
-                                      />
-                                      {/* Pessimistic Trajectory */}
-                                      <Line 
-                                        dataKey="pessimistic" 
-                                        stroke="#f59e0b"
-                                        strokeDasharray="4 4"
-                                        strokeWidth={1.5}
-                                        dot={false}
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                        name="Pessimistic"
-                                      />
-                                    </>
+                                  {recoveryPeakInfo && (
+                                    <ReferenceDot 
+                                      x={recoveryPeakInfo.date} 
+                                      y={recoveryPeakInfo.value}
+                                      r={16}
+                                      fill="#9333ea"
+                                      stroke="#fff"
+                                      strokeWidth={4}
+                                      label={{ 
+                                        value: `Recovery (${recoveryPeakInfo.value.toFixed(1)}%)`, 
+                                        position: 'top', 
+                                        fill: '#9333ea', 
+                                        fontSize: 12, 
+                                        fontWeight: 'bold',
+                                        offset: 10
+                                      }}
+                                    />
                                   )}
-                                  {stressTestResults.scenarios['2008_crisis'].peaks_troughs?.peak && (() => {
-                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
-                                    const peakDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date || '';
-                                    const peakDate = peakDateFull.length >= 7 ? peakDateFull.substring(0, 7) : peakDateFull;
-                                    const peakValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.value || 0) * 100;
-                                    
-                                    // Always render peak marker
-                                    return (
-                                      <ReferenceDot 
-                                        x={peakDate} 
-                                        y={peakValue}
-                                        r={8}
-                                        fill="#22c55e"
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                        label={{ value: `Peak (${peakValue.toFixed(1)}%)`, position: 'top', fill: '#22c55e', fontSize: 10 }}
-                                      />
+                                      </ComposedChart>
                                     );
                                   })()}
-                                  {stressTestResults.scenarios['2008_crisis'].peaks_troughs?.trough && (() => {
-                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
-                                    const troughDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date || '';
-                                    const troughDate = troughDateFull.length >= 7 ? troughDateFull.substring(0, 7) : troughDateFull;
-                                    const troughValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.value || 0) * 100;
-                                    
-                                    // Always render trough marker
-                                    return (
-                                      <ReferenceDot 
-                                        x={troughDate} 
-                                        y={troughValue}
-                                        r={8}
-                                        fill="#ef4444"
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                        label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: 'bottom', fill: '#ef4444', fontSize: 10 }}
-                                      />
-                                    );
-                                  })()}
-                                  {stressTestResults.scenarios['2008_crisis'].peaks_troughs?.recovery_peak && (() => {
-                                    // Handle different date formats: YYYY-MM-DD or YYYY-MM
-                                    const recoveryDateFull = stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date || '';
-                                    const recoveryDate = recoveryDateFull.length >= 7 ? recoveryDateFull.substring(0, 7) : recoveryDateFull;
-                                    const recoveryValue = (stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.value || 0) * 100;
-                                    
-                                    // Always render recovery peak marker
-                                    return (
-                                      <ReferenceDot 
-                                        x={recoveryDate} 
-                                        y={recoveryValue}
-                                        r={8}
-                                        fill="#10b981"
-                                        stroke="#fff"
-                                        strokeWidth={2}
-                                        label={{ value: `Recovery (${recoveryValue.toFixed(1)}%)`, position: 'top', fill: '#10b981', fontSize: 10 }}
-                                      />
-                                    );
-                                  })()}
-                                </ComposedChart>
                               </ResponsiveContainer>
                             </div>
                             {stressTestResults.scenarios['2008_crisis'].peaks_troughs && (
-                              <div className="flex items-center gap-4 text-xs">
-                                {stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak && (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                    <span>Peak ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date?.substring(0, 7) || 'N/A'})</span>
-                                  </div>
-                                )}
-                                {stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough && (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                    <span>Trough ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date?.substring(0, 7) || 'N/A'})</span>
-                                  </div>
-                                )}
-                                {stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak && (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                                    <span>Recovery Peak ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date?.substring(0, 7) || 'N/A'})</span>
-                                  </div>
-                                )}
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-center gap-4 text-xs">
+                                  {stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak && (
+                                    <UITooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2 cursor-help">
+                                          <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
+                                          <span className="font-medium">Peak ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date?.substring(0, 7) || 'N/A'})</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                        <div className="font-semibold mb-1">Pre-Crisis Peak</div>
+                                        <div className="mb-2">The highest portfolio value before the crisis started. This represents your portfolio's value at its best point before market conditions deteriorated.</div>
+                                        <div className="text-yellow-300 mt-2">Used as baseline for calculating drawdown and recovery metrics.</div>
+                                      </TooltipContent>
+                                    </UITooltip>
+                                  )}
+                                  {stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough && (
+                                    <UITooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2 cursor-help">
+                                          <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
+                                          <span className="font-medium">Trough ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date?.substring(0, 7) || 'N/A'})</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                        <div className="font-semibold mb-1">Crisis Trough</div>
+                                        <div className="mb-2">The lowest portfolio value during the crisis period. This is the worst point your portfolio reached when market conditions were at their most adverse.</div>
+                                        <div className="text-yellow-300 mt-2">The difference between Peak and Trough determines your Maximum Drawdown.</div>
+                                      </TooltipContent>
+                                    </UITooltip>
+                                  )}
+                                  {stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak && (
+                                    <UITooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2 cursor-help">
+                                          <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: '#9333ea' }}></div>
+                                          <span className="font-medium">Recovery Peak ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date?.substring(0, 7) || 'N/A'})</span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                        <div className="font-semibold mb-1">Recovery Peak</div>
+                                        <div className="mb-2">The highest portfolio value after the crisis trough, indicating full recovery. This shows when your portfolio returned to or exceeded its pre-crisis peak value.</div>
+                                        <div className="text-yellow-300 mt-2">Recovery Time is measured from Trough to Recovery Peak.</div>
+                                      </TooltipContent>
+                                    </UITooltip>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 text-center italic">
+                                  Hover over markers above for detailed definitions
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1773,181 +2104,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                   )}
                 </TabsContent>
                 
-                {/* Comparison Tab */}
-                <TabsContent value="comparison" className="space-y-6 mt-6">
-                  {showComparison && Object.keys(stressTestResults.scenarios).length >= 2 && (
-                    <div className="space-y-6">
-                      {/* Side-by-Side Comparison Table */}
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <GitCompare className="h-5 w-5 text-blue-600" />
-                            Scenario Comparison
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b">
-                                  <th className="text-left py-3 px-4">Metric</th>
-                                  {stressTestResults.scenarios.covid19 && (
-                                    <th className="text-center py-3 px-4 bg-blue-50">COVID-19</th>
-                                  )}
-                                  {stressTestResults.scenarios['2008_crisis'] && (
-                                    <th className="text-center py-3 px-4 bg-amber-50">2008 Crisis</th>
-                                  )}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr className="border-b">
-                                  <td className="py-3 px-4 font-medium">Total Return</td>
-                                  {stressTestResults.scenarios.covid19 && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className={`font-bold ${stressTestResults.scenarios.covid19.metrics.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {(stressTestResults.scenarios.covid19.metrics.total_return * 100).toFixed(1)}%
-                                      </span>
-                                    </td>
-                                  )}
-                                  {stressTestResults.scenarios['2008_crisis'] && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className={`font-bold ${stressTestResults.scenarios['2008_crisis'].metrics.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {(stressTestResults.scenarios['2008_crisis'].metrics.total_return * 100).toFixed(1)}%
-                                      </span>
-                                    </td>
-                                  )}
-                                </tr>
-                                <tr className="border-b">
-                                  <td className="py-3 px-4 font-medium">Max Drawdown</td>
-                                  {stressTestResults.scenarios.covid19 && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className="font-bold text-red-600">
-                                        {(stressTestResults.scenarios.covid19.metrics.max_drawdown * 100).toFixed(1)}%
-                                      </span>
-                                    </td>
-                                  )}
-                                  {stressTestResults.scenarios['2008_crisis'] && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className="font-bold text-red-600">
-                                        {(stressTestResults.scenarios['2008_crisis'].metrics.max_drawdown * 100).toFixed(1)}%
-                                      </span>
-                                    </td>
-                                  )}
-                                </tr>
-                                <tr className="border-b">
-                                  <td className="py-3 px-4 font-medium">Recovery Time</td>
-                                  {stressTestResults.scenarios.covid19 && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className="font-bold">
-                                        {stressTestResults.scenarios.covid19.metrics.recovery_months || 'N/A'} {stressTestResults.scenarios.covid19.metrics.recovery_months ? 'months' : ''}
-                                      </span>
-                                    </td>
-                                  )}
-                                  {stressTestResults.scenarios['2008_crisis'] && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className="font-bold">
-                                        {stressTestResults.scenarios['2008_crisis'].metrics.recovery_months || 'N/A'} {stressTestResults.scenarios['2008_crisis'].metrics.recovery_months ? 'months' : ''}
-                                      </span>
-                                    </td>
-                                  )}
-                                </tr>
-                                <tr className="border-b">
-                                  <td className="py-3 px-4 font-medium">Recovery Pattern</td>
-                                  {stressTestResults.scenarios.covid19 && (
-                                    <td className="text-center py-3 px-4">
-                                      <Badge variant="outline">{stressTestResults.scenarios.covid19.metrics.recovery_pattern}</Badge>
-                                    </td>
-                                  )}
-                                  {stressTestResults.scenarios['2008_crisis'] && (
-                                    <td className="text-center py-3 px-4">
-                                      <Badge variant="outline">{stressTestResults.scenarios['2008_crisis'].metrics.recovery_pattern}</Badge>
-                                    </td>
-                                  )}
-                                </tr>
-                                <tr>
-                                  <td className="py-3 px-4 font-medium">Volatility Ratio</td>
-                                  {stressTestResults.scenarios.covid19 && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className="font-bold">
-                                        {stressTestResults.scenarios.covid19.metrics.volatility_ratio.toFixed(2)}x
-                                      </span>
-                                    </td>
-                                  )}
-                                  {stressTestResults.scenarios['2008_crisis'] && (
-                                    <td className="text-center py-3 px-4">
-                                      <span className="font-bold">
-                                        {stressTestResults.scenarios['2008_crisis'].metrics.volatility_ratio.toFixed(2)}x
-                                      </span>
-                                    </td>
-                                  )}
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      {/* Side-by-Side Charts */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {stressTestResults.scenarios.covid19 && stressTestResults.scenarios.covid19.monthly_performance && stressTestResults.scenarios.covid19.monthly_performance.length > 0 && (
-                          <Card>
-                            <CardHeader>
-                              <CardTitle className="text-sm">COVID-19 Portfolio Value</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="h-64 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <AreaChart data={stressTestResults.scenarios.covid19.monthly_performance.map((m: any) => ({
-                                    date: m.month,
-                                    value: (m.value || 0) * 100
-                                  }))}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                                    <Tooltip formatter={(v: number) => [`${v.toFixed(1)}%`, 'Value']} />
-                                    <Area type="monotone" dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} />
-                                  </AreaChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-                        {stressTestResults.scenarios['2008_crisis'] && stressTestResults.scenarios['2008_crisis'].monthly_performance && stressTestResults.scenarios['2008_crisis'].monthly_performance.length > 0 && (
-                          <Card>
-                            <CardHeader>
-                              <CardTitle className="text-sm">2008 Crisis Portfolio Value</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="h-64 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <AreaChart data={stressTestResults.scenarios['2008_crisis'].monthly_performance.map((m: any) => ({
-                                    date: m.month,
-                                    value: (m.value || 0) * 100
-                                  }))}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                                    <Tooltip formatter={(v: number) => [`${v.toFixed(1)}%`, 'Value']} />
-                                    <Area type="monotone" dataKey="value" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.2} />
-                                  </AreaChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {(!showComparison || Object.keys(stressTestResults.scenarios).length < 2) && (
-                    <Alert>
-                      <Info className="h-4 w-4" />
-                      <AlertDescription>
-                        Enable comparison mode and run both scenarios to see side-by-side comparison.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </TabsContent>
-                
                 {/* Monte Carlo Tab */}
                 <TabsContent value="monte-carlo" className="space-y-6 mt-6">
                   {stressTestResults.scenarios[selectedScenario || 'covid19']?.monte_carlo ? (
@@ -1958,7 +2114,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           Monte Carlo Simulation Results
                         </CardTitle>
                         <p className="text-sm text-muted-foreground">
-                          Probabilistic analysis showing range of possible outcomes (10,000 simulations)
+                          Probabilistic analysis showing range of possible outcomes (5,000 simulations)
                         </p>
                       </CardHeader>
                       <CardContent className="space-y-6">
@@ -1969,27 +2125,51 @@ export const StressTest: React.FC<StressTestProps> = ({
                             <div className="text-sm font-medium">Return Distribution</div>
                             <div className="h-64 w-full">
                               <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.histogram_data.map((h: any) => ({
-                                  return: h.return_pct,
-                                  frequency: h.frequency
-                                }))}>
+                                <AreaChart
+                                  margin={{ top: 10, right: 20, bottom: 30, left: 10 }}
+                                  data={stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.histogram_data.map((h: any) => ({
+                                    return_pct: h.return_pct,
+                                    frequency: h.frequency
+                                  }))}
+                                >
+                                  <defs>
+                                    <linearGradient id="colorGradient-blue-stress" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                                    </linearGradient>
+                                  </defs>
                                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis 
-                                    dataKey="return" 
+                                  <XAxis
+                                    dataKey="return_pct"
+                                    type="number"
+                                    tickFormatter={(value) => {
+                                      const n = typeof value === 'number' ? value : Number(value);
+                                      return Number.isFinite(n) ? `${n.toFixed(0)}%` : String(value);
+                                    }}
                                     tick={{ fontSize: 10 }}
-                                    label={{ value: 'Return (%)', position: 'insideBottom', offset: -5 }}
+                                    label={{ value: 'Return (%)', position: 'bottom', offset: 15, fontSize: 11 }}
                                   />
-                                  <YAxis 
+                                  <YAxis
                                     tick={{ fontSize: 10 }}
-                                    tickFormatter={(value) => `${value.toFixed(1)}%`}
-                                    label={{ value: 'Frequency (%)', angle: -90, position: 'insideLeft' }}
+                                    tickFormatter={(value) => `${value.toFixed(0)}%`}
+                                    label={{ value: 'Probability Density', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
                                   />
-                                  <Tooltip 
+                                  <Tooltip
                                     formatter={(value: number) => [`${value.toFixed(1)}%`, 'Frequency']}
-                                    labelFormatter={(label) => `Return: ${label}%`}
+                                    labelFormatter={(label) => {
+                                      const n = typeof label === 'number' ? label : Number(label);
+                                      return Number.isFinite(n) ? `Return: ${n.toFixed(1)}%` : `Return: ${label}%`;
+                                    }}
                                   />
-                                  <Bar dataKey="frequency" fill="#3b82f6" fillOpacity={0.7} />
-                                </BarChart>
+                                  <Area
+                                    type="monotone"
+                                    dataKey="frequency"
+                                    name="Return Distribution"
+                                    stroke="#3b82f6"
+                                    strokeWidth={2}
+                                    fill="url(#colorGradient-blue-stress)"
+                                  />
+                                </AreaChart>
                               </ResponsiveContainer>
                             </div>
                           </div>
@@ -2056,248 +2236,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                     </Alert>
                   )}
                 </TabsContent>
-                
-                {/* What-If Tab */}
-                <TabsContent value="what-if" className="space-y-6 mt-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Zap className="h-5 w-5 text-yellow-600" />
-                        What-If Scenario Simulator
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        Test custom scenarios by adjusting market parameters
-                      </p>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      {/* Parameter Controls */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Volatility Multiplier</label>
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="5"
-                            step="0.1"
-                            value={whatIfParams.volatility_multiplier}
-                            onChange={(e) => setWhatIfParams({...whatIfParams, volatility_multiplier: parseFloat(e.target.value) || 2.0})}
-                            className="w-full px-3 py-2 border rounded-md"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {whatIfParams.volatility_multiplier}x normal volatility
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Return Adjustment (%)</label>
-                          <input
-                            type="number"
-                            min="-50"
-                            max="50"
-                            step="1"
-                            value={whatIfParams.return_adjustment * 100}
-                            onChange={(e) => setWhatIfParams({...whatIfParams, return_adjustment: (parseFloat(e.target.value) || 0) / 100})}
-                            className="w-full px-3 py-2 border rounded-md"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {whatIfParams.return_adjustment >= 0 ? '+' : ''}{(whatIfParams.return_adjustment * 100).toFixed(1)}% annual return
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Time Horizon (months)</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="60"
-                            step="1"
-                            value={whatIfParams.time_horizon_months}
-                            onChange={(e) => setWhatIfParams({...whatIfParams, time_horizon_months: parseInt(e.target.value) || 12})}
-                            className="w-full px-3 py-2 border rounded-md"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {whatIfParams.time_horizon_months} month{whatIfParams.time_horizon_months !== 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <Button
-                        onClick={async () => {
-                          if (!selectedPortfolio) {
-                            setError('Please select a portfolio first');
-                            return;
-                          }
-                          setWhatIfLoading(true);
-                          setError(null);
-                          try {
-                            const response = await fetch('/api/portfolio/what-if-scenario', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                tickers: selectedPortfolio.tickers,
-                                weights: selectedPortfolio.weights,
-                                volatility_multiplier: whatIfParams.volatility_multiplier,
-                                return_adjustment: whatIfParams.return_adjustment,
-                                time_horizon_months: whatIfParams.time_horizon_months,
-                                capital: capital
-                              })
-                            });
-                            if (!response.ok) {
-                              const errorData = await response.json();
-                              throw new Error(errorData.detail || 'Failed to run What-If scenario');
-                            }
-                            const data = await response.json();
-                            setWhatIfResults(data);
-                          } catch (err: any) {
-                            setError(err.message || 'Failed to run What-If scenario');
-                          } finally {
-                            setWhatIfLoading(false);
-                          }
-                        }}
-                        disabled={whatIfLoading || !selectedPortfolio}
-                        className="w-full bg-gradient-primary hover:opacity-90"
-                      >
-                        {whatIfLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Running Simulation...
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="mr-2 h-4 w-4" />
-                            Run What-If Simulation
-                          </>
-                        )}
-                      </Button>
-                      
-                      {/* Results */}
-                      {whatIfResults && (
-                        <div className="space-y-6 mt-6 pt-6 border-t">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-                              <div className="text-sm text-blue-700 mb-1">Adjusted Expected Return</div>
-                              <div className="text-2xl font-bold text-blue-800">
-                                {(whatIfResults.metrics.expected_return * 100).toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-blue-600 mt-1">
-                                Baseline: {(whatIfResults.metrics.baseline_expected_return * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                            <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-                              <div className="text-sm text-red-700 mb-1">Adjusted Volatility</div>
-                              <div className="text-2xl font-bold text-red-800">
-                                {(whatIfResults.metrics.volatility * 100).toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-red-600 mt-1">
-                                Baseline: {(whatIfResults.metrics.baseline_volatility * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Monte Carlo Histogram */}
-                          {whatIfResults.monte_carlo && whatIfResults.monte_carlo.histogram_data && (
-                            <div className="space-y-2">
-                              <div className="text-sm font-medium">Return Distribution</div>
-                              <div className="h-64 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart data={whatIfResults.monte_carlo.histogram_data.map((h: any) => ({
-                                    return: h.return_pct,
-                                    frequency: h.frequency
-                                  }))}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                    <XAxis 
-                                      dataKey="return" 
-                                      tick={{ fontSize: 10 }}
-                                      label={{ value: 'Return (%)', position: 'insideBottom', offset: -5 }}
-                                    />
-                                    <YAxis 
-                                      tick={{ fontSize: 10 }}
-                                      tickFormatter={(value) => `${value.toFixed(1)}%`}
-                                      label={{ value: 'Frequency (%)', angle: -90, position: 'insideLeft' }}
-                                    />
-                                    <Tooltip 
-                                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'Frequency']}
-                                      labelFormatter={(label) => `Return: ${label}%`}
-                                    />
-                                    <Bar dataKey="frequency" fill="#f59e0b" fillOpacity={0.7} />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Percentiles */}
-                          {whatIfResults.monte_carlo && whatIfResults.monte_carlo.percentiles && (
-                            <div className="grid grid-cols-5 gap-3">
-                              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-center">
-                                <div className="text-xs text-red-700 mb-1">5th Percentile</div>
-                                <div className="text-lg font-bold text-red-800">
-                                  {(whatIfResults.monte_carlo.percentiles.p5 * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                              <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-center">
-                                <div className="text-xs text-orange-700 mb-1">25th Percentile</div>
-                                <div className="text-lg font-bold text-orange-800">
-                                  {(whatIfResults.monte_carlo.percentiles.p25 * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
-                                <div className="text-xs text-blue-700 mb-1">Median (50th)</div>
-                                <div className="text-lg font-bold text-blue-800">
-                                  {(whatIfResults.monte_carlo.percentiles.p50 * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                              <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
-                                <div className="text-xs text-green-700 mb-1">75th Percentile</div>
-                                <div className="text-lg font-bold text-green-800">
-                                  {(whatIfResults.monte_carlo.percentiles.p75 * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                              <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-center">
-                                <div className="text-xs text-purple-700 mb-1">95th Percentile</div>
-                                <div className="text-lg font-bold text-purple-800">
-                                  {(whatIfResults.monte_carlo.percentiles.p95 * 100).toFixed(1)}%
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Probability Statements */}
-                          {whatIfResults.monte_carlo && (
-                            <div className="space-y-3">
-                              <div className="text-sm font-medium">Probability Analysis</div>
-                              <div className="grid grid-cols-3 gap-3">
-                                <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-                                  <div className="text-xs text-green-700 mb-1">Probability of Positive Return</div>
-                                  <div className="text-xl font-bold text-green-800">
-                                    {typeof whatIfResults.metrics.probability_positive === 'number' 
-                                      ? (whatIfResults.metrics.probability_positive > 1 
-                                          ? whatIfResults.metrics.probability_positive.toFixed(1) 
-                                          : (whatIfResults.metrics.probability_positive * 100).toFixed(1)
-                                        ) + '%'
-                                      : 'N/A'}
-                                  </div>
-                                  {/* Note: probability_positive is already a percentage (0-100) from backend */}
-                                </div>
-                                <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                                  <div className="text-xs text-orange-700 mb-1">Probability of &gt;10% Loss</div>
-                                  <div className="text-xl font-bold text-orange-800">
-                                    {(whatIfResults.metrics.probability_loss_10pct * 100).toFixed(1)}%
-                                  </div>
-                                </div>
-                                <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-                                  <div className="text-xs text-red-700 mb-1">Probability of &gt;20% Loss</div>
-                                  <div className="text-xl font-bold text-red-800">
-                                    {(whatIfResults.metrics.probability_loss_20pct * 100).toFixed(1)}%
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
+
                 {/* Interactive Timeline Tab */}
                 <TabsContent value="timeline" className="space-y-6 mt-6">
                   <Card>
@@ -2341,8 +2280,47 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   width={70}
                                 />
                                 <Tooltip 
-                                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'Value']}
-                                  labelFormatter={(label) => `Month: ${label}`}
+                                  content={({ active, payload, label }) => {
+                                    if (!active || !payload || !payload.length) return null;
+                                    
+                                    // Check if hovering near an event date
+                                    const hoverDate = label as string;
+                                    const nearbyEvent = crisisEvents[selectedScenario as keyof typeof crisisEvents]?.find((event) => {
+                                      const eventDate = event.date.substring(0, 7); // YYYY-MM
+                                      return eventDate === hoverDate;
+                                    });
+                                    
+                                    if (nearbyEvent) {
+                                      const eventColor = nearbyEvent.type === 'crisis' ? '#ef4444' : 
+                                                        nearbyEvent.type === 'policy' ? '#3b82f6' : 
+                                                        nearbyEvent.type === 'recovery' ? '#22c55e' : '#f59e0b';
+                                      return (
+                                        <div className="bg-gray-900 text-white p-3 rounded-lg shadow-lg border border-gray-700 text-xs">
+                                          <div className="font-semibold mb-1" style={{ color: eventColor }}>
+                                            {nearbyEvent.event}
+                                          </div>
+                                          <div className="text-gray-300">
+                                            Date: {nearbyEvent.date}
+                                          </div>
+                                          <div className="mt-2 pt-2 border-t border-gray-700">
+                                            <div className="text-gray-300">
+                                              Portfolio Value: {payload[0]?.value ? `${Number(payload[0].value).toFixed(1)}%` : 'N/A'}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    
+                                    // Default tooltip for portfolio value
+                                    return (
+                                      <div className="bg-gray-900 text-white p-2 rounded-lg shadow-lg text-xs">
+                                        <div className="font-semibold mb-1">Month: {label}</div>
+                                        <div className="text-gray-300">
+                                          Portfolio Value: {payload[0]?.value ? `${Number(payload[0].value).toFixed(1)}%` : 'N/A'}
+                                        </div>
+                                      </div>
+                                    );
+                                  }}
                                 />
                                 <Area 
                                   type="monotone" 
@@ -2351,52 +2329,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   fill="#6366f1" 
                                   fillOpacity={0.2}
                                 />
-                                {/* Recovery Threshold Lines - Only show if significant drawdown and toggle is on */}
-                                {showRecoveryThresholds &&
-                                 stressTestResults.scenarios[selectedScenario || 'covid19']?.metrics?.max_drawdown_data?.is_significant && 
-                                 stressTestResults.scenarios[selectedScenario || 'covid19']?.peaks_troughs?.peak && (() => {
-                                  // Normalize peak value to match chart normalization (peak = 100%)
-                                  const jan2020Value = stressTestResults.scenarios[selectedScenario || 'covid19'].monthly_performance.find((m: any) => m.month === '2020-01')?.value || 
-                                                       stressTestResults.scenarios[selectedScenario || 'covid19'].monthly_performance[0]?.value || 1.0;
-                                  const normalizationFactor = 1.0 / jan2020Value;
-                                  const peakValue = 100.0; // Peak is always at 100% (normalized starting value)
-                                  const recoveryThresholds = stressTestResults.scenarios[selectedScenario || 'covid19']?.metrics?.recovery_thresholds || {};
-                                  return (
-                                    <>
-                                      {/* 90% Recovery Threshold (10% below peak) */}
-                                      {recoveryThresholds['90'] && (
-                                        <ReferenceLine 
-                                          y={peakValue * 0.90}
-                                          stroke="#fbbf24"
-                                          strokeDasharray="3 3"
-                                          strokeWidth={1.5}
-                                          label={{ value: '90% Recovery', position: 'right', fill: '#fbbf24', fontSize: 9 }}
-                                        />
-                                      )}
-                                      {/* 95% Recovery Threshold (5% below peak - standard) */}
-                                      {recoveryThresholds['95'] && (
-                                        <ReferenceLine 
-                                          y={peakValue * 0.95}
-                                          stroke="#10b981"
-                                          strokeDasharray="3 3"
-                                          strokeWidth={2}
-                                          label={{ value: '95% Recovery', position: 'right', fill: '#10b981', fontSize: 9, fontWeight: 'bold' }}
-                                        />
-                                      )}
-                                      {/* 98% Recovery Threshold (2% below peak - near full) */}
-                                      {recoveryThresholds['98'] && (
-                                        <ReferenceLine 
-                                          y={peakValue * 0.98}
-                                          stroke="#22c55e"
-                                          strokeDasharray="3 3"
-                                          strokeWidth={1.5}
-                                          label={{ value: '98% Recovery', position: 'right', fill: '#22c55e', fontSize: 9 }}
-                                        />
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                                {/* Event markers - Only show if event type is visible */}
+                                {/* Recovery Threshold Lines removed - user requested no horizontal lines */}
+                                {/* Event markers - Only show if event type is visible, no labels (use tooltips instead) */}
                                 {crisisEvents[selectedScenario as keyof typeof crisisEvents]?.map((event, idx) => {
                                   const isSelected = selectedTimelineEvent === event;
                                   const isVisible = 
@@ -2414,15 +2348,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       stroke={event.type === 'crisis' ? '#ef4444' : event.type === 'policy' ? '#3b82f6' : event.type === 'recovery' ? '#22c55e' : '#f59e0b'}
                                       strokeDasharray={isSelected ? "3 3" : "5 5"}
                                       strokeWidth={isSelected ? 3 : 2}
-                                      label={{ 
-                                        value: event.event.substring(0, 20) + (event.event.length > 20 ? '...' : ''), 
-                                        position: 'top', 
-                                        offset: 5,
-                                        fill: event.type === 'crisis' ? '#ef4444' : event.type === 'policy' ? '#3b82f6' : event.type === 'recovery' ? '#22c55e' : '#f59e0b', 
-                                        fontSize: isSelected ? 9 : 8,
-                                        fontWeight: isSelected ? 'bold' : 'normal',
-                                        angle: 0
-                                      }}
                                     />
                                   );
                                 })}
@@ -2432,71 +2357,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           
                           {/* Interactive Legends */}
                           <div className="space-y-4">
-                            {/* Recovery Thresholds Legend - Only show if significant drawdown */}
-                            {stressTestResults.scenarios[selectedScenario || 'covid19']?.metrics?.max_drawdown_data?.is_significant && 
-                             stressTestResults.scenarios[selectedScenario || 'covid19']?.metrics?.recovery_thresholds && (
-                              <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
-                                <div className="text-xs font-medium text-gray-700 mb-2 flex items-center justify-between">
-                                  <div className="flex items-center gap-1">
-                                    Recovery Thresholds
-                                    <UITooltip>
-                                      <TooltipTrigger asChild>
-                                        <Info className="h-3 w-3 text-gray-500 cursor-help" />
-                                      </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
-                                        <div className="font-semibold mb-1">Recovery Thresholds</div>
-                                        <div className="mb-2">Horizontal lines showing where portfolio needs to reach for different recovery levels.</div>
-                                        <div className="mb-1"><strong>90%:</strong> 10% below peak (partial recovery)</div>
-                                        <div className="mb-1"><strong>95%:</strong> 5% below peak (standard recovery)</div>
-                                        <div className="mb-1"><strong>98%:</strong> 2% below peak (near full recovery)</div>
-                                        <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
-                                      </TooltipContent>
-                                    </UITooltip>
-                                  </div>
-                                  <button
-                                    onClick={() => setShowRecoveryThresholds(!showRecoveryThresholds)}
-                                    className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                      showRecoveryThresholds 
-                                        ? 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200' 
-                                        : 'bg-gray-100 border-gray-300 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                                  >
-                                    {showRecoveryThresholds ? 'Hide' : 'Show'}
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-3 gap-3 text-xs">
-                                  {['90', '95', '98'].map((threshold) => {
-                                    const thresholdData = stressTestResults.scenarios[selectedScenario || 'covid19'].metrics.recovery_thresholds[threshold];
-                                    const colors = { '90': '#fbbf24', '95': '#10b981', '98': '#22c55e' };
-                                    const color = colors[threshold as keyof typeof colors];
-                                    
-                                    return (
-                                      <div 
-                                        key={threshold}
-                                        className={`flex items-center gap-2 p-2 rounded transition-opacity ${
-                                          showRecoveryThresholds ? 'opacity-100' : 'opacity-50'
-                                        }`}
-                                        title={thresholdData?.recovered ? `Recovered in ${thresholdData.months} months` : `Not recovered (${thresholdData?.progress_pct?.toFixed(1) || 0}% progress)`}
-                                      >
-                                        <div className="w-4 h-0.5" style={{ backgroundColor: color }}></div>
-                                        <div className="flex-1">
-                                          <div className="font-medium" style={{ color }}>
-                                            {threshold}% Recovery
-                                          </div>
-                                          <div className="text-gray-600 text-xs">
-                                            {thresholdData?.recovered 
-                                              ? `${thresholdData.months} months`
-                                              : thresholdData?.progress_pct 
-                                                ? `${thresholdData.progress_pct.toFixed(1)}% progress`
-                                                : 'N/A'}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
+                            {/* Recovery Thresholds Legend removed - user requested no horizontal lines */}
                             
                             {/* Event Type Legend */}
                             <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
@@ -2828,16 +2689,51 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <div className="text-sm font-medium">Outcome Distribution</div>
                               <div className="h-48 w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <BarChart data={hypotheticalResults.monte_carlo.histogram_data.map((h: any) => ({
-                                    return: h.return_pct,
-                                    frequency: h.frequency
-                                  }))}>
+                                  <AreaChart
+                                    margin={{ top: 10, right: 20, bottom: 30, left: 10 }}
+                                    data={hypotheticalResults.monte_carlo.histogram_data.map((h: any) => ({
+                                      return_pct: h.return_pct,
+                                      frequency: h.frequency
+                                    }))}
+                                  >
+                                    <defs>
+                                      <linearGradient id="colorGradient-amber-stress" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                                      </linearGradient>
+                                    </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                    <XAxis dataKey="return" tick={{ fontSize: 10 }} />
-                                    <YAxis tick={{ fontSize: 10 }} />
-                                    <Tooltip />
-                                    <Bar dataKey="frequency" fill="#f59e0b" fillOpacity={0.7} />
-                                  </BarChart>
+                                    <XAxis
+                                      dataKey="return_pct"
+                                      type="number"
+                                      tickFormatter={(value) => {
+                                        const n = typeof value === 'number' ? value : Number(value);
+                                        return Number.isFinite(n) ? `${n.toFixed(0)}%` : String(value);
+                                      }}
+                                      tick={{ fontSize: 10 }}
+                                      label={{ value: 'Return (%)', position: 'bottom', offset: 15, fontSize: 11 }}
+                                    />
+                                    <YAxis
+                                      tick={{ fontSize: 10 }}
+                                      tickFormatter={(value) => `${value.toFixed(0)}%`}
+                                      label={{ value: 'Probability Density', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
+                                    />
+                                    <Tooltip
+                                      formatter={(value: number) => [`${value.toFixed(1)}%`, 'Frequency']}
+                                      labelFormatter={(label) => {
+                                        const n = typeof label === 'number' ? label : Number(label);
+                                        return Number.isFinite(n) ? `Return: ${n.toFixed(1)}%` : `Return: ${label}%`;
+                                      }}
+                                    />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="frequency"
+                                      name="Outcome Distribution"
+                                      stroke="#f59e0b"
+                                      strokeWidth={2}
+                                      fill="url(#colorGradient-amber-stress)"
+                                    />
+                                  </AreaChart>
                                 </ResponsiveContainer>
                               </div>
                             </div>

@@ -4490,18 +4490,17 @@ def _handle_hypothetical_scenario(request: Dict[str, Any], start_time: float):
         # Run Monte Carlo with scenario parameters
         analytics = PortfolioAnalytics()
         adjusted_volatility = 0.20 * config['volatility_mult']
-        
-        # Optimized: reduced from 10,000 to 5,000 iterations for better performance
+
         monte_carlo = analytics.run_monte_carlo_simulation(
             expected_return=estimated_loss,
             risk=adjusted_volatility,
-            num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+            num_simulations=5000,
             time_horizon_years=duration_months / 12.0
         )
-        
+
         processing_time = time.time() - start_time
         logger.info(f"✅ Hypothetical scenario completed in {processing_time:.3f}s")
-        
+
         return {
             'scenario_type': scenario_type,
             'parameters': {
@@ -4628,27 +4627,147 @@ def run_hypothetical_scenario(request: Dict[str, Any]):
         # Capital at risk
         capital_at_risk = capital * abs(estimated_loss)
         
-        # Run Monte Carlo with scenario parameters
+        # Generate synthetic historical data under scenario conditions
+        try:
+            logger.info("🔬 Starting synthetic historical data generation for hypothetical scenario")
+            from utils.stress_test_analyzer import StressTestAnalyzer
+            analyzer = StressTestAnalyzer()
+            logger.info("✅ StressTestAnalyzer initialized")
+
+            # Create synthetic portfolio performance under the scenario
+            # We'll simulate a 24-month period with the market decline applied
+            synthetic_dates = []
+            synthetic_values = []
+
+            # Start with current portfolio value (normalized to 100)
+            current_value = 100.0
+            base_decline_per_month = market_decline / duration_months
+
+            # Generate monthly performance under scenario
+            for month in range(24):  # 24 months of synthetic data
+                # Apply market decline gradually over the scenario duration
+                if month < duration_months:
+                    # During scenario period - apply decline and sector impacts
+                    monthly_decline = base_decline_per_month
+
+                    # Add sector-specific impact for this portfolio
+                    sector_adjustment = portfolio_weighted_decline * 0.3  # 30% of sector impact
+                    monthly_decline += sector_adjustment / duration_months
+
+                    # Add some volatility (±10%)
+                    import random
+                    volatility_factor = 1.0 + (random.uniform(-0.1, 0.1) * config['volatility_mult'] * 0.1)
+                    monthly_decline *= volatility_factor
+
+                    current_value *= (1 + monthly_decline)
+                else:
+                    # Post-scenario recovery period
+                    recovery_progress = (month - duration_months) / (24 - duration_months)
+                    recovery_rate_monthly = (abs(market_decline) * 0.6) / (24 - duration_months)  # 60% recovery
+
+                    if recovery_rate == 'fast':
+                        recovery_rate_monthly *= 1.5
+                    elif recovery_rate == 'slow':
+                        recovery_rate_monthly *= 0.7
+
+                    current_value *= (1 + recovery_rate_monthly * (1 - recovery_progress * 0.5))
+
+                # Ensure we don't go below 10% of starting value (floor for realism)
+                current_value = max(current_value, 10.0)
+
+                synthetic_values.append(current_value / 100.0)  # Convert back to decimal
+                synthetic_dates.append(f"2024-{str(month % 12 + 1).zfill(2)}")
+
+            # Analyze the synthetic portfolio performance using available methods
+            logger.info(f"📊 Analyzing synthetic data: {len(synthetic_values)} values, {len(synthetic_dates)} dates")
+            logger.info(f"📊 Sample values: {synthetic_values[:5]}")
+
+            # Calculate basic metrics manually
+            initial_value = synthetic_values[0] if synthetic_values else 1.0
+            final_value = synthetic_values[-1] if synthetic_values else 1.0
+            total_return = (final_value - initial_value) / initial_value
+
+            # Calculate max drawdown
+            max_drawdown_data = analyzer.calculate_maximum_drawdown(
+                portfolio_values=synthetic_values,
+                dates=synthetic_dates,
+                drawdown_threshold=0.0  # Include all drawdowns for synthetic data
+            )
+            max_drawdown = max_drawdown_data.get('max_drawdown', abs(estimated_loss))
+
+            # Calculate trajectory projections
+            try:
+                logger.info(f"📈 Calculating trajectory projections with {len(synthetic_values)} values, peak={max(synthetic_values) if synthetic_values else 1.0}")
+                trajectory_projections = analyzer.calculate_enhanced_trajectory_projections(
+                    portfolio_values=synthetic_values,
+                    dates=synthetic_dates,
+                    peak_value=max(synthetic_values) if synthetic_values else 1.0,
+                    lookback_months=min(6, len(synthetic_values))
+                )
+                logger.info(f"📈 Trajectory projections result: {type(trajectory_projections)}, keys: {list(trajectory_projections.keys()) if isinstance(trajectory_projections, dict) else 'not dict'}")
+            except Exception as e:
+                logger.error(f"❌ Failed to calculate trajectory projections: {e}")
+                trajectory_projections = {}
+
+            # Simple recovery analysis
+            peak_value = max(synthetic_values) if synthetic_values else 1.0
+            current_value = synthetic_values[-1] if synthetic_values else 1.0
+            recovery_pct = ((current_value - min(synthetic_values)) / peak_value) * 100 if peak_value > 0 else 0
+
+            # Determine recovery pattern based on simple logic
+            if recovery_pct >= 90:
+                recovery_pattern = 'V-shaped Recovery'
+                recovery_months = 3
+            elif recovery_pct >= 70:
+                recovery_pattern = 'U-shaped Recovery'
+                recovery_months = 6
+            else:
+                recovery_pattern = 'L-shaped Recovery'
+                recovery_months = 12
+
+            logger.info(f"📊 Synthetic metrics calculated: total_return={total_return:.2%}, max_drawdown={max_drawdown:.2%}, recovery_pattern={recovery_pattern}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to generate synthetic historical data: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            # Fallback to original Monte Carlo only approach
+            total_return = estimated_loss
+            max_drawdown = abs(estimated_loss)
+            recovery_months = estimated_recovery_months
+            recovery_pattern = 'Estimated Scenario'
+            trajectory_projections = {}
+
+        # Run Monte Carlo with scenario parameters for forward-looking projections
         analytics = PortfolioAnalytics()
-        adjusted_volatility = 0.20 * config['volatility_mult']  # Base 20% volatility * multiplier
-        
-        # Optimized: reduced from 10,000 to 5,000 iterations for better performance
+        adjusted_volatility = 0.20 * config['volatility_mult']
+
+        # Use actual historical return if available, otherwise estimated
+        monte_carlo_return = total_return if total_return != 0 else estimated_loss
+
         monte_carlo = analytics.run_monte_carlo_simulation(
-            expected_return=estimated_loss,
+            expected_return=monte_carlo_return,
             risk=adjusted_volatility,
-            num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+            num_simulations=5000,
             time_horizon_years=duration_months / 12.0
         )
-        
+
         processing_time = time.time() - start_time
-        logger.info(f"✅ Hypothetical scenario completed in {processing_time:.3f}s")
-        
+        logger.info(f"✅ Hypothetical scenario with historical analysis completed in {processing_time:.3f}s")
+
         return {
             'scenario_type': scenario_type,
             'parameters': {
                 'market_decline': market_decline,
                 'duration_months': duration_months,
                 'recovery_rate': recovery_rate
+            },
+            'metrics': {
+                'total_return': float(total_return),
+                'max_drawdown': float(max_drawdown),
+                'recovery_months': recovery_months,
+                'recovery_pattern': recovery_pattern,
+                'trajectory_projections': trajectory_projections
             },
             'estimated_loss': estimated_loss,
             'capital_at_risk': round(capital_at_risk, 2),

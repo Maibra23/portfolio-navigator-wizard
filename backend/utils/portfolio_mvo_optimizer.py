@@ -397,17 +397,22 @@ class PortfolioMVOptimizer:
                 try:
                     # Get optimal portfolio for this target return
                     weights = ef.efficient_return(target_return=target_return, market_neutral=False)
-                    
+
                     # Calculate portfolio metrics
                     portfolio_perf = ef.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                     mu_val = portfolio_perf[0]  # Expected return
                     sigma_val = portfolio_perf[1]  # Volatility (risk)
                     sharpe = portfolio_perf[2]  # Sharpe ratio
-                    
+
                     # Apply safeguards
                     mu_val = min(float(mu_val), 0.50)
                     sigma_val = max(float(sigma_val), 0.08)
                     sharpe = min((mu_val - self.risk_free_rate) / sigma_val if sigma_val > 0 else 0, 2.5)
+
+                    # Limit maximum risk to 120% to shorten the efficient frontier
+                    if sigma_val > 1.20:
+                        logger.debug(f"⚠️ Skipping high-risk frontier point: {sigma_val:.2%} risk exceeds 120% limit")
+                        continue
                     
                     # Convert weights dict to list
                     weights_dict = dict(weights)

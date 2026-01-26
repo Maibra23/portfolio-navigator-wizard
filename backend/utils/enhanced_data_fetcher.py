@@ -47,9 +47,11 @@ ALPHA_VANTAGE_DELAY = 60 / ALPHA_VANTAGE_RATE_LIMIT  # seconds between requests
 CACHE_TTL_DAYS = 90  # FIXED: 3 months as requested
 CACHE_TTL_HOURS = CACHE_TTL_DAYS * 24  # 2160 hours
 
-# Data period configuration - FIXED: 15 years minimum
+# Data period configuration
+# NOTE: Stress tests include the 2008 crisis (needs 2007-09+ coverage). 15 years is not enough
+# for 2026 and causes "2008 crisis" series to begin ~2011. Use 20 years to cover 2008.
 END_DATE = datetime.now().replace(day=1)  # Beginning of current month
-START_DATE = END_DATE - timedelta(days=15 * 365)  # 15 years back minimum
+START_DATE = END_DATE - timedelta(days=20 * 365)  # 20 years back minimum
 
 # Yahoo Finance rate limiting - OPTIMIZED for rate limit bypass
 YAHOO_REQUEST_DELAY = (1.3, 4.0)  # Random delay between 1.3-4 seconds (user requested)
@@ -596,10 +598,10 @@ class EnhancedDataFetcher:
             # Create yahooquery Ticker object
             yq_ticker = YQTicker(ticker)
             
-            # Fetch historical data (monthly for 15 years)
-            # Calculate date range
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=15 * 365)
+            # Fetch historical data (monthly) using configured global time range.
+            # This must include 2008 for historical stress tests.
+            end_date = END_DATE
+            start_date = START_DATE
             
             hist_data = yq_ticker.history(
                 start=start_date.strftime('%Y-%m-%d'),
@@ -692,8 +694,13 @@ class EnhancedDataFetcher:
             logger.warning(f"⚠️ yahooquery fetch failed for {ticker}: {e}")
             return None
 
-    def _fetch_single_ticker_with_retry(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """Fetch data for a single ticker with retry logic and rate limiting"""
+    def _fetch_single_ticker_with_retry(self, ticker: str, force_fetch: bool = False) -> Optional[Dict[str, Any]]:
+        """Fetch data for a single ticker with retry logic and rate limiting
+
+        Args:
+            ticker: Ticker symbol to fetch
+            force_fetch: If True, bypass cached data and refetch from source (then overwrite cache)
+        """
         # NEW: Normalize ticker format first using timestamp_utils
         original_ticker = ticker
         normalized_ticker = normalize_ticker_format(ticker)
@@ -749,28 +756,29 @@ class EnhancedDataFetcher:
         
         for attempt in range(MAX_RETRIES):
             try:
-                # Check cache first - try all formats that might be cached
-                cached_prices = None
-                cached_sector = None
-                
-                # Build unique list of formats to check (avoid duplicates)
-                formats_to_check = list(dict.fromkeys(fetch_formats_to_try + [cache_ticker]))
-                
-                for format_to_check in formats_to_check:
-                    if not format_to_check:
-                        continue
-                    cached_prices = self._load_from_cache(format_to_check, 'prices')
-                    cached_sector = self._load_from_cache(format_to_check, 'sector')
+                # Check cache first unless force_fetch is requested
+                if not force_fetch:
+                    cached_prices = None
+                    cached_sector = None
+                    
+                    # Build unique list of formats to check (avoid duplicates)
+                    formats_to_check = list(dict.fromkeys(fetch_formats_to_try + [cache_ticker]))
+                    
+                    for format_to_check in formats_to_check:
+                        if not format_to_check:
+                            continue
+                        cached_prices = self._load_from_cache(format_to_check, 'prices')
+                        cached_sector = self._load_from_cache(format_to_check, 'sector')
+                        if cached_prices is not None and cached_sector is not None:
+                            logger.debug(f"✅ Found cached data for {format_to_check}")
+                            break
+                    
                     if cached_prices is not None and cached_sector is not None:
-                        logger.debug(f"✅ Found cached data for {format_to_check}")
-                        break
-                
-                if cached_prices is not None and cached_sector is not None:
-                    # Handle timezone-aware datetime index
-                    if hasattr(cached_prices.index, 'tz_localize'):
-                        cached_prices.index = cached_prices.index.tz_localize(None)
-                    self.stats['cached'] += 1
-                    return {'prices': cached_prices, 'sector': cached_sector}
+                        # Handle timezone-aware datetime index
+                        if hasattr(cached_prices.index, 'tz_localize'):
+                            cached_prices.index = cached_prices.index.tz_localize(None)
+                        self.stats['cached'] += 1
+                        return {'prices': cached_prices, 'sector': cached_sector}
 
                 # Random delay between requests (user requested: 1.3-4 seconds)
                 delay = random.uniform(REQUEST_DELAY[0], REQUEST_DELAY[1])
@@ -2311,7 +2319,8 @@ class EnhancedDataFetcher:
             for ticker in tickers:
                 try:
                     # Use the same logic as smart_monthly_refresh but for specific tickers
-                    data = self._fetch_single_ticker_with_retry(ticker)
+                    # Force refetch to extend history when needed (e.g., 2008 stress tests)
+                    data = self._fetch_single_ticker_with_retry(ticker, force_fetch=True)
                     if data:
                         success_count += 1
                         logger.debug(f"✅ {ticker} refreshed successfully")

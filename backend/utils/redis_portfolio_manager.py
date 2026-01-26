@@ -257,6 +257,34 @@ class RedisPortfolioManager:
                 logger.warning(f"⚠️ Only {len(available_portfolios)} portfolios available for {risk_profile}, need {count}")
                 return available_portfolios
             
+            # Deduplicate portfolios by composition or identifiers (variation_id/data_dependency_hash)
+            def _make_signature(portfolio: Dict):
+                vid = portfolio.get('variation_id')
+                ddh = portfolio.get('data_dependency_hash')
+                if vid:
+                    return ('vid', str(vid))
+                if ddh:
+                    return ('ddh', str(ddh))
+                allocs = portfolio.get('allocations') or portfolio.get('portfolio') or []
+                pairs = []
+                for a in allocs:
+                    sym = a.get('symbol') or a.get('ticker') or ''
+                    alloc = float(a.get('allocation', 0.0))
+                    pairs.append((sym, round(alloc, 4)))
+                return ('comp', tuple(sorted(pairs, key=lambda x: (x[0], x[1]))))
+
+            unique_portfolios = []
+            seen = set()
+            for p in available_portfolios:
+                sig = _make_signature(p)
+                if sig in seen:
+                    logger.debug("Duplicate portfolio skipped in recommendations (signature matched)")
+                    continue
+                seen.add(sig)
+                unique_portfolios.append(p)
+
+            available_portfolios = unique_portfolios
+            
             # Add rotation logic: use time-based seed for consistent rotation
             import time
             rotation_seed = int(time.time() // 300) % len(available_portfolios)  # Rotate every 5 minutes
