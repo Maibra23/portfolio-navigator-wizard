@@ -1261,20 +1261,23 @@ export const StockSelection = ({
     // REMOVED: Explicit setTimeout call - useEffect will handle this automatically
   };
 
-  // NEW: Auto-normalization feature with real-time updates
-  const normalizeWeights = () => {
-    // Snapshot before normalization (marked as 'normalize' so delete-added skips it)
+  // Equal allocation feature - equally distribute among all stocks
+  const equalAllocation = () => {
+    // Snapshot before equal allocation (marked as 'normalize' so delete-added skips it)
     setAllocationHistory(prev => [...prev, selectedStocks.map(s => ({ ...s }))]);
     setHistoryMarkers(prev => [...prev, "normalize"]);
     // Clear reserved replacement weight to avoid stale inheritance
     setLastRemovedOriginal(null);
-    const total = selectedStocks.reduce((sum, stock) => sum + stock.allocation, 0);
-    const normalizedStocks = selectedStocks.map(stock => ({
+    
+    if (selectedStocks.length === 0) return;
+    
+    const equalWeight = 100 / selectedStocks.length;
+    const equallyAllocatedStocks = selectedStocks.map(stock => ({
       ...stock,
-      allocation: (stock.allocation / total) * 100
+      allocation: equalWeight
     }));
     
-    onStocksUpdate(normalizedStocks);
+    onStocksUpdate(equallyAllocatedStocks);
     setTotalAllocation(100);
     setIsValidAllocation(true);
     setHasUserModified(true);
@@ -1528,6 +1531,35 @@ export const StockSelection = ({
       canProceed
     });
   }, [selectedStocks]);
+
+  // Explicit Done handler for Customize Your Portfolio workflow
+  const handleDone = async () => {
+    // Enforce 3–4 tickers before proceeding
+    if (selectedStocks.length < 3 || selectedStocks.length > 4) {
+      setError('Please select between 3 and 4 tickers before clicking Done.');
+      return;
+    }
+
+    // If no weights are set yet, auto-distribute equally
+    const currentTotal = selectedStocks.reduce((sum, stock) => sum + (stock.allocation || 0), 0);
+    if (Math.abs(currentTotal) < 0.01) {
+      const equalAllocation = 100 / selectedStocks.length;
+      const updatedStocks = selectedStocks.map(stock => ({
+        ...stock,
+        allocation: equalAllocation
+      }));
+
+      onStocksUpdate(updatedStocks);
+      setTotalAllocation(100);
+      setIsValidAllocation(true);
+      setHasUserModified(true);
+    }
+
+    // Clear any stale errors and trigger immediate metrics + validation
+    setError(null);
+    await calculateRealTimeMetrics();
+    validatePortfolio();
+  };
 
   // NEW: Apply changes function
   const applyChanges = () => {
@@ -2182,13 +2214,13 @@ export const StockSelection = ({
 
               {/* Portfolio Customization Section - Only show after selection AND on recommendations tab */}
               {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
-              <Card>
-                <CardHeader className="pb-3">
+                <Card>
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-base">Customize Your Portfolio</CardTitle>
                     <p className="text-xs text-muted-foreground mt-1">
                       Modify the selected portfolio by adding or removing stocks and adjusting allocations
                     </p>
-                </CardHeader>
+                  </CardHeader>
                   <CardContent className="space-y-4 pt-0">
                     {/* Stock Search */}
                     <div className="space-y-3">
@@ -2231,7 +2263,7 @@ export const StockSelection = ({
                                 onClick={() => addStock(stock)}
                                 size="sm"
                                 variant="outline"
-                                disabled={selectedStocks.some(s => s.symbol === stock.symbol)}
+                                disabled={selectedStocks.some(s => s.symbol === stock.symbol) || selectedStocks.length >= 4}
                               >
                                 {selectedStocks.some(s => s.symbol === stock.symbol) ? 'Added' : 'Add'}
                               </Button>
@@ -2244,9 +2276,9 @@ export const StockSelection = ({
                     {/* Selected Assets Section */}
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-lg font-medium">Selected Assets ({selectedStocks.length}/5)</h4>
+                        <h4 className="text-lg font-medium">Selected Assets ({selectedStocks.length}/4)</h4>
                         <div className="text-sm text-muted-foreground">
-                          Minimum 3 recommended
+                          Minimum 3, maximum 4 tickers
                         </div>
                       </div>
 
@@ -2470,15 +2502,26 @@ export const StockSelection = ({
                         
                         <div className="flex justify-end">
                           <Button
-                            onClick={normalizeWeights}
+                            onClick={equalAllocation}
                             variant="outline"
                             size="sm"
                           >
-                            Auto-Normalize Weights
+                            Equal Allocation
                           </Button>
                         </div>
                       </div>
                     )}
+
+                    {/* Done button and Portfolio Validation */}
+                    <div className="mt-4 flex justify-end">
+                      <Button
+                        onClick={handleDone}
+                        size="sm"
+                        disabled={selectedStocks.length < 3 || selectedStocks.length > 4}
+                      >
+                        Done
+                      </Button>
+                    </div>
 
                     {/* Portfolio Validation */}
                     <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
@@ -2608,6 +2651,7 @@ export const StockSelection = ({
                     selectedPortfolioIndex={selectedPortfolioIndex}
                     allRecommendations={dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations}
                     strategyPortfolios={strategyPortfolios}
+                    compactMode={true}
                   />
                 </VisualizationErrorBoundary>
               ) : (

@@ -962,9 +962,32 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       }
                                     }
                                     
-                                    // Calculate dynamic domain based on data range
-                                    // Fixed Y-axis domain from 0% to 200%
-                                    const calculatedDomain: [number, number] = [0, 200];
+                                    // Calculate dynamic domain based on all data (including projection lines)
+                                    // Find min and max from all values: value, aggressive, moderate, conservative
+                                    let minValue = Infinity;
+                                    let maxValue = -Infinity;
+                                    
+                                    baseData.forEach((d: any) => {
+                                      // Check all possible value fields
+                                      const values = [
+                                        d.value,
+                                        d.aggressive,
+                                        d.moderate,
+                                        d.conservative
+                                      ].filter(v => v !== null && v !== undefined && !isNaN(v));
+                                      
+                                      values.forEach(v => {
+                                        if (v < minValue) minValue = v;
+                                        if (v > maxValue) maxValue = v;
+                                      });
+                                    });
+                                    
+                                    // Add padding (10% on each side) and ensure minimum range
+                                    const padding = Math.max((maxValue - minValue) * 0.1, 5);
+                                    const calculatedMin = Math.max(0, Math.floor(minValue - padding));
+                                    const calculatedMax = Math.ceil(maxValue + padding);
+                                    
+                                    const calculatedDomain: [number, number] = [calculatedMin, calculatedMax];
                                     
                                     return (
                                       <ComposedChart 
@@ -982,8 +1005,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           tick={{ fontSize: 10 }}
                                           tickFormatter={(value) => `${value.toFixed(0)}%`}
                                           label={{ value: 'Portfolio Value (%)', angle: -90, position: 'left', offset: 0, style: { textAnchor: 'middle' } }}
-                                          domain={(_dataMin: number, _dataMax: number) => [0, 200]}
-                                          allowDataOverflow={true}
+                                          domain={calculatedDomain}
+                                          allowDataOverflow={false}
                                           allowDecimals={false}
                                           width={70}
                                         />
@@ -1643,8 +1666,32 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       }
                                     }
                                     
-                                    // Fixed Y-axis domain from 0% to 200%
-                                    const calculatedDomain: [number, number] = [0, 200];
+                                    // Calculate dynamic domain based on all data (including projection lines)
+                                    // Find min and max from all values: value, aggressive, moderate, conservative
+                                    let minValue = Infinity;
+                                    let maxValue = -Infinity;
+                                    
+                                    baseData.forEach((d: any) => {
+                                      // Check all possible value fields
+                                      const values = [
+                                        d.value,
+                                        d.aggressive,
+                                        d.moderate,
+                                        d.conservative
+                                      ].filter(v => v !== null && v !== undefined && !isNaN(v));
+                                      
+                                      values.forEach(v => {
+                                        if (v < minValue) minValue = v;
+                                        if (v > maxValue) maxValue = v;
+                                      });
+                                    });
+                                    
+                                    // Add padding (10% on each side) and ensure minimum range
+                                    const padding = Math.max((maxValue - minValue) * 0.1, 5);
+                                    const calculatedMin = Math.max(0, Math.floor(minValue - padding));
+                                    const calculatedMax = Math.ceil(maxValue + padding);
+                                    
+                                    const calculatedDomain: [number, number] = [calculatedMin, calculatedMax];
                                     
                                     return (
                                       <ComposedChart 
@@ -1662,8 +1709,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           tick={{ fontSize: 10 }}
                                           tickFormatter={(value) => `${value.toFixed(0)}%`}
                                           label={{ value: 'Portfolio Value (%)', angle: -90, position: 'left', offset: 0, style: { textAnchor: 'middle' } }}
-                                          domain={(_dataMin: number, _dataMax: number) => [0, 200]}
-                                          allowDataOverflow={true}
+                                          domain={calculatedDomain}
+                                          allowDataOverflow={false}
                                           allowDecimals={false}
                                           width={70}
                                         />

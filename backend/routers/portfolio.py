@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Body, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Literal
 import logging
 import math
 import json
@@ -19,7 +19,16 @@ from utils.portfolio_stock_selector import PortfolioStockSelector
 from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 from utils.portfolio_mvo_optimizer import PortfolioMVOptimizer
 from utils.logging_utils import get_job_logger
+from utils.swedish_tax_calculator import SwedishTaxCalculator
+from utils.transaction_cost_calculator import AvanzaCourtageCalculator
+from utils.pdf_report_generator import PDFReportGenerator
+from utils.csv_export_generator import CSVExportGenerator
+from utils.shareable_link_generator import ShareableLinkGenerator
 from pypfopt import EfficientFrontier
+from fastapi.responses import Response, StreamingResponse
+import base64
+import zipfile
+from io import BytesIO
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
 from datetime import datetime, timedelta, date
 import random
@@ -9908,6 +9917,666 @@ async def verify_portfolio_tickers():
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to verify portfolio tickers: {str(e)}")
+
+# ============================================================================
+# Agent 2: Tax Calculation, Transaction Costs, Export, and Shareable Links
+# ============================================================================
+
+# Initialize calculators
+tax_calculator = SwedishTaxCalculator()
+courtage_calculator = AvanzaCourtageCalculator()
+pdf_generator = PDFReportGenerator()
+csv_generator = CSVExportGenerator()
+
+# Shareable link generator will be initialized after redis_client is available
+shareable_link_generator = None
+
+def get_shareable_link_generator():
+    """Get or initialize shareable link generator"""
+    global shareable_link_generator
+    if shareable_link_generator is None:
+        # Try to use existing redis_client from portfolio router
+        try:
+            redis_cli = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            redis_cli.ping()
+            shareable_link_generator = ShareableLinkGenerator(redis_client=redis_cli)
+        except Exception as e:
+            logger.warning(f"Could not initialize shareable link generator with Redis: {e}")
+            shareable_link_generator = ShareableLinkGenerator()  # Will try to create its own connection
+    return shareable_link_generator
+
+# Pydantic models for tax calculation
+class TaxCalculationRequest(BaseModel):
+    accountType: Literal["ISK", "KF", "AF"]
+    taxYear: int
+    portfolioValue: Optional[float] = None  # For ISK/KF (capital_underlag)
+    realizedGains: Optional[float] = None  # For AF
+    dividends: Optional[float] = None  # For AF
+    fundHoldings: Optional[float] = None  # For AF
+
+class TaxCalculationResponse(BaseModel):
+    accountType: str
+    taxYear: int
+    capitalUnderlag: Optional[float] = None
+    taxFreeLevel: Optional[float] = None
+    taxableCapital: Optional[float] = None
+    annualTax: float
+    effectiveTaxRate: float
+    afterTaxReturn: Optional[float] = None
+    details: Dict[str, Any]
+
+@router.post("/tax/calculate", response_model=TaxCalculationResponse)
+async def calculate_tax(request: TaxCalculationRequest):
+    """
+    Calculate Swedish tax for portfolio
+    
+    Request:
+    {
+        "accountType": "ISK" | "KF" | "AF",
+        "taxYear": 2025 | 2026,
+        "portfolioValue": float (ISK/KF only),
+        "realizedGains": float (AF only),
+        "dividends": float (AF only),
+        "fundHoldings": float (AF only)
+    }
+    
+    Response:
+    {
+        "accountType": "ISK",
+        "taxYear": 2026,
+        "capitalUnderlag": float,
+        "taxFreeLevel": float,
+        "taxableCapital": float,
+        "annualTax": float,
+        "effectiveTaxRate": float,
+        "afterTaxReturn": float (if portfolio return provided),
+        "details": {...}
+    }
+    """
+    try:
+        if request.accountType in ["ISK", "KF"]:
+            if request.portfolioValue is None:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"portfolioValue is required for {request.accountType} accounts"
+                )
+            
+            result = tax_calculator.calculate_tax(
+                account_type=request.accountType,
+                tax_year=request.taxYear,
+                capital_underlag=request.portfolioValue
+            )
+            
+            return TaxCalculationResponse(
+                accountType=result["account_type"],
+                taxYear=result["tax_year"],
+                capitalUnderlag=result.get("capital_underlag"),
+                taxFreeLevel=result.get("tax_free_level"),
+                taxableCapital=result.get("taxable_capital"),
+                annualTax=result["annual_tax"],
+                effectiveTaxRate=result["effective_tax_rate"],
+                details=result
+            )
+        
+        elif request.accountType == "AF":
+            result = tax_calculator.calculate_tax(
+                account_type=request.accountType,
+                tax_year=request.taxYear,
+                realized_gains=request.realizedGains or 0.0,
+                dividends=request.dividends or 0.0,
+                fund_holdings=request.fundHoldings or 0.0
+            )
+            
+            return TaxCalculationResponse(
+                accountType=result["account_type"],
+                taxYear=result["tax_year"],
+                annualTax=result["total_tax"],
+                effectiveTaxRate=0.0,  # AF doesn't have a simple effective rate
+                details=result
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid account type: {request.accountType}"
+            )
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error calculating tax: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to calculate tax: {str(e)}")
+
+# Pydantic models for transaction costs
+class TransactionCostRequest(BaseModel):
+    courtageClass: Literal["start", "mini", "small", "medium", "fastPris"]
+    portfolio: List[Dict[str, Any]]  # [{"ticker": "AAPL", "shares": 10, "value": 15000}]
+    rebalancingFrequency: Literal["monthly", "quarterly", "semi-annual", "annual"] = "quarterly"
+
+class TransactionCostResponse(BaseModel):
+    courtageClass: str
+    setupCost: float
+    setupBreakdown: List[Dict[str, Any]]
+    annualRebalancingCost: float
+    totalFirstYearCost: float
+    costOptimization: Dict[str, Any]
+
+@router.post("/transaction-costs/estimate", response_model=TransactionCostResponse)
+async def estimate_transaction_costs(request: TransactionCostRequest):
+    """
+    Estimate transaction costs for portfolio
+    
+    Request:
+    {
+        "courtageClass": "start" | "mini" | "small" | "medium" | "fastPris",
+        "portfolio": [
+            {"ticker": "AAPL", "shares": 10, "value": 15000}
+        ],
+        "rebalancingFrequency": "monthly" | "quarterly" | "semi-annual" | "annual"
+    }
+    
+    Response:
+    {
+        "courtageClass": "medium",
+        "setupCost": float,
+        "setupBreakdown": [...],
+        "annualRebalancingCost": float,
+        "totalFirstYearCost": float,
+        "costOptimization": {
+            "recommendedClass": "small",
+            "potentialSavings": float
+        }
+    }
+    """
+    try:
+        # Calculate setup costs
+        setup_data = courtage_calculator.estimate_setup_cost(
+            portfolio=request.portfolio,
+            courtage_class=request.courtageClass
+        )
+        
+        # Calculate rebalancing costs
+        rebalancing_data = courtage_calculator.estimate_rebalancing_cost(
+            transactions=request.portfolio,
+            courtage_class=request.courtageClass,
+            frequency=request.rebalancingFrequency
+        )
+        
+        # Get cost optimization
+        optimization = courtage_calculator.find_optimal_courtage_class(
+            portfolio=request.portfolio,
+            rebalancing_frequency=request.rebalancingFrequency
+        )
+        
+        return TransactionCostResponse(
+            courtageClass=request.courtageClass,
+            setupCost=setup_data["total_setup_cost"],
+            setupBreakdown=setup_data["breakdown"],
+            annualRebalancingCost=rebalancing_data["annual_cost"],
+            totalFirstYearCost=setup_data["total_setup_cost"] + rebalancing_data["annual_cost"],
+            costOptimization=optimization
+        )
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error estimating transaction costs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to estimate transaction costs: {str(e)}")
+
+# Pydantic models for tax-adjusted metrics
+class TaxAdjustedMetricsRequest(BaseModel):
+    portfolio: List[Dict[str, Any]]  # [{"ticker": "AAPL", "allocation": 0.4}]
+    accountType: Literal["ISK", "KF", "AF"]
+    taxYear: int
+    courtageClass: Literal["start", "mini", "small", "medium", "fastPris"]
+    portfolioValue: float
+    expectedReturn: Optional[float] = None  # Annual expected return percentage
+
+class TaxAdjustedMetricsResponse(BaseModel):
+    grossExpectedReturn: float
+    annualTaxImpact: float
+    afterTaxReturn: float
+    transactionCosts: Dict[str, float]
+    netExpectedReturn: float
+    fiveYearProjection: List[Dict[str, Any]]
+
+@router.post("/metrics/tax-adjusted", response_model=TaxAdjustedMetricsResponse)
+async def calculate_tax_adjusted_metrics(request: TaxAdjustedMetricsRequest):
+    """
+    Calculate tax-adjusted portfolio metrics
+    
+    Request:
+    {
+        "portfolio": [{"ticker": "AAPL", "allocation": 0.4}],
+        "accountType": "ISK" | "KF" | "AF",
+        "taxYear": 2025 | 2026,
+        "courtageClass": "medium",
+        "portfolioValue": float,
+        "expectedReturn": float (optional, annual percentage)
+    }
+    
+    Response:
+    {
+        "grossExpectedReturn": float,
+        "annualTaxImpact": float,
+        "afterTaxReturn": float,
+        "transactionCosts": {
+            "setup": float,
+            "annual": float
+        },
+        "netExpectedReturn": float,
+        "fiveYearProjection": [
+            {"year": 1, "value": float, "tax": float, "netValue": float}
+        ]
+    }
+    """
+    try:
+        portfolio_value = request.portfolioValue
+        expected_return = request.expectedReturn or 0.0  # Default to 0 if not provided
+
+        def _normalize_supported_tax_year(year: int) -> int:
+            """
+            SwedishTaxCalculator only supports 2025 and 2026 in this codebase.
+            For multi-year projections, cap to the nearest supported year.
+            """
+            return 2025 if year <= 2025 else 2026
+        
+        # Calculate tax
+        if request.accountType in ["ISK", "KF"]:
+            tax_result = tax_calculator.calculate_tax(
+                account_type=request.accountType,
+                tax_year=request.taxYear,
+                capital_underlag=portfolio_value
+            )
+            annual_tax = tax_result["annual_tax"]
+        else:  # AF
+            # For AF, we need realized gains - estimate based on expected return
+            estimated_gains = portfolio_value * (expected_return / 100) if expected_return else 0.0
+            tax_result = tax_calculator.calculate_tax(
+                account_type=request.accountType,
+                tax_year=request.taxYear,
+                realized_gains=estimated_gains,
+                dividends=0.0,
+                fund_holdings=0.0
+            )
+            annual_tax = tax_result["total_tax"]
+        
+        # Calculate transaction costs
+        portfolio_positions = [
+            {
+                "ticker": pos.get("ticker", pos.get("symbol", "UNKNOWN")),
+                "shares": pos.get("shares", 0),
+                "value": portfolio_value * pos.get("allocation", 0.0)
+            }
+            for pos in request.portfolio
+        ]
+        
+        setup_data = courtage_calculator.estimate_setup_cost(
+            portfolio=portfolio_positions,
+            courtage_class=request.courtageClass
+        )
+        
+        rebalancing_data = courtage_calculator.estimate_rebalancing_cost(
+            transactions=portfolio_positions,
+            courtage_class=request.courtageClass,
+            frequency="quarterly"
+        )
+        
+        # Calculate returns
+        gross_return_amount = portfolio_value * (expected_return / 100) if expected_return else 0.0
+        after_tax_return_amount = gross_return_amount - annual_tax
+        after_tax_return_pct = (after_tax_return_amount / portfolio_value * 100) if portfolio_value > 0 else 0.0
+        
+        net_return_amount = after_tax_return_amount - rebalancing_data["annual_cost"]
+        net_return_pct = (net_return_amount / portfolio_value * 100) if portfolio_value > 0 else 0.0
+        
+        # Generate 5-year projection
+        five_year_projection = []
+        current_value = portfolio_value
+        
+        for year in range(1, 6):
+            # Calculate growth
+            year_return = current_value * (expected_return / 100) if expected_return else 0.0
+            year_value = current_value + year_return
+            
+            # Calculate tax for this year
+            projection_tax_year = _normalize_supported_tax_year(request.taxYear + year - 1)
+            if request.accountType in ["ISK", "KF"]:
+                year_tax_result = tax_calculator.calculate_tax(
+                    account_type=request.accountType,
+                    tax_year=projection_tax_year,
+                    capital_underlag=year_value
+                )
+                year_tax = year_tax_result["annual_tax"]
+            else:
+                year_tax_result = tax_calculator.calculate_tax(
+                    account_type=request.accountType,
+                    tax_year=projection_tax_year,
+                    realized_gains=year_return,
+                    dividends=0.0,
+                    fund_holdings=0.0
+                )
+                year_tax = year_tax_result["total_tax"]
+            
+            # Apply tax and transaction costs
+            net_value = year_value - year_tax - rebalancing_data["annual_cost"]
+            
+            five_year_projection.append({
+                "year": year,
+                "value": round(year_value, 2),
+                "tax": round(year_tax, 2),
+                "netValue": round(net_value, 2)
+            })
+            
+            current_value = net_value
+        
+        return TaxAdjustedMetricsResponse(
+            grossExpectedReturn=round(expected_return, 2),
+            annualTaxImpact=round(annual_tax, 2),
+            afterTaxReturn=round(after_tax_return_pct, 2),
+            transactionCosts={
+                "setup": round(setup_data["total_setup_cost"], 2),
+                "annual": round(rebalancing_data["annual_cost"], 2)
+            },
+            netExpectedReturn=round(net_return_pct, 2),
+            fiveYearProjection=five_year_projection
+        )
+    
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error calculating tax-adjusted metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to calculate tax-adjusted metrics: {str(e)}")
+
+# Pydantic models for PDF export
+class PDFExportRequest(BaseModel):
+    portfolio: List[Dict[str, Any]]
+    includeSections: Dict[str, bool] = {}
+    taxData: Optional[Dict[str, Any]] = None
+    costData: Optional[Dict[str, Any]] = None
+    stressTestResults: Optional[Dict[str, Any]] = None
+    portfolioValue: Optional[float] = None
+    accountType: Optional[str] = None
+    taxYear: Optional[int] = None
+    metrics: Optional[Dict[str, Any]] = None
+
+@router.post("/export/pdf")
+async def export_pdf(request: PDFExportRequest):
+    """
+    Generate PDF report
+    
+    Request:
+    {
+        "portfolio": {...},
+        "includeSections": {
+            "optimization": bool,
+            "stressTest": bool,
+            "goals": bool,
+            "rebalancing": bool
+        },
+        "taxData": {...},
+        "costData": {...},
+        "stressTestResults": {...} (optional),
+        "portfolioValue": float,
+        "accountType": str,
+        "taxYear": int,
+        "metrics": {...}
+    }
+    
+    Response:
+    - Returns PDF file as binary response
+    - Content-Type: application/pdf
+    """
+    try:
+        # Prepare data for PDF generation
+        pdf_data = {
+            "portfolio": request.portfolio,
+            "includeSections": request.includeSections,
+            "taxData": request.taxData or {},
+            "costData": request.costData or {},
+            "stressTestResults": request.stressTestResults,
+            "portfolioValue": request.portfolioValue or 0.0,
+            "accountType": request.accountType,
+            "taxYear": request.taxYear or datetime.now().year,
+            "metrics": request.metrics or {}
+        }
+        
+        # Generate PDF
+        pdf_bytes = pdf_generator.generate_portfolio_report(pdf_data)
+        
+        # Return PDF as binary response
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=portfolio_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"Error generating PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+# Pydantic models for CSV export
+class CSVExportRequest(BaseModel):
+    portfolio: List[Dict[str, Any]]
+    taxData: Optional[Dict[str, Any]] = None
+    costData: Optional[Dict[str, Any]] = None
+    stressTestResults: Optional[Dict[str, Any]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    includeFiles: List[str] = ["holdings", "tax", "costs", "metrics"]  # "holdings", "tax", "costs", "metrics", "stressTest"
+
+class CSVExportResponse(BaseModel):
+    files: List[Dict[str, Any]]
+    zipFile: Optional[str] = None  # base64 encoded zip if multiple files
+
+@router.post("/export/csv", response_model=CSVExportResponse)
+async def export_csv(request: CSVExportRequest):
+    """
+    Generate CSV exports
+    
+    Request:
+    {
+        "portfolio": {...},
+        "taxData": {...},
+        "costData": {...},
+        "stressTestResults": {...} (optional),
+        "includeFiles": ["holdings", "tax", "costs", "metrics", "stressTest"]
+    }
+    
+    Response:
+    {
+        "files": [
+            {
+                "filename": "portfolio_holdings.csv",
+                "content": "base64_encoded_csv",
+                "size": int
+            }
+        ],
+        "zipFile": "base64_encoded_zip" (if multiple files)
+    }
+    """
+    try:
+        files = []
+        
+        # Generate requested CSV files
+        if "holdings" in request.includeFiles and request.portfolio:
+            holdings_csv = csv_generator.generate_portfolio_holdings_csv(request.portfolio)
+            files.append({
+                "filename": "portfolio_holdings.csv",
+                "content": base64.b64encode(holdings_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(holdings_csv.encode('utf-8'))
+            })
+        
+        if "tax" in request.includeFiles and request.taxData:
+            tax_csv = csv_generator.generate_tax_analysis_csv(request.taxData)
+            files.append({
+                "filename": "tax_analysis.csv",
+                "content": base64.b64encode(tax_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(tax_csv.encode('utf-8'))
+            })
+        
+        if "costs" in request.includeFiles and request.costData:
+            costs_csv = csv_generator.generate_transaction_costs_csv(request.costData)
+            files.append({
+                "filename": "transaction_costs.csv",
+                "content": base64.b64encode(costs_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(costs_csv.encode('utf-8'))
+            })
+        
+        if "metrics" in request.includeFiles and request.metrics:
+            metrics_csv = csv_generator.generate_portfolio_metrics_csv(request.metrics)
+            files.append({
+                "filename": "portfolio_metrics.csv",
+                "content": base64.b64encode(metrics_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(metrics_csv.encode('utf-8'))
+            })
+        
+        if "stressTest" in request.includeFiles and request.stressTestResults:
+            stress_csv = csv_generator.generate_stress_test_csv(request.stressTestResults)
+            files.append({
+                "filename": "stress_test_results.csv",
+                "content": base64.b64encode(stress_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(stress_csv.encode('utf-8'))
+            })
+        
+        # Create zip file if multiple files
+        zip_file_base64 = None
+        if len(files) > 1:
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for file_info in files:
+                    content = base64.b64decode(file_info["content"])
+                    zip_file.writestr(file_info["filename"], content)
+            
+            zip_buffer.seek(0)
+            zip_file_base64 = base64.b64encode(zip_buffer.getvalue()).decode('utf-8')
+        
+        return CSVExportResponse(
+            files=files,
+            zipFile=zip_file_base64
+        )
+    
+    except Exception as e:
+        logger.error(f"Error generating CSV exports: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate CSV exports: {str(e)}")
+
+# Pydantic models for shareable links
+class ShareLinkRequest(BaseModel):
+    portfolioData: Dict[str, Any]
+    expiryDays: int = 30
+    password: Optional[str] = None
+
+class ShareLinkResponse(BaseModel):
+    linkId: str
+    shareableUrl: str
+    expiresAt: str
+
+@router.post("/share/create", response_model=ShareLinkResponse)
+async def create_shareable_link(request: ShareLinkRequest):
+    """
+    Create shareable link
+    
+    Request:
+    {
+        "portfolioData": {...},
+        "expiryDays": 30,
+        "password": "optional_password"
+    }
+    
+    Response:
+    {
+        "linkId": "abc123",
+        "shareableUrl": "https://app.com/share/abc123",
+        "expiresAt": "2026-02-22T00:00:00Z"
+    }
+    """
+    try:
+        link_gen = get_shareable_link_generator()
+        link_id = link_gen.generate_link(
+            portfolio_data=request.portfolioData,
+            expiry_days=request.expiryDays,
+            password=request.password
+        )
+        
+        # Get link info to get expiry date
+        link_info = link_gen.get_link_info(link_id)
+        expires_at = link_info.get("expires_at") if link_info else None
+        
+        # Construct shareable URL (adjust domain as needed)
+        shareable_url = f"/api/portfolio/share/{link_id}"
+        
+        return ShareLinkResponse(
+            linkId=link_id,
+            shareableUrl=shareable_url,
+            expiresAt=expires_at or ""
+        )
+    
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating shareable link: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create shareable link: {str(e)}")
+
+@router.get("/share/{link_id}")
+async def get_shareable_link(link_id: str, password: Optional[str] = None):
+    """
+    Retrieve shareable link data
+    
+    Args:
+        link_id: The shareable link ID
+        password: Optional password if link is protected
+        
+    Response:
+    {
+        "portfolioData": {...},
+        "createdAt": "2026-01-26T00:00:00Z",
+        "expiresAt": "2026-02-22T00:00:00Z"
+    }
+    """
+    try:
+        link_gen = get_shareable_link_generator()
+        link_data = link_gen.get_link_data(link_id, password)
+        
+        return {
+            "portfolioData": link_data.get("portfolio_data", {}),
+            "createdAt": link_data.get("created_at"),
+            "expiresAt": link_data.get("expires_at")
+        }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error retrieving shareable link: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve shareable link: {str(e)}")
+
+@router.get("/share/{link_id}/info")
+async def get_shareable_link_info(link_id: str):
+    """
+    Get shareable link metadata (without requiring password)
+    
+    Response:
+    {
+        "linkId": "abc123",
+        "createdAt": "2026-01-26T00:00:00Z",
+        "expiresAt": "2026-02-22T00:00:00Z",
+        "hasPassword": bool,
+        "isValid": bool
+    }
+    """
+    try:
+        link_gen = get_shareable_link_generator()
+        link_info = link_gen.get_link_info(link_id)
+        
+        if not link_info:
+            raise HTTPException(status_code=404, detail="Link not found or expired")
+        
+        return link_info
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting shareable link info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get shareable link info: {str(e)}")
 
 @router.get("/consolidated-table")
 async def get_consolidated_table_html():

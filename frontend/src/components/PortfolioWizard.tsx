@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, TrendingUp, Shield, DollarSign, Info, BarChart3 } from 'lucide-react';
+import { ArrowRight, TrendingUp, Shield, DollarSign, Info, BarChart3, CheckCircle, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { WelcomeStep } from './wizard/WelcomeStep';
 import { RiskProfiler } from './wizard/RiskProfiler';
@@ -10,6 +10,7 @@ import { CapitalInput } from './wizard/CapitalInput';
 import { StockSelection } from './wizard/StockSelection';
 import { PortfolioOptimization } from './wizard/PortfolioOptimization';
 import { StressTest } from './wizard/StressTest';
+import { FinalizePortfolio } from './wizard/FinalizePortfolio';
 
 export type RiskProfile = 'very-conservative' | 'conservative' | 'moderate' | 'aggressive' | 'very-aggressive' | null;
 
@@ -54,6 +55,7 @@ const STEPS = [
   { id: 'stocks', title: 'Stock Selection', icon: TrendingUp },
   { id: 'optimization', title: 'Optimization', icon: BarChart3 },
   { id: 'stress-test', title: 'Stress Test', icon: Shield },
+  { id: 'finalize', title: 'Finalize Portfolio', icon: FileText },
 ];
 
 export const PortfolioWizard = () => {
@@ -161,6 +163,20 @@ export const PortfolioWizard = () => {
             onNext={nextStep}
             onPrev={prevStep}
             selectedPortfolio={wizardData.selectedPortfolio}
+            capital={wizardData.capital}
+            riskProfile={wizardData.riskProfile || 'moderate'}
+          />
+        );
+      case 'finalize':
+        console.log('📱 Rendering FinalizePortfolio component');
+        return (
+          <FinalizePortfolio
+            onComplete={() => {
+              console.log('✅ Portfolio finalized and exported');
+              // Could navigate to a completion page or show success message
+              alert('Portfolio finalized successfully!');
+            }}
+            onPrev={prevStep}
             capital={wizardData.capital}
             riskProfile={wizardData.riskProfile || 'moderate'}
           />

@@ -360,6 +360,7 @@ interface Portfolio3PartVisualizationProps {
   selectedPortfolioIndex: number | null;
   riskProfile: string;
   strategyPortfolios?: PortfolioRecommendation[];
+  compactMode?: boolean; // When true, uses compact layout for Finalize Portfolio
 }
 
 type FetchState = 'idle' | 'loading' | 'success' | 'error';
@@ -446,6 +447,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   selectedPortfolioIndex,
   riskProfile,
   strategyPortfolios = [],
+  compactMode = false,
 }) => {
   const [data, setData] = useState<VisualizationResponse | null>(null);
   const [fetchState, setFetchState] = useState<FetchState>('idle');
@@ -454,7 +456,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const [hoveredSector, setHoveredSector] = useState<string | null>(null);
   const [hoveredTickers, setHoveredTickers] = useState<[number, number] | null>(null);
-  const [viewMode, setViewMode] = useState<'portfolio' | 'ticker'>('portfolio');
+  // In compact mode (Finalize Portfolio), force ticker-only view. Otherwise, allow toggle.
+  const [viewMode, setViewMode] = useState<'portfolio' | 'ticker'>(compactMode ? 'ticker' : 'portfolio');
   const [zoomDomain, setZoomDomain] = useState<{ x?: [number, number]; y?: [number, number] } | null>(null);
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -820,32 +823,42 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         console.log(`tickerHulls: Processing ${label} with ${points.length} points`);
         
         let hullPoints: ScatterPoint[];
+
+        // Calculate data range for proportional scaling
+        const allRisks = normalizedTickerPoints.map(p => p.risk);
+        const allReturns = normalizedTickerPoints.map(p => p.annualReturn);
+        const riskRange = Math.max(...allRisks) - Math.min(...allRisks);
+        const returnRange = Math.max(...allReturns) - Math.min(...allReturns);
+
+        // Scale radius to 2% of the larger dimension (minimum 0.01 for safety)
+        const dataScale = Math.max(riskRange, returnRange);
+        const dynamicRadius = Math.max(dataScale * 0.02, 0.01);
+
         if (points.length === 1) {
-          // Single point: create a small circle around it
+          // Single point: create a small circle around it with dynamic radius
           const point = points[0];
-          const radius = 0.03; // Increased radius for better visibility
           hullPoints = [
-            { ...point, risk: point.risk - radius, annualReturn: point.annualReturn },
-            { ...point, risk: point.risk, annualReturn: point.annualReturn + radius },
-            { ...point, risk: point.risk + radius, annualReturn: point.annualReturn },
-            { ...point, risk: point.risk, annualReturn: point.annualReturn - radius },
+            { ...point, risk: point.risk - dynamicRadius, annualReturn: point.annualReturn },
+            { ...point, risk: point.risk, annualReturn: point.annualReturn + dynamicRadius },
+            { ...point, risk: point.risk + dynamicRadius, annualReturn: point.annualReturn },
+            { ...point, risk: point.risk, annualReturn: point.annualReturn - dynamicRadius },
           ];
-          console.log(`tickerHulls: Created 4-point circle for single ticker in ${label}`);
+          console.log(`tickerHulls: Created 4-point circle for single ticker in ${label} (radius: ${dynamicRadius.toFixed(4)})`);
         } else if (points.length === 2) {
-          // Two points: create an ellipse/circle around them
+          // Two points: create an ellipse/circle around them with dynamic padding
           const p1 = points[0];
           const p2 = points[1];
           const midRisk = (p1.risk + p2.risk) / 2;
           const midReturn = (p1.annualReturn + p2.annualReturn) / 2;
-          const distRisk = Math.abs(p2.risk - p1.risk) / 2 + 0.03;
-          const distReturn = Math.abs(p2.annualReturn - p1.annualReturn) / 2 + 0.03;
+          const distRisk = Math.abs(p2.risk - p1.risk) / 2 + dynamicRadius;
+          const distReturn = Math.abs(p2.annualReturn - p1.annualReturn) / 2 + dynamicRadius;
           hullPoints = [
             { ...p1, risk: midRisk - distRisk, annualReturn: midReturn },
             { ...p1, risk: midRisk, annualReturn: midReturn + distReturn },
             { ...p1, risk: midRisk + distRisk, annualReturn: midReturn },
             { ...p1, risk: midRisk, annualReturn: midReturn - distReturn },
           ];
-          console.log(`tickerHulls: Created ellipse for 2 tickers in ${label}`);
+          console.log(`tickerHulls: Created ellipse for 2 tickers in ${label} (padding: ${dynamicRadius.toFixed(4)})`);
         } else {
           // Three or more points: use convex hull
           hullPoints = computeConvexHull(points);
@@ -990,6 +1003,41 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     return null;
   }, [allRecommendations, selectedPortfolioIndex]);
 
+  // Track filtered tickers for data quality warnings
+  const filteredTickerInfo = useMemo(() => {
+    const filtered = normalizedTickerPoints.filter(point => {
+      return point.annualReturn > 0 && point.risk >= 0;
+    });
+
+    const selectedPortfolioTickers = filtered.filter(p =>
+      p.portfolioLabel === portfolioNameMap.get('Selected Portfolio') ||
+      p.portfolioLabel.includes('Selected')
+    );
+    const selectedPortfolioExpected = selectedStocks.map(s => s.symbol.toUpperCase());
+    const selectedPortfolioFound = selectedPortfolioTickers.map(p => p.symbol.toUpperCase());
+    const missing = selectedPortfolioExpected.filter(s => !selectedPortfolioFound.includes(s));
+
+    return {
+      filtered,
+      missing,
+      totalFiltered: normalizedTickerPoints.length - filtered.length
+    };
+  }, [normalizedTickerPoints, selectedStocks, portfolioNameMap]);
+
+  // Update warnings when tickers are filtered
+  useEffect(() => {
+    if (filteredTickerInfo.missing.length > 0) {
+      const missingWarning = `${filteredTickerInfo.missing.length} ticker(s) from your portfolio are not displayed due to insufficient data: ${filteredTickerInfo.missing.join(', ')}`;
+      setWarnings(prev => {
+        // Only add if not already present
+        if (!prev.includes(missingWarning)) {
+          return [...prev, missingWarning];
+        }
+        return prev;
+      });
+    }
+  }, [filteredTickerInfo.missing]);
+
   const renderScatterTooltip = useCallback((tooltipProps: TooltipProps<ValueType, NameType>) => {
     // Only show tooltip if hoveredSymbol is set (prevents lingering tooltip)
     if (!hoveredSymbol || !tooltipProps.active || !tooltipProps.payload?.length) return null;
@@ -1096,27 +1144,90 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         </Alert>
       )}
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRetry}
-          disabled={isLoading || !isDataReady}
-          style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.primary }}
-          title="Refresh all visualization data including scatter plot, correlation matrix, and sector allocation"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Refreshing
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" /> Refresh
-            </>
-          )}
-        </Button>
-      </div>
+      {!compactMode && (
+        <div className="flex items-center justify-between mb-4 px-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-muted-foreground">View:</span>
+            <div className="flex gap-2">
+              <Button
+                variant={viewMode === 'portfolio' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setViewMode('portfolio');
+                  resetHighlights();
+                }}
+              >
+                Portfolio
+              </Button>
+              <Button
+                variant={viewMode === 'ticker' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setViewMode('ticker');
+                  resetHighlights();
+                }}
+              >
+                Ticker
+              </Button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {zoomDomain && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setZoomDomain(null)}
+              >
+                <ZoomOut className="h-4 w-4 mr-1" />
+                Reset Zoom
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetry}
+              disabled={isLoading || !isDataReady}
+              style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.primary }}
+              title="Refresh all visualization data including scatter plot, correlation matrix, and sector allocation"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Refreshing
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {compactMode && (
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRetry}
+            disabled={isLoading || !isDataReady}
+            style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.primary }}
+            title="Refresh all visualization data including scatter plot, correlation matrix, and sector allocation"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Refreshing
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+              </>
+            )}
+          </Button>
+        </div>
+      )}
 
       {error && (
         <Alert variant="destructive">
@@ -1144,72 +1255,26 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         </Alert>
       )}
 
-      <div className="flex flex-col gap-6">
+      <div className={compactMode ? "flex flex-col gap-3" : "flex flex-col gap-6"}>
+        {/* Return vs Risk Tradeoff */}
         <Card
           className="w-full"
           style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
         >
-          <CardHeader className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm" style={{ color: visualizationTheme.text.secondary }}>
-                  View:
-                </span>
-                <div className="flex rounded-lg border" style={{ borderColor: visualizationTheme.border }}>
-                  <Button
-                    variant={viewMode === 'portfolio' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('portfolio')}
-                    className="rounded-r-none"
-                  style={{
-                      fontSize: '12px',
-                      padding: '4px 12px',
-                    }}
-                  >
-                    Portfolio
-                  </Button>
-                  <Button
-                    variant={viewMode === 'ticker' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('ticker')}
-                    className="rounded-l-none"
-                    style={{
-                      fontSize: '12px',
-                      padding: '4px 12px',
-                    }}
-                  >
-                    Ticker
-                  </Button>
-            </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <CardTitle
-                className="text-lg flex-1"
-                style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
-              >
-                Return vs. Risk Tradeoff
-              </CardTitle>
-              {zoomDomain && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setZoomDomain(null)}
-                  className="h-7 px-2 text-xs"
-                  title="Reset zoom"
-                >
-                  <ZoomOut className="h-3.5 w-3.5 mr-1" />
-                  Reset Zoom
-                </Button>
-              )}
-            </div>
+          <CardHeader className="pb-2">
+            <CardTitle
+              className={compactMode ? "text-sm md:text-base text-center" : "text-lg text-center"}
+              style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+            >
+              Return vs. Risk Tradeoff
+            </CardTitle>
           </CardHeader>
           <CardContent
-            className="h-[420px]"
+            className={compactMode ? "h-[240px] md:h-[280px]" : "h-[420px]"}
             style={{
               background: visualizationTheme.canvas,
               borderRadius: visualizationTheme.radius,
-              padding: '12px',
+              padding: compactMode ? '10px' : '12px',
             }}
           >
             {!isDataReady && (
@@ -1237,6 +1302,173 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             )}
 
             {isDataReady && !isLoading && hasData && viewMode === 'portfolio' && groupedScatter.size > 0 && (
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart
+                  margin={{ top: 24, right: 32, bottom: 70, left: 48 }}
+                  onMouseLeave={(e) => {
+                    setHoveredSymbol(null);
+                    setHoveredSector(null);
+                  }}
+                  onMouseMove={(e) => {
+                    if (!e || !e.activePayload || e.activePayload.length === 0) {
+                      setHoveredSymbol(null);
+                      setHoveredSector(null);
+                    }
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
+                  <XAxis
+                    type="number"
+                    dataKey="risk"
+                    name="Risk"
+                    tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+                    axisLine={{ stroke: visualizationTheme.axes.line }}
+                    tickLine={{ stroke: 'transparent' }}
+                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                    domain={zoomDomain?.x || [0, 'auto']}
+                    label={{
+                      value: 'Risk',
+                      position: 'insideBottom',
+                      offset: -6,
+                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                    }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="annualReturn"
+                    name="Return"
+                    scale="log"
+                    tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+                    axisLine={{ stroke: visualizationTheme.axes.line }}
+                    tickLine={{ stroke: 'transparent' }}
+                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                    domain={zoomDomain?.y || [0.01, 'auto']}
+                    label={{
+                      value: 'Return',
+                      angle: -90,
+                      position: 'insideLeft',
+                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                    }}
+                  />
+                  <RechartsTooltip 
+                    cursor={{ strokeDasharray: '3 3' }} 
+                    content={renderScatterTooltip}
+                    isAnimationActive={false}
+                    animationDuration={0}
+                    active={hoveredSymbol !== null ? true : undefined}
+                  />
+                  <Legend
+                    wrapperStyle={{
+                      paddingTop: 12,
+                      fontSize: visualizationTheme.legend.fontSize,
+                      color: visualizationTheme.legend.color,
+                    }}
+                  />
+                  {portfolioHulls.map((hull) => (
+                    <Scatter
+                      key={`hull-${hull.label}`}
+                      data={hull.points}
+                      line
+                      lineType="linear"
+                      lineJointType="linear"
+                      stroke={hull.color}
+                      strokeDasharray="3 3"
+                      strokeWidth={1.25}
+                      strokeOpacity={0.6}
+                      shape={() => null}
+                      legendType="none"
+                    />
+                  ))}
+                  {Array.from(groupedScatter.entries()).map(([label, points]) => {
+                    const isSelectedPortfolio = label === portfolioNameMap.get('Selected Portfolio') || 
+                                               label.includes('Selected');
+                    
+                    return (
+                      <Scatter
+                        key={label}
+                        name={label}
+                        data={points}
+                        fill={points[0]?.color ?? visualizationTheme.clusterPalette.fallback}
+                        shape={(props) => {
+                          const point = props.payload as ScatterPoint;
+                          const highlightActive = highlightedSymbols.size > 0;
+                          const isHighlighted = highlightedSymbols.has(point.symbol);
+                          const isHovered = hoveredSymbol === point.symbol;
+                          const radius = isHovered ? 7 : 5;
+                          const strokeWidth = 1.6;
+                          const strokeOpacity = isHovered || isHighlighted ? 1.0 : 0.7;
+                          const fillOpacity = highlightActive 
+                            ? (isHighlighted ? 1.0 : visualizationTheme.hoverFadeOpacity) 
+                            : 0.85;
+                          
+                          return (
+                            <circle
+                              cx={props.cx}
+                              cy={props.cy}
+                              r={radius}
+                              fill={point.color}
+                              fillOpacity={fillOpacity}
+                              stroke={point.color}
+                              strokeOpacity={strokeOpacity}
+                              strokeWidth={strokeWidth}
+                              onMouseEnter={() => {
+                                setHoveredSymbol(point.symbol);
+                                const sectorValue = point.sector && point.sector !== 'Unknown' ? point.sector : null;
+                                setHoveredSector(sectorValue);
+                              }}
+                              onMouseLeave={() => {
+                                setHoveredSymbol(null);
+                                setHoveredSector(null);
+                              }}
+                            />
+                          );
+                        }}
+                      />
+                    );
+                  })}
+                  {brushData.length > 0 && (
+                    <Brush
+                      dataKey="risk"
+                      height={30}
+                      stroke={visualizationTheme.axes.line}
+                      strokeWidth={1.5}
+                      fill={visualizationTheme.grid}
+                      fillOpacity={0.4}
+                      data={brushData}
+                      onChange={(brushEvent) => {
+                        if (brushEvent && typeof brushEvent === 'object' && 'startIndex' in brushEvent && 'endIndex' in brushEvent) {
+                          const startIdx = brushEvent.startIndex as number;
+                          const endIdx = brushEvent.endIndex as number;
+                          
+                          if (startIdx !== undefined && endIdx !== undefined && startIdx >= 0 && endIdx >= 0 && startIdx <= endIdx) {
+                            const visiblePoints = brushData.slice(startIdx, endIdx + 1);
+                            
+                            if (visiblePoints.length > 0) {
+                              const riskMin = Math.min(...visiblePoints.map(p => p.risk));
+                              const riskMax = Math.max(...visiblePoints.map(p => p.risk));
+                              const returnMin = Math.min(...visiblePoints.map(p => p.annualReturn));
+                              const returnMax = Math.max(...visiblePoints.map(p => p.annualReturn));
+                              
+                              const riskPadding = (riskMax - riskMin) * 0.1;
+                              const returnPadding = (returnMax - returnMin) * 0.1;
+                              
+                              setZoomDomain({
+                                x: [Math.max(0, riskMin - riskPadding), riskMax + riskPadding],
+                                y: [Math.max(0, returnMin - returnPadding), returnMax + returnPadding],
+                              });
+                            }
+                          }
+                        } else {
+                          setZoomDomain(null);
+                        }
+                      }}
+                    />
+                  )}
+                </ScatterChart>
+              </ResponsiveContainer>
+            )}
+
+            {isDataReady && !isLoading && hasData && viewMode === 'ticker' && normalizedTickerPoints.length > 0 && (
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart
                   margin={{ top: 24, right: 32, bottom: 70, left: 48 }}
@@ -1409,179 +1641,28 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               </ResponsiveContainer>
             )}
 
-            {isDataReady && !isLoading && hasData && viewMode === 'ticker' && normalizedTickerPoints.length > 0 && (
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart
-                  margin={{ top: 24, right: 32, bottom: 36, left: 48 }}
-                  onMouseLeave={(e) => {
-                    // Immediately clear hover state when mouse leaves chart area
-                    setHoveredSymbol(null);
-                    setHoveredSector(null);
-                  }}
-                  onMouseMove={(e) => {
-                    // Clear hover if mouse moves to empty area (no data point)
-                    if (!e || !e.activePayload || e.activePayload.length === 0) {
-                      setHoveredSymbol(null);
-                      setHoveredSector(null);
-                    }
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
-                  <XAxis
-                    type="number"
-                    dataKey="risk"
-                    name="Risk"
-                    tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                    axisLine={{ stroke: visualizationTheme.axes.line }}
-                    tickLine={{ stroke: 'transparent' }}
-                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
-                    domain={[0, 'auto']}
-                    label={{
-                      value: 'Risk',
-                      position: 'insideBottom',
-                      offset: -6,
-                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
-                    }}
-                  />
-                  <YAxis
-                    type="number"
-                    dataKey="annualReturn"
-                    name="Return"
-                    scale="log"
-                    tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                    axisLine={{ stroke: visualizationTheme.axes.line }}
-                    tickLine={{ stroke: 'transparent' }}
-                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
-                    domain={[0.01, 'auto']}
-                    label={{
-                      value: 'Return',
-                      angle: -90,
-                      position: 'insideLeft',
-                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
-                    }}
-                  />
-                  <RechartsTooltip 
-                    cursor={{ strokeDasharray: '3 3' }} 
-                    content={renderScatterTooltip}
-                    isAnimationActive={false}
-                    animationDuration={0}
-                    active={hoveredSymbol !== null ? true : undefined}
-                  />
-                  <Legend
-                    wrapperStyle={{
-                      paddingTop: 12,
-                      fontSize: visualizationTheme.legend.fontSize,
-                      color: visualizationTheme.legend.color,
-                    }}
-                  />
-                  {/* Render filled hull polygons around each portfolio's tickers */}
-                  <HullPolygons hulls={tickerHulls} />
-                  {/* Render individual ticker points grouped by portfolio */}
-                  {Array.from(
-                    (() => {
-                      const filtered = normalizedTickerPoints.filter(point => {
-                        // Filter out zero or negative returns (consistent with Stock Universe filter)
-                        const passes = point.annualReturn > 0 && point.risk >= 0;
-                        if (!passes) {
-                          console.warn(`[Portfolio3PartVisualization] Filtered out ticker ${point.symbol}: return=${point.annualReturn}, risk=${point.risk}`);
-                        }
-                        return passes;
-                      });
-                      
-                      // Log selected portfolio tickers for debugging
-                      const selectedPortfolioFiltered = filtered.filter(p => 
-                        p.portfolioLabel === portfolioNameMap.get('Selected Portfolio') || 
-                        p.portfolioLabel.includes('Selected')
-                      );
-                      const selectedPortfolioExpected = selectedStocks.map(s => s.symbol.toUpperCase());
-                      const selectedPortfolioFound = selectedPortfolioFiltered.map(p => p.symbol.toUpperCase());
-                      const missing = selectedPortfolioExpected.filter(s => !selectedPortfolioFound.includes(s));
-                      
-                      if (missing.length > 0) {
-                        console.warn(`[Portfolio3PartVisualization] ⚠️ Selected portfolio tickers NOT displayed:`, missing);
-                        console.log(`[Portfolio3PartVisualization] Expected:`, selectedPortfolioExpected);
-                        console.log(`[Portfolio3PartVisualization] Found in normalizedTickerPoints:`, selectedPortfolioFound);
-                        console.log(`[Portfolio3PartVisualization] All normalized ticker points:`, normalizedTickerPoints.map(p => ({ symbol: p.symbol, label: p.portfolioLabel, return: p.annualReturn, risk: p.risk })));
-                      }
-                      
-                      return filtered.reduce((acc, point) => {
-                        if (!acc.has(point.portfolioLabel)) {
-                          acc.set(point.portfolioLabel, []);
-                        }
-                        acc.get(point.portfolioLabel)!.push(point);
-                        return acc;
-                      }, new Map<string, ScatterPoint[]>());
-                    })()
-                  ).map(([portfolioLabel, points]) => (
-                    <Scatter
-                      key={`tickers-${portfolioLabel}`}
-                      name={portfolioLabel}
-                      data={points}
-                      fill={points[0]?.color ?? visualizationTheme.clusterPalette.fallback}
-                      shape={(props) => {
-                        const point = props.payload as ScatterPoint;
-                        const highlightActive = highlightedSymbols.size > 0;
-                        const isHighlighted = highlightedSymbols.has(point.symbol);
-                        const isHovered = hoveredSymbol === point.symbol;
-                        
-                        // Consistent radius for all points - only hover increases size
-                        const radius = isHovered ? 7 : 5;
-                        const strokeWidth = 1.6;
-                        const strokeOpacity = isHovered || isHighlighted ? 1.0 : 0.7;
-                        const fillOpacity = highlightActive 
-                          ? (isHighlighted ? 1.0 : visualizationTheme.hoverFadeOpacity) 
-                          : 0.85;
-                        
-                        return (
-                          <g>
-                            <circle
-                              cx={props.cx}
-                              cy={props.cy}
-                              r={radius}
-                              fill={point.color}
-                              fillOpacity={fillOpacity}
-                              stroke={point.color}
-                              strokeOpacity={strokeOpacity}
-                              strokeWidth={strokeWidth}
-                              onMouseEnter={() => {
-                                setHoveredSymbol(point.symbol);
-                                const sectorValue = point.sector && point.sector !== 'Unknown' ? point.sector : null;
-                                setHoveredSector(sectorValue);
-                              }}
-                              onMouseLeave={() => {
-                                // Immediately clear hover state
-                                setHoveredSymbol(null);
-                                setHoveredSector(null);
-                              }}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </g>
-                        );
-                      }}
-                    />
-                  ))}
-                </ScatterChart>
-              </ResponsiveContainer>
-            )}
           </CardContent>
         </Card>
 
-        <Card
-          className="w-full"
-          style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
-        >
-            <CardHeader>
-            <CardTitle
-              className="text-lg"
-              style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+        {/* Correlation Matrix and Sector Allocation - conditional layout */}
+        {compactMode ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Card
+              className="w-full"
+              style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
             >
-              Correlation Matrix
-            </CardTitle>
-            </CardHeader>
-            <CardContent
-              className="max-h-[420px] overflow-auto"
-              style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
-            >
+              <CardHeader className="pb-2">
+                <CardTitle
+                  className="text-sm md:text-base text-center"
+                  style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+                >
+                  Correlation Matrix
+                </CardTitle>
+              </CardHeader>
+              <CardContent
+                className="h-[200px] overflow-auto"
+                style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '10px' }}
+              >
               {isLoading && (
                 <div className="flex h-64 items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -1661,34 +1742,32 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             className="w-full"
             style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
           >
-            <CardHeader>
+            <CardHeader className="pb-3">
             <CardTitle
-              className="text-lg"
-              style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+              className="text-sm md:text-base text-center"
+              style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
             >
               Sector Allocation
             </CardTitle>
-            <p className="text-xs text-center mt-2" style={{ color: visualizationTheme.text.secondary }}>
-              Showing sector breakdown for your selected portfolio only
-            </p>
             {selectedPortfolioDiversificationScore !== null && (
-              <div className="flex justify-center mt-2">
+              <div className="flex justify-center mt-1">
                 <Badge
                   variant="outline"
+                  className="text-xs"
                   style={{
                     borderColor: visualizationTheme.border,
                     background: visualizationTheme.cardBackground,
                     color: visualizationTheme.text.primary,
                   }}
                 >
-                  Diversification Score: {selectedPortfolioDiversificationScore.toFixed(1)}
+                  Diversification: {selectedPortfolioDiversificationScore.toFixed(1)}%
                 </Badge>
               </div>
             )}
             </CardHeader>
             <CardContent
-              className="h-[240px]"
-              style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
+              className="h-[200px]"
+              style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '12px' }}
             >
               {isLoading && (
                 <div className="flex h-full items-center justify-center">
@@ -1745,6 +1824,192 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               ) : null}
             </CardContent>
           </Card>
+        </div>
+        ) : (
+          // Non-compact mode: Stacked layout
+          <>
+            <Card
+              className="w-full"
+              style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+            >
+              <CardHeader>
+                <CardTitle
+                  className="text-lg"
+                  style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+                >
+                  Correlation Matrix
+                </CardTitle>
+              </CardHeader>
+              <CardContent
+                className="max-h-[420px] overflow-auto"
+                style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
+              >
+                {isLoading && (
+                  <div className="flex h-64 items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                )}
+
+                {isDataReady && !isLoading && hasData && data?.correlation?.tickers?.length ? (
+                  <div className="min-w-full space-y-1">
+                    <div
+                      className="sticky top-0 z-10 flex"
+                      style={{ background: visualizationTheme.canvas, color: visualizationTheme.text.secondary, fontWeight: 600 }}
+                    >
+                      <div
+                        className="w-24 flex-shrink-0 border-r p-2 text-xs uppercase"
+                        style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.secondary, letterSpacing: '0.08em' }}
+                      >
+                        Ticker
+                      </div>
+                      {data.correlation.tickers.map((ticker) => (
+                        <div
+                          key={`col-${ticker}`}
+                          className="flex-1 border-r p-2 text-center text-xs font-semibold"
+                          style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.secondary }}
+                        >
+                          {ticker}
+                        </div>
+                      ))}
+                    </div>
+                    {data.correlation.matrix.map((row, rowIndex) => (
+                      <div key={`row-${rowIndex}`} className="flex">
+                        <div
+                          className="w-24 flex-shrink-0 border-r p-2 text-xs font-medium"
+                          style={{
+                            borderColor: visualizationTheme.border,
+                            background: visualizationTheme.canvas,
+                            color: visualizationTheme.text.primary,
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>{data.correlation.tickers[rowIndex]}</div>
+                          <div style={{ color: visualizationTheme.text.secondary, fontSize: 10, fontWeight: 400 }}>
+                            {data.correlation.portfolioLabels?.[rowIndex]}
+                          </div>
+                        </div>
+                        {row.map((value, colIndex) => {
+                          const tickerKey = `${rowIndex}-${colIndex}`;
+                          const isSelf = rowIndex === colIndex;
+                          return (
+                            <div
+                              key={tickerKey}
+                              className="flex-1 border-r border-b p-2 text-center text-xs font-medium"
+                              style={{
+                                background: isSelf ? 'rgba(130, 188, 176, 0.25)' : getCorrelationColor(value),
+                                borderColor: visualizationTheme.border,
+                                color: visualizationTheme.text.primary,
+                              }}
+                            >
+                              {value.toFixed(2)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ) : isDataReady && !isLoading ? (
+                  <div className="flex h-64 items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                    No correlation data available.
+                  </div>
+                ) : !isDataReady ? (
+                  <div className="flex h-64 items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                    Please select a portfolio to view correlation data.
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card
+              className="w-full"
+              style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+            >
+              <CardHeader>
+                <CardTitle
+                  className="text-lg"
+                  style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+                >
+                  Sector Allocation
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1 text-center">
+                  Showing sector breakdown for your selected portfolio only
+                </p>
+                {selectedPortfolioDiversificationScore !== null && (
+                  <div className="flex justify-center mt-1">
+                    <Badge
+                      variant="outline"
+                      className="text-xs"
+                      style={{
+                        borderColor: visualizationTheme.border,
+                        background: visualizationTheme.cardBackground,
+                        color: visualizationTheme.text.primary,
+                      }}
+                    >
+                      Diversification: {selectedPortfolioDiversificationScore.toFixed(1)}%
+                    </Badge>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent
+                className="h-[240px]"
+                style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
+              >
+                {isLoading && (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                )}
+
+                {isDataReady && !isLoading && hasData && sectorSlices.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={sectorSlices}
+                        dataKey="percent"
+                        nameKey="sector"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={3}
+                        onMouseEnter={(_, index) => setHoveredSector(sectorSlices[index]?.sector ?? null)}
+                        onMouseLeave={() => setHoveredSector(null)}
+                      >
+                        {sectorSlices.map((sector, index) => {
+                          const isHovered = hoveredSector === sector.sector;
+                          const highlightsActive = highlightedSymbols.size > 0;
+                          const hasHighlightedHolding = sector.holdings.some((symbol) => highlightedSymbols.has(symbol));
+                          const paletteColor = visualizationTheme.pie.palette[index % visualizationTheme.pie.palette.length];
+                          return (
+                            <Cell
+                              key={`${sector.sector}-${index}`}
+                              fill={paletteColor}
+                              fillOpacity={
+                                highlightsActive
+                                  ? hasHighlightedHolding || isHovered
+                                    ? 0.95
+                                    : visualizationTheme.hoverFadeOpacity
+                                  : isHovered
+                                  ? 0.95
+                                  : 0.85
+                              }
+                            />
+                          );
+                        })}
+                      </Pie>
+                      <PieTooltip content={renderPieTooltip} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : isDataReady && !isLoading ? (
+                  <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                    No sector allocation data available.
+                  </div>
+                ) : !isDataReady ? (
+                  <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                    Please select a portfolio to view sector allocation.
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );

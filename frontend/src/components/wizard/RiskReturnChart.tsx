@@ -48,7 +48,7 @@ interface RiskReturnChartProps {
   portfolioMetrics: PortfolioMetrics;
 }
 
-const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
+export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
   portfolioAssets,
   efficientFrontier,
   portfolioMetrics,
@@ -319,4 +319,4 @@ const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
   );
 };
 
-export default RiskReturnChart; 
+export default RiskReturnChart;
