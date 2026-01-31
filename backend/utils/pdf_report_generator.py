@@ -298,16 +298,19 @@ class PDFReportGenerator:
         
         story.append(Spacer(1, 0.3*inch))
         
-        # 9. 5-Year Projection (if we have required inputs)
+        # 9. 5-Year Projection (if we have required inputs). Use projectionMetrics when provided (recommended portfolio from Optimize tab).
         portfolio_value = data.get('portfolioValue', 0.0)
         account_type = data.get('accountType')
         tax_year = data.get('taxYear', datetime.now().year)
         metrics = data.get('metrics') or {}
-        weights = (data.get('portfolio') or {}).get('weights') or {}
+        projection_metrics = data.get('projectionMetrics') or {}
+        weights = projection_metrics.get('weights') or (data.get('portfolio') or {}).get('weights') or {}
         if not weights and (data.get('portfolio') or {}).get('allocations'):
             weights = {a.get('symbol', a.get('ticker', '')): (a.get('allocation', 0) / 100.0) for a in (data.get('portfolio') or {}).get('allocations', []) if a.get('symbol') or a.get('ticker')}
-        exp_return = metrics.get('expectedReturn', metrics.get('expected_return', 0.08))
-        risk_val = metrics.get('risk', 0.15)
+        exp_return = (projection_metrics.get('expectedReturn') if projection_metrics.get('expectedReturn') is not None else projection_metrics.get('expected_return')) if projection_metrics else None
+        if exp_return is None:
+            exp_return = metrics.get('expectedReturn', metrics.get('expected_return', 0.08))
+        risk_val = projection_metrics.get('risk') if (projection_metrics and 'risk' in projection_metrics) else metrics.get('risk', 0.15)
         courtage_class = (cost_data.get('courtageClass') or cost_data.get('courtage_class') or '').lower() or 'medium'
         if courtage_class == 'fastpris':
             courtage_class = 'fastPris'

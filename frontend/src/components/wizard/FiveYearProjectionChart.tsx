@@ -1,4 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * 5-Year Projection with Tax Drag
+ * - X-axis: Year (0, 1, 2, 3, 4, 5). Year 0 = initial capital.
+ * - Y-axis: Portfolio value in SEK. Values are shown as k (thousands) or M (millions) when large.
+ * - Three lines: Optimistic (expectedReturn + 0.5*risk), Base (expectedReturn), Pessimistic (expectedReturn - 0.5*risk).
+ * - Backend applies Swedish tax (ISK/KF/AF) and Avanza courtage each year; net value is projected.
+ */
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -139,8 +146,9 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
     );
   }
 
+  // Y-axis: portfolio value in SEK. "M" = millions SEK, "k" = thousands SEK (e.g. 1.2M = 1,200,000 SEK)
   const formatSEK = (value: number) =>
-    value >= 1e6 ? `${(value / 1e6).toFixed(1)}M` : value >= 1e3 ? `${(value / 1e3).toFixed(0)}k` : value.toFixed(0);
+    value >= 1e6 ? `${(value / 1e6).toFixed(2)}M` : value >= 1e3 ? `${(value / 1e3).toFixed(2)}k` : value.toFixed(2);
 
   return (
     <Card>
@@ -150,7 +158,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
           5-Year Projection with Tax Drag
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Three regression-based scenarios (optimistic, base, pessimistic) with Sweden-realistic tax and transaction costs.
+          X-axis: year (0–5). Y-axis: portfolio value in SEK (k = thousands, M = millions). Three regression-based scenarios with Swedish tax and transaction costs applied each year.
         </p>
       </CardHeader>
       <CardContent>
@@ -162,7 +170,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
               <YAxis
                 tick={{ fontSize: 10 }}
                 tickFormatter={(v) => `${formatSEK(v)}`}
-                label={{ value: 'Portfolio value (SEK)', angle: -90, position: 'insideLeft', fontSize: 11 }}
+                label={{ value: 'Portfolio value (SEK, k=1000, M=1e6)', angle: -90, position: 'insideLeft', fontSize: 10 }}
               />
               <Tooltip
                 formatter={(value: number, name: string) => [value.toLocaleString('sv-SE', { maximumFractionDigits: 0 }) + ' SEK', name]}

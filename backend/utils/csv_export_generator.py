@@ -232,7 +232,7 @@ class CSVExportGenerator:
         Generate stress_test_results.csv
         
         Args:
-            stress_data: Stress test results
+            stress_data: Stress test results (scenarios as dict keyed by name or list of objects)
             
         Returns:
             CSV content as string
@@ -240,21 +240,41 @@ class CSVExportGenerator:
         output = StringIO()
         writer = csv.writer(output)
         
-        # Header
-        writer.writerow(['Scenario', 'Portfolio Value (SEK)', 'Return (%)', 'Details'])
+        # Summary row
+        writer.writerow(['Resilience Score', self._format_number(stress_data.get('resilience_score'), decimals=0)])
+        writer.writerow(['Overall Assessment', str(stress_data.get('overall_assessment', 'N/A'))])
+        writer.writerow([])
         
-        scenarios = stress_data.get('scenarios', [])
-        for scenario in scenarios:
-            scenario_name = scenario.get('name', 'Unknown')
-            portfolio_value = scenario.get('portfolioValue', 0.0)
-            return_pct = scenario.get('return', 0.0)
-            details = scenario.get('details', '')
-            
-            writer.writerow([
-                scenario_name,
-                self._format_number(portfolio_value),
-                self._format_number(return_pct, decimals=2),
-                details
-            ])
+        # Header
+        writer.writerow(['Scenario', 'Total Return (%)', 'Max Drawdown (%)', 'Recovery Months', 'Details'])
+        
+        scenarios = stress_data.get('scenarios') or stress_data.get('scenario_results') or {}
+        if isinstance(scenarios, dict):
+            for scenario_name, scenario_obj in scenarios.items():
+                metrics = (scenario_obj or {}).get('metrics', {})
+                total_return = (metrics.get('total_return') or 0) * 100
+                max_dd = (metrics.get('max_drawdown') or 0) * 100
+                recovery = metrics.get('recovery_months') or metrics.get('trajectory_projections', {}).get('moderate_months') or ''
+                recovery_str = f"{recovery}" if recovery != '' else 'N/A'
+                writer.writerow([
+                    scenario_name,
+                    self._format_number(total_return, decimals=2),
+                    self._format_number(max_dd, decimals=2),
+                    recovery_str,
+                    (scenario_obj or {}).get('period', {}).get('start', '') or ''
+                ])
+        else:
+            for scenario in (scenarios or []):
+                scenario_name = scenario.get('name', 'Unknown')
+                portfolio_value = scenario.get('portfolioValue', 0.0)
+                return_pct = scenario.get('return', 0.0)
+                details = scenario.get('details', '')
+                writer.writerow([
+                    scenario_name,
+                    self._format_number(return_pct, decimals=2),
+                    self._format_number(portfolio_value, decimals=0),
+                    details,
+                    ''
+                ])
         
         return output.getvalue()

@@ -64,6 +64,9 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   const [isLoadingCosts, setIsLoadingCosts] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Builder "Done" pressed: user must press Done in Portfolio Builder before Continue to Optimize
+  const [builderDone, setBuilderDone] = useState(false);
+
   // Validation state
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
 
@@ -78,8 +81,9 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     }
   }, [activeTab, state, isLoaded]);
 
-  // Handle tab change with validation
+  // Handle tab change with validation (Optimize only reachable from Builder after Done)
   const handleTabChange = (newTab: string) => {
+    if (newTab === 'optimize' && activeTab === 'builder' && !builderDone) return;
     if (canNavigateToTab(newTab, state, activeTab)) {
       setActiveTab(newTab as any);
       setValidationErrors({});
@@ -92,10 +96,12 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     }
   };
 
-  // Handle portfolio update from Tab 1
+  // Handle portfolio update from Tab 1 (search bar switch or allocation edit)
   const handlePortfolioUpdate = (stocks: PortfolioAllocation[]) => {
     updateConstructedPortfolio(stocks);
-    
+    // If user had already pressed Done, any change invalidates confirmation → Continue disabled until Done again
+    setBuilderDone((prev) => (prev ? false : prev));
+
     // Validate allocation
     const totalAllocation = stocks.reduce((sum, s) => sum + (s.allocation || 0), 0);
     if (stocks.length >= 3 && stocks.length <= 4 && Math.abs(totalAllocation - 100) < 0.1) {
@@ -311,6 +317,15 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         allocations: state.constructedPortfolio
       };
 
+      // Use recommended (optimized) portfolio for 5-year projection in PDF when available
+      const opt = state.optimizedPortfolio;
+      const recommendedForExport = opt?.weights_optimized_portfolio?.optimized_portfolio ?? opt?.market_optimized_portfolio?.optimized_portfolio;
+      const projectionMetricsForExport = recommendedForExport ? {
+        weights: recommendedForExport.weights ?? {},
+        expectedReturn: recommendedForExport.metrics?.expected_return ?? portfolioMetrics?.expectedReturn ?? 0.08,
+        risk: recommendedForExport.metrics?.risk ?? portfolioMetrics?.risk ?? 0.15
+      } : undefined;
+
       // Prepare export request (include optimization for PDF sections 4 and 5-year projection)
       const exportRequest = {
         portfolio: portfolioData,
@@ -321,6 +336,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
           rebalancing: false
         },
         optimizationResults: state.optimizedPortfolio ?? undefined,
+        projectionMetrics: projectionMetricsForExport,
         taxData: taxCalculation,
         costData: transactionCosts,
         stressTestResults: state.stressTestResults,
@@ -423,7 +439,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
           </TabsTrigger>
           <TabsTrigger
             value="optimize"
-            disabled={!canNavigateToTab('optimize', state, activeTab)}
+            disabled={!canNavigateToTab('optimize', state, activeTab) || (activeTab === 'builder' && !builderDone)}
           >
             Optimize
           </TabsTrigger>
@@ -463,6 +479,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 selectedStocks={state.constructedPortfolio}
                 onStocksUpdate={handlePortfolioUpdate}
                 onMetricsUpdate={handleMetricsUpdate}
+                onDone={() => setBuilderDone(true)}
                 riskProfile={riskProfile}
                 capital={capital}
                 minStocks={3}
@@ -491,6 +508,17 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </AlertDescription>
                 </Alert>
               )}
+
+              {/* Continue to Optimize: enabled only after user presses Done and validation passes */}
+              <Button
+                onClick={() => handleTabChange('optimize')}
+                disabled={!builderDone || !canNavigateToTab('optimize', state, activeTab)}
+                className="w-full mt-4"
+                size="lg"
+              >
+                Continue
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -508,7 +536,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Portfolio Overview - Matching PortfolioOptimization structure */}
+              {/* Current Portfolio Summary: max 2 decimals, Continue to Final Analysis */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Current Portfolio Summary</CardTitle>
@@ -531,9 +559,9 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <div className="font-semibold text-sm">{stock.allocation}%</div>
+                            <div className="font-semibold text-sm">{Number((stock.allocation || 0).toFixed(2))}%</div>
                             <div className="text-xs text-muted-foreground">
-                              {capital ? (stock.allocation / 100 * capital).toLocaleString() : '0'} SEK
+                              {capital ? (stock.allocation / 100 * capital).toLocaleString('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '0'} SEK
                             </div>
                           </div>
                         </div>
@@ -550,24 +578,36 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                     <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
                       <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
                         <div className="text-xl font-bold text-emerald-700">
-                          {((portfolioMetrics.expectedReturn || 0) * 100).toFixed(1)}%
+                          {(portfolioMetrics.expectedReturn != null ? (portfolioMetrics.expectedReturn * 100) : 0).toFixed(2)}%
                         </div>
                         <div className="text-xs text-emerald-600 mt-0.5">Expected Return</div>
                       </div>
                       <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
                         <div className="text-xl font-bold text-amber-700">
-                          {((portfolioMetrics.risk || 0) * 100).toFixed(1)}%
+                          {(portfolioMetrics.risk != null ? (portfolioMetrics.risk * 100) : 0).toFixed(2)}%
                         </div>
                         <div className="text-xs text-amber-600 mt-0.5">Risk Level</div>
                       </div>
                       <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
                         <div className="text-xl font-bold text-purple-700">
-                          {(portfolioMetrics.diversificationScore || 0).toFixed(0)}%
+                          {(portfolioMetrics.diversificationScore != null ? portfolioMetrics.diversificationScore : 0).toFixed(2)}%
                         </div>
                         <div className="text-xs text-purple-600 mt-0.5">Diversification</div>
                       </div>
                     </div>
                   )}
+
+                  {/* Continue to Final Analysis (enabled when user can navigate to analysis) */}
+                  <Button
+                    onClick={() => handleTabChange('analysis')}
+                    disabled={!canNavigateToTab('analysis', state, activeTab)}
+                    className="w-full mt-4"
+                    size="lg"
+                    variant="secondary"
+                  >
+                    Continue to Final Analysis
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
 
@@ -1012,22 +1052,31 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 </Card>
               )}
 
-              {/* 5-Year Projection with Tax Drag (three regression-based lines) */}
-              <FiveYearProjectionChart
-                weights={state.constructedPortfolio.length > 0
+              {/* 5-Year Projection: use recommended (optimized) portfolio when available so chart aligns with Optimize tab */}
+              {(() => {
+                const opt = state.optimizedPortfolio;
+                const recommended = opt?.weights_optimized_portfolio?.optimized_portfolio ?? opt?.market_optimized_portfolio?.optimized_portfolio;
+                const projectionWeights = recommended?.weights ?? (state.constructedPortfolio.length > 0
                   ? state.constructedPortfolio.reduce((acc, s) => {
                       acc[s.symbol] = s.allocation / 100;
                       return acc;
                     }, {} as Record<string, number>)
-                  : {}}
-                capital={capital}
-                accountType={state.taxSettings.accountType}
-                taxYear={state.taxSettings.taxYear}
-                courtageClass={state.taxSettings.courtagClass}
-                expectedReturn={portfolioMetrics?.expectedReturn ?? 0.08}
-                risk={portfolioMetrics?.risk ?? 0.15}
-                rebalancingFrequency="quarterly"
-              />
+                  : {});
+                const projectionExpectedReturn = recommended?.metrics?.expected_return ?? portfolioMetrics?.expectedReturn ?? 0.08;
+                const projectionRisk = recommended?.metrics?.risk ?? portfolioMetrics?.risk ?? 0.15;
+                return (
+                  <FiveYearProjectionChart
+                    weights={projectionWeights}
+                    capital={capital}
+                    accountType={state.taxSettings.accountType}
+                    taxYear={state.taxSettings.taxYear}
+                    courtageClass={state.taxSettings.courtagClass}
+                    expectedReturn={projectionExpectedReturn}
+                    risk={projectionRisk}
+                    rebalancingFrequency="quarterly"
+                  />
+                );
+              })()}
 
               {/* Export Button */}
               <Button

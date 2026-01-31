@@ -10369,6 +10369,7 @@ class PDFExportRequest(BaseModel):
     portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
     includeSections: Dict[str, bool] = {}
     optimizationResults: Optional[Dict[str, Any]] = None
+    projectionMetrics: Optional[Dict[str, Any]] = None  # weights, expectedReturn, risk for 5-year projection (recommended portfolio)
     taxData: Optional[Dict[str, Any]] = None
     costData: Optional[Dict[str, Any]] = None
     stressTestResults: Optional[Dict[str, Any]] = None
@@ -10411,6 +10412,7 @@ async def export_pdf(request: PDFExportRequest):
             "portfolio": portfolio_list,
             "includeSections": request.includeSections,
             "optimizationResults": request.optimizationResults,
+            "projectionMetrics": request.projectionMetrics,
             "taxData": request.taxData or {},
             "costData": request.costData or {},
             "stressTestResults": request.stressTestResults,

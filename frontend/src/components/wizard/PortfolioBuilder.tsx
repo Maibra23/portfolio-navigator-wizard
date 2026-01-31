@@ -48,6 +48,7 @@ interface PortfolioBuilderProps {
   selectedStocks: PortfolioAllocation[];
   onStocksUpdate: (stocks: PortfolioAllocation[]) => void;
   onMetricsUpdate?: (metrics: PortfolioMetrics | null) => void;
+  onDone?: () => void; // Called when user clicks Done (finalize workflow)
   riskProfile: string;
   capital: number;
   minStocks?: number; // Default: 3
@@ -298,6 +299,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
 
     // Calculate metrics immediately for the confirmed portfolio
     calculateMetrics(nextStocks);
+    onDoneProp?.();
   };
 
   return (
