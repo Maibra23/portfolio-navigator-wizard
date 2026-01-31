@@ -985,11 +985,11 @@ const SCREENING_CONTRADICTION = {
 ### End of Day 1
 
 **Agent 1 Sprint 1:**
-- [ ] `confidence-calculator.ts` complete with tests
-- [ ] `safeguards.ts` complete with override rules
-- [ ] `consistency-detector.ts` complete
-- [ ] `monitoring.ts` complete
-- [ ] API interface documented for Agent 2
+- [x] `confidence-calculator.ts` complete with tests
+- [x] `safeguards.ts` complete with override rules
+- [x] `consistency-detector.ts` complete
+- [x] `monitoring.ts` complete
+- [x] API interface documented for Agent 2
 
 **Agent 3:**
 - [ ] All question revisions complete
@@ -1001,7 +1001,7 @@ const SCREENING_CONTRADICTION = {
 
 **Handoffs Complete:**
 - [ ] Agent 3 → Agent 1: Question metadata delivered
-- [ ] Agent 1 → Agent 2: Confidence band API spec delivered
+- [x] Agent 1 → Agent 2: Confidence band API spec delivered
 
 ### End of Day 2
 

@@ -50,6 +50,8 @@ interface Question {
   maxScore: number;  // Maximum points for this question
   construct: string; // Psychological construct being measured (e.g., 'loss_aversion', 'time_horizon')
   difficulty?: 'low' | 'medium' | 'high'; // Optional difficulty indicator
+  /** If true, question is shown in UI but excluded from risk score (preference only). */
+  excludeFromScoring?: boolean;
   
   // Answer options (enhanced structure with backward compatibility)
   options?: Array<{
@@ -285,7 +287,7 @@ const GAMIFIED_STORYLINE: StorylineNode[] = [
 ];
 
 // MPT Question Pool (Modern Portfolio Theory - 15 questions, all 1-5 scale)
-// Total maxScore: 75 (15 × 5)
+// Total maxScore in pool: 75. Effective for scoring: 12 × 5 = 60 (M13, M14, M15 excluded from scoring; see riskUtils.SCORING_EXCLUSIONS).
 const MPT_QUESTIONS: Question[] = [
   {
     id: 'M1',
@@ -483,23 +485,23 @@ const MPT_QUESTIONS: Question[] = [
     id: 'M9',
     group: 'MPT',
     type: 'mpt',
-    question: "How many different types of investments would you prefer to hold?",
-    text: "How many different types of investments would you prefer to hold?",
+    question: "How would you prefer to spread your investments?",
+    text: "How would you prefer to spread your investments?",
     maxScore: 5,
     construct: 'diversification_preference',
     difficulty: 'medium',
     options: [
-      { label: 'Just one or two (keep it simple)', value: 1, text: 'Just one or two (keep it simple)', score: 1 },
-      { label: '3-5 different types', value: 2, text: '3-5 different types', score: 2 },
-      { label: '6-10 different types', value: 3, text: '6-10 different types', score: 3 },
-      { label: '11-20 different types', value: 4, text: '11-20 different types', score: 4 },
-      { label: 'As many as possible (maximum diversification)', value: 5, text: 'As many as possible (maximum diversification)', score: 5 }
+      { label: 'Concentrated in 1-2', value: 1, text: 'Concentrated in 1-2', score: 1 },
+      { label: '3-5 holdings', value: 2, text: '3-5 holdings', score: 2 },
+      { label: '6-10 holdings', value: 3, text: '6-10 holdings', score: 3 },
+      { label: 'Spread across 6-10', value: 4, text: 'Spread across 6-10', score: 4 },
+      { label: 'Spread across 10+', value: 5, text: 'Spread across 10+', score: 5 }
     ],
     sliderConfig: {
       min: 1,
       max: 5,
       step: 1,
-      labels: { min: 'Few Investments', max: 'Many Investments' }
+      labels: { min: 'Concentrated', max: 'Spread 10+' }
     },
     gamifiedText: "Would you rather have a few favorite games or a huge collection of different games?"
   },
@@ -584,6 +586,7 @@ const MPT_QUESTIONS: Question[] = [
     maxScore: 5,
     construct: 'rebalancing_frequency',
     difficulty: 'low',
+    excludeFromScoring: true,
     options: [
       { label: 'Daily or weekly (active management)', value: 1, text: 'Daily or weekly (active management)', score: 1 },
       { label: 'Monthly', value: 2, text: 'Monthly', score: 2 },
@@ -608,6 +611,7 @@ const MPT_QUESTIONS: Question[] = [
     maxScore: 5,
     construct: 'tax_sensitivity',
     difficulty: 'high',
+    excludeFromScoring: true,
     options: [
       { label: 'Extremely important (tax-optimized strategy)', value: 1, text: 'Extremely important (tax-optimized strategy)', score: 1 },
       { label: 'Very important', value: 2, text: 'Very important', score: 2 },
@@ -632,6 +636,7 @@ const MPT_QUESTIONS: Question[] = [
     maxScore: 5,
     construct: 'values_alignment',
     difficulty: 'medium',
+    excludeFromScoring: true,
     options: [
       { label: 'Significant sacrifice (values first)', value: 1, text: 'Significant sacrifice (values first)', score: 1 },
       { label: 'Moderate sacrifice', value: 2, text: 'Moderate sacrifice', score: 2 },
@@ -748,16 +753,16 @@ const PROSPECT_QUESTIONS: Question[] = [
     id: 'PT-5',
     group: 'PROSPECT',
     type: 'prospect',
-    question: "If you could invest in one sector, which would you choose?",
-    text: "If you could invest in one sector, which would you choose?",
+    question: "If you could invest in one sector, which would you choose? (Note: these have different risk levels.)",
+    text: "If you could invest in one sector, which would you choose? (Note: these have different risk levels.)",
     maxScore: 4,
     construct: 'sector_preference',
     difficulty: 'low',
     options: [
-      { label: 'Utilities (stable, low growth)', value: 1, text: 'Utilities (stable, low growth)', score: 1 },
-      { label: 'Consumer staples (steady growth)', value: 2, text: 'Consumer staples (steady growth)', score: 2 },
-      { label: 'Technology (high growth, high risk)', value: 3, text: 'Technology (high growth, high risk)', score: 3 },
-      { label: 'Cryptocurrency (highest risk/reward)', value: 4, text: 'Cryptocurrency (highest risk/reward)', score: 4 }
+      { label: 'Utilities — stable, low volatility, lower growth', value: 1, text: 'Utilities — stable, low volatility, lower growth', score: 1 },
+      { label: 'Consumer staples — steady growth, moderate risk', value: 2, text: 'Consumer staples — steady growth, moderate risk', score: 2 },
+      { label: 'Technology — high growth potential, higher volatility', value: 3, text: 'Technology — high growth potential, higher volatility', score: 3 },
+      { label: 'Cryptocurrency — highest risk and potential reward', value: 4, text: 'Cryptocurrency — highest risk and potential reward', score: 4 }
     ],
     sliderConfig: {
       min: 1,
@@ -841,22 +846,22 @@ const PROSPECT_QUESTIONS: Question[] = [
     id: 'PT-9',
     group: 'PROSPECT',
     type: 'prospect',
-    question: "After researching a stock for 2 hours, how confident are you in your decision?",
-    text: "After researching a stock for 2 hours, how confident are you in your decision?",
+    question: "After researching an investment for a few hours, how would you act?",
+    text: "After researching an investment for a few hours, how would you act?",
     maxScore: 4,
     construct: 'overconfidence_bias',
     difficulty: 'medium',
     options: [
-      { label: 'Not very confident (need professional advice)', value: 1, text: 'Not very confident (need professional advice)', score: 1 },
-      { label: 'Somewhat confident', value: 2, text: 'Somewhat confident', score: 2 },
-      { label: 'Quite confident', value: 3, text: 'Quite confident', score: 3 },
-      { label: 'Very confident (trust my research)', value: 4, text: 'Very confident (trust my research)', score: 4 }
+      { label: 'I would not invest without professional advice', value: 1, text: 'I would not invest without professional advice', score: 1 },
+      { label: 'I would invest a small amount to test', value: 2, text: 'I would invest a small amount to test', score: 2 },
+      { label: 'I would invest a meaningful amount', value: 3, text: 'I would invest a meaningful amount', score: 3 },
+      { label: 'I would invest with conviction', value: 4, text: 'I would invest with conviction', score: 4 }
     ],
     sliderConfig: {
       min: 1,
       max: 4,
       step: 1,
-      labels: { min: 'Need Advice', max: 'Trust Myself' }
+      labels: { min: 'Need Advice', max: 'Act with Conviction' }
     },
     gamifiedText: "After practicing a game for 2 hours, how sure are you that you'll win the next match?"
   },

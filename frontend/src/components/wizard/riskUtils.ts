@@ -1,6 +1,9 @@
 // Utility functions for risk scoring - kept free of UI imports so tests can run in isolation
 export type RUGroup = 'MPT' | 'PROSPECT' | 'SCREENING';
-export type RUQuestion = { id: string; group: RUGroup; maxScore: number };
+export type RUQuestion = { id: string; group: RUGroup; maxScore: number; excludeFromScoring?: boolean };
+
+/** Question IDs excluded from risk score (kept in UI as preferences only). Effective MPT for scoring = 12 (was 15). */
+export const SCORING_EXCLUSIONS = ['M13', 'M14', 'M15'] as const;
 
 export type RURiskResult = {
   raw_score: number;
@@ -25,7 +28,7 @@ export const computeRiskResult = (selectedQs: RUQuestion[], answersMap: Record<s
 
   selectedQs.forEach((question) => {
     if (!question) return;
-    if (question.group === 'SCREENING' || question.maxScore === 0) return;
+    if (question.group === 'SCREENING' || question.maxScore === 0 || question.excludeFromScoring) return;
 
     const answerValue = answersMap[question.id];
     rawSum += (answerValue !== undefined ? answerValue : 0);
