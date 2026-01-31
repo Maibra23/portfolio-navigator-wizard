@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
 Swedish Tax Calculator
-Implements Swedish tax calculation logic for ISK, KF, and AF accounts
-Based on Swedish tax rules for 2025 and 2026
+Implements Swedish tax calculation logic for ISK, KF, and AF accounts.
+Based on Swedish tax rules for 2025 and 2026.
+
+Source-of-truth (validate periodically):
+- ISK/KF stats- och schablonränta: Riksbanken (statslåneräntan), Skatteverket (schablon = statslåneränta + 1%).
+- ISK tax-free levels and tax rate: Skatteverket.
+- AF rates: 30% capital gains/dividends; fund schablon 0.12% (>50k SEK): Skatteverket.
+PARAMETERS_AS_OF: 2025-01 (update when rates change; run tests to flag outdated params).
 """
 
 import logging
@@ -10,6 +16,9 @@ from typing import Dict, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Single source-of-truth date for parameter validity; update when rates change
+PARAMETERS_AS_OF = "2025-01"
 
 
 class SwedishTaxCalculator:
@@ -22,21 +31,21 @@ class SwedishTaxCalculator:
     
     def __init__(self):
         """Initialize the tax calculator"""
-        # ISK 2025 parameters
+        # ISK 2025: Tax-free 150k SEK; statslåneränta 1.96%, schablon 2.96%, tax 30% (source: Riksbanken/Skatteverket)
         self.ISK_2025_TAX_FREE_LEVEL = 150000.0  # SEK
         self.ISK_2025_STATSLANERANTA = 0.0196  # 1.96%
         self.ISK_2025_SCHABLONRANTA = 0.0296  # 2.96% (Statslåneränta + 1%)
         self.ISK_2025_TAX_RATE = 0.30  # 30%
         self.ISK_2025_EFFECTIVE_RATE = 0.00888  # 0.888% (Schablonränta * Tax rate)
         
-        # ISK 2026 parameters
+        # ISK 2026: Tax-free 300k SEK; statslåneränta 2.55%, schablon 3.55%, tax 30%
         self.ISK_2026_TAX_FREE_LEVEL = 300000.0  # SEK
         self.ISK_2026_STATSLANERANTA = 0.0255  # 2.55%
         self.ISK_2026_SCHABLONRANTA = 0.0355  # 3.55% (Statslåneränta + 1%)
         self.ISK_2026_TAX_RATE = 0.30  # 30%
         self.ISK_2026_EFFECTIVE_RATE = 0.01065  # 1.065% (Schablonränta * Tax rate)
         
-        # AF account parameters
+        # AF: 30% on gains/dividends; fund schablon 0.12% on holdings > 50k SEK (Skatteverket)
         self.AF_CAPITAL_GAINS_TAX_RATE = 0.30  # 30% on realized gains
         self.AF_DIVIDEND_TAX_RATE = 0.30  # 30% (deducted at source)
         self.AF_FUND_SCHABLON_RATE = 0.0012  # 0.12% annually on funds > 50,000 SEK

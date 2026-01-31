@@ -26,6 +26,8 @@ import { formatPercent, formatNumber } from '@/utils/numberFormat';
 import { StressTest } from './StressTest';
 import { EfficientFrontierChart } from './EfficientFrontierChart';
 import { PortfolioComparisonTable } from './PortfolioComparisonTable';
+import { PerformanceSummaryCard, QualityScoreCard, MonteCarloCard } from './FinalAnalysisComponents';
+import { FiveYearProjectionChart } from './FiveYearProjectionChart';
 
 interface FinalizePortfolioProps {
   onComplete: () => void;
@@ -55,8 +57,6 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   const [hiddenTab, setHiddenTab] = useState<'stress-test' | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationError, setOptimizationError] = useState<string | null>(null);
-  const [optimizeCount, setOptimizeCount] = useState(0);
-  const OPTIMIZE_MAX = 2;
   const [portfolioMetrics, setPortfolioMetrics] = useState<PortfolioMetrics | null>(null);
   const [taxCalculation, setTaxCalculation] = useState<any>(null);
   const [transactionCosts, setTransactionCosts] = useState<any>(null);
@@ -103,28 +103,15 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     }
   };
 
-  // Handle metrics update (normalize so return/risk are always decimal 0–1 for display)
+  // Handle metrics update
   const handleMetricsUpdate = (metrics: PortfolioMetrics | null) => {
-    if (!metrics) {
-      setPortfolioMetrics(null);
-      return;
-    }
-    const normalized = {
-      ...metrics,
-      expectedReturn: metrics.expectedReturn > 1 ? metrics.expectedReturn / 100 : metrics.expectedReturn,
-      risk: metrics.risk > 1 ? metrics.risk / 100 : metrics.risk,
-    };
-    setPortfolioMetrics(normalized);
+    setPortfolioMetrics(metrics);
   };
 
   // Handle optimization (same request payload as PortfolioOptimization for identical results)
   const handleOptimize = async () => {
     if (state.constructedPortfolio.length === 0) {
       setOptimizationError('Please build a portfolio first');
-      return;
-    }
-    if (optimizeCount >= OPTIMIZE_MAX) {
-      setOptimizationError(`Optimization limit reached (${OPTIMIZE_MAX} runs).`);
       return;
     }
 
@@ -324,15 +311,16 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         allocations: state.constructedPortfolio
       };
 
-      // Prepare export request
+      // Prepare export request (include optimization for PDF sections 4 and 5-year projection)
       const exportRequest = {
         portfolio: portfolioData,
         includeSections: {
-          optimization: state.optimizedPortfolio !== null,
-          stressTest: state.stressTestResults !== null,
+          optimization: state.optimizedPortfolio != null,
+          stressTest: state.stressTestResults != null,
           goals: false,
           rebalancing: false
         },
+        optimizationResults: state.optimizedPortfolio ?? undefined,
         taxData: taxCalculation,
         costData: transactionCosts,
         stressTestResults: state.stressTestResults,
@@ -503,16 +491,6 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </AlertDescription>
                 </Alert>
               )}
-
-              <Button
-                onClick={() => handleTabChange('optimize')}
-                disabled={!canNavigateToTab('optimize', state, activeTab)}
-                className="w-full mt-4"
-                size="lg"
-              >
-                Continue
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -572,19 +550,19 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                     <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
                       <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
                         <div className="text-xl font-bold text-emerald-700">
-                          {formatPercent(portfolioMetrics.expectedReturn)}
+                          {((portfolioMetrics.expectedReturn || 0) * 100).toFixed(1)}%
                         </div>
                         <div className="text-xs text-emerald-600 mt-0.5">Expected Return</div>
                       </div>
                       <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
                         <div className="text-xl font-bold text-amber-700">
-                          {formatPercent(portfolioMetrics.risk)}
+                          {((portfolioMetrics.risk || 0) * 100).toFixed(1)}%
                         </div>
                         <div className="text-xs text-amber-600 mt-0.5">Risk Level</div>
                       </div>
                       <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
                         <div className="text-xl font-bold text-purple-700">
-                          {formatNumber(portfolioMetrics.diversificationScore, { maxDecimals: 0 })}%
+                          {(portfolioMetrics.diversificationScore || 0).toFixed(0)}%
                         </div>
                         <div className="text-xs text-purple-600 mt-0.5">Diversification</div>
                       </div>
@@ -593,10 +571,10 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 </CardContent>
               </Card>
 
-              {/* Optimize Button - max 2 runs */}
+              {/* Optimize Button */}
               <Button
                 onClick={handleOptimize}
-                disabled={isOptimizing || state.constructedPortfolio.length === 0 || optimizeCount >= OPTIMIZE_MAX}
+                disabled={isOptimizing || state.constructedPortfolio.length === 0}
                 className="w-full"
                 size="lg"
               >
@@ -608,15 +586,10 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 ) : (
                   <>
                     <BarChart3 className="mr-2 h-4 w-4" />
-                    Optimize {optimizeCount > 0 ? `(${optimizeCount}/${OPTIMIZE_MAX})` : ''}
+                    Optimize
                   </>
                 )}
               </Button>
-              {optimizeCount >= OPTIMIZE_MAX && (
-                <p className="text-sm text-muted-foreground text-center">
-                  Optimization limit reached. You can continue with the current results.
-                </p>
-              )}
 
               {optimizationError && (
                 <Alert variant="destructive">
@@ -746,16 +719,6 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </AlertDescription>
                 </Alert>
               )}
-
-              <Button
-                onClick={() => handleTabChange('analysis')}
-                disabled={!canNavigateToTab('analysis', state, activeTab)}
-                className="w-full mt-4"
-                size="lg"
-              >
-                Continue
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -773,13 +736,43 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Performance Summary (values normalized in handleMetricsUpdate; formatPercent = max 2 decimals) */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Performance Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {portfolioMetrics ? (
+              {/* Performance Summary, Quality Score, Monte Carlo from optimization (when available) */}
+              {state.optimizedPortfolio?.comparison && (() => {
+                const triple = state.optimizedPortfolio;
+                const selectedPortfolio = (triple.optimization_metadata?.recommendation || 'weights') as 'current' | 'weights' | 'market';
+                const isTriple = Boolean(triple.market_optimized_portfolio);
+                return (
+                  <div className="space-y-6">
+                    <PerformanceSummaryCard
+                      tripleOptimizationResults={triple}
+                      selectedPortfolio={selectedPortfolio}
+                      riskProfile={riskProfile}
+                    />
+                    {triple.comparison?.quality_scores && (
+                      <QualityScoreCard
+                        qualityData={triple.comparison.quality_scores}
+                        selectedPortfolio={selectedPortfolio}
+                        isTriple={isTriple}
+                      />
+                    )}
+                    {triple.comparison?.monte_carlo && (
+                      <MonteCarloCard
+                        monteCarloData={triple.comparison.monte_carlo}
+                        selectedPortfolio={selectedPortfolio}
+                        isTriple={isTriple}
+                      />
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Fallback: simple metrics when no optimization run yet */}
+              {!state.optimizedPortfolio?.comparison && portfolioMetrics && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Performance Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-sm text-muted-foreground">Expected Return</div>
@@ -790,11 +783,12 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                         <div className="text-2xl font-bold">{formatPercent(portfolioMetrics.risk)}</div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">No metrics available</div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
+              {!state.optimizedPortfolio?.comparison && !portfolioMetrics && (
+                <p className="text-sm text-muted-foreground">Run optimization in the Optimize tab to see full analysis (Performance Summary, Quality Score, Monte Carlo) here.</p>
+              )}
 
               {/* Stress Test Button */}
               <Button
@@ -873,60 +867,58 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 Tax, Cost & Summary
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Calculate Swedish taxes and transaction costs, then export your portfolio
+                Swedish taxes and transaction costs, 5-year projection, then export
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Account Type Selector */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Account Type</label>
-                <select
-                  className="w-full p-2 border rounded-md"
-                  value={state.taxSettings.accountType || ''}
-                  onChange={(e) => updateTaxSettings({ accountType: e.target.value as any })}
-                >
-                  <option value="">Select account type</option>
-                  <option value="ISK">ISK (Investeringssparkonto)</option>
-                  <option value="KF">KF (Kapitalförsäkring)</option>
-                  <option value="AF">AF (Aktie- och Fondkonto)</option>
-                </select>
+              {/* Settings: Account Type, Tax Year, Courtage (grid) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Account Type</label>
+                  <select
+                    className="w-full p-2 border rounded-md"
+                    value={state.taxSettings.accountType || ''}
+                    onChange={(e) => updateTaxSettings({ accountType: e.target.value as any })}
+                  >
+                    <option value="">Select account type</option>
+                    <option value="ISK">ISK (Investeringssparkonto)</option>
+                    <option value="KF">KF (Kapitalförsäkring)</option>
+                    <option value="AF">AF (Aktie- och Fondkonto)</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Tax Year</label>
+                  <select
+                    className="w-full p-2 border rounded-md"
+                    value={state.taxSettings.taxYear}
+                    onChange={(e) => updateTaxSettings({ taxYear: parseInt(e.target.value) as 2025 | 2026 })}
+                  >
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Courtage Class</label>
+                  <select
+                    className="w-full p-2 border rounded-md"
+                    value={state.taxSettings.courtagClass || ''}
+                    onChange={(e) => updateTaxSettings({ courtagClass: e.target.value })}
+                  >
+                    <option value="">Select courtage class</option>
+                    <option value="start">Start</option>
+                    <option value="mini">Mini</option>
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="fastPris">Fast Pris</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Tax Year Selector */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Tax Year</label>
-                <select
-                  className="w-full p-2 border rounded-md"
-                  value={state.taxSettings.taxYear}
-                  onChange={(e) => updateTaxSettings({ taxYear: parseInt(e.target.value) as 2025 | 2026 })}
-                >
-                  <option value="2025">2025</option>
-                  <option value="2026">2026</option>
-                </select>
-              </div>
-
-              {/* Courtage Class Selector */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Courtage Class</label>
-                <select
-                  className="w-full p-2 border rounded-md"
-                  value={state.taxSettings.courtagClass || ''}
-                  onChange={(e) => updateTaxSettings({ courtagClass: e.target.value })}
-                >
-                  <option value="">Select courtage class</option>
-                  <option value="start">Start</option>
-                  <option value="mini">Mini</option>
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="fastPris">Fast Pris</option>
-                </select>
-              </div>
-
-              {/* Tax Calculation Display */}
+              {/* Section: Tax Summary */}
               {state.taxSettings.accountType && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Tax Calculation</CardTitle>
+                    <CardTitle className="text-base">Tax Summary</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {isLoadingTax ? (
@@ -963,7 +955,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                           </div>
                           <div>
                             <div className="text-sm text-muted-foreground">Effective Tax Rate</div>
-                            <div className="font-medium">{formatPercent(taxCalculation.effectiveTaxRate)}</div>
+                            <div className="font-medium">{formatPercent((taxCalculation.effectiveTaxRate ?? 0) / 100)}</div>
                           </div>
                         </div>
                         {taxCalculation.afterTaxReturn !== undefined && portfolioMetrics && (
@@ -980,11 +972,11 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 </Card>
               )}
 
-              {/* Transaction Costs Display */}
+              {/* Section: Total & Ongoing Costs (no cost-optimization suggestion panel) */}
               {state.taxSettings.courtagClass && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Transaction Costs</CardTitle>
+                    <CardTitle className="text-base">Total & Ongoing Costs</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {isLoadingCosts ? (
@@ -1012,17 +1004,6 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                             <div className="font-medium text-lg">{transactionCosts.totalFirstYearCost.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
                           </div>
                         </div>
-                        {transactionCosts.costOptimization && transactionCosts.costOptimization.recommendedClass && (
-                          <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertDescription>
-                              Recommended: {transactionCosts.costOptimization.recommendedClass} class
-                              {transactionCosts.costOptimization.potentialSavings > 0 && (
-                                <span> (Save {transactionCosts.costOptimization.potentialSavings.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK/year)</span>
-                              )}
-                            </AlertDescription>
-                          </Alert>
-                        )}
                       </div>
                     ) : (
                       <div className="text-sm text-muted-foreground">No cost calculation available</div>
@@ -1030,6 +1011,23 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </CardContent>
                 </Card>
               )}
+
+              {/* 5-Year Projection with Tax Drag (three regression-based lines) */}
+              <FiveYearProjectionChart
+                weights={state.constructedPortfolio.length > 0
+                  ? state.constructedPortfolio.reduce((acc, s) => {
+                      acc[s.symbol] = s.allocation / 100;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  : {}}
+                capital={capital}
+                accountType={state.taxSettings.accountType}
+                taxYear={state.taxSettings.taxYear}
+                courtageClass={state.taxSettings.courtagClass}
+                expectedReturn={portfolioMetrics?.expectedReturn ?? 0.08}
+                risk={portfolioMetrics?.risk ?? 0.15}
+                rebalancingFrequency="quarterly"
+              />
 
               {/* Export Button */}
               <Button

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 Transaction Cost Calculator
-Implements Avanza courtage calculation logic for different courtage classes
+Implements Avanza courtage calculation logic for different courtage classes.
+
+Source-of-truth: Avanza courtage tiers and thresholds (check avanza.se for current rates).
+PARAMETERS_AS_OF: 2025-01 (update when Avanza changes courtage; run tests to flag outdated params).
 """
 
 import logging
@@ -9,6 +12,9 @@ from typing import Dict, List, Optional
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+# Single source-of-truth date for parameter validity
+PARAMETERS_AS_OF = "2025-01"
 
 
 class CourtageClass(str, Enum):
@@ -22,8 +28,8 @@ class CourtageClass(str, Enum):
 
 class AvanzaCourtageCalculator:
     """
-    Calculates Avanza courtage (transaction costs) for different courtage classes
-    Based on Avanza's courtage rules
+    Calculates Avanza courtage (transaction costs) for different courtage classes.
+    Based on Avanza's courtage rules (avanza.se).
     """
     
     # Courtage rules by class

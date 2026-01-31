@@ -1,0 +1,19 @@
+{
+  "scripts/test_all_scenarios_performance.py::test_covid19_scenario": true,
+  "scripts/test_all_scenarios_performance.py::test_2008_crisis_scenario": true,
+  "scripts/test_all_scenarios_performance.py::test_what_if_scenario": true,
+  "scripts/test_all_scenarios_performance.py::test_hypothetical_scenario": true,
+  "scripts/test_all_stress_scenarios.py::test_endpoint": true,
+  "scripts/test_all_stress_scenarios.py::test_scenario": true,
+  "scripts/test_all_stress_scenarios.py::test_what_if": true,
+  "scripts/test_all_stress_scenarios.py::test_hypothetical": true,
+  "scripts/test_stress_test_accuracy.py::test_covid19_scenario": true,
+  "scripts/test_stress_test_accuracy.py::test_what_if_scenario": true,
+  "scripts/test_stress_test_accuracy.py::test_hypothetical_scenario": true,
+  "scripts/test_stress_test_integration.py::test_endpoint": true,
+  "scripts/test_stress_test_integration.py::test_stress_test_basic": true,
+  "scripts/test_stress_test_integration.py::test_stress_test_both_scenarios": true,
+  "scripts/test_stress_test_integration.py::test_what_if_scenario": true,
+  "scripts/test_stress_test_integration.py::test_hypothetical_scenario": true,
+  "scripts/test_stress_test_portfolio_forwarding.py::test_stress_test_endpoint": true
+}

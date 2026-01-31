@@ -23,12 +23,43 @@ interface ScreeningData {
   knowledge: 'beginner' | 'intermediate' | 'advanced' | null;
 }
 
-// Question Interface
+/**
+ * SCREENING QUESTIONS: Implemented in UI (lines 724-823)
+ * - S1: Age group (under-19 vs above-19) - maxScore: 0, construct: 'age_screening'
+ * - S2: Investment experience (0-2, 3-5, 6-10, 10+) - maxScore: 0, construct: 'experience_screening'
+ * - S3: Investment knowledge (beginner, intermediate, advanced) - maxScore: 0, construct: 'knowledge_screening'
+ * These are NOT scored but determine question routing logic.
+ */
+
+// Question Interface with Metadata for Scoring
 interface Question {
+  // Core identifiers
   id: string;
+  
+  // NEW: Grouping for scoring pipeline
+  group: 'MPT' | 'PROSPECT' | 'SCREENING';
+  
+  // Type classification (legacy compatibility)
   type: 'mpt' | 'prospect' | 'storyline';
+  
+  // Question text
   question: string;
-  options?: Array<{ value: string; text: string; score: number }>;
+  text?: string; // Alias for question (optional)
+  
+  // NEW: Scoring metadata (required for proper normalization)
+  maxScore: number;  // Maximum points for this question
+  construct: string; // Psychological construct being measured (e.g., 'loss_aversion', 'time_horizon')
+  difficulty?: 'low' | 'medium' | 'high'; // Optional difficulty indicator
+  
+  // Answer options (enhanced structure with backward compatibility)
+  options?: Array<{
+    label?: string;  // Display text (preferred for new questions)
+    value: number;   // Numeric value for scoring (1-5 or 1-4) - MUST be number for proper normalization
+    text: string;    // Legacy text field (backward compatibility)
+    score: number;   // Legacy score field (backward compatibility)
+  }>;
+  
+  // Optional UI configurations
   sliderConfig?: {
     min: number;
     max: number;
@@ -43,6 +74,8 @@ interface Question {
 interface RiskResult {
   raw_score: number;
   normalized_score: number;
+  normalized_mpt?: number;
+  normalized_prospect?: number;
   risk_category: RiskProfile;
   color_code: string;
 }
@@ -251,37 +284,48 @@ const GAMIFIED_STORYLINE: StorylineNode[] = [
   }
 ];
 
-// MPT Question Pool (Modern Portfolio Theory - Factual, quantitative items)
+// MPT Question Pool (Modern Portfolio Theory - 15 questions, all 1-5 scale)
+// Total maxScore: 75 (15 × 5)
 const MPT_QUESTIONS: Question[] = [
   {
-    id: 'mpt-1',
+    id: 'M1',
+    group: 'MPT',
     type: 'mpt',
-    question: "You expect a long time horizon; how would you allocate between stocks and bonds?",
+    question: "How would you prefer to allocate your investments over a long time horizon?",
+    text: "How would you prefer to allocate your investments over a long time horizon?",
+    maxScore: 5,
+    construct: 'time_horizon',
+    difficulty: 'low',
     options: [
-      { value: '1', text: '100% bonds', score: 1 },
-      { value: '2', text: '75% bonds, 25% stocks', score: 2 },
-      { value: '3', text: '50% bonds, 50% stocks', score: 3 },
-      { value: '4', text: '25% bonds, 75% stocks', score: 4 },
-      { value: '5', text: '100% stocks', score: 5 }
+      { label: 'All in stable, low-risk assets', value: 1, text: 'All in stable, low-risk assets', score: 1 },
+      { label: 'Mostly stable with some growth investments', value: 2, text: 'Mostly stable with some growth investments', score: 2 },
+      { label: 'Balanced mix of stable and growth', value: 3, text: 'Balanced mix of stable and growth', score: 3 },
+      { label: 'Mostly growth with some stable assets', value: 4, text: 'Mostly growth with some stable assets', score: 4 },
+      { label: 'All in high-growth investments', value: 5, text: 'All in high-growth investments', score: 5 }
     ],
     sliderConfig: {
       min: 1,
       max: 5,
       step: 1,
-      labels: { min: '100% Bonds', max: '100% Stocks' }
+      labels: { min: 'All Stable', max: 'All Growth' }
     },
-    gamifiedText: "Imagine you are saving for your future! How would you split your money between safe bonds and exciting stocks?"
+    gamifiedText: "If you were building a team for a long adventure, would you pick all defenders, or mostly attackers?"
   },
   {
-    id: 'mpt-2',
+    id: 'M2',
+    group: 'MPT',
     type: 'mpt',
     question: "What is your preferred investment time horizon?",
+    text: "What is your preferred investment time horizon?",
+    maxScore: 5,
+    construct: 'time_horizon',
+    difficulty: 'low',
     options: [
-      { value: '1', text: 'Less than 2 years', score: 1 },
-      { value: '2', text: '2-5 years', score: 2 },
-      { value: '3', text: '5-10 years', score: 3 },
-      { value: '4', text: '10-20 years', score: 4 },
-      { value: '5', text: 'More than 20 years', score: 5 }
+      { label: 'Less than 2 years', value: 1, text: 'Less than 2 years', score: 1 },
+      { label: '2-5 years', value: 2, text: '2-5 years', score: 2 },
+      { label: '5-10 years', value: 3, text: '5-10 years', score: 3 },
+      { label: '10-20 years', value: 4, text: '10-20 years', score: 4 },
+      { label: 'More than 20 years', value: 5, text: 'More than 20 years', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -292,15 +336,20 @@ const MPT_QUESTIONS: Question[] = [
     gamifiedText: "How long do you want to keep your money invested? Think of it like planting a tree - how long until you want to see it grow big?"
   },
   {
-    id: 'mpt-3',
+    id: 'M3',
+    group: 'MPT',
     type: 'mpt',
     question: "How much volatility can you tolerate in your portfolio?",
+    text: "How much volatility can you tolerate in your portfolio?",
+    maxScore: 5,
+    construct: 'volatility_tolerance',
+    difficulty: 'low',
     options: [
-      { value: '1', text: 'Very low - I prefer stable returns', score: 1 },
-      { value: '2', text: 'Low - some ups and downs are okay', score: 2 },
-      { value: '3', text: 'Moderate - I can handle regular fluctuations', score: 3 },
-      { value: '4', text: "High - I am comfortable with significant swings", score: 4 },
-      { value: '5', text: 'Very high - I thrive on market excitement', score: 5 }
+      { label: 'Very low - I prefer stable returns', value: 1, text: 'Very low - I prefer stable returns', score: 1 },
+      { label: 'Low - some ups and downs are okay', value: 2, text: 'Low - some ups and downs are okay', score: 2 },
+      { label: 'Moderate - I can handle regular fluctuations', value: 3, text: 'Moderate - I can handle regular fluctuations', score: 3 },
+      { label: "High - I am comfortable with significant swings", value: 4, text: "High - I am comfortable with significant swings", score: 4 },
+      { label: 'Very high - I thrive on market excitement', value: 5, text: 'Very high - I thrive on market excitement', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -311,15 +360,20 @@ const MPT_QUESTIONS: Question[] = [
     gamifiedText: "Think of your money like a roller coaster! How bumpy of a ride are you okay with?"
   },
   {
-    id: 'mpt-4',
+    id: 'M4',
+    group: 'MPT',
     type: 'mpt',
     question: "What percentage of your total savings are you planning to invest?",
+    text: "What percentage of your total savings are you planning to invest?",
+    maxScore: 5,
+    construct: 'capital_allocation',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'Less than 10%', score: 1 },
-      { value: '2', text: '10-25%', score: 2 },
-      { value: '3', text: '25-50%', score: 3 },
-      { value: '4', text: '50-75%', score: 4 },
-      { value: '5', text: 'More than 75%', score: 5 }
+      { label: 'Less than 10%', value: 1, text: 'Less than 10%', score: 1 },
+      { label: '10-25%', value: 2, text: '10-25%', score: 2 },
+      { label: '25-50%', value: 3, text: '25-50%', score: 3 },
+      { label: '50-75%', value: 4, text: '50-75%', score: 4 },
+      { label: 'More than 75%', value: 5, text: 'More than 75%', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -330,15 +384,20 @@ const MPT_QUESTIONS: Question[] = [
     gamifiedText: "Out of all your savings, how much do you want to put into investments? Like deciding how much of your allowance to save vs. spend!"
   },
   {
-    id: 'mpt-5',
+    id: 'M5',
+    group: 'MPT',
     type: 'mpt',
     question: "How important is it that your investments provide steady income?",
+    text: "How important is it that your investments provide steady income?",
+    maxScore: 5,
+    construct: 'income_requirement',
+    difficulty: 'low',
     options: [
-      { value: '1', text: 'Extremely important - I need regular income', score: 1 },
-      { value: '2', text: 'Very important', score: 2 },
-      { value: '3', text: 'Somewhat important', score: 3 },
-      { value: '4', text: 'Not very important', score: 4 },
-      { value: '5', text: 'Not important - I focus on growth', score: 5 }
+      { label: 'Extremely important - I need regular income', value: 1, text: 'Extremely important - I need regular income', score: 1 },
+      { label: 'Very important', value: 2, text: 'Very important', score: 2 },
+      { label: 'Somewhat important', value: 3, text: 'Somewhat important', score: 3 },
+      { label: 'Not very important', value: 4, text: 'Not very important', score: 4 },
+      { label: 'Not important - I focus on growth', value: 5, text: 'Not important - I focus on growth', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -349,15 +408,20 @@ const MPT_QUESTIONS: Question[] = [
     gamifiedText: "Do you want your investments to give you regular money (like an allowance) or just grow bigger over time?"
   },
   {
-    id: 'mpt-6',
+    id: 'M6',
+    group: 'MPT',
     type: 'mpt',
     question: "What is your primary investment goal?",
+    text: "What is your primary investment goal?",
+    maxScore: 5,
+    construct: 'capital_preservation',
+    difficulty: 'low',
     options: [
-      { value: '1', text: 'Capital preservation', score: 1 },
-      { value: '2', text: 'Steady income', score: 2 },
-      { value: '3', text: 'Balanced growth', score: 3 },
-      { value: '4', text: 'Growth with some risk', score: 4 },
-      { value: '5', text: 'Maximum growth potential', score: 5 }
+      { label: 'Capital preservation', value: 1, text: 'Capital preservation', score: 1 },
+      { label: 'Steady income', value: 2, text: 'Steady income', score: 2 },
+      { label: 'Balanced growth', value: 3, text: 'Balanced growth', score: 3 },
+      { label: 'Growth with some risk', value: 4, text: 'Growth with some risk', score: 4 },
+      { label: 'Maximum growth potential', value: 5, text: 'Maximum growth potential', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -368,15 +432,20 @@ const MPT_QUESTIONS: Question[] = [
     gamifiedText: "What is your main goal? Keep your money safe, get regular payments, or make it grow as much as possible?"
   },
   {
-    id: 'mpt-7',
+    id: 'M7',
+    group: 'MPT',
     type: 'mpt',
     question: "How do you plan to use your investment returns?",
+    text: "How do you plan to use your investment returns?",
+    maxScore: 5,
+    construct: 'return_utilization',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'Immediate spending needs', score: 1 },
-      { value: '2', text: 'Regular living expenses', score: 2 },
-      { value: '3', text: 'Supplemental income', score: 3 },
-      { value: '4', text: 'Future large purchases', score: 4 },
-      { value: '5', text: 'Long-term wealth building', score: 5 }
+      { label: 'Immediate spending needs', value: 1, text: 'Immediate spending needs', score: 1 },
+      { label: 'Regular living expenses', value: 2, text: 'Regular living expenses', score: 2 },
+      { label: 'Supplemental income', value: 3, text: 'Supplemental income', score: 3 },
+      { label: 'Future large purchases', value: 4, text: 'Future large purchases', score: 4 },
+      { label: 'Long-term wealth building', value: 5, text: 'Long-term wealth building', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -387,15 +456,20 @@ const MPT_QUESTIONS: Question[] = [
     gamifiedText: "What will you do with the money you make? Spend it right away or let it grow for your future?"
   },
   {
-    id: 'mpt-8',
+    id: 'M8',
+    group: 'MPT',
     type: 'mpt',
     question: "What is your reaction to market downturns?",
+    text: "What is your reaction to market downturns?",
+    maxScore: 5,
+    construct: 'market_reaction',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'I would sell immediately', score: 1 },
-      { value: '2', text: 'I would be very concerned', score: 2 },
-      { value: '3', text: 'I would be worried but hold', score: 3 },
-      { value: '4', text: 'I would view it as temporary', score: 4 },
-      { value: '5', text: 'I would see it as opportunity', score: 5 }
+      { label: 'I would sell immediately', value: 1, text: 'I would sell immediately', score: 1 },
+      { label: 'I would be very concerned', value: 2, text: 'I would be very concerned', score: 2 },
+      { label: 'I would be worried but hold', value: 3, text: 'I would be worried but hold', score: 3 },
+      { label: 'I would view it as temporary', value: 4, text: 'I would view it as temporary', score: 4 },
+      { label: 'I would see it as opportunity', value: 5, text: 'I would see it as opportunity', score: 5 }
     ],
     sliderConfig: {
       min: 1,
@@ -404,52 +478,240 @@ const MPT_QUESTIONS: Question[] = [
       labels: { min: 'Sell Fast', max: 'Buy More' }
     },
     gamifiedText: "When the market goes down (like when your favorite game price drops), what would you do?"
-  }
-];
-
-// Prospect Theory Question Pool (Behavioral, loss-aversion scenarios)
-const PROSPECT_QUESTIONS: Question[] = [
+  },
   {
-    id: 'prospect-1',
-    type: 'prospect',
-    question: "You can take a guaranteed 5,000 SEK or a 75% chance at 7,000 SEK; which do you choose?",
+    id: 'M9',
+    group: 'MPT',
+    type: 'mpt',
+    question: "How many different types of investments would you prefer to hold?",
+    text: "How many different types of investments would you prefer to hold?",
+    maxScore: 5,
+    construct: 'diversification_preference',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'Guaranteed 5,000 SEK', score: 1 },
-      { value: '2', text: '75% chance at 7,000 SEK', score: 4 }
+      { label: 'Just one or two (keep it simple)', value: 1, text: 'Just one or two (keep it simple)', score: 1 },
+      { label: '3-5 different types', value: 2, text: '3-5 different types', score: 2 },
+      { label: '6-10 different types', value: 3, text: '6-10 different types', score: 3 },
+      { label: '11-20 different types', value: 4, text: '11-20 different types', score: 4 },
+      { label: 'As many as possible (maximum diversification)', value: 5, text: 'As many as possible (maximum diversification)', score: 5 }
     ],
     sliderConfig: {
       min: 1,
-      max: 2,
+      max: 5,
+      step: 1,
+      labels: { min: 'Few Investments', max: 'Many Investments' }
+    },
+    gamifiedText: "Would you rather have a few favorite games or a huge collection of different games?"
+  },
+  {
+    id: 'M10',
+    group: 'MPT',
+    type: 'mpt',
+    question: "How quickly might you need access to your invested money?",
+    text: "How quickly might you need access to your invested money?",
+    maxScore: 5,
+    construct: 'liquidity_constraint',
+    difficulty: 'low',
+    options: [
+      { label: 'Within days (need immediate access)', value: 1, text: 'Within days (need immediate access)', score: 1 },
+      { label: 'Within months (short-term access)', value: 2, text: 'Within months (short-term access)', score: 2 },
+      { label: 'Within 1-2 years', value: 3, text: 'Within 1-2 years', score: 3 },
+      { label: 'Within 3-5 years', value: 4, text: 'Within 3-5 years', score: 4 },
+      { label: 'Not for 5+ years (can lock it up)', value: 5, text: 'Not for 5+ years (can lock it up)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Need Soon', max: 'Long Term' }
+    },
+    gamifiedText: "If you saved your allowance, would you want to spend it soon or save it for something big later?"
+  },
+  {
+    id: 'M11',
+    group: 'MPT',
+    type: 'mpt',
+    question: "What percentage of your portfolio would you put in your single best investment idea?",
+    text: "What percentage of your portfolio would you put in your single best investment idea?",
+    maxScore: 5,
+    construct: 'concentration_risk',
+    difficulty: 'medium',
+    options: [
+      { label: 'Less than 5% (very diversified)', value: 1, text: 'Less than 5% (very diversified)', score: 1 },
+      { label: '5-10%', value: 2, text: '5-10%', score: 2 },
+      { label: '10-20%', value: 3, text: '10-20%', score: 3 },
+      { label: '20-40%', value: 4, text: '20-40%', score: 4 },
+      { label: 'More than 40% (concentrated bet)', value: 5, text: 'More than 40% (concentrated bet)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Very Spread Out', max: 'Concentrated' }
+    },
+    gamifiedText: "If you had 100 coins, how many would you bet on your favorite team winning?"
+  },
+  {
+    id: 'M12',
+    group: 'MPT',
+    type: 'mpt',
+    question: "If your investments dropped 20%, how long would you be willing to wait for recovery?",
+    text: "If your investments dropped 20%, how long would you be willing to wait for recovery?",
+    maxScore: 5,
+    construct: 'recovery_tolerance',
+    difficulty: 'medium',
+    options: [
+      { label: 'Less than 6 months', value: 1, text: 'Less than 6 months', score: 1 },
+      { label: '6-12 months', value: 2, text: '6-12 months', score: 2 },
+      { label: '1-2 years', value: 3, text: '1-2 years', score: 3 },
+      { label: '2-5 years', value: 4, text: '2-5 years', score: 4 },
+      { label: '5+ years (as long as needed)', value: 5, text: '5+ years (as long as needed)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Quick Recovery', max: 'Patient' }
+    },
+    gamifiedText: "If you lost a game level, how long would you keep trying to beat it?"
+  },
+  {
+    id: 'M13',
+    group: 'MPT',
+    type: 'mpt',
+    question: "How often would you want to review and adjust your investments?",
+    text: "How often would you want to review and adjust your investments?",
+    maxScore: 5,
+    construct: 'rebalancing_frequency',
+    difficulty: 'low',
+    options: [
+      { label: 'Daily or weekly (active management)', value: 1, text: 'Daily or weekly (active management)', score: 1 },
+      { label: 'Monthly', value: 2, text: 'Monthly', score: 2 },
+      { label: 'Quarterly', value: 3, text: 'Quarterly', score: 3 },
+      { label: 'Annually', value: 4, text: 'Annually', score: 4 },
+      { label: 'Rarely or never (set and forget)', value: 5, text: 'Rarely or never (set and forget)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Check Often', max: 'Set & Forget' }
+    },
+    gamifiedText: "Would you check your game progress every day, or just play and forget about stats?"
+  },
+  {
+    id: 'M14',
+    group: 'MPT',
+    type: 'mpt',
+    question: "How important is minimizing taxes on your investment gains?",
+    text: "How important is minimizing taxes on your investment gains?",
+    maxScore: 5,
+    construct: 'tax_sensitivity',
+    difficulty: 'high',
+    options: [
+      { label: 'Extremely important (tax-optimized strategy)', value: 1, text: 'Extremely important (tax-optimized strategy)', score: 1 },
+      { label: 'Very important', value: 2, text: 'Very important', score: 2 },
+      { label: 'Somewhat important', value: 3, text: 'Somewhat important', score: 3 },
+      { label: 'Not very important', value: 4, text: 'Not very important', score: 4 },
+      { label: 'Not important (focus on returns)', value: 5, text: 'Not important (focus on returns)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Tax Matters', max: 'Returns Matter' }
+    },
+    gamifiedText: "Would you rather keep more of your winnings now, or potentially win bigger later?"
+  },
+  {
+    id: 'M15',
+    group: 'MPT',
+    type: 'mpt',
+    question: "How much would you sacrifice returns to invest according to your values (environmental, social, ethical)?",
+    text: "How much would you sacrifice returns to invest according to your values (environmental, social, ethical)?",
+    maxScore: 5,
+    construct: 'values_alignment',
+    difficulty: 'medium',
+    options: [
+      { label: 'Significant sacrifice (values first)', value: 1, text: 'Significant sacrifice (values first)', score: 1 },
+      { label: 'Moderate sacrifice', value: 2, text: 'Moderate sacrifice', score: 2 },
+      { label: 'Small sacrifice', value: 3, text: 'Small sacrifice', score: 3 },
+      { label: 'Minimal sacrifice', value: 4, text: 'Minimal sacrifice', score: 4 },
+      { label: 'No sacrifice (returns only)', value: 5, text: 'No sacrifice (returns only)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Values First', max: 'Returns First' }
+    },
+    gamifiedText: "Would you rather support your favorite charity or win more prizes in a game?"
+  }
+];
+
+// Prospect Theory Question Pool (Behavioral finance - 12 questions, mixed scales)
+// Total maxScore: 49 (11 questions × 4 + 1 question × 5)
+const PROSPECT_QUESTIONS: Question[] = [
+  {
+    id: 'PT-1',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "You can take a guaranteed 5,000 SEK or a 75% chance at 7,000 SEK; which do you choose?",
+    text: "You can take a guaranteed 5,000 SEK or a 75% chance at 7,000 SEK; which do you choose?",
+    maxScore: 4,
+    construct: 'certainty_effect',
+    difficulty: 'low',
+    options: [
+      { label: 'Guaranteed 5,000 SEK', value: 1, text: 'Guaranteed 5,000 SEK', score: 1 },
+      { label: 'Probably take guaranteed 5,000 SEK', value: 2, text: 'Probably take guaranteed 5,000 SEK', score: 2 },
+      { label: 'Probably take 75% chance at 7,000 SEK', value: 3, text: 'Probably take 75% chance at 7,000 SEK', score: 3 },
+      { label: '75% chance at 7,000 SEK', value: 4, text: '75% chance at 7,000 SEK', score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
       step: 1,
       labels: { min: 'Guaranteed 5,000 SEK', max: 'Risk 7,000 SEK' }
     },
     gamifiedText: "You can either get 5,000 SEK for sure, or take a chance to get 7,000 SEK (but you might get nothing). What do you pick?"
   },
   {
-    id: 'prospect-2',
+    id: 'PT-2',
+    group: 'PROSPECT',
     type: 'prospect',
     question: "You have 10,000 SEK invested. Would you prefer a guaranteed loss of 2,000 SEK or a 50% chance to lose 4,000 SEK?",
+    text: "You have 10,000 SEK invested. Would you prefer a guaranteed loss of 2,000 SEK or a 50% chance to lose 4,000 SEK?",
+    maxScore: 4,
+    construct: 'loss_aversion',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'Guaranteed loss of 2,000 SEK', score: 2 },
-      { value: '2', text: '50% chance to lose 4,000 SEK', score: 1 }
+      { label: 'Definitely take guaranteed loss of 2,000 SEK', value: 1, text: 'Definitely take guaranteed loss of 2,000 SEK', score: 1 },
+      { label: 'Probably take guaranteed loss of 2,000 SEK', value: 2, text: 'Probably take guaranteed loss of 2,000 SEK', score: 2 },
+      { label: 'Probably take 50% chance to lose 4,000 SEK', value: 3, text: 'Probably take 50% chance to lose 4,000 SEK', score: 3 },
+      { label: 'Definitely take 50% chance to lose 4,000 SEK', value: 4, text: 'Definitely take 50% chance to lose 4,000 SEK', score: 4 }
     ],
     sliderConfig: {
       min: 1,
-      max: 2,
+      max: 4,
       step: 1,
       labels: { min: 'Lose 2,000 SEK', max: 'Risk 4,000 SEK' }
     },
     gamifiedText: "You have 10,000 SEK. Would you rather lose 2,000 SEK for sure, or take a chance to lose 4,000 SEK (but you might lose nothing)?"
   },
   {
-    id: 'prospect-3',
+    id: 'PT-3',
+    group: 'PROSPECT',
     type: 'prospect',
     question: "Your portfolio gained 30% this year. Would you:",
+    text: "Your portfolio gained 30% this year. Would you:",
+    maxScore: 4,
+    construct: 'regret_aversion',
+    difficulty: 'low',
     options: [
-      { value: '1', text: 'Sell everything to lock in gains', score: 1 },
-      { value: '2', text: 'Sell some to take partial profits', score: 2 },
-      { value: '3', text: 'Hold and wait', score: 3 },
-      { value: '4', text: 'Invest even more', score: 4 }
+      { label: 'Sell everything to lock in gains', value: 1, text: 'Sell everything to lock in gains', score: 1 },
+      { label: 'Sell some to take partial profits', value: 2, text: 'Sell some to take partial profits', score: 2 },
+      { label: 'Hold and wait', value: 3, text: 'Hold and wait', score: 3 },
+      { label: 'Invest even more', value: 4, text: 'Invest even more', score: 4 }
     ],
     sliderConfig: {
       min: 1,
@@ -460,30 +722,42 @@ const PROSPECT_QUESTIONS: Question[] = [
     gamifiedText: "Your investments just made 30% more money! What would you do? Sell everything, sell some, keep it, or invest even more?"
   },
   {
-    id: 'prospect-4',
+    id: 'PT-4',
+    group: 'PROSPECT',
     type: 'prospect',
     question: "You are offered two investment options: Option A has a 90% chance to return 10% and 10% chance to lose 5%. Option B has a 50% chance to return 20% and 50% chance to lose 10%. Which do you choose?",
+    text: "You are offered two investment options: Option A has a 90% chance to return 10% and 10% chance to lose 5%. Option B has a 50% chance to return 20% and 50% chance to lose 10%. Which do you choose?",
+    maxScore: 4,
+    construct: 'probability_weighting',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'Option A (safer)', score: 1 },
-      { value: '2', text: 'Option B (riskier)', score: 4 }
+      { label: 'Definitely Option A (safer)', value: 1, text: 'Definitely Option A (safer)', score: 1 },
+      { label: 'Probably Option A', value: 2, text: 'Probably Option A', score: 2 },
+      { label: 'Probably Option B (riskier)', value: 3, text: 'Probably Option B (riskier)', score: 3 },
+      { label: 'Definitely Option B (riskier)', value: 4, text: 'Definitely Option B (riskier)', score: 4 }
     ],
     sliderConfig: {
       min: 1,
-      max: 2,
+      max: 4,
       step: 1,
       labels: { min: 'Safe Option A', max: 'Risky Option B' }
     },
     gamifiedText: "You have two choices: A safe option that almost always wins a little, or a risky option that might win big or lose big. Which do you pick?"
   },
   {
-    id: 'prospect-5',
+    id: 'PT-5',
+    group: 'PROSPECT',
     type: 'prospect',
     question: "If you could invest in one sector, which would you choose?",
+    text: "If you could invest in one sector, which would you choose?",
+    maxScore: 4,
+    construct: 'sector_preference',
+    difficulty: 'low',
     options: [
-      { value: '1', text: 'Utilities (stable, low growth)', score: 1 },
-      { value: '2', text: 'Consumer staples (steady growth)', score: 2 },
-      { value: '3', text: 'Technology (high growth, high risk)', score: 4 },
-      { value: '4', text: 'Cryptocurrency (highest risk/reward)', score: 5 }
+      { label: 'Utilities (stable, low growth)', value: 1, text: 'Utilities (stable, low growth)', score: 1 },
+      { label: 'Consumer staples (steady growth)', value: 2, text: 'Consumer staples (steady growth)', score: 2 },
+      { label: 'Technology (high growth, high risk)', value: 3, text: 'Technology (high growth, high risk)', score: 3 },
+      { label: 'Cryptocurrency (highest risk/reward)', value: 4, text: 'Cryptocurrency (highest risk/reward)', score: 4 }
     ],
     sliderConfig: {
       min: 1,
@@ -494,14 +768,19 @@ const PROSPECT_QUESTIONS: Question[] = [
     gamifiedText: "Which type of investment sounds most exciting to you? Safe utilities, steady consumer goods, exciting tech, or wild crypto?"
   },
   {
-    id: 'prospect-6',
+    id: 'PT-6',
+    group: 'PROSPECT',
     type: 'prospect',
     question: "How would you react if your investment lost 20% in one month?",
+    text: "How would you react if your investment lost 20% in one month?",
+    maxScore: 4,
+    construct: 'drawdown_behavior',
+    difficulty: 'medium',
     options: [
-      { value: '1', text: 'Sell immediately to stop losses', score: 1 },
-      { value: '2', text: 'Sell some to reduce exposure', score: 2 },
-      { value: '3', text: 'Hold and wait for recovery', score: 3 },
-      { value: '4', text: 'Buy more while it\'s cheap', score: 4 }
+      { label: 'Sell immediately to stop losses', value: 1, text: 'Sell immediately to stop losses', score: 1 },
+      { label: 'Sell some to reduce exposure', value: 2, text: 'Sell some to reduce exposure', score: 2 },
+      { label: 'Hold and wait for recovery', value: 3, text: 'Hold and wait for recovery', score: 3 },
+      { label: "Buy more while it's cheap", value: 4, text: "Buy more while it's cheap", score: 4 }
     ],
     sliderConfig: {
       min: 1,
@@ -510,8 +789,233 @@ const PROSPECT_QUESTIONS: Question[] = [
       labels: { min: 'Sell All', max: 'Buy More' }
     },
     gamifiedText: "Your investment just lost 20%! Do you panic and sell, sell some, wait it out, or buy more while it's cheap?"
+  },
+  {
+    id: 'PT-7',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "You bought a stock at 1,000 SEK. It's now at 800 SEK, but analysts say it's worth 600 SEK. What do you do?",
+    text: "You bought a stock at 1,000 SEK. It's now at 800 SEK, but analysts say it's worth 600 SEK. What do you do?",
+    maxScore: 4,
+    construct: 'anchoring_bias',
+    difficulty: 'medium',
+    options: [
+      { label: 'Sell immediately (avoid further loss)', value: 1, text: 'Sell immediately (avoid further loss)', score: 1 },
+      { label: 'Sell when it gets back to 1,000 SEK', value: 2, text: 'Sell when it gets back to 1,000 SEK', score: 2 },
+      { label: 'Hold and re-evaluate quarterly', value: 3, text: 'Hold and re-evaluate quarterly', score: 3 },
+      { label: 'Buy more at the lower price', value: 4, text: 'Buy more at the lower price', score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
+      step: 1,
+      labels: { min: 'Sell Now', max: 'Buy More' }
+    },
+    gamifiedText: "You bought a game item for 1,000 coins. It's now worth 800, but people say it will drop to 600. What do you do?"
+  },
+  {
+    id: 'PT-8',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "You have two investments: One is up 30%, another is down 30%. You need cash. Which do you sell?",
+    text: "You have two investments: One is up 30%, another is down 30%. You need cash. Which do you sell?",
+    maxScore: 5,
+    construct: 'disposition_effect',
+    difficulty: 'high',
+    options: [
+      { label: 'Sell the winner (lock in gains)', value: 1, text: 'Sell the winner (lock in gains)', score: 1 },
+      { label: 'Sell whichever is more overvalued', value: 2, text: 'Sell whichever is more overvalued', score: 2 },
+      { label: 'Sell half of each', value: 3, text: 'Sell half of each', score: 3 },
+      { label: 'Analyze which has better prospects', value: 4, text: 'Analyze which has better prospects', score: 4 },
+      { label: 'Sell the loser (cut losses)', value: 5, text: 'Sell the loser (cut losses)', score: 5 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 5,
+      step: 1,
+      labels: { min: 'Sell Winner', max: 'Sell Loser' }
+    },
+    gamifiedText: "You have two trading cards: one doubled in value, one lost half. You need to sell one. Which?"
+  },
+  {
+    id: 'PT-9',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "After researching a stock for 2 hours, how confident are you in your decision?",
+    text: "After researching a stock for 2 hours, how confident are you in your decision?",
+    maxScore: 4,
+    construct: 'overconfidence_bias',
+    difficulty: 'medium',
+    options: [
+      { label: 'Not very confident (need professional advice)', value: 1, text: 'Not very confident (need professional advice)', score: 1 },
+      { label: 'Somewhat confident', value: 2, text: 'Somewhat confident', score: 2 },
+      { label: 'Quite confident', value: 3, text: 'Quite confident', score: 3 },
+      { label: 'Very confident (trust my research)', value: 4, text: 'Very confident (trust my research)', score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
+      step: 1,
+      labels: { min: 'Need Advice', max: 'Trust Myself' }
+    },
+    gamifiedText: "After practicing a game for 2 hours, how sure are you that you'll win the next match?"
+  },
+  {
+    id: 'PT-10',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "Everyone is buying a trending investment. What's your reaction?",
+    text: "Everyone is buying a trending investment. What's your reaction?",
+    maxScore: 4,
+    construct: 'herd_behavior',
+    difficulty: 'low',
+    options: [
+      { label: 'Avoid it (contrarian approach)', value: 1, text: 'Avoid it (contrarian approach)', score: 1 },
+      { label: 'Be skeptical, wait and see', value: 2, text: 'Be skeptical, wait and see', score: 2 },
+      { label: 'Research first, then maybe join', value: 3, text: 'Research first, then maybe join', score: 3 },
+      { label: "Join immediately (don't miss out)", value: 4, text: "Join immediately (don't miss out)", score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
+      step: 1,
+      labels: { min: 'Avoid', max: 'Join Now' }
+    },
+    gamifiedText: "Everyone at school is playing a new game. Do you download it immediately or wait to see if it's actually good?"
+  },
+  {
+    id: 'PT-11',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "A company had 5 great years. How likely is year 6 to be great?",
+    text: "A company had 5 great years. How likely is year 6 to be great?",
+    maxScore: 4,
+    construct: 'representativeness_bias',
+    difficulty: 'high',
+    options: [
+      { label: 'No more likely than average', value: 1, text: 'No more likely than average', score: 1 },
+      { label: 'Less likely (regression to mean)', value: 2, text: 'Less likely (regression to mean)', score: 2 },
+      { label: 'Somewhat likely', value: 3, text: 'Somewhat likely', score: 3 },
+      { label: 'Very likely (hot streak continues)', value: 4, text: 'Very likely (hot streak continues)', score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
+      step: 1,
+      labels: { min: 'Average Odds', max: 'Hot Streak' }
+    },
+    gamifiedText: "Your friend won 5 games in a row. Do you think they'll win the 6th?"
+  },
+  {
+    id: 'PT-12',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "You inherited a stock worth 50,000 SEK. You wouldn't buy it at this price. Do you keep it?",
+    text: "You inherited a stock worth 50,000 SEK. You wouldn't buy it at this price. Do you keep it?",
+    maxScore: 4,
+    construct: 'endowment_effect',
+    difficulty: 'medium',
+    options: [
+      { label: "Definitely keep it (it's mine now)", value: 1, text: "Definitely keep it (it's mine now)", score: 1 },
+      { label: 'Probably keep it', value: 2, text: 'Probably keep it', score: 2 },
+      { label: 'Probably sell it', value: 3, text: 'Probably sell it', score: 3 },
+      { label: 'Definitely sell it (treat it like cash)', value: 4, text: 'Definitely sell it (treat it like cash)', score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
+      step: 1,
+      labels: { min: 'Keep It', max: 'Sell It' }
+    },
+    gamifiedText: "You got a game skin as a gift. You wouldn't buy it yourself. Do you keep or trade it?"
   }
 ];
+
+/**
+ * VALIDATION FUNCTION - Run this in console to verify question data
+ * Usage: Copy to browser console and run validateQuestions()
+ */
+const validateQuestions = () => {
+  const allQuestions = [...MPT_QUESTIONS, ...PROSPECT_QUESTIONS];
+  const results = {
+    totalCount: allQuestions.length,
+    mptCount: MPT_QUESTIONS.length,
+    prospectCount: PROSPECT_QUESTIONS.length,
+    mptMaxSum: MPT_QUESTIONS.reduce((sum, q) => sum + q.maxScore, 0),
+    prospectMaxSum: PROSPECT_QUESTIONS.reduce((sum, q) => sum + q.maxScore, 0),
+    duplicateIds: [] as string[],
+    missingMetadata: [] as string[],
+    invalidScales: [] as string[],
+    groupErrors: [] as string[]
+  };
+  
+  // Check for duplicate IDs
+  const ids = allQuestions.map(q => q.id);
+  const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+  results.duplicateIds = [...new Set(duplicates)];
+  
+  // Check metadata and scales
+  allQuestions.forEach(q => {
+    // Check required metadata fields
+    if (!q.group || !q.maxScore || !q.construct) {
+      results.missingMetadata.push(q.id);
+    }
+    
+    // Check group matches expected values
+    if (q.id.startsWith('M') && q.group !== 'MPT') {
+      results.groupErrors.push(`${q.id}: Expected group='MPT', got '${q.group}'`);
+    }
+    if (q.id.startsWith('PT') && q.group !== 'PROSPECT') {
+      results.groupErrors.push(`${q.id}: Expected group='PROSPECT', got '${q.group}'`);
+    }
+    
+    // Check option values are sequential
+    if (q.options) {
+      const values = q.options.map(o => o.value).sort((a, b) => a - b);
+      const expected = Array.from({ length: values.length }, (_, i) => i + 1);
+      if (JSON.stringify(values) !== JSON.stringify(expected)) {
+        results.invalidScales.push(`${q.id}: Values are ${values.join(',')}, expected ${expected.join(',')}`);
+      }
+      
+      // Check maxScore matches option count
+      const maxValue = Math.max(...values);
+      if (q.maxScore !== maxValue) {
+        results.invalidScales.push(`${q.id}: maxScore=${q.maxScore} but max option value=${maxValue}`);
+      }
+    }
+  });
+  
+  console.log('=== QUESTION VALIDATION RESULTS ===');
+  console.log(`Total Questions: ${results.totalCount} ${results.totalCount === 27 ? '✅' : '❌ (expected: 27)'}`);
+  console.log(`MPT Questions: ${results.mptCount} ${results.mptCount === 15 ? '✅' : '❌ (expected: 15)'}`);
+  console.log(`Prospect Questions: ${results.prospectCount} ${results.prospectCount === 12 ? '✅' : '❌ (expected: 12)'}`);
+  console.log(`MPT maxScore sum: ${results.mptMaxSum} ${results.mptMaxSum === 75 ? '✅' : '❌ (expected: 75)'}`);
+  console.log(`Prospect maxScore sum: ${results.prospectMaxSum} ${results.prospectMaxSum === 49 ? '✅' : '❌ (expected: 49)'}`);
+  console.log(`Duplicate IDs: ${results.duplicateIds.length === 0 ? '✅ None' : '❌ ' + results.duplicateIds.join(', ')}`);
+  console.log(`Missing Metadata: ${results.missingMetadata.length === 0 ? '✅ None' : '❌ ' + results.missingMetadata.join(', ')}`);
+  console.log(`Group Errors: ${results.groupErrors.length === 0 ? '✅ None' : '❌ ' + results.groupErrors.join('; ')}`);
+  console.log(`Invalid Scales: ${results.invalidScales.length === 0 ? '✅ None' : '❌ ' + results.invalidScales.join('; ')}`);
+  
+  const allPassed = 
+    results.totalCount === 27 &&
+    results.mptCount === 15 &&
+    results.prospectCount === 12 &&
+    results.mptMaxSum === 75 &&
+    results.prospectMaxSum === 49 &&
+    results.duplicateIds.length === 0 &&
+    results.missingMetadata.length === 0 &&
+    results.groupErrors.length === 0 &&
+    results.invalidScales.length === 0;
+    
+  console.log(`\n${allPassed ? '✅ ALL CHECKS PASSED - Ready for Agent 2' : '❌ VALIDATION FAILED - Fix errors before proceeding'}`);
+  return results;
+};
+
+// Export validation function for testing
+if (typeof window !== 'undefined') {
+  (window as any).validateQuestions = validateQuestions;
+}
+import { computeRiskResult } from './riskUtils';
 
 export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }: RiskProfilerProps) => {
   const [step, setStep] = useState<'screening' | 'questions' | 'result'>('screening');
@@ -563,12 +1067,18 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
   const selectQuestions = (mptRatio: number, prospectRatio: number, isUnder19: boolean): Question[] => {
     if (isUnder19) {
       // For under-19 users, use the gamified storyline
-      return GAMIFIED_STORYLINE.map((storyNode, index) => ({
+      // Map storyline to question objects with proper metadata (group, maxScore)
+      return GAMIFIED_STORYLINE.map((storyNode) => ({
         id: storyNode.id,
+        group: 'PROSPECT',
         type: 'storyline' as const,
         question: storyNode.scenario,
+        text: storyNode.scenario,
+        maxScore: 4,
+        construct: 'gamified_scenario',
         options: storyNode.options.map((option, optIndex) => ({
-          value: (optIndex + 1).toString(),
+          label: option.text,
+          value: optIndex + 1,
           text: option.text,
           score: option.score
         })),
@@ -579,19 +1089,23 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
       const totalQuestions = 12;
       const mptCount = Math.round(totalQuestions * mptRatio);
       const prospectCount = totalQuestions - mptCount;
-      
+
+      // Filter by group to ensure metadata-driven selection
+      const mptPool = MPT_QUESTIONS.filter(q => q.group === 'MPT');
+      const prospectPool = PROSPECT_QUESTIONS.filter(q => q.group === 'PROSPECT');
+
       // Shuffle and select MPT questions
-      const shuffledMPT = [...MPT_QUESTIONS].sort(() => Math.random() - 0.5);
+      const shuffledMPT = [...mptPool].sort(() => Math.random() - 0.5);
       const selectedMPT = shuffledMPT.slice(0, mptCount);
-      
+
       // Shuffle and select Prospect Theory questions
-      const shuffledProspect = [...PROSPECT_QUESTIONS].sort(() => Math.random() - 0.5);
+      const shuffledProspect = [...prospectPool].sort(() => Math.random() - 0.5);
       const selectedProspect = shuffledProspect.slice(0, prospectCount);
-      
+
       // Combine and shuffle all questions
       const allQuestions = [...selectedMPT, ...selectedProspect].sort(() => Math.random() - 0.5);
-      
-      // Shuffle options within each question
+
+      // Shuffle options within each question, preserve metadata
       return allQuestions.map(question => ({
         ...question,
         options: question.options ? [...question.options].sort(() => Math.random() - 0.5) : question.options
@@ -638,42 +1152,11 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     }
   };
 
-  // Calculate risk profile
+  // Calculate risk profile (calls top-level computeRiskResult)
   const calculateRiskProfile = () => {
-    const rawScore = Object.values(answers).reduce((sum, score) => sum + score, 0);
-    const maxPossibleScore = selectedQuestions.length * 5;
-    const normalizedScore = (rawScore / maxPossibleScore) * 100;
-    
-    let riskCategory: RiskProfile;
-    let colorCode: string;
-    
-    // Adjusted thresholds to make extreme categories more achievable
-    if (normalizedScore <= 25) {
-      riskCategory = 'very-conservative';
-      colorCode = '#00008B';
-    } else if (normalizedScore <= 40) {
-      riskCategory = 'conservative';
-      colorCode = '#ADD8E6';
-    } else if (normalizedScore <= 60) {
-      riskCategory = 'moderate';
-      colorCode = '#008000';
-    } else if (normalizedScore <= 75) {
-      riskCategory = 'aggressive';
-      colorCode = '#FFA500';
-    } else {
-      riskCategory = 'very-aggressive';
-      colorCode = '#FF0000';
-    }
-    
-    const riskResult: RiskResult = {
-      raw_score: rawScore,
-      normalized_score: normalizedScore,
-      risk_category: riskCategory,
-      color_code: colorCode
-    };
-    
+    const riskResult = computeRiskResult(selectedQuestions, answers);
     setResult(riskResult);
-    onProfileUpdate(riskCategory);
+    onProfileUpdate(riskResult.risk_category);
     setStep('result');
   };
 
@@ -913,16 +1396,17 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                 <RadioGroup
                   value={selectedOptionValues[currentQuestion.id] || ""}
                   onValueChange={(value) => {
-                    const option = currentQuestion.options?.find(o => o.value === value);
+                    const option = currentQuestion.options?.find(o => String(o.value) === String(value));
                     if (option) {
-                      setSelectedOptionValues(prev => ({ ...prev, [currentQuestion.id]: value }));
+                      setSelectedOptionValues(prev => ({ ...prev, [currentQuestion.id]: String(option.value) }));
+                      // Use numeric score for answers (legacy score field kept in arrays)
                       setAnswers(prev => ({ ...prev, [currentQuestion.id]: option.score }));
                     }
                   }}
                 >
                   {currentQuestion.options?.map((option) => (
                     <div key={option.value} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                      <RadioGroupItem value={option.value} id={`q${currentQuestion.id}-${option.value}`} />
+                      <RadioGroupItem value={String(option.value)} id={`q${currentQuestion.id}-${option.value}`} />
                       <Label 
                         htmlFor={`q${currentQuestion.id}-${option.value}`} 
                         className="flex-1 cursor-pointer text-sm"

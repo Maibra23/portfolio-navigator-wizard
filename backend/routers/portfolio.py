@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Body, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Dict, Optional, Any, Literal
+from typing import List, Dict, Optional, Any, Literal, Union
 import logging
 import math
 import json
@@ -24,6 +24,7 @@ from utils.transaction_cost_calculator import AvanzaCourtageCalculator
 from utils.pdf_report_generator import PDFReportGenerator
 from utils.csv_export_generator import CSVExportGenerator
 from utils.shareable_link_generator import ShareableLinkGenerator
+from utils.five_year_projection import run_five_year_projection
 from pypfopt import EfficientFrontier
 from fastapi.responses import Response, StreamingResponse
 import base64
@@ -10122,6 +10123,56 @@ async def estimate_transaction_costs(request: TransactionCostRequest):
         logger.error(f"Error estimating transaction costs: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to estimate transaction costs: {str(e)}")
 
+
+# Five-year projection (regression-based, Sweden tax/costs)
+class FiveYearProjectionRequest(BaseModel):
+    weights: Dict[str, float]  # ticker -> weight (fraction, sum 1)
+    capital: float
+    accountType: Literal["ISK", "KF", "AF"]
+    taxYear: Literal[2025, 2026]
+    courtageClass: Literal["start", "mini", "small", "medium", "fastPris"]
+    expectedReturn: float  # decimal, e.g. 0.08
+    risk: float  # decimal, e.g. 0.15
+    rebalancingFrequency: Literal["monthly", "quarterly", "semi-annual", "annual"] = "quarterly"
+
+
+class FiveYearProjectionResponse(BaseModel):
+    years: List[int]
+    optimistic: List[float]
+    base: List[float]
+    pessimistic: List[float]
+
+
+@router.post("/projection/five-year", response_model=FiveYearProjectionResponse)
+async def projection_five_year(request: FiveYearProjectionRequest):
+    """
+    Five-year portfolio projection with Swedish tax and transaction costs.
+    Returns three regression-based scenarios: optimistic, base, pessimistic.
+    """
+    try:
+        result = run_five_year_projection(
+            initial_capital=request.capital,
+            weights=request.weights,
+            expected_return=request.expectedReturn,
+            risk=request.risk,
+            account_type=request.accountType,
+            tax_year=request.taxYear,
+            courtage_class=request.courtageClass,
+            rebalancing_frequency=request.rebalancingFrequency,
+        )
+        return FiveYearProjectionResponse(
+            years=result["years"],
+            optimistic=result["optimistic"],
+            base=result["base"],
+            pessimistic=result["pessimistic"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error running five-year projection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run projection: {str(e)}")
+
+
 # Pydantic models for tax-adjusted metrics
 class TaxAdjustedMetricsRequest(BaseModel):
     portfolio: List[Dict[str, Any]]  # [{"ticker": "AAPL", "allocation": 0.4}]
@@ -10287,10 +10338,37 @@ async def calculate_tax_adjusted_metrics(request: TaxAdjustedMetricsRequest):
         logger.error(f"Error calculating tax-adjusted metrics: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to calculate tax-adjusted metrics: {str(e)}")
 
+def _normalize_export_portfolio(portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Accept portfolio as list of positions or as { tickers, weights, allocations }; return list of positions (allocation 0-1, ticker set)."""
+    if isinstance(portfolio, list):
+        out = []
+        for pos in portfolio:
+            p = dict(pos)
+            alloc = p.get("allocation", 0.0)
+            if alloc > 1:
+                p["allocation"] = alloc / 100.0
+            if "symbol" in p and "ticker" not in p:
+                p["ticker"] = p["symbol"]
+            out.append(p)
+        return out
+    if isinstance(portfolio, dict) and "allocations" in portfolio:
+        out = []
+        for pos in portfolio["allocations"]:
+            p = dict(pos)
+            alloc = p.get("allocation", 0.0)
+            if alloc > 1:
+                p["allocation"] = alloc / 100.0
+            if "symbol" in p and "ticker" not in p:
+                p["ticker"] = p["symbol"]
+            out.append(p)
+        return out
+    return []
+
 # Pydantic models for PDF export
 class PDFExportRequest(BaseModel):
-    portfolio: List[Dict[str, Any]]
+    portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
     includeSections: Dict[str, bool] = {}
+    optimizationResults: Optional[Dict[str, Any]] = None
     taxData: Optional[Dict[str, Any]] = None
     costData: Optional[Dict[str, Any]] = None
     stressTestResults: Optional[Dict[str, Any]] = None
@@ -10306,7 +10384,7 @@ async def export_pdf(request: PDFExportRequest):
     
     Request:
     {
-        "portfolio": {...},
+        "portfolio": {...} or [ {...}, ... ],
         "includeSections": {
             "optimization": bool,
             "stressTest": bool,
@@ -10327,10 +10405,12 @@ async def export_pdf(request: PDFExportRequest):
     - Content-Type: application/pdf
     """
     try:
+        portfolio_list = _normalize_export_portfolio(request.portfolio)
         # Prepare data for PDF generation
         pdf_data = {
-            "portfolio": request.portfolio,
+            "portfolio": portfolio_list,
             "includeSections": request.includeSections,
+            "optimizationResults": request.optimizationResults,
             "taxData": request.taxData or {},
             "costData": request.costData or {},
             "stressTestResults": request.stressTestResults,
@@ -10358,7 +10438,7 @@ async def export_pdf(request: PDFExportRequest):
 
 # Pydantic models for CSV export
 class CSVExportRequest(BaseModel):
-    portfolio: List[Dict[str, Any]]
+    portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
     taxData: Optional[Dict[str, Any]] = None
     costData: Optional[Dict[str, Any]] = None
     stressTestResults: Optional[Dict[str, Any]] = None
@@ -10397,10 +10477,11 @@ async def export_csv(request: CSVExportRequest):
     """
     try:
         files = []
+        portfolio_list = _normalize_export_portfolio(request.portfolio)
         
         # Generate requested CSV files
-        if "holdings" in request.includeFiles and request.portfolio:
-            holdings_csv = csv_generator.generate_portfolio_holdings_csv(request.portfolio)
+        if "holdings" in request.includeFiles and portfolio_list:
+            holdings_csv = csv_generator.generate_portfolio_holdings_csv(portfolio_list)
             files.append({
                 "filename": "portfolio_holdings.csv",
                 "content": base64.b64encode(holdings_csv.encode('utf-8')).decode('utf-8'),
