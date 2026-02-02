@@ -70,6 +70,10 @@ interface Question {
   };
   gamifiedText?: string;
   storylineData?: StorylineNode;
+  /** Optional note for scoring interpretation (e.g. counterfactual / recency). */
+  scoring_note?: string;
+  /** Optional note for UI (e.g. special framing). */
+  ui_note?: string;
 }
 
 // Risk Profile Result Interface
@@ -101,37 +105,37 @@ interface StorylineNode {
 const GAMIFIED_STORYLINE: StorylineNode[] = [
   {
     id: 'story-1',
-    scenario: "🎮 You just won $1,000 in a gaming tournament! Your friends are celebrating, but now you need to decide what to do with your prize money.",
+    scenario: "You received $1,000—maybe a gift or from work. You won't need it for 3 years. What do you do?",
     visual: "🏆",
     avatarMood: 'excited',
     options: [
       {
-        text: "💰 Cash out safely",
+        text: "Savings account",
         icon: "🛡️",
-        consequence: "Guaranteed $1,000 in your pocket",
+        consequence: "Safe, grows slowly",
         score: 1,
-        nextScenario: "Your money is safe, but you wonder if you missed out on bigger opportunities..."
+        nextScenario: "Your money is safe, but it grows slowly over the years."
       },
       {
-        text: "🎧 Buy streaming gear",
+        text: "Save most, invest a little",
         icon: "📈",
-        consequence: "Grow your audience → potential future income",
+        consequence: "Mostly safe with learning",
         score: 2,
-        nextScenario: "Your new gear helps you gain more followers and sponsorships!"
+        nextScenario: "You keep most safe and learn a bit about investing."
       },
       {
-        text: "📱 Invest in gaming stocks",
+        text: "Invest most in diversified fund",
         icon: "📊",
-        consequence: "Market-dependent returns",
+        consequence: "Could grow, will fluctuate",
         score: 3,
-        nextScenario: "The gaming industry is booming, but stock prices can be unpredictable..."
+        nextScenario: "Your money could grow, but you'll see some ups and downs."
       },
       {
-        text: "🚀 Fund indie game studio",
+        text: "High growth potential investment",
         icon: "🎲",
-        consequence: "High risk, huge potential",
+        consequence: "Could grow a lot or lose",
         score: 4,
-        nextScenario: "You're taking a big chance, but if it works, you could be part of the next big game!"
+        nextScenario: "You're aiming for higher growth—with higher risk."
       }
     ],
     feedback: "Your gaming coach says: 'Every choice shapes your future!'"
@@ -249,37 +253,37 @@ const GAMIFIED_STORYLINE: StorylineNode[] = [
   },
   {
     id: 'story-5',
-    scenario: "🌟 Your journey has taught you a lot! Now you are helping a friend who just got $500. What advice would you give them based on your experience?",
+    scenario: "A friend asks what YOU would do with $500 based on your experience.",
     visual: "🤝",
     avatarMood: 'happy',
     options: [
       {
-        text: "🛡️ Save it all safely",
-        icon: "🏦",
+        text: "Keep it safe—protecting money is most important",
+        icon: "🛡️",
         consequence: "Conservative approach",
         score: 1,
-        nextScenario: "You recommend playing it safe."
+        nextScenario: "You'd keep it safe."
       },
       {
-        text: "📚 Learn first, then invest",
-        icon: "📖",
-        consequence: "Education-focused approach",
+        text: "Save most, maybe invest tiny bit to learn",
+        icon: "📚",
+        consequence: "Mostly safe with a little learning",
         score: 2,
-        nextScenario: "You suggest they learn before risking money."
+        nextScenario: "You'd save most and dabble a little."
       },
       {
-        text: "🎯 Start small, grow gradually",
+        text: "Invest good portion, accept some ups and downs",
         icon: "🌱",
         consequence: "Balanced growth approach",
         score: 3,
-        nextScenario: "You recommend starting small and building up."
+        nextScenario: "You'd put a good portion to work."
       },
       {
-        text: "⚡ Take calculated risks",
+        text: "Look for growth—have to take some risk",
         icon: "🎲",
-        consequence: "Aggressive approach",
+        consequence: "Growth-oriented approach",
         score: 4,
-        nextScenario: "You encourage them to be bold but smart."
+        nextScenario: "You'd look for growth and accept risk."
       }
     ],
     feedback: "Your friend says: 'Thanks for the advice! I'll think about it carefully.'"
@@ -654,8 +658,8 @@ const MPT_QUESTIONS: Question[] = [
   }
 ];
 
-// Prospect Theory Question Pool (Behavioral finance - 12 questions, mixed scales)
-// Total maxScore: 49 (11 questions × 4 + 1 question × 5)
+// Prospect Theory Question Pool (Behavioral finance - 13 questions, mixed scales)
+// Total maxScore: 53 (12 questions × 4 + 1 question × 5; includes PT-13 counterfactual)
 const PROSPECT_QUESTIONS: Question[] = [
   {
     id: 'PT-1',
@@ -933,6 +937,30 @@ const PROSPECT_QUESTIONS: Question[] = [
       labels: { min: 'Keep It', max: 'Sell It' }
     },
     gamifiedText: "You got a game skin as a gift. You wouldn't buy it yourself. Do you keep or trade it?"
+  },
+  {
+    id: 'PT-13',
+    group: 'PROSPECT',
+    type: 'prospect',
+    question: "Imagine two scenarios: In Scenario A, the market dropped 30% last month. In Scenario B, the market gained 30% last month. How would your answers to this questionnaire differ between these scenarios?",
+    text: "Imagine two scenarios: In Scenario A, the market dropped 30% last month. In Scenario B, the market gained 30% last month. How would your answers to this questionnaire differ between these scenarios?",
+    maxScore: 4,
+    construct: 'recency_awareness',
+    difficulty: 'medium',
+    options: [
+      { label: "I would be much more conservative after a drop (Scenario A)", value: 1, text: "I would be much more conservative after a drop (Scenario A)", score: 1 },
+      { label: "I would be somewhat more conservative after a drop", value: 2, text: "I would be somewhat more conservative after a drop", score: 2 },
+      { label: "My answers wouldn't change much either way", value: 3, text: "My answers wouldn't change much either way", score: 3 },
+      { label: "I might actually be more aggressive after a drop (buying opportunity)", value: 4, text: "I might actually be more aggressive after a drop (buying opportunity)", score: 4 }
+    ],
+    sliderConfig: {
+      min: 1,
+      max: 4,
+      step: 1,
+      labels: { min: 'More conservative after drop', max: 'More aggressive after drop' }
+    },
+    scoring_note: "Higher scores indicate lower recency bias and more stable risk preferences",
+    ui_note: "Display with special framing - this is a self-awareness question"
   }
 ];
 
@@ -991,22 +1019,22 @@ const validateQuestions = () => {
   });
   
   console.log('=== QUESTION VALIDATION RESULTS ===');
-  console.log(`Total Questions: ${results.totalCount} ${results.totalCount === 27 ? '✅' : '❌ (expected: 27)'}`);
+  console.log(`Total Questions: ${results.totalCount} ${results.totalCount === 28 ? '✅' : '❌ (expected: 28)'}`);
   console.log(`MPT Questions: ${results.mptCount} ${results.mptCount === 15 ? '✅' : '❌ (expected: 15)'}`);
-  console.log(`Prospect Questions: ${results.prospectCount} ${results.prospectCount === 12 ? '✅' : '❌ (expected: 12)'}`);
+  console.log(`Prospect Questions: ${results.prospectCount} ${results.prospectCount === 13 ? '✅' : '❌ (expected: 13)'}`);
   console.log(`MPT maxScore sum: ${results.mptMaxSum} ${results.mptMaxSum === 75 ? '✅' : '❌ (expected: 75)'}`);
-  console.log(`Prospect maxScore sum: ${results.prospectMaxSum} ${results.prospectMaxSum === 49 ? '✅' : '❌ (expected: 49)'}`);
+  console.log(`Prospect maxScore sum: ${results.prospectMaxSum} ${results.prospectMaxSum === 53 ? '✅' : '❌ (expected: 53)'}`);
   console.log(`Duplicate IDs: ${results.duplicateIds.length === 0 ? '✅ None' : '❌ ' + results.duplicateIds.join(', ')}`);
   console.log(`Missing Metadata: ${results.missingMetadata.length === 0 ? '✅ None' : '❌ ' + results.missingMetadata.join(', ')}`);
   console.log(`Group Errors: ${results.groupErrors.length === 0 ? '✅ None' : '❌ ' + results.groupErrors.join('; ')}`);
   console.log(`Invalid Scales: ${results.invalidScales.length === 0 ? '✅ None' : '❌ ' + results.invalidScales.join('; ')}`);
   
   const allPassed = 
-    results.totalCount === 27 &&
+    results.totalCount === 28 &&
     results.mptCount === 15 &&
-    results.prospectCount === 12 &&
+    results.prospectCount === 13 &&
     results.mptMaxSum === 75 &&
-    results.prospectMaxSum === 49 &&
+    results.prospectMaxSum === 53 &&
     results.duplicateIds.length === 0 &&
     results.missingMetadata.length === 0 &&
     results.groupErrors.length === 0 &&

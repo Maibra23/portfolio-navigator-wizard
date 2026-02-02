@@ -992,15 +992,15 @@ const SCREENING_CONTRADICTION = {
 - [x] API interface documented for Agent 2
 
 **Agent 3:**
-- [ ] All question revisions complete
-- [ ] Reverse-coded questions created (M3-R, M8-R, PT-2-R)
-- [ ] Counterfactual question (PT-13) created
-- [ ] Gamified scenarios updated
-- [ ] Complete construct metadata
-- [ ] Screening contradiction logic defined
+- [x] All question revisions complete
+- [x] Reverse-coded questions created (M3-R, M8-R, PT-2-R)
+- [x] Counterfactual question (PT-13) created
+- [x] Gamified scenarios updated
+- [x] Complete construct metadata
+- [x] Screening contradiction logic defined
 
 **Handoffs Complete:**
-- [ ] Agent 3 → Agent 1: Question metadata delivered
+- [x] Agent 3 → Agent 1: Question metadata delivered
 - [x] Agent 1 → Agent 2: Confidence band API spec delivered
 
 ### End of Day 2
