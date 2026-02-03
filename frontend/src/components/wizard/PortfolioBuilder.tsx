@@ -61,6 +61,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
   selectedStocks,
   onStocksUpdate,
   onMetricsUpdate,
+  onDone,
   riskProfile,
   capital,
   minStocks = 3,
@@ -302,7 +303,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
 
     // Calculate metrics immediately for the confirmed portfolio
     calculateMetrics(nextStocks);
-    onDoneProp?.();
+    onDone?.();
   };
 
   return (
