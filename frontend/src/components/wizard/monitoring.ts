@@ -1,18 +1,22 @@
 import type { ConfidenceBand } from './confidence-calculator';
 
 export interface AssessmentEvent {
-  event_type: 'assessment_completed' | 'override_triggered' | 'flag_raised';
+  event_type: 'assessment_completed' | 'override_triggered' | 'flag_raised' | 'branching_path_selected';
   timestamp: Date;
   session_id: string;
   data: {
-    normalized_score: number;
-    confidence_band: ConfidenceBand;
-    category: string;
-    overrides_applied: string[];
-    flags_raised: string[];
-    completion_time_seconds: number;
-    mpt_score: number;
-    prospect_score: number;
+    normalized_score?: number;
+    confidence_band?: ConfidenceBand;
+    category?: string;
+    overrides_applied?: string[];
+    flags_raised?: string[];
+    completion_time_seconds?: number;
+    mpt_score?: number;
+    prospect_score?: number;
+    // Branching-specific fields
+    phase1_score?: number;
+    selected_path?: string;
+    questions_in_path?: string[];
   };
 }
 
@@ -92,3 +96,19 @@ export const createFlagRaisedEvent = (
     }
   };
 };
+
+export const createBranchingPathSelectedEvent = (
+  sessionId: string,
+  phase1Score: number,
+  selectedPath: string,
+  questionsInPath: string[]
+): AssessmentEvent => ({
+  event_type: 'branching_path_selected',
+  timestamp: new Date(),
+  session_id: sessionId,
+  data: {
+    phase1_score: phase1Score,
+    selected_path: selectedPath,
+    questions_in_path: questionsInPath
+  }
+});

@@ -13,4 +13,12 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: () => {},
     dispatchEvent: () => false
   })
-}); 
+});
+
+// Polyfill ResizeObserver for jsdom (required by recharts ResponsiveContainer)
+class ResizeObserverMock {
+  observe = () => {};
+  unobserve = () => {};
+  disconnect = () => {};
+}
+window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver; 

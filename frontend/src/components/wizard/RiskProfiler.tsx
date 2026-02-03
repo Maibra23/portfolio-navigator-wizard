@@ -1049,6 +1049,12 @@ if (typeof window !== 'undefined') {
   (window as any).validateQuestions = validateQuestions;
 }
 import { computeRiskResult } from './riskUtils';
+import { createQuestionSelector, QuestionSelector } from './question-selector';
+import { computeScoring } from './scoring-engine';
+import { checkConstructCoverage } from './adaptive-branching';
+import { CONSTRUCT_MAPPINGS } from './metadata';
+import { createBranchingPathSelectedEvent, logAssessmentEvent } from './monitoring';
+import { ScreeningContradiction, checkScreeningContradiction } from './ScreeningContradiction';
 
 export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }: RiskProfilerProps) => {
   const [step, setStep] = useState<'screening' | 'questions' | 'result'>('screening');
@@ -1057,14 +1063,16 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     experience: null,
     knowledge: null
   });
-  const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [questionSelector, setQuestionSelector] = useState<QuestionSelector | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [answerTimings, setAnswerTimings] = useState<Record<string, number>>({});
   const [selectedOptionValues, setSelectedOptionValues] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<RiskResult | null>(null);
+  const [result, setResult] = useState<any>(null);
   const [storylineProgress, setStorylineProgress] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState('');
+  const [showContradictionPrompt, setShowContradictionPrompt] = useState(false);
 
   // Calculate experience points from screening data
   const getExperiencePoints = (data: ScreeningData): number => {
@@ -1148,48 +1156,127 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
 
   // Handle screening completion
   const handleScreeningComplete = () => {
-    const { mptRatio, prospectRatio, isUnder19 } = determineQuestionMix(screeningData);
-    const questions = selectQuestions(mptRatio, prospectRatio, isUnder19);
-    setSelectedQuestions(questions);
+    // Calculate experience points from screening data
+    let experiencePoints = 0;
+    if (screeningData.experience === '3-5') experiencePoints = 1;
+    else if (screeningData.experience === '6-10') experiencePoints = 2;
+    else if (screeningData.experience === '10+') experiencePoints = 3;
+
+    // Initialize QuestionSelector
+    const selector = createQuestionSelector();
+    selector.initialize({
+      ageGroup: screeningData.ageGroup || 'above-19',
+      experiencePoints
+    });
+
+    setQuestionSelector(selector);
+
+    // Get first question
+    const firstQuestion = selector.getNextQuestion();
+    setCurrentQuestion(firstQuestion);
+
     setStep('questions');
   };
 
   // Handle answer submission
   const handleAnswerSubmit = (value: number) => {
-    const currentQuestion = selectedQuestions[currentQuestionIndex];
+    if (!questionSelector || !currentQuestion) return;
+
+    const startTime = Date.now();
+    // Record the answer
     setAnswers(prev => ({ ...prev, [currentQuestion.id]: value }));
-    
+
     // Show feedback for storyline questions
     if (screeningData.ageGroup === 'under-19' && currentQuestion.storylineData) {
       const selectedOption = currentQuestion.storylineData.options[value - 1];
       setCurrentFeedback(selectedOption.consequence);
       setShowFeedback(true);
-      
-      // Auto-advance after showing feedback
+
+      // Submit answer and get next question after feedback
       setTimeout(() => {
+        const answerTime = (Date.now() - startTime) / 1000; // Convert to seconds
+        questionSelector.submitAnswer(currentQuestion.id, value, answerTime);
+        setAnswerTimings(prev => ({ ...prev, [currentQuestion.id]: answerTime }));
+
         setShowFeedback(false);
-        if (currentQuestionIndex < selectedQuestions.length - 1) {
-          setCurrentQuestionIndex(prev => prev + 1);
-          setStorylineProgress(((currentQuestionIndex + 2) / selectedQuestions.length) * 100);
+        const nextQuestion = questionSelector.getNextQuestion();
+        if (nextQuestion) {
+          setCurrentQuestion(nextQuestion);
+          const selectedQuestions = questionSelector.getSelectedQuestions();
+          setStorylineProgress((selectedQuestions.length / (screeningData.ageGroup === 'under-19' ? 5 : 12)) * 100);
         } else {
           calculateRiskProfile();
         }
       }, 3000);
     } else {
-      // For traditional questions, advance immediately
-      if (currentQuestionIndex < selectedQuestions.length - 1) {
-        setCurrentQuestionIndex(prev => prev + 1);
+      // Submit answer immediately for non-storyline questions
+      const answerTime = (Date.now() - startTime) / 1000;
+      questionSelector.submitAnswer(currentQuestion.id, value, answerTime);
+      setAnswerTimings(prev => ({ ...prev, [currentQuestion.id]: answerTime }));
+
+      const nextQuestion = questionSelector.getNextQuestion();
+      if (nextQuestion) {
+        setCurrentQuestion(nextQuestion);
       } else {
         calculateRiskProfile();
       }
     }
   };
 
-  // Calculate risk profile (calls top-level computeRiskResult)
+  // Calculate risk profile (uses new scoring engine with branching metadata)
   const calculateRiskProfile = () => {
-    const riskResult = computeRiskResult(selectedQuestions, answers);
-    setResult(riskResult);
-    onProfileUpdate(riskResult.risk_category);
+    if (!questionSelector) return;
+
+    const selectedQuestions = questionSelector.getSelectedQuestions();
+    const branchingPath = questionSelector.getBranchingPath();
+    const branchingState = questionSelector.getState();
+
+    // Calculate construct coverage
+    const constructCoverage = checkConstructCoverage(
+      selectedQuestions.map(q => q.id),
+      CONSTRUCT_MAPPINGS
+    );
+
+    // Prepare branching metadata
+    const branchingMetadata = branchingState ? {
+      path: branchingPath as 'conservative' | 'aggressive' | 'moderate' | 'gamified',
+      phase1Score: branchingState.phase1_score,
+      constructCoverage: {
+        covered: Array.from(constructCoverage.covered),
+        missing: constructCoverage.missing,
+        percent: constructCoverage.coveragePercent
+      }
+    } : undefined;
+
+    // Calculate total completion time
+    const totalTimeSeconds = Object.values(answerTimings).reduce((sum, time) => sum + time, 0);
+
+    // Log branching decision if applicable
+    if (branchingState && branchingState.phase1_score !== null) {
+      const branchingEvent = createBranchingPathSelectedEvent(
+        'session-current', // Would be generated in real implementation
+        branchingState.phase1_score,
+        branchingPath,
+        selectedQuestions.map(q => q.id)
+      );
+      logAssessmentEvent(branchingEvent);
+    }
+
+    // Use new scoring engine
+    const scoringResult = computeScoring({
+      selectedQuestions: selectedQuestions.map(q => ({
+        id: q.id,
+        group: q.group as 'MPT' | 'PROSPECT' | 'SCREENING',
+        maxScore: q.maxScore,
+        excludeFromScoring: false
+      })),
+      answersMap: answers,
+      completionTimeSeconds: totalTimeSeconds,
+      branchingMetadata
+    });
+
+    setResult(scoringResult);
+    onProfileUpdate(scoringResult.risk_category);
     setStep('result');
   };
 
@@ -1323,8 +1410,15 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Previous
               </Button>
-              <Button 
-                onClick={handleScreeningComplete} 
+              <Button
+                onClick={() => {
+                  if (!isComplete) return;
+                  if (checkScreeningContradiction(screeningData.experience, screeningData.knowledge)) {
+                    setShowContradictionPrompt(true);
+                  } else {
+                    handleScreeningComplete();
+                  }
+                }}
                 disabled={!isComplete}
                 className="bg-gradient-primary hover:opacity-90 disabled:opacity-50"
               >
@@ -1332,6 +1426,15 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
+            {showContradictionPrompt && (
+              <ScreeningContradiction
+                onKeepBeginner={() => {
+                  setShowContradictionPrompt(false);
+                  handleScreeningComplete();
+                }}
+                onReviseKnowledge={() => setShowContradictionPrompt(false)}
+              />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -1340,8 +1443,10 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
 
   // Render questions
   if (step === 'questions') {
-    const currentQuestion = selectedQuestions[currentQuestionIndex];
-    const progress = ((currentQuestionIndex + 1) / selectedQuestions.length) * 100;
+    if (!currentQuestion) return null;
+
+    const selectedQuestions = questionSelector?.getSelectedQuestions() || [];
+    const progress = (selectedQuestions.length / (screeningData.ageGroup === 'under-19' ? 5 : 12)) * 100;
     const isUnder19 = screeningData.ageGroup === 'under-19';
     
     // Show feedback overlay for storyline
@@ -1370,7 +1475,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
               {isUnder19 ? 'Your Adventure Continues!' : 'Risk Assessment'}
             </CardTitle>
             <p className="text-muted-foreground mb-4">
-              {isUnder19 ? `Chapter ${currentQuestionIndex + 1} of ${selectedQuestions.length}` : `Question ${currentQuestionIndex + 1} of ${selectedQuestions.length}`}
+              {isUnder19 ? `Chapter ${selectedQuestions.length} of 5` : `Question ${selectedQuestions.length} of 12`}
             </p>
             <Progress value={progress} className="w-full" />
           </CardHeader>
@@ -1454,20 +1559,12 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
 
             {!isUnder19 && (
               <div className="flex gap-4 justify-center pt-6 border-t">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
-                  disabled={currentQuestionIndex === 0}
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Previous
-                </Button>
-                <Button 
+                <Button
                   onClick={() => handleAnswerSubmit(answers[currentQuestion.id] || 1)}
                   disabled={!answers[currentQuestion.id]}
                   className="bg-gradient-primary hover:opacity-90 disabled:opacity-50"
                 >
-                  {currentQuestionIndex === selectedQuestions.length - 1 ? 'Calculate Profile' : 'Next Question'}
+                  {questionSelector?.isComplete() ? 'Calculate Profile' : 'Next Question'}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
@@ -1513,10 +1610,26 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
             <div className="text-center">
               <p className="text-muted-foreground mb-4">{profileInfo.description}</p>
               <div className="flex justify-center items-center gap-2 text-sm text-muted-foreground">
-                <span>Raw Score: {result.raw_score}/{selectedQuestions.length * 5}</span>
+                <span>Raw Score: {result.raw_score}</span>
                 <span>•</span>
                 <span>Normalized Score: {result.normalized_score.toFixed(1)}%</span>
+                <span>•</span>
+                <span>MPT: {result.normalized_mpt?.toFixed(1)}%</span>
+                <span>•</span>
+                <span>Prospect: {result.normalized_prospect?.toFixed(1)}%</span>
               </div>
+
+              {result.branching_metadata && result.branching_metadata.path !== 'gamified' && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    Assessment Path: <span className="font-semibold capitalize">{result.branching_metadata.path}</span>
+                    {result.branching_metadata.phase1_score !== null && (
+                      <> • Phase 1 Score: {result.branching_metadata.phase1_score.toFixed(1)}</>
+                    )}
+                    <> • Construct Coverage: {result.branching_metadata.construct_coverage.percent.toFixed(1)}%</>
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="bg-muted/50 rounded-lg p-4">

@@ -47,6 +47,17 @@ export interface ScoringResult {
   visualization_data: VisualizationData;
   safeguards: SafeguardResult;
   consistency: ConsistencyResult;
+
+  // New from Sprint 2 - Branching metadata
+  branching_metadata: {
+    path: 'conservative' | 'aggressive' | 'moderate' | 'gamified';
+    phase1_score: number | null;
+    construct_coverage: {
+      covered: string[];
+      missing: string[];
+      percent: number;
+    };
+  };
 }
 
 export interface ComputeScoringParams {
@@ -61,6 +72,16 @@ export interface ComputeScoringParams {
   lossAversionAnswer?: number;
   /** Optional reverse-coded answer pairs for consistency check */
   reverseCodedPairs?: ReverseCodedPair[];
+  /** Branching metadata from Sprint 2 */
+  branchingMetadata?: {
+    path: 'conservative' | 'aggressive' | 'moderate' | 'gamified';
+    phase1Score: number | null;
+    constructCoverage: {
+      covered: string[];
+      missing: string[];
+      percent: number;
+    };
+  };
 }
 
 const generateSessionId = (): string => `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -76,7 +97,8 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
     sessionId = generateSessionId(),
     timeHorizonAnswer,
     lossAversionAnswer,
-    reverseCodedPairs = []
+    reverseCodedPairs = [],
+    branchingMetadata
   } = params;
 
   // --- Basic scoring (from legacy riskUtils logic) ---
@@ -214,6 +236,23 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
     confidence_band: confidenceBand,
     visualization_data: visualizationData,
     safeguards: safeguardsResult,
-    consistency: consistencyResult
+    consistency: consistencyResult,
+    branching_metadata: branchingMetadata ? {
+      path: branchingMetadata.path,
+      phase1_score: branchingMetadata.phase1Score,
+      construct_coverage: {
+        covered: branchingMetadata.constructCoverage.covered,
+        missing: branchingMetadata.constructCoverage.missing,
+        percent: branchingMetadata.constructCoverage.percent
+      }
+    } : {
+      path: 'gamified',
+      phase1_score: null,
+      construct_coverage: {
+        covered: [],
+        missing: [],
+        percent: 0
+      }
+    }
   };
 };
