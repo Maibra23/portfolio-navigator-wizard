@@ -970,6 +970,8 @@ function getFullQuestionById(id: string): Question | undefined {
   if (fromMpt) return fromMpt;
   const fromProspect = PROSPECT_QUESTIONS.find((q) => q.id === id);
   if (fromProspect) return fromProspect;
+  const fromReverse = REVERSE_CODED_QUESTIONS.find((q) => q.id === id);
+  if (fromReverse) return fromReverse as unknown as Question;
   const fromStory = GAMIFIED_STORYLINE.find((s) => s.id === id);
   if (fromStory) {
     return {
@@ -1083,6 +1085,9 @@ import { checkConstructCoverage } from './adaptive-branching';
 import { CONSTRUCT_MAPPINGS } from './metadata';
 import { createBranchingPathSelectedEvent, logAssessmentEvent } from './monitoring';
 import { ScreeningContradiction, checkScreeningContradiction } from './ScreeningContradiction';
+import { REVERSE_CODED_QUESTIONS } from './reverse-coded';
+import { CONSISTENCY_PAIRS } from './question-pools';
+import { ResultsPage } from './ResultsPage';
 
 export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }: RiskProfilerProps) => {
   const [step, setStep] = useState<'screening' | 'questions' | 'result'>('screening');
@@ -1290,6 +1295,27 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
       logAssessmentEvent(branchingEvent);
     }
 
+    const reverseCodedPairs = Object.entries(CONSISTENCY_PAIRS).flatMap(([originalId, reverseId]) => {
+      const originalAnswer = answers[originalId];
+      const reverseAnswer = answers[reverseId];
+      const originalQuestion = getFullQuestionById(originalId);
+      const reverseQuestion = getFullQuestionById(reverseId);
+      if (
+        originalAnswer == null ||
+        reverseAnswer == null ||
+        !originalQuestion ||
+        !reverseQuestion
+      ) {
+        return [];
+      }
+      return [{
+        originalAnswer,
+        originalMax: originalQuestion.maxScore,
+        reverseAnswer,
+        reverseMax: reverseQuestion.maxScore
+      }];
+    });
+
     // Use new scoring engine
     const scoringResult = computeScoring({
       selectedQuestions: selectedQuestions.map(q => ({
@@ -1300,6 +1326,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
       })),
       answersMap: answers,
       completionTimeSeconds: totalTimeSeconds,
+      reverseCodedPairs,
       branchingMetadata
     });
 
@@ -1605,90 +1632,25 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     );
   }
 
-  // Render result
-  if (step === 'result' && result && currentProfile) {
-    const profileInfo = getProfileInfo(currentProfile);
-    if (!profileInfo) return null;
-
-    const ProfileIcon = profileInfo.icon;
-
+  // Render result: use ResultsPage (confidence band, safeguards, 2D map, flags)
+  if (step === 'result' && result) {
+    const isGamifiedPath = result.branching_metadata?.path === 'gamified';
     return (
       <div className="max-w-2xl mx-auto">
-        <Card className="shadow-elegant">
-          <CardHeader className="text-center">
-            <div 
-              className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4"
-              style={{ backgroundColor: `${result.color_code}20` }}
-            >
-              <ProfileIcon className="h-10 w-10" style={{ color: result.color_code }} />
-            </div>
-            <CardTitle className="text-2xl mb-2">Your Risk Profile</CardTitle>
-            <Badge 
-              variant="secondary" 
-              className="text-lg px-4 py-2"
-              style={{ 
-                backgroundColor: `${result.color_code}20`, 
-                color: result.color_code,
-                borderColor: `${result.color_code}40`
-              }}
-            >
-              {profileInfo.title}
-            </Badge>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-4">{profileInfo.description}</p>
-              <div className="flex justify-center items-center gap-2 text-sm text-muted-foreground">
-                <span>Raw Score: {result.raw_score}</span>
-                <span>•</span>
-                <span>Normalized Score: {result.normalized_score.toFixed(1)}%</span>
-                <span>•</span>
-                <span>MPT: {result.normalized_mpt?.toFixed(1)}%</span>
-                <span>•</span>
-                <span>Prospect: {result.normalized_prospect?.toFixed(1)}%</span>
-              </div>
-
-              {result.branching_metadata && result.branching_metadata.path !== 'gamified' && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-blue-700">
-                    Assessment Path: <span className="font-semibold capitalize">{result.branching_metadata.path}</span>
-                    {result.branching_metadata.phase1_score !== null && (
-                      <> • Phase 1 Score: {result.branching_metadata.phase1_score.toFixed(1)}</>
-                    )}
-                    <> • Construct Coverage: {result.branching_metadata.construct_coverage.percent.toFixed(1)}%</>
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-muted/50 rounded-lg p-4">
-              <h4 className="font-semibold mb-3">Key Characteristics</h4>
-              <ul className="space-y-2">
-                {profileInfo.characteristics.map((char, index) => (
-                  <li key={index} className="flex items-center gap-2 text-sm">
-                    <div 
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: result.color_code }}
-                    />
-                    {char}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="flex gap-4 justify-center">
-              <Button variant="outline" onClick={() => setStep('questions')}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Retake Assessment
-              </Button>
-              <Button onClick={onNext} className="bg-gradient-primary hover:opacity-90">
-                Continue to Capital Input
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <ResultsPage
+          scoringResult={{
+            normalized_score: result.normalized_score,
+            normalized_mpt: result.normalized_mpt,
+            normalized_prospect: result.normalized_prospect,
+            risk_category: result.risk_category,
+            confidence_band: result.confidence_band,
+            visualization_data: result.visualization_data,
+            safeguards: result.safeguards
+          }}
+          isGamifiedPath={isGamifiedPath}
+          onReviewAnswers={() => setStep('questions')}
+          onContinue={onNext}
+        />
       </div>
     );
   }
