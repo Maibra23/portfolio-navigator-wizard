@@ -117,7 +117,7 @@ describe('Agent 2 Full Flow Integration', () => {
         />
       );
       expect(screen.getByText('Analytical vs Emotional Risk')).toBeInTheDocument();
-      expect(screen.queryByText('Two-Dimensional Risk Map')).not.toBeInTheDocument();
+      expect(screen.getByText(/Complete the full assessment/)).toBeInTheDocument();
     });
 
     it('Conservative result: ResultsPage shows CategoryCard and spectrum', () => {
@@ -139,7 +139,7 @@ describe('Agent 2 Full Flow Integration', () => {
         />
       );
       expect(screen.getAllByText('Conservative').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Your Risk Profile')).toBeInTheDocument();
+      expect(screen.getByText(/Risk Score:/)).toBeInTheDocument();
     });
 
     it('Aggressive result: ResultsPage shows aggressive category', () => {
@@ -163,7 +163,7 @@ describe('Agent 2 Full Flow Integration', () => {
       expect(screen.getAllByText('Aggressive').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('Extreme profile: ConfirmationModal is shown', () => {
+    it('Extreme profile: results page is shown with flag alert (no modal)', () => {
       const scoringResult = {
         normalized_score: 92,
         normalized_mpt: 90,
@@ -184,7 +184,8 @@ describe('Agent 2 Full Flow Integration', () => {
           onContinue={vi.fn()}
         />
       );
-      expect(screen.getByText('Please Confirm Your Profile')).toBeInTheDocument();
+      expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
+      expect(screen.getByText(/Your profile is less common/)).toBeInTheDocument();
     });
 
     it('High uncertainty: ResultsPage shows secondary category and wide band', () => {
@@ -214,7 +215,7 @@ describe('Agent 2 Full Flow Integration', () => {
         />
       );
       expect(screen.getByText(/Your responses suggest flexibility/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Continue to Portfolio/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Continue/i })).toBeInTheDocument();
     });
   });
 });

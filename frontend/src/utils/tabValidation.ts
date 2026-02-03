@@ -15,7 +15,7 @@ export const validateTab = (
 
   switch (tabId) {
     case 'builder':
-      // Tab 1 validation: 3-4 stocks, 100% allocation
+      // Tab 1 validation: 3-4 stocks required to proceed; 100% allocation recommended
       const stockCount = state.constructedPortfolio.length;
       const totalAllocation = state.constructedPortfolio.reduce(
         (sum, stock) => sum + (stock.allocation || 0),
@@ -29,11 +29,12 @@ export const validateTab = (
         errors.push(`Maximum 4 stocks allowed. Currently have ${stockCount}.`);
       }
       if (Math.abs(totalAllocation - 100) > 0.1) {
-        errors.push(`Total allocation must equal 100%. Currently at ${totalAllocation.toFixed(1)}%.`);
+        warnings.push(`Total allocation should equal 100%. Currently at ${totalAllocation.toFixed(1)}%.`);
       }
 
-      if (stockCount >= 3 && stockCount <= 4 && Math.abs(totalAllocation - 100) < 0.1) {
-        return { isValid: true, errors: [], warnings: [] };
+      // Allow navigation to Optimize when 3-4 stocks are selected (allocation can be fixed on next step)
+      if (stockCount >= 3 && stockCount <= 4) {
+        return { isValid: true, errors: [], warnings };
       }
 
       break;

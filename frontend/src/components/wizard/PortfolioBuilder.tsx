@@ -295,6 +295,9 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       }));
       nextStocks = normalized;
       onStocksUpdate(nextStocks);
+    } else {
+      // Allocation already ~100%: sync parent state so Continue can use latest portfolio
+      onStocksUpdate(selectedStocks);
     }
 
     // Calculate metrics immediately for the confirmed portfolio

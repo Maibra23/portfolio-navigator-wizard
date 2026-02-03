@@ -1,7 +1,8 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { HelpCircle } from 'lucide-react';
 
 export interface ScreeningContradictionProps {
   onKeepBeginner: () => void;
@@ -22,36 +23,39 @@ export const ScreeningContradiction: React.FC<ScreeningContradictionProps> = ({
   className,
 }) => {
   return (
-    <Dialog open={true} onOpenChange={() => {}}>
-      <DialogContent className={cn('sm:max-w-[425px]', className)}>
-        <DialogHeader>
-          <DialogTitle className="text-center text-lg font-medium text-foreground">
-            Clarify your profile
-          </DialogTitle>
-          <DialogDescription className="text-center text-sm leading-relaxed mt-2 text-muted-foreground">
-            {CONTENT.message}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="flex flex-col gap-3 sm:gap-2 pt-4">
-          <Button
-            type="button"
-            onClick={onKeepBeginner}
-            variant="default"
-            className="w-full"
-          >
-            {CONTENT.keep}
-          </Button>
-          <Button
-            type="button"
-            onClick={onReviseKnowledge}
-            variant="outline"
-            className="w-full"
-          >
-            {CONTENT.revise}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Card className={cn("w-full shadow-elegant border-2 border-amber-100", className)}>
+      <CardHeader className="text-center pb-2">
+        <div className="mx-auto w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mb-4">
+          <HelpCircle className="h-6 w-6 text-amber-600" />
+        </div>
+        <CardTitle className="text-xl font-bold text-foreground">
+          Clarify your profile
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="text-center">
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          {CONTENT.message}
+        </p>
+      </CardContent>
+      <CardFooter className="flex flex-col gap-3 pt-2">
+        <Button
+          type="button"
+          onClick={onKeepBeginner}
+          variant="default"
+          className="w-full bg-amber-600 hover:bg-amber-700 transition-colors"
+        >
+          {CONTENT.keep}
+        </Button>
+        <Button
+          type="button"
+          onClick={onReviseKnowledge}
+          variant="outline"
+          className="w-full border-amber-200 text-amber-700 hover:bg-amber-50 transition-colors"
+        >
+          {CONTENT.revise}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 };
 

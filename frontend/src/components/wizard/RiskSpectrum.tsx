@@ -21,13 +21,13 @@ interface RiskSpectrumProps {
   className?: string;
 }
 
-// Risk spectrum zones with colors
+// Risk spectrum zones with more vibrant colors
 const RISK_ZONES = [
-  { min: 0, max: 20, category: 'very-conservative', label: 'Very Conservative', color: '#00008B' },
-  { min: 21, max: 40, category: 'conservative', label: 'Conservative', color: '#ADD8E6' },
-  { min: 41, max: 60, category: 'moderate', label: 'Moderate', color: '#008000' },
-  { min: 61, max: 80, category: 'aggressive', label: 'Aggressive', color: '#FFA500' },
-  { min: 81, max: 100, category: 'very-aggressive', label: 'Very Aggressive', color: '#FF0000' },
+  { min: 0, max: 20, category: 'very-conservative', label: 'Very Conservative', color: '#1e40af' }, // Deep blue
+  { min: 21, max: 40, category: 'conservative', label: 'Conservative', color: '#60a5fa' }, // Lighter blue
+  { min: 41, max: 60, category: 'moderate', label: 'Moderate', color: '#10b981' }, // Emerald green
+  { min: 61, max: 80, category: 'aggressive', label: 'Aggressive', color: '#f59e0b' }, // Amber
+  { min: 81, max: 100, category: 'very-aggressive', label: 'Very Aggressive', color: '#ef4444' }, // Red
 ] as const;
 
 // Tooltip content
@@ -96,26 +96,33 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
   return (
     <TooltipProvider>
       <Card className={cn("w-full", className)}>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-semibold text-center">
-            Your Risk Profile
-          </CardTitle>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold">
+              Risk Score: {score}
+            </CardTitle>
+            {confidenceBand.band_width > 5 && (
+              <span className="text-xs text-muted-foreground">
+                Range: {confidenceBand.lower.toFixed(0)}-{confidenceBand.upper.toFixed(0)}
+              </span>
+            )}
+          </div>
           {crossingMessage && (
-            <p className="text-sm text-muted-foreground text-center mt-2">
+            <p className="text-xs text-muted-foreground mt-1">
               {crossingMessage}
             </p>
           )}
         </CardHeader>
 
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           {/* Risk Spectrum Bar */}
           <div className="relative">
             {/* Main spectrum bar */}
-            <div className="relative h-8 rounded-lg overflow-hidden border">
-              {RISK_ZONES.map((zone, index) => (
+            <div className="relative h-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm">
+              {RISK_ZONES.map((zone) => (
                 <div
                   key={zone.category}
-                  className="absolute top-0 h-full cursor-pointer hover:opacity-80 transition-opacity"
+                  className="absolute top-0 h-full cursor-pointer hover:brightness-110 transition-all"
                   style={{
                     left: `${zone.min}%`,
                     width: `${zone.max - zone.min}%`,
@@ -127,7 +134,7 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
 
               {/* Confidence band overlay */}
               <div
-                className="absolute top-0 h-full bg-white/30 border-x border-white/50"
+                className="absolute top-0 h-full bg-white/40 border-x-2 border-white/80"
                 style={{
                   left: `${bandLeft}%`,
                   width: `${bandWidth}%`,
@@ -138,7 +145,7 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
               {visualizationData.boundary_proximity === 'near' && boundaryPositions.map(boundary => (
                 <div
                   key={boundary}
-                  className="absolute top-0 h-full w-px border-l-2 border-dashed border-white/70"
+                  className="absolute top-0 h-full w-0.5 border-l-2 border-dashed border-white/90"
                   style={{ left: `${boundary}%` }}
                 />
               ))}
@@ -150,99 +157,34 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
                 <div
                   className={cn(
                     "absolute top-1/2 transform -translate-y-1/2 -translate-x-1/2 z-10",
-                    "w-4 h-4 bg-blue-500 rounded-full border-2 border-white",
+                    "w-5 h-5 bg-white rounded-full border-3 border-blue-600 shadow-lg",
                     getMarkerGlow(visualizationData.gradient_intensity)
                   )}
                   style={{ left: `${markerPosition}%` }}
-                />
+                >
+                  <div className="absolute inset-1 bg-blue-600 rounded-full" />
+                </div>
               </TooltipTrigger>
               <TooltipContent>
                 <p>{SPECTRUM_TOOLTIPS.score_marker}</p>
               </TooltipContent>
             </Tooltip>
-
-            {/* Confidence band tooltip area */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  className="absolute top-0 h-full cursor-help"
-                  style={{
-                    left: `${bandLeft}%`,
-                    width: `${bandWidth}%`,
-                  }}
-                />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{SPECTRUM_TOOLTIPS.confidence_band}</p>
-              </TooltipContent>
-            </Tooltip>
-
-            {/* Boundary tooltips for near/crossing */}
-            {visualizationData.boundary_proximity !== 'far' && boundaryPositions.map(boundary => {
-              const zoneIndex = RISK_ZONES.findIndex(z => boundary >= z.min && boundary < z.max);
-              const nextZone = RISK_ZONES[zoneIndex + 1];
-              if (!nextZone) return null;
-
-              return (
-                <Tooltip key={boundary}>
-                  <TooltipTrigger asChild>
-                    <div
-                      className="absolute top-0 h-full w-2 cursor-help -translate-x-1"
-                      style={{ left: `${boundary}%` }}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>
-                      {SPECTRUM_TOOLTIPS.category_boundary
-                        .replace('{cat1}', RISK_ZONES[zoneIndex]?.label || '')
-                        .replace('{cat2}', nextZone.label)}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
           </div>
 
-          {/* Category Labels */}
-          <div className="grid grid-cols-5 gap-1 text-xs font-medium text-center">
+          {/* Category Labels - compact */}
+          <div className="flex justify-between text-[10px] font-medium text-muted-foreground px-1">
             {RISK_ZONES.map((zone) => (
-              <button
-                key={zone.category}
-                className="hover:text-primary transition-colors truncate"
-                onClick={() => onCategoryClick?.(zone.category)}
-              >
-                {zone.label}
-              </button>
+              <span key={zone.category} className="text-center" style={{ color: zone.color }}>
+                {zone.label.split(' ')[0]}
+              </span>
             ))}
           </div>
 
-          {/* Score Display */}
-          <div className="text-center">
-            <div className="text-2xl font-bold text-primary">
-              {score}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Risk Score
-            </div>
-            {confidenceBand.band_width > 5 && (
-              <div className="text-xs text-muted-foreground mt-1">
-                Range: {confidenceBand.lower.toFixed(1)} - {confidenceBand.upper.toFixed(1)}
-              </div>
-            )}
-          </div>
-
-          {/* Adjustment Reasons */}
+          {/* Adjustment Reasons - compact */}
           {confidenceBand.adjustment_reasons.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Why this range?</h4>
-              <ul className="space-y-1">
-                {confidenceBand.adjustment_reasons.map((reason, index) => (
-                  <li key={index} className="text-xs text-muted-foreground flex items-start gap-2">
-                    <span className="w-1 h-1 bg-muted-foreground rounded-full mt-1.5 flex-shrink-0" />
-                    {reason}
-                  </li>
-                ))}
-              </ul>
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium">Range factors: </span>
+              {confidenceBand.adjustment_reasons.join(', ')}
             </div>
           )}
         </CardContent>

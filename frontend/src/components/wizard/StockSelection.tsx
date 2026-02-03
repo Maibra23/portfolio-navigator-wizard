@@ -1299,9 +1299,16 @@ export const StockSelection = ({
 
   // REMOVED: getPrimarySectors function - no longer needed since we removed primary sectors display
 
+  // Continue enabled: mini-lesson always; recommendations when portfolio selected OR 3+ tickers; others by portfolioValidation
+  const canContinue = activeTab === 'mini-lesson'
+    ? true
+    : activeTab === 'recommendations'
+      ? (selectedPortfolioIndex !== null || selectedStocks.length >= 3)
+      : portfolioValidation.canProceed;
+
   const handleNext = () => {
-    // Prevent navigation if allocation is invalid
-    if (totalAllocation > 100 || totalAllocation < 85) {
+    // Prevent navigation if allocation is invalid (full-customization / dynamic-generation)
+    if (activeTab !== 'mini-lesson' && activeTab !== 'recommendations' && (totalAllocation > 100 || totalAllocation < 85)) {
       return; // Do nothing - button should already be disabled
     }
     
@@ -1309,9 +1316,9 @@ export const StockSelection = ({
       // From mini-lesson, go to recommendations
       setActiveTab('recommendations');
     } else if (activeTab === 'recommendations') {
-      // From recommendations, go to visual charts
-      if (selectedPortfolioIndex === null || !originalRecommendation || selectedStocks.length === 0) {
-        setError('Please select a recommended portfolio before proceeding.');
+      // From recommendations, go to visual charts: need portfolio selected OR 3+ tickers
+      if (selectedPortfolioIndex === null && selectedStocks.length < 3) {
+        setError('Please select a recommended portfolio or add at least 3 tickers to create a portfolio before proceeding.');
         return;
       }
       setActiveTab('full-customization');
@@ -2972,13 +2979,18 @@ export const StockSelection = ({
             </Button>
             <Button 
               onClick={handleNext}
-              disabled={!portfolioValidation.canProceed}
-              className={portfolioValidation.canProceed ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}
+              disabled={!canContinue}
+              className={canContinue ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}
             >
-              {portfolioValidation.canProceed ? (
+              {canContinue ? (
                 <>
                   Continue
                   <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              ) : activeTab === 'recommendations' ? (
+                <>
+                  Select a portfolio or add 3+ tickers
+                  <AlertTriangle className="ml-2 h-4 w-4" />
                 </>
               ) : (
                 <>

@@ -186,6 +186,33 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
   const finalCategory = safeguardsResult.final_category;
   const colorCode = colorFromCategory(finalCategory);
 
+  // --- Adjust Scores if Overridden ---
+  // If the category was overridden (e.g. capped at Moderate), we need to align the visual scores
+  // to prevent confusion (e.g. showing "Moderate" but a score of 95).
+  let finalScore = normalizedScore;
+  let finalMPT = normalizedMPT;
+  let finalProspect = normalizedProspect;
+
+  if (safeguardsResult.category_was_overridden) {
+    let capScore = 100;
+    // Determine the cap based on the final category
+    switch (finalCategory) {
+      case 'very-conservative': capScore = 20; break;
+      case 'conservative': capScore = 40; break;
+      case 'moderate': capScore = 60; break;
+      case 'aggressive': capScore = 80; break;
+      default: capScore = 100;
+    }
+
+    // Only cap if the raw score exceeds the category limit
+    if (finalScore > capScore) {
+      const reductionFactor = capScore / finalScore;
+      finalScore = capScore;
+      finalMPT = Math.round(finalMPT * reductionFactor);
+      finalProspect = Math.round(finalProspect * reductionFactor);
+    }
+  }
+
   // --- Consistency Detection ---
   const answersArray = selectedQuestions
     .filter((q) => q.group !== 'SCREENING' && q.maxScore > 0 && !q.excludeFromScoring)
@@ -228,13 +255,16 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
 
   return {
     raw_score: rawSum,
-    normalized_score: normalizedScore,
-    normalized_mpt: normalizedMPT,
-    normalized_prospect: normalizedProspect,
+    normalized_score: finalScore,
+    normalized_mpt: finalMPT,
+    normalized_prospect: finalProspect,
     risk_category: finalCategory,
     color_code: colorCode,
     confidence_band: confidenceBand,
-    visualization_data: visualizationData,
+    visualization_data: {
+      ...visualizationData,
+      score: finalScore // Update visualization score
+    },
     safeguards: safeguardsResult,
     consistency: consistencyResult,
     branching_metadata: branchingMetadata ? {

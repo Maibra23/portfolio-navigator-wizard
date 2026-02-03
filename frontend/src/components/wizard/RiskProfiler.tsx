@@ -1316,7 +1316,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
       }];
     });
 
-    // Use new scoring engine
+    // Use new scoring engine (pass anchor answers so safeguards can cap/warn)
     const scoringResult = computeScoring({
       selectedQuestions: selectedQuestions.map(q => ({
         id: q.id,
@@ -1326,6 +1326,8 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
       })),
       answersMap: answers,
       completionTimeSeconds: totalTimeSeconds,
+      timeHorizonAnswer: answers['M2'],
+      lossAversionAnswer: answers['PT-2'],
       reverseCodedPairs,
       branchingMetadata
     });
@@ -1380,6 +1382,20 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
 
   // Render screening questions
   if (step === 'screening') {
+    if (showContradictionPrompt) {
+      return (
+        <div className="max-w-2xl mx-auto py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <ScreeningContradiction
+            onKeepBeginner={() => {
+              setShowContradictionPrompt(false);
+              handleScreeningComplete();
+            }}
+            onReviseKnowledge={() => setShowContradictionPrompt(false)}
+          />
+        </div>
+      );
+    }
+
     const isComplete = screeningData.ageGroup && screeningData.experience && screeningData.knowledge;
     
     return (
@@ -1481,15 +1497,6 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
-            {showContradictionPrompt && (
-              <ScreeningContradiction
-                onKeepBeginner={() => {
-                  setShowContradictionPrompt(false);
-                  handleScreeningComplete();
-                }}
-                onReviseKnowledge={() => setShowContradictionPrompt(false)}
-              />
-            )}
           </CardContent>
         </Card>
       </div>
@@ -1503,8 +1510,10 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     const fullQuestion = getFullQuestionById(currentQuestion.id) ?? currentQuestion;
     const selectedQuestions = questionSelector?.getSelectedQuestions() || [];
     const totalQuestions = screeningData.ageGroup === 'under-19' ? 5 : 12;
-    const currentIndex = selectedQuestions.length + 1;
-    const progress = (selectedQuestions.length / totalQuestions) * 100;
+    // Cap index so we never show "14 of 12" (adaptive path can ask more than 12)
+    const rawIndex = selectedQuestions.length + 1;
+    const currentIndex = Math.min(rawIndex, totalQuestions);
+    const progress = totalQuestions > 0 ? (Math.min(selectedQuestions.length + 1, totalQuestions) / totalQuestions) * 100 : 0;
     const isUnder19 = screeningData.ageGroup === 'under-19';
     
     // Show feedback overlay for storyline

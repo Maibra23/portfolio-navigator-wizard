@@ -145,12 +145,25 @@ describe('safeguards', () => {
       expect(result.flag_messages.response_pattern_warning).toBe(FLAG_MESSAGES.response_pattern_warning);
     });
 
-    it('sets extreme_profile_confirmation when score < 15 or score > 85', () => {
+    it('sets extreme_profile_confirmation when score < 15 or score > 85 and final category is extreme', () => {
       const low = applySafeguards({ ...defaultParams, score: 10, original_category: 'very-conservative' });
       expect(low.flags.extreme_profile_confirmation).toBe(true);
       const high = applySafeguards({ ...defaultParams, score: 90, original_category: 'very-aggressive' });
       expect(high.flags.extreme_profile_confirmation).toBe(true);
       expect(high.flag_messages.extreme_profile_confirmation).toBe(FLAG_MESSAGES.extreme_profile_confirmation);
+    });
+
+    it('does not set extreme_profile_confirmation when overridden to moderate (time_horizon)', () => {
+      const result = applySafeguards({
+        ...defaultParams,
+        score: 90,
+        original_category: 'very-aggressive',
+        timeHorizonAnswer: 2
+      });
+      expect(result.final_category).toBe('moderate');
+      expect(result.category_was_overridden).toBe(true);
+      expect(result.flags.extreme_profile_confirmation).toBe(false);
+      expect(result.flag_messages.extreme_profile_confirmation).toBeUndefined();
     });
 
     it('defaults to middle and sets high_uncertainty when band spans 3+ categories', () => {

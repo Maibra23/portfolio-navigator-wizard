@@ -76,13 +76,13 @@ const CATEGORY_CONTENT = {
   }
 } as const;
 
-// Category colors matching RiskSpectrum
+// Category colors matching RiskSpectrum (more vibrant)
 const CATEGORY_COLORS = {
-  'very-conservative': '#00008B',
-  'conservative': '#ADD8E6',
-  'moderate': '#008000',
-  'aggressive': '#FFA500',
-  'very-aggressive': '#FF0000'
+  'very-conservative': '#1e40af',
+  'conservative': '#60a5fa',
+  'moderate': '#10b981',
+  'aggressive': '#f59e0b',
+  'very-aggressive': '#ef4444'
 } as const;
 
 // Icon mapping
@@ -116,58 +116,62 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   const IconComponent = ICON_COMPONENTS[content.icon];
 
   return (
-    <Card className={cn("w-full max-w-md", className)} style={{ borderColor: color }}>
-      <CardHeader className="pb-4">
-        <div className="flex items-center gap-3">
+    <Card 
+      className={cn("w-full shadow-md", className)} 
+      style={{ 
+        borderLeftWidth: '4px',
+        borderLeftColor: color,
+      }}
+    >
+      <CardHeader className="pb-3 text-center">
+        <div className="flex flex-col items-center justify-center gap-3">
           {IconComponent && (
-            <IconComponent
-              className="w-8 h-8 flex-shrink-0"
-              style={{ color }}
-            />
+            <div 
+              className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: `${color}15` }}
+            >
+              <IconComponent
+                className="w-6 h-6"
+                style={{ color }}
+              />
+            </div>
           )}
-          <div>
-            <CardTitle className="text-xl font-bold" style={{ color }}>
+          <div className="min-w-0">
+            <CardTitle className="text-lg font-bold" style={{ color }}>
               {content.title}
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Risk Score: {score}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {content.summary}
             </p>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <p className="text-sm leading-relaxed">
-          {content.summary}
-        </p>
-
-        <div>
-          <h4 className="text-sm font-semibold mb-2">Your Characteristics:</h4>
-          <ul className="space-y-1">
-            {content.characteristics.map((characteristic, index) => (
-              <li key={index} className="text-sm text-muted-foreground flex items-start gap-2">
-                <span className="w-1 h-1 bg-muted-foreground rounded-full mt-2 flex-shrink-0" />
-                {characteristic}
-              </li>
-            ))}
-          </ul>
+      <CardContent className="space-y-3">
+        {/* Characteristics - Compact Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {content.characteristics.map((characteristic, index) => (
+            <div 
+              key={index} 
+              className="text-xs px-2 py-1.5 rounded-md bg-muted/50 text-muted-foreground"
+            >
+              {characteristic}
+            </div>
+          ))}
         </div>
 
-        <div className="pt-2 border-t">
-          <p className="text-xs text-muted-foreground">
-            <span className="font-medium">Typical Allocation:</span> {content.typical_allocation}
-          </p>
+        {/* Typical Allocation - Compact */}
+        <div className="flex items-center gap-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 rounded-md p-2">
+          <span className="font-semibold text-blue-900">Portfolio:</span>
+          <span className="text-blue-800">{content.typical_allocation}</span>
         </div>
 
         {secondaryCategory && (
-          <div className="pt-2 border-t">
-            <p className="text-xs text-muted-foreground italic">
-              You also share some characteristics with{' '}
-              <span className="font-medium">
-                {CATEGORY_CONTENT[secondaryCategory as keyof typeof CATEGORY_CONTENT]?.title || secondaryCategory}
-              </span>{' '}
-              investors.
-            </p>
+          <div className="text-xs text-amber-700 bg-amber-50 rounded-md p-2 border border-amber-200">
+            Also shares traits with{' '}
+            <span className="font-semibold">
+              {CATEGORY_CONTENT[secondaryCategory as keyof typeof CATEGORY_CONTENT]?.title || secondaryCategory}
+            </span>
           </div>
         )}
       </CardContent>

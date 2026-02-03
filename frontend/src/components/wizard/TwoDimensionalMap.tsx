@@ -26,8 +26,8 @@ interface TwoDimensionalMapProps {
   className?: string;
 }
 
-// Quadrant explanations (show on click/hover)
-const QUADRANT_EXPLANATIONS = {
+// Quadrant explanations (show on click/hover) - exported for use in ResultsPage
+export const QUADRANT_EXPLANATIONS = {
   'high-high': {
     title: 'Fully Risk-Seeking',
     explanation: "You're comfortable with risk analytically and emotionally.",
@@ -60,7 +60,7 @@ const QUADRANT_COLORS = {
 
 type QuadrantKey = keyof typeof QUADRANT_EXPLANATIONS;
 
-const getQuadrant = (mpt: number, prospect: number): QuadrantKey => {
+export const getQuadrant = (mpt: number, prospect: number): QuadrantKey => {
   const highMpt = mpt >= 50;
   const highProspect = prospect >= 50;
   if (highMpt && highProspect) return 'high-high';
@@ -76,6 +76,7 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
   mptScore,
   prospectScore,
   isGamifiedPath = false,
+  chartOnly = false,
   className
 }) => {
   const userPoint = useMemo(
@@ -85,6 +86,71 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
 
   const quadrant = getQuadrant(mptScore, prospectScore);
   const explanation = QUADRANT_EXPLANATIONS[quadrant];
+
+  const chartBlock = (
+    <div className="relative w-full">
+      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-medium text-gray-600">
+        Analytical (MPT) →
+      </div>
+      <div className="absolute top-1/2 -left-1 -translate-y-1/2 -rotate-90 text-[10px] font-medium text-gray-600">
+        Emotional (Prospect) →
+      </div>
+      <div className="h-[200px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 5, right: 5, bottom: 20, left: 30 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.08)" />
+            <XAxis
+              type="number"
+              dataKey="x"
+              domain={[0, 100]}
+              ticks={[0, 50, 100]}
+              tick={{ fontSize: 10, fill: '#9ca3af' }}
+            />
+            <YAxis
+              type="number"
+              dataKey="y"
+              domain={[0, 100]}
+              ticks={[0, 50, 100]}
+              tick={{ fontSize: 10, fill: '#9ca3af' }}
+            />
+            <ReferenceArea x1={50} x2={100} y1={50} y2={100} fill="rgba(16, 185, 129, 0.35)" />
+            <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="rgba(245, 158, 11, 0.35)" />
+            <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="rgba(59, 130, 246, 0.35)" />
+            <ReferenceArea x1={0} x2={50} y1={0} y2={50} fill="rgba(156, 163, 175, 0.35)" />
+            <ReferenceLine x={50} stroke="#6b7280" strokeWidth={1.5} strokeDasharray="4 4" />
+            <ReferenceLine y={50} stroke="#6b7280" strokeWidth={1.5} strokeDasharray="4 4" />
+            <Scatter
+              data={userPoint}
+              fill="#1e40af"
+              shape={(props) => {
+                const { cx, cy } = props;
+                return (
+                  <g>
+                    <circle cx={cx} cy={cy} r={14} fill="rgba(30, 64, 175, 0.15)" />
+                    <circle cx={cx} cy={cy} r={8} fill="#1e40af" stroke="#fff" strokeWidth={2.5} />
+                  </g>
+                );
+              }}
+            />
+            <Tooltip
+              cursor={{ strokeDasharray: '3 3', stroke: '#60a5fa' }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const point = payload[0].payload;
+                return (
+                  <div className="rounded-lg border-2 border-blue-200 bg-white p-2.5 shadow-lg text-xs">
+                    <div className="font-bold text-blue-900 mb-1">Your Position</div>
+                    <div className="text-blue-700">Analytical: {Math.round(point.x)}</div>
+                    <div className="text-indigo-700">Emotional: {Math.round(point.y)}</div>
+                  </div>
+                );
+              }}
+            />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 
   if (isGamifiedPath) {
     return (
@@ -103,106 +169,36 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
     );
   }
 
+  if (chartOnly) {
+    return (
+      <TooltipProvider>
+        <div className={cn('w-full', className)}>{chartBlock}</div>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider>
-      <Card className={cn('w-full max-w-lg', className)}>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold text-center">
-            Two-Dimensional Risk Map
+      <Card className={cn('w-full', className)}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold">
+            Risk Breakdown
           </CardTitle>
-          <p className="text-xs text-muted-foreground text-center">
-            X: Analytical Risk Tolerance (MPT) · Y: Emotional Risk Tolerance (Prospect)
+          <p className="text-xs text-muted-foreground">
+            Analytical vs Emotional Risk Tolerance
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 16, right: 16, bottom: 24, left: 24 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                <XAxis
-                  type="number"
-                  dataKey="x"
-                  name="MPT"
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}`}
-                  label={{ value: 'Analytical Risk Tolerance', position: 'bottom', offset: 0, style: { fontSize: 11 } }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="y"
-                  name="Prospect"
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}`}
-                  label={{ value: 'Emotional Risk Tolerance', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
-                />
-                {/* Quadrant background areas */}
-                <ReferenceArea x1={50} x2={100} y1={50} y2={100} fill={QUADRANT_COLORS['high-high']} />
-                <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill={QUADRANT_COLORS['low-high']} />
-                <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill={QUADRANT_COLORS['high-low']} />
-                <ReferenceArea x1={0} x2={50} y1={0} y2={50} fill={QUADRANT_COLORS['low-low']} />
-                {/* Quadrant dividers at 50/50 */}
-                <ReferenceLine x={50} stroke="rgba(0,0,0,0.2)" strokeWidth={1} />
-                <ReferenceLine y={50} stroke="rgba(0,0,0,0.2)" strokeWidth={1} />
-                <Scatter
-                  data={userPoint}
-                  fill="#0f172a"
-                  shape={(props) => {
-                    const { cx, cy } = props;
-                    return (
-                      <g>
-                        <circle cx={cx} cy={cy} r={10} fill="rgba(15, 23, 42, 0.2)" />
-                        <circle cx={cx} cy={cy} r={6} fill="#0f172a" className="animate-pulse" />
-                      </g>
-                    );
-                  }}
-                />
-                <Tooltip
-                  cursor={{ strokeDasharray: '3 3' }}
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const point = payload[0].payload;
-                    return (
-                      <div className="rounded-md border bg-background p-3 shadow-md text-xs">
-                        <div className="font-medium">Your position</div>
-                        <div>Analytical: {Math.round(point.x)}</div>
-                        <div>Emotional: {Math.round(point.y)}</div>
-                      </div>
-                    );
-                  }}
-                />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Quadrant labels - clickable/hoverable for explanation */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {(Object.entries(QUADRANT_EXPLANATIONS) as [QuadrantKey, typeof explanation][]).map(([key, data]) => (
-              <UITooltip key={key}>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      'rounded border p-2 text-left transition-colors hover:bg-muted/50',
-                      quadrant === key && 'ring-2 ring-primary ring-offset-2'
-                    )}
-                  >
-                    <span className="font-medium">{data.title}</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-xs">
-                  <p className="font-medium">{data.title}</p>
-                  <p className="mt-1 text-muted-foreground">{data.explanation}</p>
-                  <p className="mt-1 text-muted-foreground italic">{data.implication}</p>
-                </TooltipContent>
-              </UITooltip>
-            ))}
-          </div>
-
-          {/* Current quadrant explanation */}
-          <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-            <div className="font-medium">{explanation.title}</div>
-            <p className="mt-1 text-muted-foreground">{explanation.explanation}</p>
-            <p className="mt-1 text-muted-foreground italic">{explanation.implication}</p>
+        <CardContent className="p-4">
+          {chartBlock}
+          <div
+            className="rounded-lg p-2.5 text-xs border-2 mt-4"
+            style={{
+              backgroundColor: QUADRANT_COLORS[quadrant],
+              borderColor: quadrant === 'high-high' ? '#10b981' : quadrant === 'low-high' ? '#eab308' : quadrant === 'high-low' ? '#3b82f6' : '#9ca3af'
+            }}
+          >
+            <div className="font-bold text-gray-900">{explanation.title}</div>
+            <p className="mt-1 text-gray-700 leading-snug">{explanation.explanation}</p>
           </div>
         </CardContent>
       </Card>

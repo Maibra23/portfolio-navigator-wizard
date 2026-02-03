@@ -133,10 +133,14 @@ export function applySafeguards(params: ApplySafeguardsParams): SafeguardResult 
     override_reason = override_reason ?? 'high_uncertainty';
   }
 
+  // If category is overridden to moderate, we shouldn't flag it as extreme profile
+  const isExtreme = checkExtremeProfile(score);
+  const shouldFlagExtreme = isExtreme && final_category !== 'moderate';
+
   const flags = {
     loss_sensitivity_warning: checkLossAversion(lossAversionAnswer, score),
     response_pattern_warning: checkExtremeAnswerPattern(answers, maxScoresByQuestion),
-    extreme_profile_confirmation: checkExtremeProfile(score),
+    extreme_profile_confirmation: shouldFlagExtreme,
     high_uncertainty: checkHighUncertainty(confidenceBand)
   };
 

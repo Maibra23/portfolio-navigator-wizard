@@ -9,6 +9,7 @@ interface FlagAlertsProps {
   flags: {
     loss_sensitivity_warning: boolean;
     response_pattern_warning: boolean;
+    extreme_profile_confirmation: boolean;
     high_uncertainty: boolean;
   };
   flagMessages?: Record<string, string>;
@@ -16,7 +17,7 @@ interface FlagAlertsProps {
   className?: string;
 }
 
-type FlagKey = 'loss_sensitivity_warning' | 'response_pattern_warning' | 'high_uncertainty';
+type FlagKey = 'loss_sensitivity_warning' | 'response_pattern_warning' | 'extreme_profile_confirmation' | 'high_uncertainty';
 
 function getMessage(key: FlagKey, flagMessages?: Record<string, string>): string {
   return flagMessages?.[key] ?? FLAG_MESSAGES[key];
@@ -47,6 +48,26 @@ export const FlagAlerts: React.FC<FlagAlertsProps> = ({
           type="button"
           onClick={() => dismiss('loss_sensitivity_warning')}
           className="absolute right-2 top-2 rounded p-1 text-yellow-600 hover:bg-yellow-200/50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          aria-label="Dismiss"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </Alert>
+    );
+  }
+
+  if (flags.extreme_profile_confirmation && !dismissed.has('extreme_profile_confirmation')) {
+    alerts.push(
+      <Alert key="extreme_profile" className="relative bg-blue-50/70 text-blue-800 border-blue-200 pr-10">
+        <Info className="h-4 w-4 text-blue-600" aria-hidden />
+        <AlertTitle className="text-blue-800">Profile confirmation</AlertTitle>
+        <AlertDescription className="text-blue-700">
+          {getMessage('extreme_profile_confirmation', flagMessages)}
+        </AlertDescription>
+        <button
+          type="button"
+          onClick={() => dismiss('extreme_profile_confirmation')}
+          className="absolute right-2 top-2 rounded p-1 text-blue-600 hover:bg-blue-200/50 focus:outline-none focus:ring-2 focus:ring-blue-400"
           aria-label="Dismiss"
         >
           <X className="h-4 w-4" />

@@ -54,9 +54,9 @@ describe('ResultsPage', () => {
       />
     );
     expect(screen.getAllByText('Moderate').length).toBeGreaterThan(0); // CategoryCard
-    expect(screen.getByText('Your Risk Profile')).toBeInTheDocument(); // RiskSpectrum
-    expect(screen.getByText('Two-Dimensional Risk Map')).toBeInTheDocument(); // TwoDimensionalMap
-    expect(screen.getByRole('button', { name: /Continue to Portfolio/i })).toBeInTheDocument();
+    expect(screen.getByText(/Risk Score:/)).toBeInTheDocument(); // RiskSpectrum
+    expect(screen.getByText('Risk Breakdown')).toBeInTheDocument(); // Risk breakdown section
+    expect(screen.getByRole('button', { name: /Continue/i })).toBeInTheDocument();
   });
 
   it('shows FlagAlerts when flags are present', () => {
@@ -79,7 +79,7 @@ describe('ResultsPage', () => {
     expect(screen.getByText('Warning message')).toBeInTheDocument();
   });
 
-  it('shows ConfirmationModal when extreme profile flag is set', () => {
+  it('shows results page with flag alert when extreme profile flag is set (no modal)', () => {
     const resultWithConfirmation = {
       ...baseScoringResult,
       safeguards: {
@@ -95,7 +95,8 @@ describe('ResultsPage', () => {
         onContinue={vi.fn()}
       />
     );
-    expect(screen.getByText('Please Confirm Your Profile')).toBeInTheDocument();
+    expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
+    expect(screen.getByText(/Your profile is less common/)).toBeInTheDocument();
   });
 
   it('handles gamified path correctly (hides 2D map chart)', () => {
@@ -108,7 +109,7 @@ describe('ResultsPage', () => {
       />
     );
     expect(screen.getByText('Analytical vs Emotional Risk')).toBeInTheDocument();
-    expect(screen.queryByText('Two-Dimensional Risk Map')).not.toBeInTheDocument();
+    expect(screen.getByText(/Complete the full assessment/)).toBeInTheDocument();
   });
 
   it('calls actions when buttons clicked', async () => {
@@ -123,9 +124,165 @@ describe('ResultsPage', () => {
         onContinue={onContinue}
       />
     );
-    await user.click(screen.getByRole('button', { name: /Review My Answers/i }));
+    await user.click(screen.getByRole('button', { name: /Review/i }));
     expect(onReview).toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: /Continue to Portfolio/i }));
+    await user.click(screen.getByRole('button', { name: /Continue/i }));
     expect(onContinue).toHaveBeenCalled();
+  });
+
+  describe('all risk profiles as reference', () => {
+    const makeScoringResult = (risk_category: string, normalized_score: number, extreme_flag = false) => ({
+      normalized_score,
+      normalized_mpt: normalized_score,
+      normalized_prospect: normalized_score,
+      risk_category,
+      confidence_band: mockConfidenceBand,
+      visualization_data: mockVisualizationData,
+      safeguards: {
+        ...mockSafeguards,
+        final_category: risk_category,
+        flags: { ...mockSafeguards.flags, extreme_profile_confirmation: extreme_flag },
+        flag_messages: extreme_flag ? { extreme_profile_confirmation: 'Your profile is less common. Please confirm this feels accurate.' } : {},
+      },
+    });
+
+    it('renders Very Conservative and shows profile confirmation when flagged', () => {
+      const result = makeScoringResult('very-conservative', 15, true);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getAllByText('Very Conservative').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Your profile is less common/)).toBeInTheDocument();
+    });
+
+    it('renders Conservative', () => {
+      const result = makeScoringResult('conservative', 30, false);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getAllByText('Conservative').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/Your profile is less common/)).not.toBeInTheDocument();
+    });
+
+    it('renders Moderate and does not show profile confirmation', () => {
+      const result = makeScoringResult('moderate', 50, false);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getAllByText('Moderate').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/Your profile is less common/)).not.toBeInTheDocument();
+    });
+
+    it('renders Aggressive', () => {
+      const result = makeScoringResult('aggressive', 70, false);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getAllByText('Aggressive').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/Your profile is less common/)).not.toBeInTheDocument();
+    });
+
+    it('renders Very Aggressive and shows profile confirmation when flagged', () => {
+      const result = makeScoringResult('very-aggressive', 92, true);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getAllByText('Very Aggressive').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Your profile is less common/)).toBeInTheDocument();
+    });
+
+    it('Moderate with override: no profile confirmation even if raw score was high', () => {
+      const result = {
+        ...makeScoringResult('moderate', 60, false),
+        safeguards: {
+          ...mockSafeguards,
+          final_category: 'moderate',
+          category_was_overridden: true,
+          override_reason: 'time_horizon_override',
+          flags: { ...mockSafeguards.flags, extreme_profile_confirmation: false },
+          flag_messages: {},
+        },
+      };
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getAllByText('Moderate').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/Your profile is less common/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('visualizations aligned with assigned risk profile', () => {
+    const band = (lower: number, upper: number) => ({
+      lower,
+      upper,
+      primary_category: 'moderate',
+      secondary_category: null,
+      band_width: upper - lower,
+      adjustment_reasons: [] as string[],
+    });
+    const makeResult = (
+      risk_category: string,
+      normalized_score: number,
+      normalized_mpt: number,
+      normalized_prospect: number
+    ) => ({
+      normalized_score,
+      normalized_mpt,
+      normalized_prospect,
+      risk_category,
+      confidence_band: band(
+        Math.max(0, normalized_score - 5),
+        Math.min(100, normalized_score + 5)
+      ),
+      visualization_data: { gradient_intensity: 'medium' as const, boundary_proximity: 'far' as const },
+      safeguards: {
+        ...mockSafeguards,
+        final_category: risk_category,
+        flags: { ...mockSafeguards.flags, extreme_profile_confirmation: false },
+        flag_messages: {},
+      },
+    });
+
+    it('very-conservative: Risk Score and category match (score in 0–20)', () => {
+      const score = 10;
+      const result = makeResult('very-conservative', score, 12, 8);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText(new RegExp(`Risk Score:\\s*${score}`))).toBeInTheDocument();
+      expect(screen.getAllByText('Very Conservative').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('conservative: Risk Score and category match (score in 21–40)', () => {
+      const score = 30;
+      const result = makeResult('conservative', score, 28, 32);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText(new RegExp(`Risk Score:\\s*${score}`))).toBeInTheDocument();
+      expect(screen.getAllByText('Conservative').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('moderate: Risk Score and category match (score in 41–60)', () => {
+      const score = 50;
+      const result = makeResult('moderate', score, 48, 52);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText(new RegExp(`Risk Score:\\s*${score}`))).toBeInTheDocument();
+      expect(screen.getAllByText('Moderate').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('aggressive: Risk Score and category match (score in 61–80)', () => {
+      const score = 70;
+      const result = makeResult('aggressive', score, 68, 72);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText(new RegExp(`Risk Score:\\s*${score}`))).toBeInTheDocument();
+      expect(screen.getAllByText('Aggressive').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('very-aggressive: Risk Score and category match (score in 81–100)', () => {
+      const score = 92;
+      const result = makeResult('very-aggressive', score, 90, 94);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText(new RegExp(`Risk Score:\\s*${score}`))).toBeInTheDocument();
+      expect(screen.getAllByText('Very Aggressive').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('override to moderate: displayed score 60 aligns with assigned Moderate profile', () => {
+      const result = makeResult('moderate', 60, 58, 62);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText(/Risk Score:\s*60/)).toBeInTheDocument();
+      expect(screen.getAllByText('Moderate').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('Risk Breakdown shows Analytical and Emotional scores matching passed mpt/prospect', () => {
+      const result = makeResult('moderate', 50, 45, 55);
+      render(<ResultsPage scoringResult={result} isGamifiedPath={false} onReviewAnswers={vi.fn()} onContinue={vi.fn()} />);
+      expect(screen.getByText('45')).toBeInTheDocument();
+      expect(screen.getByText('55')).toBeInTheDocument();
+    });
   });
 });
