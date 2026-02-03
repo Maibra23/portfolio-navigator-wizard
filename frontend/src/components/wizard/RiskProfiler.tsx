@@ -964,6 +964,34 @@ const PROSPECT_QUESTIONS: Question[] = [
   }
 ];
 
+/** Resolve full question (text, options, storylineData) by id. Selector returns minimal Question; this enriches for display. */
+function getFullQuestionById(id: string): Question | undefined {
+  const fromMpt = MPT_QUESTIONS.find((q) => q.id === id);
+  if (fromMpt) return fromMpt;
+  const fromProspect = PROSPECT_QUESTIONS.find((q) => q.id === id);
+  if (fromProspect) return fromProspect;
+  const fromStory = GAMIFIED_STORYLINE.find((s) => s.id === id);
+  if (fromStory) {
+    return {
+      id: fromStory.id,
+      group: 'PROSPECT',
+      type: 'storyline',
+      question: fromStory.scenario,
+      text: fromStory.scenario,
+      maxScore: 4,
+      construct: 'gamified_scenario',
+      options: fromStory.options.map((o, i) => ({
+        label: o.text,
+        value: i + 1,
+        text: o.text,
+        score: o.score
+      })),
+      storylineData: fromStory
+    };
+  }
+  return undefined;
+}
+
 /**
  * VALIDATION FUNCTION - Run this in console to verify question data
  * Usage: Copy to browser console and run validateQuestions()
@@ -1186,9 +1214,9 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     // Record the answer
     setAnswers(prev => ({ ...prev, [currentQuestion.id]: value }));
 
-    // Show feedback for storyline questions
-    if (screeningData.ageGroup === 'under-19' && currentQuestion.storylineData) {
-      const selectedOption = currentQuestion.storylineData.options[value - 1];
+    const fullQ = getFullQuestionById(currentQuestion.id);
+    if (screeningData.ageGroup === 'under-19' && fullQ?.storylineData) {
+      const selectedOption = fullQ.storylineData!.options[value - 1];
       setCurrentFeedback(selectedOption.consequence);
       setShowFeedback(true);
 
@@ -1445,8 +1473,11 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
   if (step === 'questions') {
     if (!currentQuestion) return null;
 
+    const fullQuestion = getFullQuestionById(currentQuestion.id) ?? currentQuestion;
     const selectedQuestions = questionSelector?.getSelectedQuestions() || [];
-    const progress = (selectedQuestions.length / (screeningData.ageGroup === 'under-19' ? 5 : 12)) * 100;
+    const totalQuestions = screeningData.ageGroup === 'under-19' ? 5 : 12;
+    const currentIndex = selectedQuestions.length + 1;
+    const progress = (selectedQuestions.length / totalQuestions) * 100;
     const isUnder19 = screeningData.ageGroup === 'under-19';
     
     // Show feedback overlay for storyline
@@ -1475,24 +1506,24 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
               {isUnder19 ? 'Your Adventure Continues!' : 'Risk Assessment'}
             </CardTitle>
             <p className="text-muted-foreground mb-4">
-              {isUnder19 ? `Chapter ${selectedQuestions.length} of 5` : `Question ${selectedQuestions.length} of 12`}
+              {isUnder19 ? `Chapter ${currentIndex} of 5` : `Question ${currentIndex} of 12`}
             </p>
             <Progress value={progress} className="w-full" />
           </CardHeader>
           
           <CardContent className="space-y-6">
-            {isUnder19 && currentQuestion.storylineData ? (
+            {isUnder19 && fullQuestion.storylineData ? (
               // Gamified storyline interface
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <div className="text-4xl mb-4">{currentQuestion.storylineData.visual}</div>
+                  <div className="text-4xl mb-4">{fullQuestion.storylineData.visual}</div>
                   <h3 className="text-lg font-semibold text-gray-800 leading-relaxed">
-                    {currentQuestion.storylineData.scenario}
+                    {fullQuestion.storylineData.scenario}
                   </h3>
                 </div>
                 
                 <div className="space-y-3">
-                  {currentQuestion.storylineData.options.map((option, index) => (
+                  {fullQuestion.storylineData.options.map((option, index) => (
                     <div
                       key={index}
                       onClick={() => handleAnswerSubmit(option.score)}
@@ -1516,33 +1547,32 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                   ))}
                 </div>
                 
-                {currentQuestion.storylineData.feedback && (
+                {fullQuestion.storylineData.feedback && (
                   <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                     <p className="text-sm text-yellow-800 text-center">
-                      💡 {currentQuestion.storylineData.feedback}
+                      💡 {fullQuestion.storylineData.feedback}
                     </p>
                   </div>
                 )}
               </div>
             ) : (
-              // Traditional multiple choice interface
+              // Traditional multiple choice interface (full question text and options from lookup)
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">
-                  {currentQuestion.question}
+                  {fullQuestion.question ?? currentQuestion.id}
                 </h3>
                 
                 <RadioGroup
                   value={selectedOptionValues[currentQuestion.id] || ""}
                   onValueChange={(value) => {
-                    const option = currentQuestion.options?.find(o => String(o.value) === String(value));
+                    const option = fullQuestion.options?.find(o => String(o.value) === String(value));
                     if (option) {
                       setSelectedOptionValues(prev => ({ ...prev, [currentQuestion.id]: String(option.value) }));
-                      // Use numeric score for answers (legacy score field kept in arrays)
                       setAnswers(prev => ({ ...prev, [currentQuestion.id]: option.score }));
                     }
                   }}
                 >
-                  {currentQuestion.options?.map((option) => (
+                  {(fullQuestion.options ?? []).map((option) => (
                     <div key={option.value} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                       <RadioGroupItem value={String(option.value)} id={`q${currentQuestion.id}-${option.value}`} />
                       <Label 
