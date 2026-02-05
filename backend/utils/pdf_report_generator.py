@@ -516,7 +516,7 @@ class PDFReportGenerator:
         # --- 3. SWEDISH TAX ANALYSIS ---
         story.append(PageBreak())
         story.append(Paragraph("3. Swedish Tax Analysis", self.styles['SectionHeading']))
-        
+
         tax_data = data.get('taxData', {}) or {}
         if tax_data:
             tax_table_data = [['Tax Component', 'Value']]
@@ -532,14 +532,114 @@ class PDFReportGenerator:
                 tax_table_data.append(['Tax-Free Allowance', self._format_number(float(tax_free), currency=True)])
             if taxable_cap is not None:
                 tax_table_data.append(['Taxable Capital Base', self._format_number(float(taxable_cap), currency=True)])
-            
+
             story.append(self._create_table(tax_table_data, col_widths=[3*inch, 4.2*inch]))
             story.append(Spacer(1, 0.2*inch))
             story.append(Paragraph(f"Analysis based on {account_type} rules for the {tax_year} tax year. "
-                                 "Calculations include standard-tax for ISK/KF accounts or estimated capital gains tax based on current Swedish legislation.", 
+                                 "Calculations include standard-tax for ISK/KF accounts or estimated capital gains tax based on current Swedish legislation.",
                                  self.styles['Normal']))
         else:
             story.append(Paragraph("No tax data available.", self.styles['Normal']))
+
+        # --- 3a. ACCOUNT TYPE COMPARISON ---
+        tax_comparison = data.get('taxComparison')
+        if tax_comparison and len(tax_comparison) > 0:
+            story.append(Spacer(1, 0.3*inch))
+            story.append(Paragraph("3a. Account Type Comparison", self.styles['SubsectionHeading']))
+            story.append(Paragraph("The following table compares estimated annual taxes across all three Swedish investment account types based on your portfolio value.",
+                                 self.styles['Normal']))
+            story.append(Spacer(1, 0.1*inch))
+
+            # Create comparison table
+            comp_table_data = [['Account Type', 'Annual Tax (SEK)', 'Effective Rate (%)', 'After-Tax Return (%)']]
+
+            # Find the lowest tax option
+            lowest_tax = min(tc.get('annualTax', float('inf')) for tc in tax_comparison)
+
+            for tc in tax_comparison:
+                act_type = tc.get('accountType', 'N/A')
+                annual_tax_val = tc.get('annualTax', 0)
+                eff_rate_val = tc.get('effectiveRate', 0)
+                after_tax_ret = tc.get('afterTaxReturn', 0)
+
+                # Highlight the current account type and lowest tax option
+                is_current = act_type == account_type
+                is_lowest = annual_tax_val == lowest_tax
+
+                label = act_type
+                if is_current and is_lowest:
+                    label += " ★ (Current & Optimal)"
+                elif is_current:
+                    label += " (Current)"
+                elif is_lowest:
+                    label += " ★ (Optimal)"
+
+                comp_table_data.append([
+                    label,
+                    self._format_number(float(annual_tax_val), currency=True),
+                    self._format_percentage(float(eff_rate_val)),
+                    self._format_percentage(float(after_tax_ret))
+                ])
+
+            comp_table = Table(comp_table_data, colWidths=[2*inch, 2*inch, 1.7*inch, 1.5*inch])
+            comp_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            story.append(comp_table)
+            story.append(Spacer(1, 0.15*inch))
+            story.append(Paragraph("★ = Optimal (lowest annual tax)", self.styles['Normal']))
+
+        # --- 3b. TAX-FREE LEVEL BREAKDOWN ---
+        tax_free_data = data.get('taxFreeData')
+        if tax_free_data and (account_type == 'ISK' or account_type == 'KF'):
+            story.append(Spacer(1, 0.3*inch))
+            story.append(Paragraph("3b. Tax-Free Level Breakdown", self.styles['SubsectionHeading']))
+
+            tax_free_level = tax_free_data.get('taxFreeLevel', 0)
+            tax_free_amount = tax_free_data.get('taxFreeAmount', 0)
+            taxable_amount = tax_free_data.get('taxableAmount', 0)
+            is_tax_free = tax_free_data.get('isTaxFree', False)
+
+            if is_tax_free:
+                story.append(Paragraph(f"🎉 <b>Congratulations!</b> Your entire portfolio of {self._format_number(portfolio_value, currency=True)} is below the {tax_year} tax-free level ({self._format_number(tax_free_level, currency=True)}). "
+                                     "This means you pay <b>zero tax</b> on this account!",
+                                     self.styles['Normal']))
+            else:
+                breakdown_table = [
+                    ['Component', 'Amount (SEK)', 'Percentage'],
+                    ['Tax-Free Portion', self._format_number(tax_free_amount, currency=True), self._format_percentage(tax_free_data.get('taxFreePercentage', 0))],
+                    ['Taxable Portion', self._format_number(taxable_amount, currency=True), self._format_percentage(tax_free_data.get('taxablePercentage', 0))],
+                    ['Total Capital', self._format_number(portfolio_value, currency=True), '100.00%']
+                ]
+                story.append(self._create_table(breakdown_table, col_widths=[2.5*inch, 2.5*inch, 2.2*inch]))
+                story.append(Spacer(1, 0.1*inch))
+                story.append(Paragraph(f"Only the taxable portion ({self._format_number(taxable_amount, currency=True)}) is subject to schablonbeskattning. "
+                                     f"The tax-free level for {tax_year} is {self._format_number(tax_free_level, currency=True)}.",
+                                     self.styles['Normal']))
+
+        # --- 3c. SMART RECOMMENDATIONS ---
+        recommendations = data.get('recommendations')
+        if recommendations and len(recommendations) > 0:
+            story.append(Spacer(1, 0.3*inch))
+            story.append(Paragraph("3c. Smart Recommendations", self.styles['SubsectionHeading']))
+            story.append(Paragraph("Based on your portfolio settings and Swedish tax regulations, here are personalized recommendations to optimize your returns:",
+                                 self.styles['Normal']))
+            story.append(Spacer(1, 0.1*inch))
+
+            for i, rec in enumerate(recommendations, 1):
+                # Clean up emoji from recommendations for PDF
+                rec_text = rec.replace('💡', '').replace('💰', '').replace('✅', '').replace('🎉', '').strip()
+                story.append(Paragraph(f"<b>{i}.</b> {rec_text}", self.styles['Normal']))
+                story.append(Spacer(1, 0.1*inch))
         
         # --- 4. OPTIMIZATION RESULTS ---
         if opt_sec_num:

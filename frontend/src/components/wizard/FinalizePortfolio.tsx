@@ -31,6 +31,11 @@ import { PortfolioComparisonTable } from './PortfolioComparisonTable';
 import { PerformanceSummaryCard, QualityScoreCard, MonteCarloCard } from './FinalAnalysisComponents';
 import { FiveYearProjectionChart } from './FiveYearProjectionChart';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { TaxEducationPanel } from './TaxEducationPanel';
+import { TaxComparisonChart } from './TaxComparisonChart';
+import { TaxFreeVisualization } from './TaxFreeVisualization';
+import { WhatIfCalculator } from './WhatIfCalculator';
+import { SmartRecommendations } from './SmartRecommendations';
 
 interface FinalizePortfolioProps {
   onComplete: () => void;
@@ -69,6 +74,8 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   const [exportingFormat, setExportingFormat] = useState<'pdf' | 'csv' | null>(null);
   const [portfolioName, setPortfolioName] = useState('My Investment Portfolio');
   const [selectedPortfolioType, setSelectedPortfolioType] = useState<'current' | 'weights' | 'market'>('current');
+  const [taxComparisonData, setTaxComparisonData] = useState<any>(null);
+  const [recommendationsData, setRecommendationsData] = useState<any>(null);
 
   // Builder "Done" pressed: user must press Done in Portfolio Builder before Continue to Optimize
   const [builderDone, setBuilderDone] = useState(false);
@@ -367,8 +374,56 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     }
   }, [state.taxSettings.courtagClass, state.constructedPortfolio, capital]);
 
+  // Fetch tax comparison data for all account types (for export)
+  const fetchTaxComparisonForExport = async () => {
+    if (!state.taxSettings.accountType || !portfolioMetrics) return null;
+
+    try {
+      const accountTypes = ['ISK', 'KF', 'AF'];
+      const promises = accountTypes.map(async (accountType) => {
+        const requestBody: any = {
+          accountType,
+          taxYear: state.taxSettings.taxYear
+        };
+
+        if (accountType === 'ISK' || accountType === 'KF') {
+          requestBody.portfolioValue = capital;
+        } else {
+          const estimatedGains = capital * (displayMetrics?.expectedReturn || portfolioMetrics.expectedReturn);
+          requestBody.realizedGains = estimatedGains;
+          requestBody.dividends = 0;
+          requestBody.fundHoldings = 0;
+        }
+
+        const response = await fetch('/api/portfolio/tax/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) return null;
+
+        const result = await response.json();
+        return {
+          accountType,
+          annualTax: result.annualTax || 0,
+          effectiveRate: result.effectiveTaxRate || 0,
+          afterTaxReturn: result.afterTaxReturn || 0,
+          taxFreeLevel: result.taxFreeLevel || 0,
+          capitalUnderlag: result.capitalUnderlag || 0
+        };
+      });
+
+      const results = await Promise.all(promises);
+      return results.filter(r => r !== null);
+    } catch (error) {
+      console.error('Error fetching tax comparison for export:', error);
+      return null;
+    }
+  };
+
   // Build shared export payload for PDF and CSV
-  const buildExportRequest = () => {
+  const buildExportRequest = async () => {
     const portfolioData = {
       tickers: state.constructedPortfolio.map(s => s.symbol),
       weights: state.constructedPortfolio.reduce((acc, s) => {
@@ -395,13 +450,65 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       diversificationScore: displayMetrics.diversificationScore,
       sharpeRatio: displayMetrics.sharpeRatio
     } : null;
+
+    // Fetch tax comparison data for export
+    const taxComparison = await fetchTaxComparisonForExport();
+
+    // Calculate tax-free visualization data
+    const taxFreeLevel = state.taxSettings.taxYear === 2025 ? 150000 : 300000;
+    const taxableAmount = Math.max(0, capital - taxFreeLevel);
+    const taxFreeAmount = Math.min(capital, taxFreeLevel);
+    const taxFreeData = (state.taxSettings.accountType === 'ISK' || state.taxSettings.accountType === 'KF') ? {
+      taxFreeLevel,
+      taxFreeAmount,
+      taxableAmount,
+      taxFreePercentage: (taxFreeAmount / capital) * 100,
+      taxablePercentage: (taxableAmount / capital) * 100,
+      isTaxFree: taxableAmount === 0
+    } : null;
+
+    // Build recommendations summary for export
+    const recommendations: string[] = [];
+
+    if (state.taxSettings.taxYear === 2025 && capital < 300000 && taxCalculation) {
+      const currentTax = taxCalculation.annualTax || 0;
+      if (currentTax > 0) {
+        recommendations.push(
+          `💡 Tax Year Optimization: Consider switching to 2026 tax year. With your capital (${capital.toLocaleString('sv-SE')} SEK) below the 2026 tax-free level (300,000 SEK), you could significantly reduce or eliminate taxes.`
+        );
+      }
+    }
+
+    if (taxComparison && taxComparison.length > 0) {
+      const lowestTax = Math.min(...taxComparison.map((t: any) => t.annualTax));
+      const currentAccountTax = taxComparison.find((t: any) => t.accountType === state.taxSettings.accountType);
+      const lowestTaxAccount = taxComparison.find((t: any) => t.annualTax === lowestTax);
+
+      if (currentAccountTax && lowestTaxAccount && currentAccountTax.annualTax > lowestTax + 100) {
+        const savings = currentAccountTax.annualTax - lowestTax;
+        recommendations.push(
+          `💰 Account Type Optimization: Switching from ${state.taxSettings.accountType} to ${lowestTaxAccount.accountType} could save approximately ${savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK per year (${(savings * 5).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK over 5 years).`
+        );
+      }
+    }
+
+    if (metricsForExport && (state.taxSettings.accountType === 'ISK' || state.taxSettings.accountType === 'KF') && metricsForExport.expectedReturn > 0.08 && capital > 300000) {
+      recommendations.push(
+        `✅ Optimal Configuration: With your expected return of ${(metricsForExport.expectedReturn * 100).toFixed(1)}%, using ${state.taxSettings.accountType} is optimal. You benefit from schablonbeskattning compared to traditional capital gains taxation.`
+      );
+    }
+
     return {
       portfolio: portfolioData,
+      portfolioName: portfolioName,
       includeSections: {
         optimization: state.optimizedPortfolio != null,
         stressTest: state.stressTestResults != null,
         goals: false,
-        rebalancing: false
+        rebalancing: false,
+        taxEducation: true,
+        taxComparison: true,
+        recommendations: recommendations.length > 0
       },
       optimizationResults: state.optimizedPortfolio ?? undefined,
       projectionMetrics: projectionMetricsForExport,
@@ -411,7 +518,27 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       portfolioValue: capital,
       accountType: state.taxSettings.accountType,
       taxYear: state.taxSettings.taxYear,
-      metrics: metricsForExport
+      courtageClass: state.taxSettings.courtagClass,
+      metrics: metricsForExport,
+      // New enhanced data for visualizations
+      taxComparison,
+      taxFreeData,
+      recommendations,
+      // Educational content summary
+      educationalSummary: {
+        selectedAccountType: state.taxSettings.accountType,
+        taxYearInfo: {
+          year: state.taxSettings.taxYear,
+          taxFreeLevel: taxFreeLevel,
+          schablonranta: state.taxSettings.taxYear === 2025 ? 2.96 : 3.55
+        },
+        courtageInfo: {
+          class: state.taxSettings.courtagClass,
+          setupCost: transactionCosts?.setupCost || 0,
+          annualRebalancing: transactionCosts?.annualRebalancingCost || 0,
+          totalFirstYear: transactionCosts?.totalFirstYearCost || 0
+        }
+      }
     };
   };
 
@@ -420,7 +547,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     setIsExporting(true);
     setExportingFormat('pdf');
     try {
-      const exportRequest = buildExportRequest();
+      const exportRequest = await buildExportRequest();
       const pdfResponse = await fetch('/api/portfolio/export/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -431,7 +558,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `portfolio_report_${new Date().toISOString().split('T')[0]}.pdf`;
+      a.download = `portfolio_report_${portfolioName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -450,12 +577,13 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     setIsExporting(true);
     setExportingFormat('csv');
     try {
-      const exportRequest = buildExportRequest();
+      const exportRequest = await buildExportRequest();
       const csvResponse = await fetch('/api/portfolio/export/csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           portfolio: exportRequest.portfolio,
+          portfolioName: exportRequest.portfolioName,
           taxData: exportRequest.taxData,
           costData: exportRequest.costData,
           stressTestResults: exportRequest.stressTestResults,
@@ -465,7 +593,13 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
           portfolioValue: exportRequest.portfolioValue,
           accountType: exportRequest.accountType,
           taxYear: exportRequest.taxYear,
-          includeFiles: ['holdings', 'tax', 'costs', 'metrics', 'stressTest', 'optimization', 'projection']
+          courtageClass: exportRequest.courtageClass,
+          // Enhanced data
+          taxComparison: exportRequest.taxComparison,
+          taxFreeData: exportRequest.taxFreeData,
+          recommendations: exportRequest.recommendations,
+          educationalSummary: exportRequest.educationalSummary,
+          includeFiles: ['holdings', 'tax', 'costs', 'metrics', 'stressTest', 'optimization', 'projection', 'taxComparison', 'recommendations']
         }),
       });
       if (!csvResponse.ok) throw new Error(`CSV export failed: ${csvResponse.statusText}`);
@@ -475,7 +609,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         const zipUrl = window.URL.createObjectURL(new Blob([zipBlob], { type: 'application/zip' }));
         const zipA = document.createElement('a');
         zipA.href = zipUrl;
-        zipA.download = `portfolio_data_${new Date().toISOString().split('T')[0]}.zip`;
+        zipA.download = `portfolio_data_${portfolioName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.zip`;
         document.body.appendChild(zipA);
         zipA.click();
         window.URL.revokeObjectURL(zipUrl);
@@ -998,6 +1132,22 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
         {/* Tab 4: Tax, Cost & Summary */}
         <TabsContent value="tax-cost" className="space-y-6 mt-6">
+          {/* Educational Panel */}
+          <TaxEducationPanel />
+
+          {/* Smart Recommendations */}
+          {state.taxSettings.accountType && portfolioMetrics && (
+            <SmartRecommendations
+              capital={capital}
+              accountType={state.taxSettings.accountType}
+              taxYear={state.taxSettings.taxYear}
+              courtagClass={state.taxSettings.courtagClass || ''}
+              expectedReturn={displayMetrics?.expectedReturn || portfolioMetrics.expectedReturn}
+              taxCalculation={taxCalculation}
+              transactionCosts={transactionCosts}
+            />
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -1005,7 +1155,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 Tax, Cost & Summary
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Swedish taxes and transaction costs, 5-year projection, then export
+                Configure your account settings and see how taxes affect your portfolio
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1079,6 +1229,35 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Tax Comparison Chart */}
+              {state.taxSettings.accountType && portfolioMetrics && (
+                <TaxComparisonChart
+                  capital={capital}
+                  taxYear={state.taxSettings.taxYear}
+                  expectedReturn={displayMetrics?.expectedReturn || portfolioMetrics.expectedReturn}
+                  selectedAccountType={state.taxSettings.accountType}
+                />
+              )}
+
+              {/* Tax-Free Visualization (only for ISK/KF) */}
+              {state.taxSettings.accountType && taxCalculation && (state.taxSettings.accountType === 'ISK' || state.taxSettings.accountType === 'KF') && (
+                <TaxFreeVisualization
+                  capital={capital}
+                  taxFreeLevel={taxCalculation.taxFreeLevel || (state.taxSettings.taxYear === 2025 ? 150000 : 300000)}
+                  accountType={state.taxSettings.accountType}
+                  taxYear={state.taxSettings.taxYear}
+                />
+              )}
+
+              {/* What-If Calculator */}
+              {state.taxSettings.accountType && portfolioMetrics && (
+                <WhatIfCalculator
+                  initialCapital={capital}
+                  initialTaxYear={state.taxSettings.taxYear}
+                  expectedReturn={displayMetrics?.expectedReturn || portfolioMetrics.expectedReturn}
+                />
+              )}
 
               {/* Section: Tax Summary */}
               {state.taxSettings.accountType && (

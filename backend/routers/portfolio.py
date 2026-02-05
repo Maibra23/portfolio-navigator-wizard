@@ -10559,6 +10559,7 @@ def _normalize_export_portfolio(portfolio: Union[List[Dict[str, Any]], Dict[str,
 # Pydantic models for PDF export
 class PDFExportRequest(BaseModel):
     portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
+    portfolioName: Optional[str] = None
     includeSections: Dict[str, bool] = {}
     optimizationResults: Optional[Dict[str, Any]] = None
     projectionMetrics: Optional[Dict[str, Any]] = None  # weights, expectedReturn, risk for 5-year projection (recommended portfolio)
@@ -10568,7 +10569,13 @@ class PDFExportRequest(BaseModel):
     portfolioValue: Optional[float] = None
     accountType: Optional[str] = None
     taxYear: Optional[int] = None
+    courtageClass: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
+    # New enhanced fields
+    taxComparison: Optional[List[Dict[str, Any]]] = None
+    taxFreeData: Optional[Dict[str, Any]] = None
+    recommendations: Optional[List[str]] = None
+    educationalSummary: Optional[Dict[str, Any]] = None
 
 @router.post("/export/pdf")
 async def export_pdf(request: PDFExportRequest):
@@ -10602,6 +10609,7 @@ async def export_pdf(request: PDFExportRequest):
         # Prepare data for PDF generation
         pdf_data = {
             "portfolio": portfolio_list,
+            "portfolioName": request.portfolioName or "Investment Portfolio",
             "includeSections": request.includeSections,
             "optimizationResults": request.optimizationResults,
             "projectionMetrics": request.projectionMetrics,
@@ -10611,9 +10619,15 @@ async def export_pdf(request: PDFExportRequest):
             "portfolioValue": request.portfolioValue or 0.0,
             "accountType": request.accountType,
             "taxYear": request.taxYear or datetime.now().year,
-            "metrics": request.metrics or {}
+            "courtageClass": request.courtageClass,
+            "metrics": request.metrics or {},
+            # Enhanced data
+            "taxComparison": request.taxComparison,
+            "taxFreeData": request.taxFreeData,
+            "recommendations": request.recommendations,
+            "educationalSummary": request.educationalSummary
         }
-        
+
         # Generate PDF
         pdf_bytes = pdf_generator.generate_portfolio_report(pdf_data)
         
@@ -10633,6 +10647,7 @@ async def export_pdf(request: PDFExportRequest):
 # Pydantic models for CSV export (same content as PDF for parity)
 class CSVExportRequest(BaseModel):
     portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
+    portfolioName: Optional[str] = None
     taxData: Optional[Dict[str, Any]] = None
     costData: Optional[Dict[str, Any]] = None
     stressTestResults: Optional[Dict[str, Any]] = None
@@ -10642,7 +10657,13 @@ class CSVExportRequest(BaseModel):
     portfolioValue: Optional[float] = None
     accountType: Optional[str] = None
     taxYear: Optional[int] = None
-    includeFiles: List[str] = ["holdings", "tax", "costs", "metrics", "stressTest", "optimization", "projection"]
+    courtageClass: Optional[str] = None
+    # New enhanced fields
+    taxComparison: Optional[List[Dict[str, Any]]] = None
+    taxFreeData: Optional[Dict[str, Any]] = None
+    recommendations: Optional[List[str]] = None
+    educationalSummary: Optional[Dict[str, Any]] = None
+    includeFiles: List[str] = ["holdings", "tax", "costs", "metrics", "stressTest", "optimization", "projection", "taxComparison", "recommendations"]
 
 class CSVExportResponse(BaseModel):
     files: List[Dict[str, Any]]
@@ -10778,16 +10799,57 @@ async def export_csv(request: CSVExportRequest):
                     })
             except Exception as e:
                 logger.warning("CSV 5-year projection export failed: %s", e)
-        
+
+        # New enhanced CSV files
+        if "taxComparison" in request.includeFiles and request.taxComparison:
+            try:
+                tax_comp_csv = csv_generator.generate_tax_comparison_csv(
+                    request.taxComparison,
+                    request.accountType
+                )
+                files.append({
+                    "filename": "tax_comparison.csv",
+                    "content": base64.b64encode(tax_comp_csv.encode('utf-8')).decode('utf-8'),
+                    "size": len(tax_comp_csv.encode('utf-8'))
+                })
+            except Exception as e:
+                logger.warning("CSV tax comparison export failed: %s", e)
+
+        if "recommendations" in request.includeFiles and request.recommendations:
+            try:
+                rec_csv = csv_generator.generate_recommendations_csv(request.recommendations)
+                files.append({
+                    "filename": "recommendations.csv",
+                    "content": base64.b64encode(rec_csv.encode('utf-8')).decode('utf-8'),
+                    "size": len(rec_csv.encode('utf-8'))
+                })
+            except Exception as e:
+                logger.warning("CSV recommendations export failed: %s", e)
+
+        if request.educationalSummary:
+            try:
+                edu_csv = csv_generator.generate_educational_summary_csv(request.educationalSummary)
+                files.append({
+                    "filename": "educational_summary.csv",
+                    "content": base64.b64encode(edu_csv.encode('utf-8')).decode('utf-8'),
+                    "size": len(edu_csv.encode('utf-8'))
+                })
+            except Exception as e:
+                logger.warning("CSV educational summary export failed: %s", e)
+
         # Include visualizations in the ZIP file
         try:
             pdf_data = {
                 "portfolio": portfolio_list,
+                "portfolioName": request.portfolioName or "Investment Portfolio",
                 "includeSections": {
                     "optimization": request.optimizationResults is not None,
                     "stressTest": request.stressTestResults is not None,
                     "goals": False,
-                    "rebalancing": False
+                    "rebalancing": False,
+                    "taxEducation": True,
+                    "taxComparison": request.taxComparison is not None,
+                    "recommendations": request.recommendations is not None and len(request.recommendations) > 0
                 },
                 "optimizationResults": request.optimizationResults,
                 "projectionMetrics": request.projectionMetrics,
@@ -10797,7 +10859,12 @@ async def export_csv(request: CSVExportRequest):
                 "portfolioValue": request.portfolioValue or 0.0,
                 "accountType": request.accountType,
                 "taxYear": request.taxYear,
-                "metrics": request.metrics or {}
+                "courtageClass": request.courtageClass,
+                "metrics": request.metrics or {},
+                "taxComparison": request.taxComparison,
+                "taxFreeData": request.taxFreeData,
+                "recommendations": request.recommendations,
+                "educationalSummary": request.educationalSummary
             }
             plots = pdf_generator.generate_report_plots(pdf_data)
             if plots:

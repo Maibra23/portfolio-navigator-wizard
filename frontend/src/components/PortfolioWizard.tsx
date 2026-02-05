@@ -10,6 +10,7 @@ import { StockSelection } from './wizard/StockSelection';
 import { PortfolioOptimization } from './wizard/PortfolioOptimization';
 import { StressTest } from './wizard/StressTest';
 import { FinalizePortfolio } from './wizard/FinalizePortfolio';
+import { ThankYouStep } from './wizard/ThankYouStep';
 
 export type RiskProfile = 'very-conservative' | 'conservative' | 'moderate' | 'aggressive' | 'very-aggressive' | null;
 
@@ -55,6 +56,7 @@ const STEPS = [
   { id: 'optimization', title: 'Optimization', icon: BarChart3 },
   { id: 'stress-test', title: 'Stress Test', icon: Shield },
   { id: 'finalize', title: 'Finalize Portfolio', icon: FileText },
+  { id: 'thank-you', title: 'Complete', icon: CheckCircle },
 ];
 
 export const PortfolioWizard = () => {
@@ -171,13 +173,19 @@ export const PortfolioWizard = () => {
         return (
           <FinalizePortfolio
             onComplete={() => {
-              console.log('✅ Portfolio finalized and exported');
-              // Could navigate to a completion page or show success message
-              alert('Portfolio finalized successfully!');
+              console.log('✅ Portfolio finalized – moving to thank-you step');
+              nextStep();
             }}
             onPrev={prevStep}
             capital={wizardData.capital}
             riskProfile={wizardData.riskProfile || 'moderate'}
+          />
+        );
+      case 'thank-you':
+        return (
+          <ThankYouStep
+            onBackToSummary={prevStep}
+            onStartOver={() => setCurrentStep(0)}
           />
         );
       default:

@@ -421,3 +421,163 @@ class CSVExportGenerator:
                 self._format_number(pessimistic[i], decimals=0) if i < len(pessimistic) else ''
             ])
         return output.getvalue()
+
+    def generate_tax_comparison_csv(self, tax_comparison: List[Dict], current_account_type: str = None) -> str:
+        """
+        Generate tax_comparison.csv showing ISK/KF/AF comparison.
+
+        Args:
+            tax_comparison: List of tax calculations for different account types
+            current_account_type: The currently selected account type
+
+        Returns:
+            CSV content as string
+        """
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow([
+            'Account Type',
+            'Annual Tax (SEK)',
+            'Effective Rate (%)',
+            'After-Tax Return (%)',
+            'Tax-Free Level (SEK)',
+            'Capital Underlag (SEK)',
+            'Current Selection'
+        ])
+
+        # Find lowest tax
+        lowest_tax = min(tc.get('annualTax', float('inf')) for tc in tax_comparison) if tax_comparison else None
+
+        # Data rows
+        for tc in tax_comparison:
+            account_type = tc.get('accountType', '')
+            annual_tax = tc.get('annualTax', 0)
+            effective_rate = tc.get('effectiveRate', 0)
+            after_tax_return = tc.get('afterTaxReturn', 0)
+            tax_free_level = tc.get('taxFreeLevel', 0)
+            capital_underlag = tc.get('capitalUnderlag', 0)
+
+            is_current = account_type == current_account_type
+            is_optimal = annual_tax == lowest_tax
+
+            # Add markers
+            account_label = account_type
+            if is_current and is_optimal:
+                account_label += " (Current & Optimal)"
+            elif is_current:
+                account_label += " (Current)"
+            elif is_optimal:
+                account_label += " (Optimal)"
+
+            writer.writerow([
+                account_label,
+                self._format_number(float(annual_tax), decimals=2),
+                self._format_number(float(effective_rate), decimals=2),
+                self._format_number(float(after_tax_return), decimals=2),
+                self._format_number(float(tax_free_level), decimals=0),
+                self._format_number(float(capital_underlag), decimals=0),
+                'Yes' if is_current else 'No'
+            ])
+
+        # Add summary row
+        writer.writerow([])
+        writer.writerow(['Summary', '', '', '', '', '', ''])
+        if lowest_tax is not None:
+            optimal_account = next((tc.get('accountType') for tc in tax_comparison if tc.get('annualTax') == lowest_tax), None)
+            writer.writerow(['Optimal Account Type', optimal_account or '', '', '', '', '', ''])
+            writer.writerow(['Lowest Annual Tax', self._format_number(float(lowest_tax), decimals=2), 'SEK', '', '', '', ''])
+
+        return output.getvalue()
+
+    def generate_recommendations_csv(self, recommendations: List[str]) -> str:
+        """
+        Generate recommendations.csv from smart recommendations.
+
+        Args:
+            recommendations: List of recommendation strings
+
+        Returns:
+            CSV content as string
+        """
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow(['Priority', 'Category', 'Recommendation', 'Details'])
+
+        # Parse and categorize recommendations
+        for i, rec in enumerate(recommendations, 1):
+            # Remove emojis
+            rec_clean = rec.replace('💡', '').replace('💰', '').replace('✅', '').replace('🎉', '').strip()
+
+            # Determine category from content
+            category = 'General'
+            if 'Tax Year' in rec_clean or 'tax year' in rec_clean or '2026' in rec_clean:
+                category = 'Tax Year Optimization'
+            elif 'Account Type' in rec_clean or 'Switching from' in rec_clean:
+                category = 'Account Type Optimization'
+            elif 'Optimal Configuration' in rec_clean or 'optimal' in rec_clean.lower():
+                category = 'Validation'
+            elif 'Courtage' in rec_clean or 'courtage' in rec_clean:
+                category = 'Cost Optimization'
+
+            # Extract savings if present
+            details = ''
+            if 'SEK' in rec_clean:
+                # Try to extract savings amount
+                import re
+                sek_matches = re.findall(r'([\d,]+)\s+SEK', rec_clean)
+                if sek_matches:
+                    details = f"Potential savings: {sek_matches[0]} SEK"
+
+            writer.writerow([
+                str(i),
+                category,
+                rec_clean,
+                details
+            ])
+
+        return output.getvalue()
+
+    def generate_educational_summary_csv(self, educational_summary: Dict) -> str:
+        """
+        Generate educational_summary.csv with account and tax settings information.
+
+        Args:
+            educational_summary: Dictionary with account type, tax year, and courtage info
+
+        Returns:
+            CSV content as string
+        """
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow(['Setting', 'Value', 'Details'])
+
+        # Account Type
+        selected_account = educational_summary.get('selectedAccountType', 'N/A')
+        writer.writerow(['Selected Account Type', selected_account, ''])
+
+        # Tax Year Information
+        tax_year_info = educational_summary.get('taxYearInfo', {})
+        if tax_year_info:
+            writer.writerow(['', '', ''])
+            writer.writerow(['Tax Year Settings', '', ''])
+            writer.writerow(['Year', str(tax_year_info.get('year', '')), ''])
+            writer.writerow(['Tax-Free Level', self._format_number(tax_year_info.get('taxFreeLevel', 0), decimals=0), 'SEK'])
+            writer.writerow(['Schablonränta', self._format_number(tax_year_info.get('schablonranta', 0), decimals=2), '%'])
+
+        # Courtage Information
+        courtage_info = educational_summary.get('courtageInfo', {})
+        if courtage_info:
+            writer.writerow(['', '', ''])
+            writer.writerow(['Transaction Costs', '', ''])
+            writer.writerow(['Courtage Class', str(courtage_info.get('class', '')), ''])
+            writer.writerow(['Setup Cost', self._format_number(courtage_info.get('setupCost', 0), decimals=2), 'SEK'])
+            writer.writerow(['Annual Rebalancing', self._format_number(courtage_info.get('annualRebalancing', 0), decimals=2), 'SEK'])
+            writer.writerow(['Total First Year', self._format_number(courtage_info.get('totalFirstYear', 0), decimals=2), 'SEK'])
+
+        return output.getvalue()
