@@ -7,60 +7,55 @@ describe('CategoryCard', () => {
     render(<CategoryCard category="very-conservative" score={15} />);
 
     expect(screen.getByText('Very Conservative')).toBeInTheDocument();
-    expect(screen.getByText('Risk Score: 15')).toBeInTheDocument();
     expect(screen.getByText('You prioritize protecting your money over growing it.')).toBeInTheDocument();
     expect(screen.getByText('Prefer guaranteed returns')).toBeInTheDocument();
     expect(screen.getByText('Uncomfortable with market swings')).toBeInTheDocument();
     expect(screen.getByText('Focus on capital preservation')).toBeInTheDocument();
-    expect(screen.getByText('80-100% bonds, 0-20% stocks')).toBeInTheDocument();
+    expect(screen.getByText('Stable dividend stocks, broad diversification, low concentration')).toBeInTheDocument();
   });
 
   it('renders conservative category correctly', () => {
     render(<CategoryCard category="conservative" score={35} />);
 
     expect(screen.getByText('Conservative')).toBeInTheDocument();
-    expect(screen.getByText('Risk Score: 35')).toBeInTheDocument();
     expect(screen.getByText('You accept modest risk for steady growth.')).toBeInTheDocument();
     expect(screen.getByText('Some tolerance for fluctuation')).toBeInTheDocument();
     expect(screen.getByText('Value consistent income')).toBeInTheDocument();
     expect(screen.getByText('Prefer slower, steadier growth')).toBeInTheDocument();
-    expect(screen.getByText('60-80% bonds, 20-40% stocks')).toBeInTheDocument();
+    expect(screen.getByText('Mix of stable and growth stocks, diversified, moderate concentration')).toBeInTheDocument();
   });
 
   it('renders moderate category correctly', () => {
     render(<CategoryCard category="moderate" score={55} />);
 
     expect(screen.getByText('Moderate')).toBeInTheDocument();
-    expect(screen.getByText('Risk Score: 55')).toBeInTheDocument();
     expect(screen.getByText('You balance growth and stability.')).toBeInTheDocument();
     expect(screen.getByText('Accept ups and downs')).toBeInTheDocument();
     expect(screen.getByText('Long-term focused')).toBeInTheDocument();
     expect(screen.getByText('Diversification-minded')).toBeInTheDocument();
-    expect(screen.getByText('40-60% bonds, 40-60% stocks')).toBeInTheDocument();
+    expect(screen.getByText('Balanced mix of value and growth stocks, diversified')).toBeInTheDocument();
   });
 
   it('renders aggressive category correctly', () => {
     render(<CategoryCard category="aggressive" score={75} />);
 
     expect(screen.getByText('Aggressive')).toBeInTheDocument();
-    expect(screen.getByText('Risk Score: 75')).toBeInTheDocument();
     expect(screen.getByText('You pursue growth and tolerate volatility.')).toBeInTheDocument();
     expect(screen.getByText('Comfortable with large swings')).toBeInTheDocument();
     expect(screen.getByText('Very long time horizon')).toBeInTheDocument();
     expect(screen.getByText('Growth over income')).toBeInTheDocument();
-    expect(screen.getByText('20-40% bonds, 60-80% stocks')).toBeInTheDocument();
+    expect(screen.getByText('Growth-oriented stocks, comfortable with volatility, fewer holdings')).toBeInTheDocument();
   });
 
   it('renders very-aggressive category correctly', () => {
     render(<CategoryCard category="very-aggressive" score={95} />);
 
     expect(screen.getByText('Very Aggressive')).toBeInTheDocument();
-    expect(screen.getByText('Risk Score: 95')).toBeInTheDocument();
     expect(screen.getByText('You seek maximum growth with high risk tolerance.')).toBeInTheDocument();
     expect(screen.getByText('Embrace volatility')).toBeInTheDocument();
     expect(screen.getByText('Longest time horizon')).toBeInTheDocument();
     expect(screen.getByText('Concentrated positions acceptable')).toBeInTheDocument();
-    expect(screen.getByText('0-20% bonds, 80-100% stocks')).toBeInTheDocument();
+    expect(screen.getByText('High-conviction growth stocks, concentrated positions, long horizon')).toBeInTheDocument();
   });
 
   it('shows secondary category message when provided', () => {
@@ -72,10 +67,8 @@ describe('CategoryCard', () => {
       />
     );
 
-    // Check for the presence of the secondary category message elements
-    expect(screen.getByText(/You also share some characteristics with/)).toBeInTheDocument();
+    expect(screen.getByText(/Also shares traits with/)).toBeInTheDocument();
     expect(screen.getByText('Conservative')).toBeInTheDocument();
-    expect(screen.getByText(/investors\./)).toBeInTheDocument();
   });
 
   it('does not show secondary category message when null', () => {
@@ -87,13 +80,13 @@ describe('CategoryCard', () => {
       />
     );
 
-    expect(screen.queryByText(/You also share some characteristics/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Also shares traits with/)).not.toBeInTheDocument();
   });
 
   it('does not show secondary category message when undefined', () => {
     render(<CategoryCard category="moderate" score={55} />);
 
-    expect(screen.queryByText(/You also share some characteristics/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Also shares traits with/)).not.toBeInTheDocument();
   });
 
   it('handles unknown category gracefully', () => {
@@ -115,7 +108,7 @@ describe('CategoryCard', () => {
     expect(cardElement).toBeInTheDocument();
   });
 
-  it('displays all characteristics as bullet points', () => {
+  it('displays all characteristics', () => {
     render(<CategoryCard category="moderate" score={55} />);
 
     const characteristics = [
@@ -127,27 +120,21 @@ describe('CategoryCard', () => {
     characteristics.forEach(char => {
       expect(screen.getByText(char)).toBeInTheDocument();
     });
-
-    // Check that they are in a list
-    const listItems = screen.getAllByRole('listitem');
-    expect(listItems).toHaveLength(3);
   });
 
-  it('shows typical allocation in footer', () => {
+  it('shows style guidance (equity style, no bonds)', () => {
     render(<CategoryCard category="moderate" score={55} />);
 
-    const allocationText = screen.getByText('40-60% bonds, 40-60% stocks');
+    expect(screen.getByText('Style:')).toBeInTheDocument();
+    const allocationText = screen.getByText('Balanced mix of value and growth stocks, diversified');
     expect(allocationText).toBeInTheDocument();
-
-    // Check it's in a footer-like section (border-top)
-    const parent = allocationText.parentElement;
-    expect(parent).toHaveClass('border-t');
   });
 
   it('applies correct border color based on category', () => {
     const { container } = render(<CategoryCard category="moderate" score={55} />);
 
-    const card = container.querySelector('[style*="border-color"]');
-    expect(card).toHaveAttribute('style', expect.stringContaining('rgb(0, 128, 0)'));
+    const card = container.querySelector('[style*="border"]');
+    expect(card).toBeTruthy();
+    expect(card?.getAttribute('style')).toMatch(/10b981|185|129/);
   });
 });

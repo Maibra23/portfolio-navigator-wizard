@@ -6,11 +6,15 @@ FastAPI application with Enhanced Portfolio Generator System
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Import existing routers
 from routers import portfolio, strategy_buckets
@@ -526,7 +530,71 @@ async def lifespan(app: FastAPI):
         
         # Search functionality ready (no index warming needed for basic search)
         logger.info("✅ Search functionality ready for all cached tickers")
-        
+
+        # Start TTL monitoring background task
+        async def ttl_monitoring_task():
+            """Background task to monitor TTL and send Slack notifications"""
+            from utils.redis_ttl_monitor import RedisTTLMonitor, slack_notification_callback
+
+            # Wait 5 minutes after startup before first check
+            await asyncio.sleep(300)
+
+            if not redis_first_data_service or not redis_first_data_service.redis_client:
+                logger.warning("⚠️ Redis not available, TTL monitoring disabled")
+                return
+
+            monitor = RedisTTLMonitor(
+                redis_first_data_service.redis_client,
+                notification_callback=slack_notification_callback
+            )
+
+            logger.info("🔍 TTL monitoring background task started")
+
+            while True:
+                try:
+                    logger.info("🔍 Running TTL monitoring check...")
+
+                    # Check TTL status (this will trigger notifications if needed)
+                    status = monitor.check_ttl_status()
+
+                    # Log status
+                    categories = status.get('categories', {})
+                    logger.info(
+                        f"TTL Status - "
+                        f"Total: {status.get('total_tickers', 0)}, "
+                        f"Expired: {categories.get('expired', 0)}, "
+                        f"Critical: {categories.get('critical', 0)}, "
+                        f"Warning: {categories.get('warning', 0)}, "
+                        f"Healthy: {categories.get('healthy', 0)}"
+                    )
+
+                    # Auto-refresh if critical or expired
+                    if categories.get('critical', 0) > 0 or categories.get('expired', 0) > 0:
+                        logger.warning("🔄 Auto-refreshing critical/expired tickers...")
+                        try:
+                            result = monitor.refresh_expiring_tickers(
+                                days_threshold=1,  # Refresh tickers expiring within 1 day
+                                data_service=redis_first_data_service
+                            )
+                            logger.info(
+                                f"✅ Auto-refresh complete: {result['refreshed']}/{result['total_expiring']} tickers"
+                            )
+                        except Exception as e:
+                            logger.error(f"❌ Auto-refresh failed: {e}")
+
+                    # Wait 24 hours before next check
+                    logger.info("⏰ Next TTL check in 24 hours")
+                    await asyncio.sleep(86400)  # 24 hours
+
+                except Exception as e:
+                    logger.error(f"❌ TTL monitoring error: {e}")
+                    # Wait 1 hour before retry on error
+                    await asyncio.sleep(3600)
+
+        # Start TTL monitoring task
+        logger.info("🔍 Starting TTL monitoring background task...")
+        asyncio.create_task(ttl_monitoring_task())
+
         # Yield control back to FastAPI
         yield
         
@@ -538,6 +606,9 @@ async def lifespan(app: FastAPI):
         # Shutdown
         logger.info("🛑 Shutting down Portfolio Navigator Wizard Backend...")
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="Portfolio Navigator Wizard - Enhanced Backend",
@@ -546,17 +617,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add CORS middleware with environment-based configuration
+import os
+
+# Get allowed origins from environment variable
+# Default includes localhost for development
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:8080,http://localhost:5173,http://localhost:3000,http://127.0.0.1:8080,http://127.0.0.1:5173,http://127.0.0.1:3000"
+).split(",")
+
+# Clean up origins (remove whitespace)
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+
+logger.info(f"🔒 CORS configured for origins: {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

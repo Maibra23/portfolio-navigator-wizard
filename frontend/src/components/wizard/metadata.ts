@@ -46,11 +46,11 @@ export const CONSTRUCT_MAPPINGS: Record<string, ConstructMapping> = {
   'PT-2-R': { construct: 'loss_aversion', category: 'prospect', reversed: true, original: 'PT-2' },
 
   // Gamified
-  'story-1': { construct: 'risk_allocation', category: 'prospect' },
-  'story-2': { construct: 'drawdown_behavior', category: 'prospect' },
-  'story-3': { construct: 'goal_risk_tradeoff', category: 'prospect' },
-  'story-4': { construct: 'concentration_risk', category: 'prospect' },
-  'story-5': { construct: 'risk_identity', category: 'prospect' }
+  'story-1': { construct: 'time_horizon', category: 'mpt' },
+  'story-2': { construct: 'market_reaction', category: 'mpt' },
+  'story-3': { construct: 'risk_seeking', category: 'prospect' },
+  'story-4': { construct: 'overconfidence', category: 'prospect' },
+  'story-5': { construct: 'volatility_tolerance', category: 'mpt' }
 };
 
 export const RADAR_CONSTRUCTS: readonly string[] = [

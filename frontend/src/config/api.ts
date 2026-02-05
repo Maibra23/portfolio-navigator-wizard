@@ -1,5 +1,7 @@
-// Use relative base URL so Vite proxy forwards to backend in dev
-const API_BASE_URL = '';
+// Use environment variable for production, empty string for development (uses Vite proxy)
+// In production (Railway), VITE_API_BASE_URL will be set to the backend URL
+// In development, empty string uses Vite proxy configuration
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export const API_ENDPOINTS = {
   // Portfolio endpoints
@@ -46,7 +48,6 @@ export const API_ENDPOINTS = {
   
   // Legacy endpoints (keep for backward compatibility)
   TICKERS: `${API_BASE_URL}/api/portfolio/tickers`,
-  TICKER_INFO: (ticker: string) => `${API_BASE_URL}/api/portfolio/ticker-info/${encodeURIComponent(ticker)}`,
   MINI_LESSON_ANALYSIS: (testCaseId: number) => `${API_BASE_URL}/api/portfolio/mini-lesson/analysis/${testCaseId}`,
   RISK_RETURN_ANALYSIS: `${API_BASE_URL}/api/portfolio/analytics/risk-return-analysis`,
   SECTOR_DISTRIBUTION: `${API_BASE_URL}/api/portfolio/sector-distribution`,

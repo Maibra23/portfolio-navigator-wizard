@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -1107,6 +1107,14 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
   const [currentFeedback, setCurrentFeedback] = useState('');
   const [showContradictionPrompt, setShowContradictionPrompt] = useState(false);
 
+  // Shuffle options per question so answer order is not predictable (adaptive path)
+  const shuffledOptionsForQuestion = useMemo(() => {
+    if (!currentQuestion?.id) return [];
+    const q = getFullQuestionById(currentQuestion.id);
+    const opts = q?.options ?? [];
+    return [...opts].sort(() => Math.random() - 0.5);
+  }, [currentQuestion?.id]);
+
   // Calculate experience points from screening data
   const getExperiencePoints = (data: ScreeningData): number => {
     const experienceMap = { '0-2': 0, '3-5': 1, '6-10': 2, '10+': 3 };
@@ -1142,22 +1150,34 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     if (isUnder19) {
       // For under-19 users, use the gamified storyline
       // Map storyline to question objects with proper metadata (group, maxScore)
-      return GAMIFIED_STORYLINE.map((storyNode) => ({
-        id: storyNode.id,
-        group: 'PROSPECT',
-        type: 'storyline' as const,
-        question: storyNode.scenario,
-        text: storyNode.scenario,
-        maxScore: 4,
-        construct: 'gamified_scenario',
-        options: storyNode.options.map((option, optIndex) => ({
-          label: option.text,
-          value: optIndex + 1,
-          text: option.text,
-          score: option.score
-        })),
-        storylineData: storyNode
-      }));
+      // Balanced mix to ensure meaningful scores on both MPT (Analytical) and Prospect (Emotional) dimensions
+      const STORY_MAPPINGS: Record<string, { group: 'MPT' | 'PROSPECT'; construct: string }> = {
+        'story-1': { group: 'MPT', construct: 'time_horizon' },      // Savings vs Growth (Time/Risk)
+        'story-2': { group: 'MPT', construct: 'market_reaction' },   // Market drop behavior
+        'story-3': { group: 'PROSPECT', construct: 'risk_seeking' }, // Business/Crypto (Opportunity/Risk)
+        'story-4': { group: 'PROSPECT', construct: 'overconfidence' }, // All-in bet (Concentration/Bias)
+        'story-5': { group: 'MPT', construct: 'volatility_tolerance' } // General advice (Risk Tolerance)
+      };
+
+      return GAMIFIED_STORYLINE.map((storyNode) => {
+        const mapping = STORY_MAPPINGS[storyNode.id] || { group: 'PROSPECT', construct: 'gamified_scenario' };
+        return {
+          id: storyNode.id,
+          group: mapping.group,
+          type: 'storyline' as const,
+          question: storyNode.scenario,
+          text: storyNode.scenario,
+          maxScore: 4,
+          construct: mapping.construct,
+          options: storyNode.options.map((option, optIndex) => ({
+            label: option.text,
+            value: optIndex + 1,
+            text: option.text,
+            score: option.score
+          })),
+          storylineData: storyNode
+        };
+      });
     } else {
       // For older users, use traditional questions
       const totalQuestions = 12;
@@ -1351,14 +1371,14 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
         return {
           icon: Shield,
           title: 'Conservative Investor',
-          description: 'You prefer stability and lower risk investments. Focus on bonds, dividend stocks, and capital preservation.',
+          description: 'You prefer stability and lower risk. Focus on stable, dividend-oriented stocks and capital preservation.',
           characteristics: ['Capital preservation focused', 'Prefers steady returns', 'Lower volatility tolerance', 'Income-oriented investments']
         };
       case 'moderate':
         return {
           icon: TrendingUp,
           title: 'Moderate Investor',
-          description: 'You seek balanced growth with moderate risk. A mix of stocks and bonds suits your profile.',
+          description: 'You seek balanced growth with moderate risk. A diversified mix of value and growth stocks suits your profile.',
           characteristics: ['Balanced risk-return approach', 'Diversified portfolio', 'Medium-term growth focus', 'Some volatility tolerance']
         };
       case 'aggressive':
@@ -1608,7 +1628,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
                     }
                   }}
                 >
-                  {(fullQuestion.options ?? []).map((option) => (
+                  {shuffledOptionsForQuestion.map((option) => (
                     <div key={option.value} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                       <RadioGroupItem value={String(option.value)} id={`q${currentQuestion.id}-${option.value}`} />
                       <Label 

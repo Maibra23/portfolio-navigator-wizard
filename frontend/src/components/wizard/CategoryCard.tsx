@@ -28,7 +28,7 @@ const CATEGORY_CONTENT = {
       "Uncomfortable with market swings",
       "Focus on capital preservation"
     ],
-    typical_allocation: "80-100% bonds, 0-20% stocks"
+    typical_allocation: "Stable dividend stocks, broad diversification, low concentration"
   },
   'conservative': {
     title: 'Conservative',
@@ -39,7 +39,7 @@ const CATEGORY_CONTENT = {
       "Value consistent income",
       "Prefer slower, steadier growth"
     ],
-    typical_allocation: "60-80% bonds, 20-40% stocks"
+    typical_allocation: "Mix of stable and growth stocks, diversified, moderate concentration"
   },
   'moderate': {
     title: 'Moderate',
@@ -50,7 +50,7 @@ const CATEGORY_CONTENT = {
       "Long-term focused",
       "Diversification-minded"
     ],
-    typical_allocation: "40-60% bonds, 40-60% stocks"
+    typical_allocation: "Balanced mix of value and growth stocks, diversified"
   },
   'aggressive': {
     title: 'Aggressive',
@@ -61,7 +61,7 @@ const CATEGORY_CONTENT = {
       "Very long time horizon",
       "Growth over income"
     ],
-    typical_allocation: "20-40% bonds, 60-80% stocks"
+    typical_allocation: "Growth-oriented stocks, comfortable with volatility, fewer holdings"
   },
   'very-aggressive': {
     title: 'Very Aggressive',
@@ -72,7 +72,7 @@ const CATEGORY_CONTENT = {
       "Longest time horizon",
       "Concentrated positions acceptable"
     ],
-    typical_allocation: "0-20% bonds, 80-100% stocks"
+    typical_allocation: "High-conviction growth stocks, concentrated positions, long horizon"
   }
 } as const;
 
@@ -160,9 +160,9 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
           ))}
         </div>
 
-        {/* Typical Allocation - Compact */}
+        {/* Equity style guidance (stock-only, no bonds) */}
         <div className="flex items-center gap-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 rounded-md p-2">
-          <span className="font-semibold text-blue-900">Portfolio:</span>
+          <span className="font-semibold text-blue-900">Style:</span>
           <span className="text-blue-800">{content.typical_allocation}</span>
         </div>
 

@@ -793,15 +793,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   }, [groupedScatter]);
 
   const tickerHulls = useMemo<ClusterHull[]>(() => {
-    console.log('🔍 tickerHulls memo: viewMode=', viewMode, 'normalizedTickerPoints.length=', normalizedTickerPoints.length);
-    
     if (viewMode !== 'ticker') {
-      console.log('⚠️ tickerHulls: viewMode is not "ticker", it is:', viewMode);
       return [];
     }
     
     if (normalizedTickerPoints.length === 0) {
-      console.log('⚠️ tickerHulls: No normalizedTickerPoints available');
       return [];
     }
 
@@ -958,11 +954,21 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     // Aggregate weights by sector for selected portfolio stocks only
     selectedStocks.forEach((stock) => {
       const symbol = stock.symbol.toUpperCase();
-      const sector = symbolToSector.get(symbol);
+      let sector = symbolToSector.get(symbol);
       
-      // Skip if sector is Unknown or not found - this should not happen if Redis has sector data
+      // Attempt to find sector from any ticker in data if not found directly
       if (!sector || sector === 'Unknown') {
-        console.warn(`Sector not found for ${symbol} - this ticker may not have sector data in Redis`);
+        const anyTickerData = [...normalizedTickerPoints, ...normalizedScatterPoints].find(
+          p => p.symbol.toUpperCase() === symbol && p.sector && p.sector !== 'Unknown'
+        );
+        if (anyTickerData) {
+          sector = anyTickerData.sector;
+        }
+      }
+
+      // Skip if sector is still Unknown or not found - this should not happen if Redis has sector data
+      if (!sector || sector === 'Unknown') {
+        console.warn(`Sector not found for ${symbol} - this ticker may not have sector data in Redis or API response`);
         return;
       }
       

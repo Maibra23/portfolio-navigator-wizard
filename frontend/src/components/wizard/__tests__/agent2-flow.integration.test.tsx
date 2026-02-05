@@ -116,8 +116,9 @@ describe('Agent 2 Full Flow Integration', () => {
           onContinue={vi.fn()}
         />
       );
-      expect(screen.getByText('Analytical vs Emotional Risk')).toBeInTheDocument();
-      expect(screen.getByText(/Complete the full assessment/)).toBeInTheDocument();
+      expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
+      expect(screen.getByText(/Complete the full assessment at 19\+/)).toBeInTheDocument();
+      expect(screen.getByText(/Based on a shorter assessment/)).toBeInTheDocument();
     });
 
     it('Conservative result: ResultsPage shows CategoryCard and spectrum', () => {

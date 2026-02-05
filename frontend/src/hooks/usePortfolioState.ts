@@ -4,6 +4,7 @@ export interface PortfolioAllocation {
   symbol: string;
   allocation: number;
   name?: string;
+  sector?: string;
   assetType?: 'stock' | 'bond' | 'etf';
 }
 

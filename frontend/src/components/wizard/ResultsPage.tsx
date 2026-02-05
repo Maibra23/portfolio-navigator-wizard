@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { FlagAlerts } from './FlagAlerts';
 import { CategoryCard } from './CategoryCard';
 import { RiskSpectrum } from './RiskSpectrum';
-import { TwoDimensionalMap, getQuadrant, QUADRANT_EXPLANATIONS } from './TwoDimensionalMap';
+import { TwoDimensionalMap, getQuadrant, QUADRANT_EXPLANATIONS, GAMIFIED_DISCLAIMER } from './TwoDimensionalMap';
 import { ArrowRight, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -96,6 +96,9 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
           <div>
             <h3 className="text-base font-semibold">Risk Breakdown</h3>
             <p className="text-xs text-muted-foreground">Analytical vs Emotional Risk Tolerance</p>
+            {isGamifiedPath && (
+              <p className="text-xs text-muted-foreground mt-1">{GAMIFIED_DISCLAIMER}</p>
+            )}
           </div>
           {/* Graph full width */}
           <TwoDimensionalMap

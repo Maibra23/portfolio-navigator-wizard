@@ -84,6 +84,12 @@ export const calculateConfidenceBand = (
   let adjustment = BASE_UNCERTAINTY;
   const reasons: string[] = [];
 
+  // For gamified (under-19) path with only 5 questions, use reduced penalties
+  // to avoid false "high uncertainty" flags from naturally higher variance
+  const isShortAssessment = questionCount <= 6;
+  const variancePenalty = isShortAssessment ? 1 : 2;
+  const divergencePenalty = isShortAssessment ? 1.5 : 3;
+
   const answerValues = Object.values(answers);
   const maxAnswer = answerValues.reduce((max, value) => Math.max(max, value), 0);
   const normalizedAnswers = maxAnswer <= 1
@@ -94,7 +100,7 @@ export const calculateConfidenceBand = (
     });
   const variance = standardDeviation(normalizedAnswers);
   if (variance > 0.3) {
-    adjustment += 2;
+    adjustment += variancePenalty;
     reasons.push('variance');
   }
 
@@ -105,7 +111,7 @@ export const calculateConfidenceBand = (
   }
 
   if (Math.abs(mptScore - prospectScore) > 25) {
-    adjustment += 3;
+    adjustment += divergencePenalty;
     reasons.push('divergence');
   }
 

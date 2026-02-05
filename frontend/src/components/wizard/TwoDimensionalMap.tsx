@@ -69,8 +69,9 @@ export const getQuadrant = (mpt: number, prospect: number): QuadrantKey => {
   return 'low-low';
 };
 
-const GAMIFIED_MESSAGE =
-  'Complete the full assessment at 19+ to see your analytical vs emotional risk breakdown.';
+/** Shown as optional disclaimer when under-19; breakdown is always visible. */
+export const GAMIFIED_DISCLAIMER =
+  'Based on a shorter assessment. Complete the full assessment at 19+ for the most precise breakdown.';
 
 export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
   mptScore,
@@ -152,23 +153,6 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
     </div>
   );
 
-  if (isGamifiedPath) {
-    return (
-      <Card className={cn('w-full max-w-lg', className)}>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold text-center">
-            Analytical vs Emotional Risk
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground text-center">
-            {GAMIFIED_MESSAGE}
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   if (chartOnly) {
     return (
       <TooltipProvider>
@@ -200,6 +184,9 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
             <div className="font-bold text-gray-900">{explanation.title}</div>
             <p className="mt-1 text-gray-700 leading-snug">{explanation.explanation}</p>
           </div>
+          {isGamifiedPath && (
+            <p className="text-xs text-muted-foreground mt-3 text-center">{GAMIFIED_DISCLAIMER}</p>
+          )}
         </CardContent>
       </Card>
     </TooltipProvider>

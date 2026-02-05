@@ -4,7 +4,7 @@ import { TwoDimensionalMap } from '../TwoDimensionalMap';
 
 describe('TwoDimensionalMap', () => {
   describe('Gamified path (under-19)', () => {
-    it('hides the 2D map and shows message when isGamifiedPath is true', () => {
+    it('shows the 2D map and breakdown when isGamifiedPath is true, with disclaimer', () => {
       render(
         <TwoDimensionalMap
           mptScore={50}
@@ -13,9 +13,10 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
+      expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
+      expect(screen.getByText(/Based on a shorter assessment/)).toBeInTheDocument();
       expect(screen.getByText(/Complete the full assessment at 19\+/)).toBeInTheDocument();
-      expect(screen.getByText(/analytical vs emotional risk breakdown/)).toBeInTheDocument();
-      expect(screen.queryByText('Two-Dimensional Risk Map')).not.toBeInTheDocument();
+      expect(screen.getByText("You're comfortable with risk analytically and emotionally.")).toBeInTheDocument();
     });
   });
 
@@ -29,11 +30,9 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
-      expect(screen.getByText('Two-Dimensional Risk Map')).toBeInTheDocument();
-      expect(screen.getAllByText('Fully Risk-Seeking').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Emotionally Bold, Analytically Cautious')).toBeInTheDocument();
-      expect(screen.getByText('Analytically Bold, Emotionally Cautious')).toBeInTheDocument();
-      expect(screen.getByText('Fully Risk-Averse')).toBeInTheDocument();
+      expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('Fully Risk-Seeking')).toBeInTheDocument();
+      expect(screen.getByText("You're comfortable with risk analytically and emotionally.")).toBeInTheDocument();
     });
 
     it('shows high-high quadrant explanation when both scores >= 50', () => {
@@ -45,8 +44,8 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
+      expect(screen.getByText('Fully Risk-Seeking')).toBeInTheDocument();
       expect(screen.getByText("You're comfortable with risk analytically and emotionally.")).toBeInTheDocument();
-      expect(screen.getByText('Your portfolio can align with your analytical preferences.')).toBeInTheDocument();
     });
 
     it('shows low-high quadrant explanation when MPT < 50 and Prospect >= 50', () => {
@@ -58,8 +57,8 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
+      expect(screen.getByText('Emotionally Bold, Analytically Cautious')).toBeInTheDocument();
       expect(screen.getByText(/You may feel confident about taking risks/)).toBeInTheDocument();
-      expect(screen.getByText(/Building investment knowledge/)).toBeInTheDocument();
     });
 
     it('shows high-low quadrant explanation when MPT >= 50 and Prospect < 50', () => {
@@ -71,8 +70,8 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
+      expect(screen.getByText('Analytically Bold, Emotionally Cautious')).toBeInTheDocument();
       expect(screen.getByText(/You understand risk-return connection/)).toBeInTheDocument();
-      expect(screen.getByText(/Consider whether your analytical view/)).toBeInTheDocument();
     });
 
     it('shows low-low quadrant explanation when both scores < 50', () => {
@@ -84,8 +83,8 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
+      expect(screen.getByText('Fully Risk-Averse')).toBeInTheDocument();
       expect(screen.getByText('You prefer safety on all dimensions.')).toBeInTheDocument();
-      expect(screen.getByText('A conservative portfolio aligns with your complete risk profile.')).toBeInTheDocument();
     });
 
     it('places user dot in correct quadrant for given MPT/Prospect scores', () => {
@@ -115,7 +114,7 @@ describe('TwoDimensionalMap', () => {
         />
       );
 
-      expect(screen.getByText(/Analytical Risk Tolerance.*Emotional Risk Tolerance/)).toBeInTheDocument();
+      expect(screen.getByText(/Analytical vs Emotional Risk Tolerance/)).toBeInTheDocument();
     });
   });
 
@@ -143,7 +142,7 @@ describe('TwoDimensionalMap', () => {
       );
 
       // Component renders; clamped to (100, 0) -> high-low quadrant
-      expect(screen.getByText('Two-Dimensional Risk Map')).toBeInTheDocument();
+      expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
       expect(screen.getByText(/You understand risk-return connection/)).toBeInTheDocument();
     });
 

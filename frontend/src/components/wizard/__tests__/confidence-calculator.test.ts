@@ -47,6 +47,8 @@ describe('confidence-calculator', () => {
   });
 
   it('calculateConfidenceBand applies variance, speed, and divergence adjustments', () => {
+    // With 4 questions (short assessment), penalties are reduced:
+    // base=5, variance=+1, speed=+2, divergence=+1.5 → total=9.5 → band_width=19
     const band = calculateConfidenceBand(
       50,
       { q1: 1, q2: 5 },
@@ -55,12 +57,12 @@ describe('confidence-calculator', () => {
       4,
       4
     );
-    expect(band.band_width).toBe(24);
+    expect(band.band_width).toBe(19);
     expect(band.adjustment_reasons).toEqual(['variance', 'speed', 'divergence']);
-    expect(band.lower).toBe(38);
-    expect(band.upper).toBe(62);
+    expect(band.lower).toBe(40.5);
+    expect(band.upper).toBe(59.5);
     expect(band.primary_category).toBe('moderate');
-    expect(band.secondary_category).toBe('aggressive');
+    expect(band.secondary_category).toBeNull(); // Band stays within moderate
   });
 
   it('calculateConfidenceBand defaults to base uncertainty when no triggers', () => {
@@ -80,5 +82,24 @@ describe('confidence-calculator', () => {
     expect(ADJUSTMENT_TOOLTIPS.variance).toBeDefined();
     expect(ADJUSTMENT_TOOLTIPS.speed).toBeDefined();
     expect(ADJUSTMENT_TOOLTIPS.divergence).toBeDefined();
+  });
+
+  it('calculateConfidenceBand uses full penalties for 12-question assessments', () => {
+    // With 12 questions (full assessment), penalties are standard:
+    // base=5, variance=+2, speed=+2, divergence=+3 → total=12 → band_width=24
+    const band = calculateConfidenceBand(
+      50,
+      { q1: 1, q2: 5 },
+      20,
+      60,
+      4,
+      12
+    );
+    expect(band.band_width).toBe(24);
+    expect(band.adjustment_reasons).toEqual(['variance', 'speed', 'divergence']);
+    expect(band.lower).toBe(38);
+    expect(band.upper).toBe(62);
+    expect(band.primary_category).toBe('moderate');
+    expect(band.secondary_category).toBe('aggressive');
   });
 });

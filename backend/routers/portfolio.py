@@ -25,6 +25,9 @@ from utils.pdf_report_generator import PDFReportGenerator
 from utils.csv_export_generator import CSVExportGenerator
 from utils.shareable_link_generator import ShareableLinkGenerator
 from utils.five_year_projection import run_five_year_projection
+from utils.redis_ttl_monitor import RedisTTLMonitor
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from pypfopt import EfficientFrontier
 from fastapi.responses import Response, StreamingResponse
 import base64
@@ -38,6 +41,9 @@ logger = logging.getLogger(__name__)
 portfolio_regen_logger = get_job_logger("portfolio_regeneration")
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Initialize portfolio analytics
 portfolio_analytics = PortfolioAnalytics()
@@ -602,7 +608,8 @@ def get_ticker_monthly_data(ticker: str):
         raise HTTPException(status_code=500, detail=f"Failed to get monthly data: {str(e)}")
 
 @router.post("/warm-cache")
-def warm_cache():
+@limiter.limit("2/hour")  # Allow cache warming only twice per hour
+async def warm_cache(request: Request):
     """Warm up the Redis cache with Redis-first approach"""
     try:
         results = _rds.warm_cache()
@@ -675,6 +682,191 @@ def clear_cache():
     except Exception as e:
         logger.error(f"Cache clearing error: {e}")
         raise HTTPException(status_code=500, detail=f"Cache clearing failed: {str(e)}")
+
+# ============================================================================
+# TTL MONITORING ENDPOINTS
+# ============================================================================
+
+@router.get("/cache/ttl-status")
+@limiter.limit("10/minute")
+async def get_cache_ttl_status(request: Request):
+    """
+    Get TTL (Time-To-Live) status for all cached tickers
+
+    Returns categorization by expiration urgency:
+    - Expired: Already expired
+    - Critical: < 1 day left
+    - Warning: < 7 days left
+    - Info: < 14 days left
+    - Healthy: >= 14 days left
+    """
+    try:
+        if not _rds.redis_client:
+            return {
+                "error": "Redis not available",
+                "message": "TTL monitoring requires Redis connection"
+            }
+
+        monitor = RedisTTLMonitor(_rds.redis_client)
+        status = monitor.check_ttl_status()
+
+        return {
+            "success": True,
+            "status": status,
+            "message": "TTL status retrieved successfully"
+        }
+    except Exception as e:
+        logger.error(f"TTL status error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get TTL status: {str(e)}"
+        )
+
+
+@router.get("/cache/ttl-report")
+@limiter.limit("10/minute")
+async def get_cache_ttl_report(request: Request):
+    """
+    Get human-readable TTL report
+
+    Returns a formatted text report showing:
+    - Total tickers cached
+    - Breakdown by expiration category
+    - Sample of expiring tickers
+    - Recommended actions
+    """
+    try:
+        if not _rds.redis_client:
+            return {
+                "error": "Redis not available",
+                "report": "TTL monitoring requires Redis connection"
+            }
+
+        monitor = RedisTTLMonitor(_rds.redis_client)
+        report = monitor.generate_ttl_report()
+
+        return {
+            "success": True,
+            "report": report,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"TTL report error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate TTL report: {str(e)}"
+        )
+
+
+@router.post("/cache/refresh-expiring")
+@limiter.limit("2/hour")  # Expensive operation, limit to 2 per hour
+async def refresh_expiring_tickers(
+    request: Request,
+    days_threshold: int = Query(7, description="Refresh tickers expiring within this many days")
+):
+    """
+    Automatically refresh tickers that are expiring soon
+
+    Args:
+        days_threshold: Refresh tickers expiring within this many days (default: 7)
+
+    Returns:
+        Statistics about the refresh operation
+    """
+    try:
+        if not _rds.redis_client:
+            raise HTTPException(
+                status_code=503,
+                detail="Redis not available"
+            )
+
+        if days_threshold < 1 or days_threshold > 30:
+            raise HTTPException(
+                status_code=400,
+                detail="days_threshold must be between 1 and 30"
+            )
+
+        monitor = RedisTTLMonitor(_rds.redis_client)
+
+        # Get list of expiring tickers first
+        expiring_tickers = monitor.get_expiring_tickers(days_threshold)
+
+        if not expiring_tickers:
+            return {
+                "success": True,
+                "message": "No tickers need refreshing",
+                "total_expiring": 0,
+                "refreshed": 0,
+                "failed": 0
+            }
+
+        logger.info(f"🔄 Starting refresh of {len(expiring_tickers)} expiring tickers...")
+
+        # Perform refresh
+        result = monitor.refresh_expiring_tickers(
+            days_threshold=days_threshold,
+            data_service=_rds
+        )
+
+        return {
+            "success": True,
+            "message": f"Refreshed {result['refreshed']} out of {result['total_expiring']} tickers",
+            **result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Refresh expiring tickers error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refresh expiring tickers: {str(e)}"
+        )
+
+
+@router.get("/cache/expiring-list")
+@limiter.limit("20/minute")
+async def get_expiring_tickers_list(
+    request: Request,
+    days_threshold: int = Query(7, description="Get tickers expiring within this many days")
+):
+    """
+    Get list of tickers expiring within threshold
+
+    Args:
+        days_threshold: Number of days threshold (default: 7)
+
+    Returns:
+        List of ticker symbols that need refreshing
+    """
+    try:
+        if not _rds.redis_client:
+            return {
+                "error": "Redis not available",
+                "tickers": []
+            }
+
+        monitor = RedisTTLMonitor(_rds.redis_client)
+        expiring_tickers = monitor.get_expiring_tickers(days_threshold)
+
+        return {
+            "success": True,
+            "days_threshold": days_threshold,
+            "count": len(expiring_tickers),
+            "tickers": expiring_tickers,
+            "message": f"Found {len(expiring_tickers)} tickers expiring within {days_threshold} days"
+        }
+
+    except Exception as e:
+        logger.error(f"Get expiring list error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get expiring tickers: {str(e)}"
+        )
+
+# ============================================================================
+# END TTL MONITORING ENDPOINTS
+# ============================================================================
 
 @router.get("/tickers/master")
 def get_master_tickers():
@@ -10438,14 +10630,19 @@ async def export_pdf(request: PDFExportRequest):
         logger.error(f"Error generating PDF: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
-# Pydantic models for CSV export
+# Pydantic models for CSV export (same content as PDF for parity)
 class CSVExportRequest(BaseModel):
     portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
     taxData: Optional[Dict[str, Any]] = None
     costData: Optional[Dict[str, Any]] = None
     stressTestResults: Optional[Dict[str, Any]] = None
     metrics: Optional[Dict[str, Any]] = None
-    includeFiles: List[str] = ["holdings", "tax", "costs", "metrics"]  # "holdings", "tax", "costs", "metrics", "stressTest"
+    optimizationResults: Optional[Dict[str, Any]] = None
+    projectionMetrics: Optional[Dict[str, Any]] = None
+    portfolioValue: Optional[float] = None
+    accountType: Optional[str] = None
+    taxYear: Optional[int] = None
+    includeFiles: List[str] = ["holdings", "tax", "costs", "metrics", "stressTest", "optimization", "projection"]
 
 class CSVExportResponse(BaseModel):
     files: List[Dict[str, Any]]
@@ -10521,7 +10718,93 @@ async def export_csv(request: CSVExportRequest):
                 "content": base64.b64encode(stress_csv.encode('utf-8')).decode('utf-8'),
                 "size": len(stress_csv.encode('utf-8'))
             })
+
+        # Same content as PDF: optimization comparison, quality scores, Monte Carlo
+        if "optimization" in request.includeFiles and request.optimizationResults:
+            opt = request.optimizationResults
+            try:
+                opt_comp = csv_generator.generate_optimization_comparison_csv(opt)
+                files.append({
+                    "filename": "optimization_comparison.csv",
+                    "content": base64.b64encode(opt_comp.encode('utf-8')).decode('utf-8'),
+                    "size": len(opt_comp.encode('utf-8'))
+                })
+                qual = csv_generator.generate_quality_scores_csv(opt)
+                if qual.strip() and qual.count('\n') >= 1:
+                    files.append({
+                        "filename": "quality_scores.csv",
+                        "content": base64.b64encode(qual.encode('utf-8')).decode('utf-8'),
+                        "size": len(qual.encode('utf-8'))
+                    })
+                mc = csv_generator.generate_monte_carlo_csv(opt)
+                if mc.strip() and mc.count('\n') >= 1:
+                    files.append({
+                        "filename": "monte_carlo_summary.csv",
+                        "content": base64.b64encode(mc.encode('utf-8')).decode('utf-8'),
+                        "size": len(mc.encode('utf-8'))
+                    })
+            except Exception as e:
+                logger.warning("CSV optimization export failed: %s", e)
+
+        # Same content as PDF: 5-year projection (run same projection as PDF)
+        if "projection" in request.includeFiles and request.projectionMetrics and request.portfolioValue and request.accountType and request.taxYear:
+            proj_metrics = request.projectionMetrics
+            weights = proj_metrics.get('weights') or {}
+            if not weights and portfolio_list:
+                weights = {p.get('symbol', p.get('ticker', '')): p.get('allocation', 0) for p in portfolio_list if p.get('symbol') or p.get('ticker')}
+            exp_ret = proj_metrics.get('expectedReturn') or proj_metrics.get('expected_return') or (request.metrics or {}).get('expectedReturn') or (request.metrics or {}).get('expected_return') or 0.08
+            risk_val = proj_metrics.get('risk') or (request.metrics or {}).get('risk') or 0.15
+            cost_data = request.costData or {}
+            courtage_class = (cost_data.get('courtageClass') or cost_data.get('courtage_class') or 'medium').lower() or 'medium'
+            if courtage_class == 'fastpris':
+                courtage_class = 'fastPris'
+            try:
+                if run_five_year_projection and weights and 2025 <= (request.taxYear or 0) <= 2026:
+                    proj = run_five_year_projection(
+                        initial_capital=float(request.portfolioValue),
+                        weights={k: float(v) for k, v in weights.items() if v and k},
+                        expected_return=float(exp_ret) if exp_ret is not None else 0.08,
+                        risk=float(risk_val) if risk_val is not None else 0.15,
+                        account_type=str(request.accountType),
+                        tax_year=int(request.taxYear),
+                        courtage_class=courtage_class or 'medium',
+                        rebalancing_frequency='quarterly',
+                    )
+                    proj_csv = csv_generator.generate_five_year_projection_csv(proj)
+                    files.append({
+                        "filename": "five_year_projection.csv",
+                        "content": base64.b64encode(proj_csv.encode('utf-8')).decode('utf-8'),
+                        "size": len(proj_csv.encode('utf-8'))
+                    })
+            except Exception as e:
+                logger.warning("CSV 5-year projection export failed: %s", e)
         
+        # Include visualizations in the ZIP file
+        try:
+            pdf_data = {
+                "portfolio": portfolio_list,
+                "includeSections": {
+                    "optimization": request.optimizationResults is not None,
+                    "stressTest": request.stressTestResults is not None,
+                    "goals": False,
+                    "rebalancing": False
+                },
+                "optimizationResults": request.optimizationResults,
+                "projectionMetrics": request.projectionMetrics,
+                "taxData": request.taxData or {},
+                "costData": request.costData or {},
+                "stressTestResults": request.stressTestResults,
+                "portfolioValue": request.portfolioValue or 0.0,
+                "accountType": request.accountType,
+                "taxYear": request.taxYear,
+                "metrics": request.metrics or {}
+            }
+            plots = pdf_generator.generate_report_plots(pdf_data)
+            if plots:
+                files.extend(plots)
+        except Exception as e:
+            logger.warning("Failed to include plots in CSV export: %s", e)
+
         # Create zip file if multiple files
         zip_file_base64 = None
         if len(files) > 1:

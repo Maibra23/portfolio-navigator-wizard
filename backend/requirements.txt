@@ -18,5 +18,7 @@ PyPortfolioOpt==1.5.6
 scipy>=1.11.0
 scikit-learn>=1.3.0
 reportlab>=4.0.0
+matplotlib>=3.8.0
 pytest>=7.0.0
 pytest-cov>=4.0.0
+slowapi>=0.1.9

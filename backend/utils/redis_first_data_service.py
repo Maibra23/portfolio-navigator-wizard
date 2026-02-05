@@ -25,24 +25,68 @@ class RedisFirstDataService:
     EnhancedDataFetcher when external data is actually needed
     """
     
-    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
-        self.redis_client = self._init_redis(redis_host, redis_port)
+    def __init__(self, redis_url: str = None):
+        """
+        Initialize Redis-First Data Service
+
+        Args:
+            redis_url: Redis connection URL (redis://host:port or rediss://host:port for TLS)
+                      If not provided, uses REDIS_URL env var or defaults to localhost
+        """
+        import os
+
+        # Get Redis URL from parameter or environment
+        if redis_url is None:
+            redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+
+        self.redis_client = self._init_redis_from_url(redis_url)
         self._enhanced_data_fetcher = None  # Lazy initialization
         self._ticker_list = None  # Cached ticker list
-        
+
         # Cache configuration
         self.CACHE_TTL_DAYS = 28
         self.CACHE_TTL_HOURS = self.CACHE_TTL_DAYS * 24
-        
+
         logger.info("✅ Redis-First Data Service initialized")
-    
-    def _init_redis(self, host: str, port: int) -> Optional[redis.Redis]:
-        """Initialize Redis connection"""
+
+    def _init_redis_from_url(self, redis_url: str) -> Optional[redis.Redis]:
+        """Initialize Redis connection from URL (supports TLS)"""
         try:
-            r = redis.Redis(host=host, port=port, decode_responses=False)
+            import ssl
+            from urllib.parse import urlparse
+
+            # Parse the URL
+            parsed = urlparse(redis_url)
+
+            # Check if TLS is required (rediss:// scheme)
+            use_ssl = parsed.scheme == 'rediss'
+
+            # Railway and other cloud providers use redis:// even with TLS
+            # They handle TLS through private networking
+            if use_ssl:
+                # Use TLS connection for production
+                r = redis.from_url(
+                    redis_url,
+                    decode_responses=False,
+                    ssl_cert_reqs=ssl.CERT_REQUIRED,
+                    socket_connect_timeout=5,
+                    socket_timeout=5
+                )
+            else:
+                # Standard connection for local development or cloud private network
+                r = redis.from_url(
+                    redis_url,
+                    decode_responses=False,
+                    socket_connect_timeout=5,
+                    socket_timeout=5
+                )
+
+            # Test connection
             r.ping()
-            logger.info("✅ Redis connection established")
+            connection_type = 'TLS' if use_ssl else 'standard'
+            logger.info(f"✅ Redis connection established ({connection_type})")
             return r
+
         except redis.ConnectionError as e:
             logger.warning(f"❌ Redis connection failed: {e}")
             return None

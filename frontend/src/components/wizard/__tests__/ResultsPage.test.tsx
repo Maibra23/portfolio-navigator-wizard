@@ -99,7 +99,7 @@ describe('ResultsPage', () => {
     expect(screen.getByText(/Your profile is less common/)).toBeInTheDocument();
   });
 
-  it('handles gamified path correctly (hides 2D map chart)', () => {
+  it('handles gamified path correctly (shows risk breakdown with disclaimer)', () => {
     render(
       <ResultsPage
         scoringResult={baseScoringResult}
@@ -108,8 +108,12 @@ describe('ResultsPage', () => {
         onContinue={vi.fn()}
       />
     );
-    expect(screen.getByText('Analytical vs Emotional Risk')).toBeInTheDocument();
-    expect(screen.getByText(/Complete the full assessment/)).toBeInTheDocument();
+    expect(screen.getByText('Risk Breakdown')).toBeInTheDocument();
+    expect(screen.getByText('Analytical vs Emotional Risk Tolerance')).toBeInTheDocument();
+    expect(screen.getByText(/Complete the full assessment at 19\+/)).toBeInTheDocument();
+    expect(screen.getByText(/Based on a shorter assessment/)).toBeInTheDocument();
+    expect(screen.getByText('Analytical')).toBeInTheDocument();
+    expect(screen.getByText('Emotional')).toBeInTheDocument();
   });
 
   it('calls actions when buttons clicked', async () => {

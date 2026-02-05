@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, TrendingUp, Shield, DollarSign, Info, BarChart3, CheckCircle, FileText } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { ArrowRight, TrendingUp, Shield, DollarSign, BarChart3, CheckCircle, FileText } from 'lucide-react';
 import { WelcomeStep } from './wizard/WelcomeStep';
 import { RiskProfiler } from './wizard/RiskProfiler';
 import { CapitalInput } from './wizard/CapitalInput';
@@ -208,19 +207,7 @@ export const PortfolioWizard = () => {
       {/* Navigation Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex justify-center items-center">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-8 w-8 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900">Portfolio Navigator Wizard</h1>
-          </div>
-          <nav className="absolute right-6 flex items-center gap-4">
-            <Link
-              to="/ticker-info"
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-            >
-              <Info className="h-4 w-4" />
-              Ticker Info
-            </Link>
-          </nav>
+          <h1 className="text-2xl font-bold text-gray-900">Portfolio Navigator Wizard</h1>
         </div>
       </div>
 

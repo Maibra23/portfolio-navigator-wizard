@@ -97,6 +97,16 @@ export const canNavigateToTab = (
     return true;
   }
 
+  // Optimize → Analysis: allow if optimization was run (user may have selected an optimized portfolio with different stock count)
+  if (currentTab === 'optimize' && targetTab === 'analysis') {
+    return Boolean(state.optimizedPortfolio && state.constructedPortfolio.length > 0);
+  }
+
+  // Analysis → Tax-cost: allow if user reached analysis (optimization done, portfolio present)
+  if (currentTab === 'analysis' && targetTab === 'tax-cost') {
+    return Boolean(state.optimizedPortfolio && state.constructedPortfolio.length > 0);
+  }
+
   // For forward navigation, validate ALL previous tabs
   for (let i = 0; i < targetTabIndex; i++) {
     const tabId = tabOrder[i];

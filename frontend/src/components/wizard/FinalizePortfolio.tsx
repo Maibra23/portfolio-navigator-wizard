@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -15,6 +16,7 @@ import {
   TrendingUp,
   Shield,
   FileText,
+  FileArchive,
   Calculator,
   Info
 } from 'lucide-react';
@@ -63,12 +65,38 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   const [isLoadingTax, setIsLoadingTax] = useState(false);
   const [isLoadingCosts, setIsLoadingCosts] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<'pdf' | 'csv' | null>(null);
+  const [portfolioName, setPortfolioName] = useState('My Investment Portfolio');
+  const [selectedPortfolioType, setSelectedPortfolioType] = useState<'current' | 'weights' | 'market'>('current');
 
   // Builder "Done" pressed: user must press Done in Portfolio Builder before Continue to Optimize
   const [builderDone, setBuilderDone] = useState(false);
 
   // Validation state
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
+
+  // Single source of truth for metrics shown on page and exported (PDF/CSV):
+  // use the portfolio the user selected (Current / Weights / Market). Fall back to builder metrics when optimization isn't available.
+  const displayMetrics = useMemo((): PortfolioMetrics | null => {
+    const opt = state.optimizedPortfolio;
+    const selected =
+      selectedPortfolioType === 'market' && opt?.market_optimized_portfolio?.optimized_portfolio
+        ? opt.market_optimized_portfolio.optimized_portfolio
+        : selectedPortfolioType === 'weights' && opt?.weights_optimized_portfolio?.optimized_portfolio
+          ? opt.weights_optimized_portfolio.optimized_portfolio
+          : opt?.current_portfolio;
+
+    const selectedMetrics: any = (selected as any)?.metrics;
+    if (selectedMetrics) {
+      return {
+        expectedReturn: selectedMetrics.expected_return ?? portfolioMetrics?.expectedReturn ?? 0,
+        risk: selectedMetrics.risk ?? portfolioMetrics?.risk ?? 0,
+        diversificationScore: portfolioMetrics?.diversificationScore ?? 0,
+        sharpeRatio: selectedMetrics.sharpe_ratio ?? portfolioMetrics?.sharpeRatio ?? 0
+      };
+    }
+    return portfolioMetrics;
+  }, [state.optimizedPortfolio, portfolioMetrics, selectedPortfolioType]);
 
   // Validate current tab
   useEffect(() => {
@@ -101,6 +129,8 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     updateConstructedPortfolio(stocks);
     // If user had already pressed Done, any change invalidates confirmation → Continue disabled until Done again
     setBuilderDone((prev) => (prev ? false : prev));
+    // Reset selection type if manual changes are made
+    setSelectedPortfolioType('current');
 
     // Validate allocation
     const totalAllocation = stocks.reduce((sum, s) => sum + (s.allocation || 0), 0);
@@ -198,6 +228,43 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     updateStressTestResults(results);
     setHiddenTab(null);
     setActiveTab('analysis');
+  };
+
+  // Handle portfolio selection from optimization results
+  const handlePortfolioSelect = (type: 'current' | 'weights' | 'market') => {
+    if (!state.optimizedPortfolio) return;
+
+    setSelectedPortfolioType(type);
+
+    let selectedPortfolioData: any;
+    if (type === 'current' && state.optimizedPortfolio.current_portfolio) {
+      selectedPortfolioData = state.optimizedPortfolio.current_portfolio;
+    } else if (type === 'weights' && state.optimizedPortfolio.weights_optimized_portfolio) {
+      selectedPortfolioData = state.optimizedPortfolio.weights_optimized_portfolio.optimized_portfolio;
+    } else if (type === 'market' && state.optimizedPortfolio.market_optimized_portfolio) {
+      selectedPortfolioData = state.optimizedPortfolio.market_optimized_portfolio.optimized_portfolio;
+    }
+
+    if (selectedPortfolioData) {
+      // Map optimized weights back to PortfolioAllocation format
+      const tickers: string[] =
+        selectedPortfolioData.tickers ||
+        (Array.isArray(selectedPortfolioData.tickers) ? selectedPortfolioData.tickers : []) ||
+        selectedPortfolioData.tickers;
+      const weights: Record<string, number> = selectedPortfolioData.weights || {};
+
+      const newStocks: PortfolioAllocation[] = (tickers || []).map(symbol => ({
+        symbol,
+        allocation: (weights[symbol] || 0) * 100,
+        // Try to preserve existing names if they exist in current portfolio
+        name: state.constructedPortfolio.find(s => s.symbol === symbol)?.name || ''
+      }));
+      
+      updateConstructedPortfolio(newStocks);
+      // Mark builder as done since we just selected a valid optimized portfolio
+      setBuilderDone(true);
+      markTabComplete('builder');
+    }
   };
 
   // Calculate tax when account type changes
@@ -299,72 +366,66 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     }
   }, [state.taxSettings.courtagClass, state.constructedPortfolio, capital]);
 
-  // Handle export
-  const handleExport = async () => {
-    if (!state.taxSettings.accountType) {
-      return;
-    }
+  // Build shared export payload for PDF and CSV
+  const buildExportRequest = () => {
+    const portfolioData = {
+      tickers: state.constructedPortfolio.map(s => s.symbol),
+      weights: state.constructedPortfolio.reduce((acc, s) => {
+        acc[s.symbol] = s.allocation / 100;
+        return acc;
+      }, {} as Record<string, number>),
+      allocations: state.constructedPortfolio
+    };
+    const opt = state.optimizedPortfolio;
+    const selectedForExport =
+      selectedPortfolioType === 'market' && opt?.market_optimized_portfolio?.optimized_portfolio
+        ? opt.market_optimized_portfolio.optimized_portfolio
+        : selectedPortfolioType === 'weights' && opt?.weights_optimized_portfolio?.optimized_portfolio
+          ? opt.weights_optimized_portfolio.optimized_portfolio
+          : opt?.current_portfolio;
+    const projectionMetricsForExport = selectedForExport ? {
+      weights: (selectedForExport as any).weights ?? portfolioData.weights ?? {},
+      expectedReturn: (selectedForExport as any).metrics?.expected_return ?? displayMetrics?.expectedReturn ?? portfolioMetrics?.expectedReturn ?? 0.08,
+      risk: (selectedForExport as any).metrics?.risk ?? displayMetrics?.risk ?? portfolioMetrics?.risk ?? 0.15
+    } : undefined;
+    const metricsForExport = displayMetrics ? {
+      expectedReturn: displayMetrics.expectedReturn,
+      risk: displayMetrics.risk,
+      diversificationScore: displayMetrics.diversificationScore,
+      sharpeRatio: displayMetrics.sharpeRatio
+    } : null;
+    return {
+      portfolio: portfolioData,
+      includeSections: {
+        optimization: state.optimizedPortfolio != null,
+        stressTest: state.stressTestResults != null,
+        goals: false,
+        rebalancing: false
+      },
+      optimizationResults: state.optimizedPortfolio ?? undefined,
+      projectionMetrics: projectionMetricsForExport,
+      taxData: taxCalculation,
+      costData: transactionCosts,
+      stressTestResults: state.stressTestResults,
+      portfolioValue: capital,
+      accountType: state.taxSettings.accountType,
+      taxYear: state.taxSettings.taxYear,
+      metrics: metricsForExport
+    };
+  };
 
+  const handleExportPdf = async () => {
+    if (!state.taxSettings.accountType) return;
     setIsExporting(true);
+    setExportingFormat('pdf');
     try {
-      // Prepare portfolio data
-      const portfolioData = {
-        tickers: state.constructedPortfolio.map(s => s.symbol),
-        weights: state.constructedPortfolio.reduce((acc, s) => {
-          acc[s.symbol] = s.allocation / 100;
-          return acc;
-        }, {} as Record<string, number>),
-        allocations: state.constructedPortfolio
-      };
-
-      // Use recommended (optimized) portfolio for 5-year projection in PDF when available
-      const opt = state.optimizedPortfolio;
-      const recommendedForExport = opt?.weights_optimized_portfolio?.optimized_portfolio ?? opt?.market_optimized_portfolio?.optimized_portfolio;
-      const projectionMetricsForExport = recommendedForExport ? {
-        weights: recommendedForExport.weights ?? {},
-        expectedReturn: recommendedForExport.metrics?.expected_return ?? portfolioMetrics?.expectedReturn ?? 0.08,
-        risk: recommendedForExport.metrics?.risk ?? portfolioMetrics?.risk ?? 0.15
-      } : undefined;
-
-      // Prepare export request (include optimization for PDF sections 4 and 5-year projection)
-      const exportRequest = {
-        portfolio: portfolioData,
-        includeSections: {
-          optimization: state.optimizedPortfolio != null,
-          stressTest: state.stressTestResults != null,
-          goals: false,
-          rebalancing: false
-        },
-        optimizationResults: state.optimizedPortfolio ?? undefined,
-        projectionMetrics: projectionMetricsForExport,
-        taxData: taxCalculation,
-        costData: transactionCosts,
-        stressTestResults: state.stressTestResults,
-        portfolioValue: capital,
-        accountType: state.taxSettings.accountType,
-        taxYear: state.taxSettings.taxYear,
-        metrics: portfolioMetrics ? {
-          expectedReturn: portfolioMetrics.expectedReturn,
-          risk: portfolioMetrics.risk,
-          diversificationScore: portfolioMetrics.diversificationScore,
-          sharpeRatio: portfolioMetrics.sharpeRatio
-        } : null
-      };
-
-      // Generate PDF
+      const exportRequest = buildExportRequest();
       const pdfResponse = await fetch('/api/portfolio/export/pdf', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exportRequest),
       });
-
-      if (!pdfResponse.ok) {
-        throw new Error(`PDF export failed: ${pdfResponse.statusText}`);
-      }
-
-      // Download PDF
+      if (!pdfResponse.ok) throw new Error(`PDF export failed: ${pdfResponse.statusText}`);
       const blob = await pdfResponse.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -374,52 +435,74 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-
-      // Also generate CSV
-      const csvResponse = await fetch('/api/portfolio/export/csv', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          portfolio: portfolioData,
-          taxData: taxCalculation,
-          costData: transactionCosts,
-          stressTestResults: state.stressTestResults,
-          metrics: exportRequest.metrics,
-          includeFiles: ['holdings', 'tax', 'costs', 'metrics', 'stressTest']
-        }),
-      });
-
-      if (csvResponse.ok) {
-        const csvData = await csvResponse.json();
-        if (csvData.zipFile) {
-          // Download ZIP file
-          const zipBlob = Uint8Array.from(atob(csvData.zipFile), c => c.charCodeAt(0));
-          const zipUrl = window.URL.createObjectURL(new Blob([zipBlob], { type: 'application/zip' }));
-          const zipA = document.createElement('a');
-          zipA.href = zipUrl;
-          zipA.download = `portfolio_data_${new Date().toISOString().split('T')[0]}.zip`;
-          document.body.appendChild(zipA);
-          zipA.click();
-          window.URL.revokeObjectURL(zipUrl);
-          document.body.removeChild(zipA);
-        }
-      }
-
-      clearState();
-      onComplete();
     } catch (error: any) {
       console.error('Export error:', error);
-      alert(`Export failed: ${error.message}`);
+      alert(`PDF export failed: ${error.message}`);
     } finally {
       setIsExporting(false);
+      setExportingFormat(null);
     }
   };
 
-  // Handle completion
+  const handleExportCsv = async () => {
+    if (!state.taxSettings.accountType) return;
+    setIsExporting(true);
+    setExportingFormat('csv');
+    try {
+      const exportRequest = buildExportRequest();
+      const csvResponse = await fetch('/api/portfolio/export/csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          portfolio: exportRequest.portfolio,
+          taxData: exportRequest.taxData,
+          costData: exportRequest.costData,
+          stressTestResults: exportRequest.stressTestResults,
+          metrics: exportRequest.metrics,
+          optimizationResults: exportRequest.optimizationResults,
+          projectionMetrics: exportRequest.projectionMetrics,
+          portfolioValue: exportRequest.portfolioValue,
+          accountType: exportRequest.accountType,
+          taxYear: exportRequest.taxYear,
+          includeFiles: ['holdings', 'tax', 'costs', 'metrics', 'stressTest', 'optimization', 'projection']
+        }),
+      });
+      if (!csvResponse.ok) throw new Error(`CSV export failed: ${csvResponse.statusText}`);
+      const csvData = await csvResponse.json();
+      if (csvData.zipFile) {
+        const zipBlob = Uint8Array.from(atob(csvData.zipFile), c => c.charCodeAt(0));
+        const zipUrl = window.URL.createObjectURL(new Blob([zipBlob], { type: 'application/zip' }));
+        const zipA = document.createElement('a');
+        zipA.href = zipUrl;
+        zipA.download = `portfolio_data_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(zipA);
+        zipA.click();
+        window.URL.revokeObjectURL(zipUrl);
+        document.body.removeChild(zipA);
+      } else if (csvData.files?.length === 1) {
+        const file = csvData.files[0];
+        const content = atob(file.content || '');
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.filename || `portfolio_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error: any) {
+      console.error('Export error:', error);
+      alert(`CSV export failed: ${error.message}`);
+    } finally {
+      setIsExporting(false);
+      setExportingFormat(null);
+    }
+  };
+
   const handleComplete = () => {
-    handleExport();
+    onComplete();
   };
 
   if (!isLoaded) {
@@ -574,23 +657,23 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                     </div>
                   )}
                   
-                  {portfolioMetrics && (
+                  {displayMetrics && (
                     <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
                       <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
                         <div className="text-xl font-bold text-emerald-700">
-                          {(portfolioMetrics.expectedReturn != null ? (portfolioMetrics.expectedReturn * 100) : 0).toFixed(2)}%
+                          {formatPercent(displayMetrics.expectedReturn)}
                         </div>
                         <div className="text-xs text-emerald-600 mt-0.5">Expected Return</div>
                       </div>
                       <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
                         <div className="text-xl font-bold text-amber-700">
-                          {(portfolioMetrics.risk != null ? (portfolioMetrics.risk * 100) : 0).toFixed(2)}%
+                          {formatPercent(displayMetrics.risk)}
                         </div>
                         <div className="text-xs text-amber-600 mt-0.5">Risk Level</div>
                       </div>
                       <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
                         <div className="text-xl font-bold text-purple-700">
-                          {(portfolioMetrics.diversificationScore != null ? portfolioMetrics.diversificationScore : 0).toFixed(2)}%
+                          {formatPercent(displayMetrics.diversificationScore)}
                         </div>
                         <div className="text-xs text-purple-600 mt-0.5">Diversification</div>
                       </div>
@@ -743,11 +826,25 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                             },
                             optimization_metadata: state.optimizedPortfolio.optimization_metadata
                           }}
-                          showSelectionButtons={false}
+                          selectedPortfolio={selectedPortfolioType}
+                          onPortfolioSelect={handlePortfolioSelect}
+                          showSelectionButtons={true}
                         />
                       </CardContent>
                     </Card>
                   )}
+
+                  {/* Continue to Final Analysis: enabled when optimization ran and portfolio has at least one stock (Optimize→Analysis uses relaxed validation) */}
+                  <Button
+                    onClick={() => handleTabChange('analysis')}
+                    disabled={!canNavigateToTab('analysis', state, activeTab)}
+                    className="w-full mt-4"
+                    size="lg"
+                    variant="secondary"
+                  >
+                    Continue to Final Analysis
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
                 </div>
               )}
 
@@ -779,7 +876,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               {/* Performance Summary, Quality Score, Monte Carlo from optimization (when available) */}
               {state.optimizedPortfolio?.comparison && (() => {
                 const triple = state.optimizedPortfolio;
-                const selectedPortfolio = (triple.optimization_metadata?.recommendation || 'weights') as 'current' | 'weights' | 'market';
+                const selectedPortfolio = selectedPortfolioType;
                 const isTriple = Boolean(triple.market_optimized_portfolio);
                 return (
                   <div className="space-y-6">
@@ -807,7 +904,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               })()}
 
               {/* Fallback: simple metrics when no optimization run yet */}
-              {!state.optimizedPortfolio?.comparison && portfolioMetrics && (
+              {!state.optimizedPortfolio?.comparison && displayMetrics && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Performance Summary</CardTitle>
@@ -816,17 +913,17 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-sm text-muted-foreground">Expected Return</div>
-                        <div className="text-2xl font-bold">{formatPercent(portfolioMetrics.expectedReturn)}</div>
+                        <div className="text-2xl font-bold">{formatPercent(displayMetrics.expectedReturn)}</div>
                       </div>
                       <div>
                         <div className="text-sm text-muted-foreground">Risk</div>
-                        <div className="text-2xl font-bold">{formatPercent(portfolioMetrics.risk)}</div>
+                        <div className="text-2xl font-bold">{formatPercent(displayMetrics.risk)}</div>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               )}
-              {!state.optimizedPortfolio?.comparison && !portfolioMetrics && (
+              {!state.optimizedPortfolio?.comparison && !displayMetrics && (
                 <p className="text-sm text-muted-foreground">Run optimization in the Optimize tab to see full analysis (Performance Summary, Quality Score, Monte Carlo) here.</p>
               )}
 
@@ -876,16 +973,16 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 setActiveTab('analysis');
               }}
               selectedPortfolio={{
-                source: 'current',
+                source: selectedPortfolioType,
                 tickers: state.constructedPortfolio.map(s => s.symbol),
                 weights: state.constructedPortfolio.reduce((acc, s) => {
                   acc[s.symbol] = s.allocation / 100;
                   return acc;
                 }, {} as Record<string, number>),
-                metrics: portfolioMetrics ? {
-                  expected_return: portfolioMetrics.expectedReturn,
-                  risk: portfolioMetrics.risk,
-                  sharpe_ratio: portfolioMetrics.sharpeRatio
+                metrics: displayMetrics ? {
+                  expected_return: displayMetrics.expectedReturn,
+                  risk: displayMetrics.risk,
+                  sharpe_ratio: displayMetrics.sharpeRatio
                 } : {
                   expected_return: 0.1,
                   risk: 0.15,
@@ -977,13 +1074,13 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                             <div className="text-sm text-muted-foreground">Tax Year</div>
                             <div className="font-medium">{taxCalculation.taxYear}</div>
                           </div>
-                          {taxCalculation.capitalUnderlag !== undefined && (
+                          {taxCalculation.capitalUnderlag !== undefined && taxCalculation.capitalUnderlag !== null && (
                             <div>
                               <div className="text-sm text-muted-foreground">Capital Underlag</div>
                               <div className="font-medium">{taxCalculation.capitalUnderlag.toLocaleString('sv-SE')} SEK</div>
                             </div>
                           )}
-                          {taxCalculation.taxFreeLevel !== undefined && (
+                          {taxCalculation.taxFreeLevel !== undefined && taxCalculation.taxFreeLevel !== null && (
                             <div>
                               <div className="text-sm text-muted-foreground">Tax-Free Level</div>
                               <div className="font-medium">{taxCalculation.taxFreeLevel.toLocaleString('sv-SE')} SEK</div>
@@ -991,7 +1088,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                           )}
                           <div>
                             <div className="text-sm text-muted-foreground">Annual Tax</div>
-                            <div className="font-medium text-lg">{taxCalculation.annualTax.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
+                            <div className="font-medium text-lg">{(taxCalculation.annualTax || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
                           </div>
                           <div>
                             <div className="text-sm text-muted-foreground">Effective Tax Rate</div>
@@ -1033,15 +1130,15 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                           </div>
                           <div>
                             <div className="text-sm text-muted-foreground">Setup Cost</div>
-                            <div className="font-medium">{transactionCosts.setupCost.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
+                            <div className="font-medium">{(transactionCosts.setupCost || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
                           </div>
                           <div>
                             <div className="text-sm text-muted-foreground">Annual Rebalancing</div>
-                            <div className="font-medium">{transactionCosts.annualRebalancingCost.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
+                            <div className="font-medium">{(transactionCosts.annualRebalancingCost || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
                           </div>
                           <div>
                             <div className="text-sm text-muted-foreground">Total First Year</div>
-                            <div className="font-medium text-lg">{transactionCosts.totalFirstYearCost.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
+                            <div className="font-medium text-lg">{(transactionCosts.totalFirstYearCost || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
                           </div>
                         </div>
                       </div>
@@ -1052,18 +1149,35 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 </Card>
               )}
 
-              {/* 5-Year Projection: use recommended (optimized) portfolio when available so chart aligns with Optimize tab */}
+              {/* 5-Year Projection: use the portfolio selected in Optimize (Current / Weights-Optimized / Market-Optimized) */}
               {(() => {
                 const opt = state.optimizedPortfolio;
-                const recommended = opt?.weights_optimized_portfolio?.optimized_portfolio ?? opt?.market_optimized_portfolio?.optimized_portfolio;
-                const projectionWeights = recommended?.weights ?? (state.constructedPortfolio.length > 0
+                const currentWeights = state.constructedPortfolio.length > 0
                   ? state.constructedPortfolio.reduce((acc, s) => {
                       acc[s.symbol] = s.allocation / 100;
                       return acc;
                     }, {} as Record<string, number>)
-                  : {});
-                const projectionExpectedReturn = recommended?.metrics?.expected_return ?? portfolioMetrics?.expectedReturn ?? 0.08;
-                const projectionRisk = recommended?.metrics?.risk ?? portfolioMetrics?.risk ?? 0.15;
+                  : {};
+                const currentReturn = portfolioMetrics?.expectedReturn ?? 0.08;
+                const currentRisk = portfolioMetrics?.risk ?? 0.15;
+
+                let projectionWeights = currentWeights;
+                let projectionExpectedReturn = currentReturn;
+                let projectionRisk = currentRisk;
+
+                if (selectedPortfolioType === 'weights' && opt?.weights_optimized_portfolio?.optimized_portfolio) {
+                  const wo = opt.weights_optimized_portfolio.optimized_portfolio;
+                  projectionWeights = wo.weights ?? currentWeights;
+                  projectionExpectedReturn = wo.metrics?.expected_return ?? currentReturn;
+                  projectionRisk = wo.metrics?.risk ?? currentRisk;
+                } else if (selectedPortfolioType === 'market' && opt?.market_optimized_portfolio?.optimized_portfolio) {
+                  const mo = opt.market_optimized_portfolio.optimized_portfolio;
+                  projectionWeights = mo.weights ?? currentWeights;
+                  projectionExpectedReturn = mo.metrics?.expected_return ?? currentReturn;
+                  projectionRisk = mo.metrics?.risk ?? currentRisk;
+                }
+                // selectedPortfolioType === 'current' or no optimized data: use currentWeights, currentReturn, currentRisk (already set)
+
                 return (
                   <FiveYearProjectionChart
                     weights={projectionWeights}
@@ -1078,25 +1192,58 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 );
               })()}
 
-              {/* Export Button */}
-              <Button
-                onClick={handleComplete}
-                className="w-full"
-                size="lg"
-                disabled={!state.taxSettings.accountType || isExporting}
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Exporting...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Export Portfolio Report
-                  </>
-                )}
-              </Button>
+              <div className="mt-6 mb-4">
+                <label className="text-sm font-medium mb-1.5 block">Portfolio Name (for report)</label>
+                <Input
+                  value={portfolioName}
+                  onChange={(e) => setPortfolioName(e.target.value)}
+                  placeholder="Enter portfolio name..."
+                  className="max-w-md"
+                />
+              </div>
+
+              {/* Export options: PDF and CSV (ZIP) */}
+              <p className="text-sm text-muted-foreground mb-2">Export your report:</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button
+                  onClick={handleExportPdf}
+                  variant="outline"
+                  className="w-full"
+                  size="lg"
+                  disabled={!state.taxSettings.accountType || isExporting}
+                >
+                  {isExporting && exportingFormat === 'pdf' ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Exporting PDF...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Download PDF report
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleExportCsv}
+                  variant="outline"
+                  className="w-full"
+                  size="lg"
+                  disabled={!state.taxSettings.accountType || isExporting}
+                >
+                  {isExporting && exportingFormat === 'csv' ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Exporting CSV...
+                    </>
+                  ) : (
+                    <>
+                      <FileArchive className="mr-2 h-4 w-4" />
+                      Download CSV (ZIP)
+                    </>
+                  )}
+                </Button>
+              </div>
 
               {validationErrors['tax-cost'] && validationErrors['tax-cost'].length > 0 && (
                 <Alert>

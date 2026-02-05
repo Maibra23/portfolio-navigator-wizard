@@ -17,6 +17,7 @@ export interface PortfolioAllocation {
   symbol: string;
   allocation: number;
   name?: string;
+  sector?: string;
   assetType?: 'stock' | 'bond' | 'etf';
 }
 
@@ -31,6 +32,7 @@ interface StockResult {
   symbol: string;
   shortname: string;
   longname?: string;
+  sector?: string;
   typeDisp?: string;
   exchange?: string;
   quoteType?: string;
@@ -111,6 +113,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
           symbol: result.ticker,
           shortname: result.company_name || result.ticker,
           longname: result.company_name,
+          sector: result.sector,
           assetType: 'stock' as const,
           dataQuality: result.data_quality
         }));
@@ -161,6 +164,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       symbol: stock.symbol,
       allocation: equalAllocation,
       name: stock.shortname || stock.symbol,
+      sector: stock.sector,
       assetType: stock.assetType || 'stock'
     };
     
