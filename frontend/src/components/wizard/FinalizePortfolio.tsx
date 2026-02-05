@@ -474,7 +474,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       const currentTax = taxCalculation.annualTax || 0;
       if (currentTax > 0) {
         recommendations.push(
-          `💡 Tax Year Optimization: Consider switching to 2026 tax year. With your capital (${capital.toLocaleString('sv-SE')} SEK) below the 2026 tax-free level (300,000 SEK), you could significantly reduce or eliminate taxes.`
+          `Tax Year Optimization: Consider switching to 2026 tax year. With your capital (${capital.toLocaleString('sv-SE')} SEK) below the 2026 tax-free level (300,000 SEK), you could significantly reduce or eliminate taxes.`
         );
       }
     }
@@ -487,14 +487,14 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       if (currentAccountTax && lowestTaxAccount && currentAccountTax.annualTax > lowestTax + 100) {
         const savings = currentAccountTax.annualTax - lowestTax;
         recommendations.push(
-          `💰 Account Type Optimization: Switching from ${state.taxSettings.accountType} to ${lowestTaxAccount.accountType} could save approximately ${savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK per year (${(savings * 5).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK over 5 years).`
+          `Account Type Optimization: Switching from ${state.taxSettings.accountType} to ${lowestTaxAccount.accountType} could save approximately ${savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK per year (${(savings * 5).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK over 5 years).`
         );
       }
     }
 
     if (metricsForExport && (state.taxSettings.accountType === 'ISK' || state.taxSettings.accountType === 'KF') && metricsForExport.expectedReturn > 0.08 && capital > 300000) {
       recommendations.push(
-        `✅ Optimal Configuration: With your expected return of ${(metricsForExport.expectedReturn * 100).toFixed(1)}%, using ${state.taxSettings.accountType} is optimal. You benefit from schablonbeskattning compared to traditional capital gains taxation.`
+        `Optimal Configuration: With your expected return of ${(metricsForExport.expectedReturn * 100).toFixed(1)}%, using ${state.taxSettings.accountType} is optimal. You benefit from schablonbeskattning compared to traditional capital gains taxation.`
       );
     }
 

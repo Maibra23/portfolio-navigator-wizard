@@ -199,11 +199,6 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
                     <CardContent className="pt-3 pb-3 text-center">
                       <div className="flex items-center justify-center gap-1 mb-1">
                         <p className="text-xs font-bold">{result.accountType}</p>
-                        {isLowest && (
-                          <span className="text-[9px] bg-green-600 text-white px-1 py-0.5 rounded">
-                            BEST
-                          </span>
-                        )}
                       </div>
                       <p className="text-base font-bold text-red-700">
                         {result.annualTax.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
@@ -221,7 +216,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
             {lowestTaxAccount && (
               <div className="bg-white rounded-lg border border-green-300 p-3">
                 <p className="text-xs font-semibold text-green-900 mb-1">
-                  📊 Result:
+                  Result:
                 </p>
                 <p className="text-xs text-green-800">
                   With <strong>{simulatedCapital.toLocaleString('sv-SE')} SEK</strong> in tax year{' '}
@@ -231,7 +226,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
                 </p>
                 {lowestTaxAccount.annualTax === 0 && (
                   <p className="text-xs text-green-700 mt-1 font-semibold">
-                    🎉 Zero tax! Your capital is below the tax-free level.
+                    Zero tax! Your capital is below the tax-free level.
                   </p>
                 )}
               </div>
@@ -240,7 +235,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
             {/* 5-year projection */}
             <div className="bg-blue-100 border border-blue-300 rounded-lg p-3">
               <p className="text-xs font-semibold text-blue-900 mb-2">
-                💰 5-Year Tax Impact:
+                5-Year Tax Impact:
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {taxResults.map((result) => (

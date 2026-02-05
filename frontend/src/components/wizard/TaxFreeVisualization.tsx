@@ -142,7 +142,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
               <Shield className="h-4 w-4 text-green-700 mt-0.5" />
               <div>
                 <p className="text-xs font-semibold text-green-900 mb-1">
-                  🎉 Your entire portfolio is tax-free!
+                  Your entire portfolio is tax-free!
                 </p>
                 <p className="text-xs text-green-800">
                   Since your capital ({capital.toLocaleString('sv-SE')} SEK) is below the {taxYear} tax-free level
@@ -160,7 +160,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
               <Info className="h-4 w-4 text-blue-700 mt-0.5" />
               <div>
                 <p className="text-xs font-semibold text-blue-900 mb-1">
-                  💡 2026 Tax-Free Level Increase
+                  2026 Tax-Free Level Increase
                 </p>
                 <p className="text-xs text-blue-800">
                   In 2026, the tax-free level increases to 300,000 SEK. With your current capital

@@ -197,16 +197,6 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
                   <div className="text-center">
                     <div className="flex items-center justify-center gap-1 mb-1">
                       <p className="text-xs font-bold">{item.displayName}</p>
-                      {isLowest && (
-                        <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded">
-                          LOWEST
-                        </span>
-                      )}
-                      {isSelected && !isLowest && (
-                        <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">
-                          CURRENT
-                        </span>
-                      )}
                     </div>
                     <p className="text-lg font-bold text-red-600">
                       {item.annualTax.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
@@ -257,7 +247,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
         {savingsAmount > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
             <p className="text-xs font-semibold text-amber-900 mb-1">
-              💡 Potential Tax Savings
+              Potential Tax Savings
             </p>
             <p className="text-xs text-amber-800">
               By switching from <strong>{selectedAccountType}</strong> to the lowest-tax option, you could
@@ -271,7 +261,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
         {lowestTax === 0 && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
             <p className="text-xs font-semibold text-green-900 mb-1">
-              ✅ Tax-Free Investing
+              Tax-Free Investing
             </p>
             <p className="text-xs text-green-800">
               With your capital of {capital.toLocaleString('sv-SE')} SEK and tax year {taxYear}, you're below

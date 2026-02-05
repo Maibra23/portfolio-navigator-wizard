@@ -265,7 +265,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
               {rec.savings && rec.savings > 0 && (
                 <div className="mt-2 p-2 bg-white rounded border">
                   <p className="font-semibold text-green-700">
-                    💰 Potential 5-Year Savings: {rec.savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
+                    Potential 5-Year Savings: {rec.savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
                   </p>
                 </div>
               )}
