@@ -66,6 +66,12 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
                 placeholder="10,000"
                 value={capital}
                 onChange={(e) => handleCapitalChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleNext();
+                  }
+                }}
                 className="text-sm h-12 pl-8"
                 style={{ fontFamily: 'inherit', fontWeight: 'normal' }}
                 min="1000"
