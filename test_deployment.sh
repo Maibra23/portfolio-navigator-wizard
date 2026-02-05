@@ -66,9 +66,9 @@ cors_response=$(curl -s -I -H "Origin: http://localhost:8080" \
      -H "Access-Control-Request-Method: GET" \
      -X OPTIONS http://localhost:8000/health)
 
-if echo "$cors_response" | grep -q "Access-Control-Allow-Origin"; then
+if echo "$cors_response" | grep -iq "Access-Control-Allow-Origin"; then
     echo -e "${GREEN}✅ PASS: CORS headers present${NC}"
-    echo "$cors_response" | grep "Access-Control"
+    echo "$cors_response" | grep -i "Access-Control"
 else
     echo -e "${YELLOW}⚠️  WARNING: CORS headers not found${NC}"
 fi
