@@ -30,6 +30,7 @@ import { EfficientFrontierChart } from './EfficientFrontierChart';
 import { PortfolioComparisonTable } from './PortfolioComparisonTable';
 import { PerformanceSummaryCard, QualityScoreCard, MonteCarloCard } from './FinalAnalysisComponents';
 import { FiveYearProjectionChart } from './FiveYearProjectionChart';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface FinalizePortfolioProps {
   onComplete: () => void;
@@ -1024,7 +1025,19 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tax Year</label>
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    Tax Year
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Tax year info"><Info className="h-3.5 w-3.5" /></span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-sm p-3">
+                        <p className="font-medium mb-1">Tax rates by year (ISK/KF)</p>
+                        <p className="text-xs mb-1"><strong>2025:</strong> Tax-free level 150,000 SEK; schablonränta 2.96%; effective rate about 0.89% on capital above the free amount.</p>
+                        <p className="text-xs"> <strong>2026:</strong> Tax-free level 300,000 SEK; schablonränta 3.55%; effective rate about 1.07%. Choosing 2026 lowers tax if your capital is under 300k and changes the 5-year projection.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </label>
                   <select
                     className="w-full p-2 border rounded-md"
                     value={state.taxSettings.taxYear}
@@ -1035,7 +1048,23 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Courtage Class</label>
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    Courtage Class
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Courtage class info"><Info className="h-3.5 w-3.5" /></span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-sm p-3">
+                        <p className="font-medium mb-1">Avanza courtage (transaction fees) – how it is calculated</p>
+                        <p className="text-xs mb-1"><strong>Start:</strong> Up to 50,000 SEK or 500 free trades; after that 0 SEK per trade.</p>
+                        <p className="text-xs mb-1"><strong>Mini:</strong> 1 SEK or 0.25% per order (whichever is higher; orders up to 400 SEK = 1 SEK).</p>
+                        <p className="text-xs mb-1"><strong>Small:</strong> 39 SEK or 0.15% (orders up to 26,000 SEK = 39 SEK).</p>
+                        <p className="text-xs mb-1"><strong>Medium:</strong> 69 SEK or 0.069% (orders up to 100,000 SEK = 69 SEK).</p>
+                        <p className="text-xs mb-1"><strong>Fast Pris:</strong> Fixed 99 SEK per order.</p>
+                        <p className="text-xs">Used for initial setup and for each rebalancing. Total first-year and annual rebalancing costs are subtracted in the 5-year projection.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </label>
                   <select
                     className="w-full p-2 border rounded-md"
                     value={state.taxSettings.courtagClass || ''}
@@ -1055,7 +1084,17 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               {state.taxSettings.accountType && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Tax Summary</CardTitle>
+                    <CardTitle className="text-base flex items-center gap-1.5">
+                      Tax Summary
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Tax summary info"><Info className="h-3.5 w-3.5" /></span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm p-3">
+                          <p className="text-xs">This summary shows how your chosen account type and tax year determine your estimated annual tax. The same tax logic is applied each year in the 5-year projection, so lower tax here means higher projected growth.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {isLoadingTax ? (
@@ -1067,31 +1106,91 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <div className="text-sm text-muted-foreground">Account Type</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              Account Type
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-help" aria-label="Account type info"><Info className="h-3 w-3" /></span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                                  ISK/KF: tax on imputed income. AF: tax on gains, dividends, and fund holdings. This choice drives the 5-year projection.
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
                             <div className="font-medium">{taxCalculation.accountType}</div>
                           </div>
                           <div>
-                            <div className="text-sm text-muted-foreground">Tax Year</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              Tax Year
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-help" aria-label="Tax year info"><Info className="h-3 w-3" /></span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                                  Different tax-free levels and schablonränta per year; affects annual tax and projection.
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
                             <div className="font-medium">{taxCalculation.taxYear}</div>
                           </div>
                           {taxCalculation.capitalUnderlag !== undefined && taxCalculation.capitalUnderlag !== null && (
                             <div>
-                              <div className="text-sm text-muted-foreground">Capital Underlag</div>
+                              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                Capital Underlag
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex cursor-help" aria-label="Capital underlag info"><Info className="h-3 w-3" /></span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                                    Average capital used as tax base (ISK/KF). Tax-free amount is deducted first; remainder × schablonränta × 30% = annual tax. Used each year in the 5-year projection.
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
                               <div className="font-medium">{taxCalculation.capitalUnderlag.toLocaleString('sv-SE')} SEK</div>
                             </div>
                           )}
                           {taxCalculation.taxFreeLevel !== undefined && taxCalculation.taxFreeLevel !== null && (
                             <div>
-                              <div className="text-sm text-muted-foreground">Tax-Free Level</div>
+                              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                Tax-Free Level
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex cursor-help" aria-label="Tax-free level info"><Info className="h-3 w-3" /></span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                                    Amount of capital not subject to tax (ISK/KF). 2025: 150,000 SEK; 2026: 300,000 SEK. Only the part above this is taxed.
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
                               <div className="font-medium">{taxCalculation.taxFreeLevel.toLocaleString('sv-SE')} SEK</div>
                             </div>
                           )}
                           <div>
-                            <div className="text-sm text-muted-foreground">Annual Tax</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              Annual Tax
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-help" aria-label="Annual tax info"><Info className="h-3 w-3" /></span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                                  Estimated tax for this year. This amount is subtracted from portfolio growth each year in the 5-year projection.
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
                             <div className="font-medium text-lg">{(taxCalculation.annualTax || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
                           </div>
                           <div>
-                            <div className="text-sm text-muted-foreground">Effective Tax Rate</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              Effective Tax Rate
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-help" aria-label="Effective tax rate info"><Info className="h-3 w-3" /></span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                                  Annual tax as a percentage of your capital. Shows how much of your portfolio is effectively taxed each year (ISK/KF).
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
                             <div className="font-medium">{formatPercent((taxCalculation.effectiveTaxRate ?? 0) / 100)}</div>
                           </div>
                         </div>
@@ -1113,7 +1212,17 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               {state.taxSettings.courtagClass && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Total & Ongoing Costs</CardTitle>
+                    <CardTitle className="text-base flex items-center gap-1.5">
+                      Total & Ongoing Costs
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Costs info"><Info className="h-3.5 w-3.5" /></span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm p-3">
+                          <p className="text-xs">Setup cost = courtage for initial purchases. Annual rebalancing = courtage for 4 rebalances per year. These costs are included in the 5-year projection and reduce net growth.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {isLoadingCosts ? (
@@ -1125,7 +1234,17 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <div className="text-sm text-muted-foreground">Courtage Class</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              Courtage Class
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-help" aria-label="Courtage class info"><Info className="h-3 w-3" /></span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-sm p-2 text-xs">
+                                  Start: 50k SEK or 500 trades free. Mini: 1 SEK or 0.25%. Small: 39 SEK or 0.15%. Medium: 69 SEK or 0.069%. Fast Pris: 99 SEK fixed. Per-order fees × number of orders = setup and rebalancing costs used in the 5-year projection.
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
                             <div className="font-medium">{transactionCosts.courtageClass}</div>
                           </div>
                           <div>
