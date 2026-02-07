@@ -1,7 +1,7 @@
 # Portfolio Navigator Wizard - Comprehensive Review & Execution Plan
 
-**Document Version:** 1.0
-**Date:** 2026-02-07
+**Document Version:** 2.0
+**Date:** 2026-02-07 (Updated with detailed examples, context files, and reporting requirements)
 **Review Type:** Full Application Audit (52 components, 8 wizard steps, all calculations)
 **Overall Assessment:** 8.7/10 - Production-Ready with Minor Improvements
 
@@ -119,12 +119,56 @@ Portfolio Recommendations (ISK/KF/AF account type, stock universe, allocations)
 - **Severity:** HIGH (though rare in practice)
 - **Fix Time:** 5 minutes
 
+**How It Occurs:**
+When normalization divides by a denominator that's very small or when edge case answer patterns produce ratios >1, the score can exceed 100:
+```typescript
+// Current code
+const rawAdjMPT = 120;  // Edge case: user exploits scoring loophole
+const maxAdjMPT = 100;
+const normalizedMPT = (rawAdjMPT / maxAdjMPT) * 100;  // = 120 (INVALID!)
+```
+
+**How the Fix Improves It:**
+The fix clamps all scores to [0, 100] range:
+```typescript
+// Fixed code
+const normalizedMPT = Math.min(100, Math.max(0, (rawAdjMPT / maxAdjMPT) * 100));
+// = 100 (clamped to valid range)
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User answers questions in unusual pattern → score = 115 → categorized as "very-aggressive" but breaks downstream charts (risk spectrum expects 0-100)
+- **After Fix:** Same pattern → score = 100 → correctly categorized as "very-aggressive" and all visualizations work properly
+
 **Issue #2: No Validation for Empty Answer Sets (CRITICAL)**
 - **File:** `scoring-engine.ts:134`
 - **Impact:** User who skips all questions gets score=0 → "very-conservative" with ZERO data
 - **Risk:** Invalid risk profiles assigned, misleading recommendations
 - **Severity:** HIGH
 - **Fix Time:** 5 minutes
+
+**How It Occurs:**
+When maxAdj = 0 (no questions answered), division creates 0/0 scenario:
+```typescript
+// Current code
+const maxAdjMPT = 0;  // No questions answered
+const normalizedMPT = maxAdjMPT > 0 ? (rawAdjMPT / maxAdjMPT) * 100 : 0;
+// Returns 0, which categorizes as "very-conservative"
+```
+
+**How the Fix Improves It:**
+Throws explicit error instead of silently assigning invalid profile:
+```typescript
+// Fixed code
+if (selectedQuestions.length === 0 || maxAdj === 0) {
+  throw new Error('Insufficient data for risk assessment. Please answer at least one question.');
+}
+// Now impossible to proceed without answering questions
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User clicks through wizard without answering → gets "very-conservative" profile → receives ultra-conservative portfolio (bonds, money market) → frustrated because it doesn't match their actual risk tolerance
+- **After Fix:** User clicks through without answering → error message: "Please answer at least one question" → forced to engage with assessment → receives appropriate profile
 
 **Issue #3: Score Capping Cross-Dimensional Logic (MODERATE)**
 - **File:** `scoring-engine.ts:196-214`
@@ -133,12 +177,82 @@ Portfolio Recommendations (ISK/KF/AF account type, stock universe, allocations)
 - **Severity:** MODERATE (design choice or bug - needs documentation)
 - **Fix Time:** 30 minutes (document or refactor)
 
+**How It Occurs:**
+When safeguards cap the final category (e.g., to "moderate" due to short time horizon), the code proportionally reduces BOTH MPT and Prospect scores:
+```typescript
+// Current code (simplified)
+if (finalCategory === 'moderate' && originalScore > 60) {
+  // Both scores reduced proportionally
+  mptScore = mptScore * 0.8;
+  prospectScore = prospectScore * 0.8;
+}
+```
+
+**How the Fix Improves It:**
+Documents the intentional design or refactors to only cap the triggering dimension:
+```typescript
+// Option 1: Document the design choice
+/**
+ * DESIGN DECISION: When category is capped due to safeguards (e.g., short time
+ * horizon), BOTH MPT and Prospect scores are reduced proportionally to maintain
+ * their relationship. This prevents misleading score displays where individual
+ * dimension scores suggest higher risk than the final category.
+ *
+ * Example: User scores 80 MPT / 70 Prospect but has 1-year time horizon
+ * → Final category capped to "moderate" (max score 60)
+ * → MPT and Prospect both scaled to fit within moderate range
+ */
+
+// Option 2: Refactor to only cap triggering dimension
+if (timeHorizonTooShort && finalCategory === 'moderate') {
+  // Only reduce MPT (time horizon is an MPT construct)
+  mptScore = Math.min(60, mptScore);
+  // Keep prospectScore unchanged
+}
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User with short time horizon sees MPT=48, Prospect=48, Category="moderate" but doesn't understand why both scores changed when only time horizon was the issue
+- **After Fix (Documentation):** Same scenario, but inline comments explain the proportional reduction maintains score consistency with final category
+- **After Fix (Refactor):** User sees MPT=60 (capped), Prospect=70 (original), Category="moderate" - clearer which dimension triggered the override
+
 **Issue #4: Answer Variance Normalization Bug (MODERATE)**
 - **File:** `confidence-calculator.ts:93-100`
 - **Impact:** Uses global `maxAnswer` instead of per-question `maxScore` for normalization
 - **Risk:** Breaks with mixed question scales or when user only answers low-value questions
 - **Severity:** MODERATE
 - **Fix Time:** 30 minutes
+
+**How It Occurs:**
+The confidence calculator normalizes all answers using the global maximum answer value, not per-question scales:
+```typescript
+// Current code - BUG
+const answerValues = [3, 2, 4, 3];  // Mixed 4-point and 5-point questions
+const maxAnswer = 4;  // Global max
+const normalizedAnswers = answerValues.map(value => (value - 1) / (maxAnswer - 1));
+// [0.67, 0.33, 1.0, 0.67]
+// PROBLEM: Doesn't account for question 2 being 4-point (max=4) vs question 3 being 5-point (max=5)
+```
+
+**How the Fix Improves It:**
+Uses per-question maxScore for accurate normalization:
+```typescript
+// Fixed code
+const questions = [
+  { maxScore: 5 }, { maxScore: 4 }, { maxScore: 5 }, { maxScore: 4 }
+];
+const answerValues = [3, 2, 4, 3];
+const normalizedAnswers = questions.map((q, i) => {
+  const denom = Math.max(1, q.maxScore - 1);
+  return (answerValues[i] - 1) / denom;
+});
+// [0.5, 0.33, 0.75, 0.67]
+// CORRECT: Each answer normalized by its own question's scale
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User answers mostly 4-point questions (max=4) → confidence calculation inflates variance because it normalizes by max=5 → incorrectly flagged as "high variance" → confidence band widened unnecessarily
+- **After Fix:** Same answers → variance calculated correctly per question scale → accurate confidence band → better risk profile precision
 
 **Issue #5: Boundary Treatment Inconsistency (MODERATE)**
 - **File:** `scoring-engine.ts:138-144`
@@ -147,11 +261,82 @@ Portfolio Recommendations (ISK/KF/AF account type, stock universe, allocations)
 - **Severity:** LOW-MODERATE
 - **Fix Time:** 15 minutes
 
+**How It Occurs:**
+Boundary conditions use `<=` which creates ambiguity at exact thresholds:
+```typescript
+// Current code - INCONSISTENT
+if (score <= 20) return 'very-conservative';
+if (score <= 40) return 'conservative';
+if (score <= 60) return 'moderate';
+if (score <= 80) return 'aggressive';
+return 'very-aggressive';
+
+// Score 60.0 → 'moderate' (third condition)
+// Score 60.1 → 'aggressive' (fourth condition)
+// Score 60.0000001 → 'aggressive' (floating point)
+```
+
+**How the Fix Improves It:**
+Uses exclusive upper bounds for clear, consistent categorization:
+```typescript
+// Fixed code - CONSISTENT
+if (score < 20) return 'very-conservative';
+if (score < 40) return 'conservative';
+if (score < 60) return 'moderate';
+if (score < 80) return 'aggressive';
+return 'very-aggressive';
+
+// Score 20.0 → 'conservative' (NOT very-conservative)
+// Score 60.0 → 'aggressive' (NOT moderate)
+// Boundaries consistently belong to higher category
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User scores exactly 60.0 → categorized "moderate" → retakes assessment with small variance → scores 60.2 → now "aggressive" → confused by dramatic category change from tiny score difference
+- **After Fix:** Score 60.0 → consistently "aggressive" → small variations (59.8, 60.1) don't cause category flip → more stable user experience
+
 **Issue #6: Unequal Construct Coverage (MODERATE)**
 - **Impact:** MPT questions contribute 54.5% weight, Prospect questions 45.5% weight
 - **Risk:** Unintentional bias toward MPT constructs
 - **Severity:** LOW-MODERATE (may be intentional)
 - **Fix Time:** Document as design choice or rebalance questions
+
+**How It Occurs:**
+MPT questions have higher point totals than Prospect Theory questions:
+```typescript
+// Current question distribution
+MPT_questions: 12 questions × 4 points avg = 48 max points (54.5%)
+Prospect_questions: 13 questions × ~3.08 points avg = 40 max points (45.5%)
+Total: 88 max points
+
+// Score calculation
+rawAdjMPT = 35 out of 48 (72.9% of MPT maximum)
+rawAdjProspect = 25 out of 40 (62.5% of Prospect maximum)
+// MPT has disproportionate influence on final score
+```
+
+**How the Fix Improves It:**
+Documents the intentional design choice OR rebalances:
+```typescript
+// Option 1: Document
+/**
+ * DESIGN DECISION: MPT constructs weighted 54.5%, Prospect Theory 45.5%
+ * Rationale: MPT constructs (time horizon, volatility tolerance, diversification)
+ * are stronger predictors of long-term investment success than Prospect Theory
+ * constructs (loss aversion, framing effects). This weighting reflects empirical
+ * research showing MPT factors explain ~60% of portfolio outcome variance.
+ */
+
+// Option 2: Rebalance (equal 50/50 weighting)
+MPT_questions: 11 questions × 4 points = 44 max points (50%)
+Prospect_questions: 11 questions × 4 points = 44 max points (50%)
+Total: 88 max points
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User strong on loss aversion (Prospect) but weak on time horizon (MPT) → final score heavily penalized by MPT weakness → categorized lower than their actual composite risk tolerance
+- **After Fix (Documentation):** Same scenario → score reflects intentional MPT emphasis → users understand why time horizon matters more
+- **After Fix (Rebalance):** Same scenario → both dimensions weighted equally → more balanced profile
 
 ---
 
@@ -168,6 +353,39 @@ Portfolio Recommendations (ISK/KF/AF account type, stock universe, allocations)
 - **Severity:** MODERATE (cosmetic but noticeable)
 - **Fix Time:** 2-3 hours (will be addressed by theme redesign)
 
+**How It Occurs:**
+Components were developed incrementally, leading to pattern drift:
+```typescript
+// WelcomeStep.tsx
+<Card className="shadow-elegant">
+  <div className="w-16 h-16 bg-gradient-primary">
+    <TrendingUp className="h-8 w-8" />
+  </div>
+  <CardTitle className="text-3xl mb-4">
+
+// ThankYouStep.tsx (inconsistent)
+<Card className="shadow-card">  {/* Different shadow! */}
+  <div className="w-20 h-20 bg-gradient-primary">  {/* Different size! */}
+    <CheckCircle className="h-10 w-10" />  {/* Different icon size! */}
+  </div>
+  <CardTitle className="text-2xl mb-2">  {/* Different spacing! */}
+```
+
+**How the Fix Improves It:**
+Theme redesign standardizes all patterns globally:
+```typescript
+// After theme redesign - ALL components
+<Card className="border-2 border-border">  {/* Consistent: no shadows */}
+  <div className="w-16 h-16 bg-primary/10">  {/* Consistent: no gradients */}
+    <Icon className="h-8 w-8" />  {/* Consistent: h-8 w-8 for header icons */}
+  </div>
+  <CardTitle className="text-2xl mb-4">  {/* Consistent: text-2xl mb-4 */}
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** User navigates Welcome (large icon) → Risk Profiler (small icon) → Thank You (huge icon) → perceives app as unpolished, loses confidence in recommendations
+- **After Fix:** All steps have consistent icon sizes, shadows, spacing → professional, cohesive experience → increased user trust
+
 **Issue #8: Zero Variance Not Flagged (LOW)**
 - **File:** `confidence-calculator.ts:102`
 - **Impact:** Flat-line responses (all 1s or all 5s) not detected as suspicious
@@ -175,12 +393,75 @@ Portfolio Recommendations (ISK/KF/AF account type, stock universe, allocations)
 - **Severity:** LOW
 - **Fix Time:** 15 minutes
 
+**How It Occurs:**
+Confidence calculator only flags HIGH variance (>0.3), not zero variance:
+```typescript
+// Current code - MISSES ZERO VARIANCE
+const variance = calculateVariance(normalizedAnswers);
+if (variance > 0.3) {  // Only checks high variance
+  adjustment += variancePenalty;
+  reasons.push('variance');
+}
+// User who answers all 3s: variance = 0, NOT FLAGGED
+```
+
+**How the Fix Improves It:**
+Detects and flags both zero variance AND high variance:
+```typescript
+// Fixed code
+const variance = calculateVariance(normalizedAnswers);
+if (variance === 0) {
+  adjustment += variancePenalty;
+  reasons.push('zero_variance');  // Flat-line pattern
+} else if (variance > 0.3) {
+  adjustment += variancePenalty;
+  reasons.push('high_variance');  // Erratic pattern
+}
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** Inattentive user clicks "3" (neutral) for every question → variance = 0 → confidence = high → receives definitive risk profile based on no real engagement
+- **After Fix:** Same behavior → flagged "zero_variance" → confidence reduced → user prompted to reconsider answers or profile marked as uncertain
+
 **Issue #9: Fast Completion Threshold Static (LOW)**
 - **File:** `consistency-detector.ts:33-36`
 - **Impact:** 3-second threshold applies to all questions, but storyline questions are longer
 - **Risk:** False flags for under-19 users reading storyline scenarios
 - **Severity:** LOW
 - **Fix Time:** 30 minutes
+
+**How It Occurs:**
+All questions judged by same 3-second threshold, regardless of complexity:
+```typescript
+// Current code - ONE SIZE FITS ALL
+export const checkCompletionSpeed = (totalSeconds: number, questionCount: number): boolean => {
+  return (totalSeconds / questionCount) < 3;  // 3 sec for ALL questions
+}
+
+// Storyline question: 150 words (30+ seconds to read carefully)
+// User takes 20 seconds → 20 < 30? No, but 20/1 = 20 > 3 so OK
+// BUT: 10 gamified questions in 25 seconds → 25/10 = 2.5 < 3 → FLAGGED (false positive)
+```
+
+**How the Fix Improves It:**
+Adjusts threshold based on question type:
+```typescript
+// Fixed code - CONTEXT-AWARE
+export const checkCompletionSpeed = (
+  totalSeconds: number,
+  questionCount: number,
+  isGamified: boolean = false
+): boolean => {
+  const threshold = isGamified ? 5 : 3;  // 5 sec for storylines, 3 sec for standard
+  return (totalSeconds / questionCount) < threshold;
+}
+
+// Same 10 gamified questions in 25 seconds → 25/10 = 2.5 < 5? No → NOT FLAGGED (correct)
+```
+
+**Real-World Impact Example:**
+- **Before Fix:** Engaged teenager reads storyline scenarios carefully, takes 4 seconds per question → flagged for "fast completion" → confidence reduced despite thoughtful engagement
+- **After Fix:** Same teenager, same timing → 4 sec/question < 5 sec threshold → NOT flagged → confidence reflects genuine engagement
 
 ---
 
@@ -668,39 +949,85 @@ const testReverseCodedInconsistency = {
 
 ---
 
-#### Context Files
+#### Context Files to Load at Start
 
-**Primary Files:**
+**CRITICAL: Load these files in your chat context BEFORE starting work:**
+
+**Primary Files (MUST READ FIRST - 5 files):**
 ```
-frontend/src/components/wizard/
-├── scoring-engine.ts           (main scoring logic)
-├── confidence-calculator.ts    (confidence bands)
-├── safeguards.ts              (category overrides)
-├── consistency-detector.ts     (answer validation)
-└── RiskProfiler.tsx           (questions & UI)
+1. frontend/src/components/wizard/scoring-engine.ts
+   WHY: Contains core scoring algorithm, all 9 issues concentrated here
+   SIZE: ~300 lines
+   PRIORITY: CRITICAL - read completely
+
+2. frontend/src/components/wizard/confidence-calculator.ts
+   WHY: Issues #4, #7, #8 located here (variance normalization, zero variance)
+   SIZE: ~200 lines
+   PRIORITY: CRITICAL - read completely
+
+3. frontend/src/components/wizard/safeguards.ts
+   WHY: Issue #3 (score capping logic), need to document or refactor
+   SIZE: ~150 lines
+   PRIORITY: HIGH - read completely
+
+4. frontend/src/components/wizard/consistency-detector.ts
+   WHY: Issue #9 (fast completion threshold)
+   SIZE: ~100 lines
+   PRIORITY: MEDIUM - read completely
+
+5. frontend/src/components/wizard/RiskProfiler.tsx
+   WHY: Question definitions, Issue #6 (construct weighting), Issue #9 (gamified path)
+   SIZE: ~1,800 lines
+   PRIORITY: MEDIUM - read question definitions section (lines 200-800)
 ```
 
-**Supporting Files:**
+**Supporting Files (READ AS NEEDED - 5 files):**
 ```
-frontend/src/components/wizard/
-├── riskUtils.ts               (risk category utilities)
-├── CategoryCard.tsx           (UI for risk categories)
-├── RiskSpectrum.tsx           (visual spectrum)
-├── TwoDimensionalMap.tsx      (MPT vs Prospect visualization)
-└── FlagAlerts.tsx             (consistency flag display)
+6. frontend/src/components/wizard/riskUtils.ts
+   WHY: Helper functions for risk categories, may need for Issue #5 (boundaries)
+   SIZE: ~100 lines
+   PRIORITY: LOW - reference only
+
+7. frontend/src/components/wizard/CategoryCard.tsx
+   WHY: UI for displaying risk categories, useful for understanding user-facing impact
+   SIZE: ~150 lines
+   PRIORITY: LOW - read if testing UI
+
+8. frontend/src/components/wizard/RiskSpectrum.tsx
+   WHY: Visualization of 0-100 score range, helps understand Issue #1 (bounds)
+   SIZE: ~200 lines
+   PRIORITY: LOW - read if testing visualizations
+
+9. frontend/src/components/wizard/TwoDimensionalMap.tsx
+   WHY: MPT vs Prospect visualization, helps understand Issue #6 (weighting)
+   SIZE: ~250 lines
+   PRIORITY: LOW - read if testing 2D display
+
+10. frontend/src/components/wizard/FlagAlerts.tsx
+    WHY: Displays consistency flags, helps understand Issue #8 (zero variance flag)
+    SIZE: ~100 lines
+    PRIORITY: LOW - read if testing flag display
 ```
 
-**Related Backend Files:**
+**Specification Documents (READ FOR CONTEXT):**
 ```
-backend/utils/
-└── enhanced_portfolio_generator.py  (uses risk profile for recommendations)
+11. CLAUDE.md
+    WHY: Project overview, architecture, design philosophy
+    SIZE: ~500 lines
+    PRIORITY: LOW - optional background
+
+12. THEME_REDESIGN_TASKS.md
+    WHY: NOT RELEVANT for Agent 1 (this is Agent 2's domain)
+    PRIORITY: SKIP - Agent 1 does NOT touch UI/theming
 ```
 
-**Specification Documents:**
-```
-CLAUDE.md                       (project overview)
-THEME_REDESIGN_TASKS.md        (theme redesign plan)
-```
+**How to Load Context:**
+1. Start by reading files 1-5 completely (use Read tool)
+2. Keep these files in your working memory throughout execution
+3. Reference supporting files (6-10) only when needed for specific tasks
+4. DO NOT load THEME_REDESIGN_TASKS.md (out of scope for calculation fixes)
+
+**Total Context to Load:** ~2,750 lines across 5 primary files (manageable in one session)
 
 ---
 
@@ -708,7 +1035,7 @@ THEME_REDESIGN_TASKS.md        (theme redesign plan)
 
 ```markdown
 # Risk Profiler Calculations Agent - Audit & Fix Instructions
-
+****
 ## Mission
 You are the Risk Profiler Calculations Agent. Your mission is to audit, fix, and validate the risk profiling scoring logic in the Portfolio Navigator Wizard to ensure 100% mathematical correctness and logical consistency.
 
@@ -752,13 +1079,40 @@ You do NOT touch UI/theming (that's Agent 2's domain).
    - Document 60% MPT / 40% Prospect for under-19 users
 
 ## Tasks
+
+**CRITICAL: After EACH phase (every 3 issues or 1 hour), provide a progress report:**
+```markdown
+## Phase [N] Progress Report
+
+### ✅ What Works:
+- Issue #X: Fixed and tested
+  - Test result: [Pass/Fail details]
+  - Impact: [Brief description]
+
+### ⚠️ What's Blocked:
+- Issue #Y: Waiting for [decision/clarification]
+  - Reason: [Why blocked]
+  - Options: [Alternatives considered]
+
+### 📋 Next Steps:
+- Issue #Z: Starting now
+  - Estimated time: [X minutes]
+  - Dependencies: [Any requirements]
+
+### 🧪 Test Summary:
+- Tests passed: X/Y
+- Tests failed: Z (details below)
+- Coverage: [Which scenarios tested]
+```
+
 For EACH issue:
 1. **Read** the relevant file(s)
 2. **Diagnose** the root cause
 3. **Propose** the fix with exact code
 4. **Implement** the fix (use Edit tool)
 5. **Validate** with test case
-6. **Document** design decisions (use comments)
+6. **Report** what works after test (see format above)
+7. **Document** design decisions (use comments)
 
 ## Test Cases
 Run ALL 13 test cases (see "Tests for 100% Success" section above):
@@ -1179,35 +1533,117 @@ const darkPalette = [
 
 ---
 
-#### Context Files
+#### Context Files to Load at Start
 
-**Theme Files (PRIMARY):**
-```
-frontend/src/
-├── index.css                      (CSS variables)
-└── tailwind.config.ts             (Tailwind config)
-```
+**CRITICAL: Load these files in your chat context BEFORE starting work:**
 
-**All Wizard Components (52 files):**
+**Foundation Files (MUST READ FIRST - 3 files):**
 ```
-frontend/src/components/wizard/
-└── [All 52 files listed above]
-```
+1. THEME_REDESIGN_TASKS.md
+   WHY: Complete dark theme specification, color palette, typography system
+   SIZE: ~800 lines
+   PRIORITY: CRITICAL - read completely before any changes
 
-**UI Components (spot check):**
-```
-frontend/src/components/ui/
-├── button.tsx                     (remove gradient variant)
-├── card.tsx                       (update default styling)
-├── input.tsx                      (verify dark theme)
-├── select.tsx                     (verify dark theme)
-└── ... (spot check others as needed)
+2. frontend/src/index.css
+   WHY: CSS variables to be updated, current theme definition
+   SIZE: ~200 lines
+   PRIORITY: CRITICAL - will modify extensively
+
+3. frontend/tailwind.config.ts
+   WHY: Tailwind configuration, gradient utilities to remove
+   SIZE: ~150 lines
+   PRIORITY: HIGH - will modify safelist
 ```
 
-**Reference Document:**
+**UI Component Files (READ BEFORE UPDATING - 5 files):**
 ```
-THEME_REDESIGN_TASKS.md            (full redesign plan)
+4. frontend/src/components/ui/button.tsx
+   WHY: Remove gradient variant, update risk profile button colors
+   SIZE: ~100 lines
+   PRIORITY: HIGH - affects all buttons across app
+
+5. frontend/src/components/ui/card.tsx
+   WHY: Update default card styling, remove shadows
+   SIZE: ~80 lines
+   PRIORITY: HIGH - affects all cards across app
+
+6. frontend/src/components/ui/input.tsx
+   WHY: Verify dark theme visibility, borders
+   SIZE: ~60 lines
+   PRIORITY: MEDIUM - read to verify no issues
+
+7. frontend/src/components/ui/select.tsx
+   WHY: Verify dropdown visibility on dark background
+   SIZE: ~80 lines
+   PRIORITY: MEDIUM - read to verify no issues
+
+8. frontend/src/components/ui/label.tsx
+   WHY: Verify label text contrast
+   SIZE: ~40 lines
+   PRIORITY: LOW - spot check only
 ```
+
+**Wizard Component Samples (READ 3-5 AS EXAMPLES - don't read all 52):**
+```
+9. frontend/src/components/wizard/WelcomeStep.tsx
+   WHY: First step, contains UI inconsistencies (text-3xl, w-16 vs w-20)
+   SIZE: ~113 lines
+   PRIORITY: HIGH - use as reference for gradient removal pattern
+
+10. frontend/src/components/wizard/CapitalInput.tsx
+    WHY: Contains shadow-card inconsistency
+    SIZE: ~129 lines
+    PRIORITY: HIGH - use as reference for shadow removal
+
+11. frontend/src/components/wizard/RiskProfiler.tsx
+    WHY: Largest component, multiple gradients and spacing issues
+    SIZE: ~1,800 lines
+    PRIORITY: MEDIUM - scan for patterns (don't read fully)
+
+12. frontend/src/components/wizard/FinalizePortfolio.tsx
+    WHY: Complex component with 4 tabs, NO gradients (good example)
+    SIZE: ~1,500 lines
+    PRIORITY: LOW - reference for non-gradient patterns
+
+13. frontend/src/components/wizard/ThankYouStep.tsx
+    WHY: Multiple UI inconsistencies (icon sizes, button variants)
+    SIZE: ~115 lines
+    PRIORITY: HIGH - use as reference for fixes
+```
+
+**Visualization Files (READ 2-3 AS EXAMPLES):**
+```
+14. frontend/src/components/wizard/Portfolio3PartVisualization.tsx
+    WHY: Contains visualizationTheme object to update (lines 46-86)
+    SIZE: ~400 lines
+    PRIORITY: HIGH - template for all chart theme updates
+
+15. frontend/src/components/wizard/FiveYearProjectionChart.tsx
+    WHY: Contains chart theme, need to update colors for dark mode
+    SIZE: ~300 lines
+    PRIORITY: MEDIUM - second example of chart theming
+
+16. frontend/src/components/wizard/TaxComparisonChart.tsx
+    WHY: Bar chart example, verify readability on dark canvas
+    SIZE: ~280 lines
+    PRIORITY: MEDIUM - third example of chart theming
+```
+
+**How to Load Context:**
+1. **Phase 1 Prep:** Read files 1-3 (foundation) completely
+2. **Phase 2 Prep:** Read files 4-8 (UI components) before updating
+3. **Phase 2 During:** Read files 9-10, 13 (wizard examples) as you work
+4. **Phase 3 Prep:** Read files 14-16 (visualization examples)
+5. **DO NOT read all 52 wizard files** - use grep/glob to find-replace instead
+6. **Use pattern matching:** Once you understand the pattern from 3-5 examples, apply globally
+
+**Total Context to Load:** ~3,000 lines across 10-12 files (rest handled via search/replace)
+
+**IMPORTANT: Other 40+ wizard files can be updated via:**
+- Glob search for gradient patterns
+- Find-replace operations
+- Batch edits using Edit tool
+- NO NEED to read every single file
 
 ---
 
@@ -1253,10 +1689,42 @@ Follow THEME_REDESIGN_TASKS.md for detailed design specifications:
 
 ## Tasks (4 Phases)
 
+**CRITICAL: After EACH phase, provide a comprehensive progress report:**
+```markdown
+## Phase [N] Progress Report
+
+### ✅ Completed Tasks:
+- Task 2.X: [Task name]
+  - Files modified: [List of files]
+  - Changes made: [Brief summary]
+  - Visual test: [Pass/Fail/Partial]
+
+### 🎨 Visual Quality Check:
+- Screenshots: [Before/after for key changes]
+- Contrast ratios: [Any measured]
+- Issues found: [List any problems]
+
+### ⚠️ Issues Encountered:
+- Issue: [Description]
+  - Root cause: [Why it happened]
+  - Resolution: [How you fixed it OR what's blocked]
+
+### 📋 Next Steps:
+- Upcoming task: [What you'll work on next]
+- Estimated time: [X hours]
+- Dependencies: [Any blockers]
+
+### 🧪 Testing Summary:
+- Components tested: [Which wizard steps]
+- Charts tested: [Which visualizations]
+- Regressions: [Any broken functionality]
+```
+
 ### Phase 1: Foundation (3 hours)
 1. Update `index.css` with dark theme CSS variables
 2. Update `tailwind.config.ts` (remove gradient utilities)
 3. Test basic components render
+4. **REPORT:** Provide Phase 1 progress report
 
 ### Phase 2: Components (4 hours)
 4. Global gradient removal (find-replace 54 instances)
@@ -1269,17 +1737,25 @@ Follow THEME_REDESIGN_TASKS.md for detailed design specifications:
    - Colors → consistent
 6. Update button.tsx (remove gradient variant)
 7. Update card.tsx (remove shadows)
+8. **REPORT:** Provide Phase 2 progress report (list all modified files, gradient count remaining)
 
 ### Phase 3: Visualizations (3 hours)
-8. Update all 9 visualization themes to dark
-9. Test chart readability and contrast
+9. Update all 9 visualization themes to dark
+10. Test chart readability and contrast
+11. **REPORT:** Provide Phase 3 progress report (screenshots of charts, contrast measurements)
 
 ### Phase 4: Testing & Polish (3-4 hours)
-10. Full wizard walkthrough (all 8 steps)
-11. Fix discovered issues
-12. Typography consistency pass
-13. WCAG AA contrast verification
-14. Performance check
+12. Full wizard walkthrough (all 8 steps)
+13. Fix discovered issues
+14. Typography consistency pass
+15. WCAG AA contrast verification
+16. Performance check
+17. **FINAL REPORT:** Provide comprehensive completion report with:
+    - All files modified (complete list)
+    - Before/after screenshots (all 8 wizard steps)
+    - Test results (all checklists completed)
+    - Known issues or limitations
+    - Recommendations for follow-up work
 
 ## Testing
 You must test:
@@ -1755,6 +2231,135 @@ frontend/src/config/               (API config - untouched)
 
 ---
 
+### Appendix F: Should Agents Load This Execution Plan as Context?
+
+**TL;DR:** ✅ **YES for Agent 1**, ⚠️ **OPTIONAL for Agent 2**
+
+#### Assessment for Agent 1 (Risk Profiler Calculations Agent)
+
+**Recommendation: LOAD THIS DOCUMENT**
+
+**Why Load:**
+1. **Detailed Issue Descriptions:** Each of the 9 issues has comprehensive "How It Occurs" and "How the Fix Improves It" sections with code examples
+2. **Real-World Impact Examples:** Understand the user-facing consequences of each bug
+3. **Test Cases:** All 13 test cases are documented with expected results
+4. **Design Decision Context:** Issues #3, #6, #9 require understanding WHY the code is the way it is
+5. **File-by-File Guidance:** Exact line numbers and code snippets for each fix
+
+**What to Extract from This Document:**
+- Section 1.3: Critical Issues Impacting Correctness (Issues #1-9) - **READ COMPLETELY**
+- Section 3.2: Agent 1 specification (Tasks 1.1-1.9) - **READ COMPLETELY**
+- Section 3.2: Tests for 100% Success - **USE AS CHECKLIST**
+- Appendix B: Test Data - **USE FOR VALIDATION**
+
+**How to Use:**
+```markdown
+1. Load this document at start
+2. Read Issues #1-9 descriptions (understand each bug deeply)
+3. Reference Task list (1.1-1.9) during implementation
+4. Cross-check Test Cases (13 total) during validation
+5. Consult "How the Fix Improves It" examples when implementing
+```
+
+**Benefits:**
+- ✅ Saves time: No need to re-diagnose issues
+- ✅ Prevents errors: Understand edge cases upfront
+- ✅ Complete context: Know WHY each fix is needed
+- ✅ Test coverage: All scenarios pre-defined
+
+**Downsides:**
+- ⚠️ Document size: 2,200+ lines (but only need ~500 lines for Agent 1)
+- ⚠️ Context limit: May compete with source code files for context space
+
+**Mitigation:**
+- Read only relevant sections (1.3, 3.2, Appendix B = ~500 lines)
+- Skip Agent 2 sections (3.3, Phase 2-4 tasks)
+- Skip appendices C, D, E (not needed for calculations)
+
+**Final Verdict for Agent 1:** ✅ **RECOMMENDED - Load at start, focus on Issues #1-9 and Tasks 1.1-1.9**
+
+---
+
+#### Assessment for Agent 2 (Theme Redesign Agent)
+
+**Recommendation: OPTIONAL - Prefer THEME_REDESIGN_TASKS.md Instead**
+
+**Why NOT Load (Primary Argument):**
+1. **Better Alternative Exists:** THEME_REDESIGN_TASKS.md contains the ACTUAL design spec (color palette, typography, spacing)
+2. **Redundancy:** This document references THEME_REDESIGN_TASKS.md multiple times
+3. **Context Efficiency:** Agent 2 needs to load 10-15 source files; this plan adds 2,200 lines
+4. **Implementation Focus:** Agent 2 needs HOW (design spec) not WHY (issue analysis)
+
+**Why Load (Counter-Argument):**
+1. **UI Inconsistencies Catalog:** Section 1.3 lists all 12 UI issues with exact locations
+2. **File Ownership:** Section 3.3 lists all 60+ files Agent 2 will modify
+3. **Phase-by-Phase Guidance:** Tasks 2.1-2.13 break down the work
+4. **Test Checklists:** Section 3.3 has comprehensive visual quality checks
+
+**What to Extract IF Loading:**
+- Section 1.3: Issue #7 (UI Inconsistencies) - **LIST OF FIXES**
+- Section 3.3: Agent 2 specification (Tasks 2.1-2.13) - **PHASE BREAKDOWN**
+- Section 3.3: Tests for 100% Success - **QA CHECKLIST**
+- Appendix C: Color Palette Reference - **DUPLICATE of THEME_REDESIGN_TASKS.md**
+- Appendix D: Typography Scale - **DUPLICATE of THEME_REDESIGN_TASKS.md**
+
+**How to Use IF Loading:**
+```markdown
+1. Load THEME_REDESIGN_TASKS.md first (primary spec)
+2. Load this document second (execution plan)
+3. Use Issue #7 as checklist of UI inconsistencies to fix
+4. Use Tasks 2.1-2.13 as phase-by-phase guide
+5. Use Appendix C, D only if THEME_REDESIGN_TASKS.md missing
+```
+
+**Benefits IF Loading:**
+- ✅ Complete task list: All 13 tasks with time estimates
+- ✅ UI inconsistency locations: Exact files/lines to fix
+- ✅ Phase reporting templates: Know what to report after each phase
+
+**Downsides:**
+- ❌ Context bloat: 2,200 lines competing with 52 wizard component files
+- ❌ Redundancy: Color palette and typography duplicated from THEME_REDESIGN_TASKS.md
+- ❌ Wrong level of detail: Focuses on WHY issues exist (not needed for theming)
+
+**Final Verdict for Agent 2:** ⚠️ **OPTIONAL - Only load if:**
+- You want the complete task breakdown (Tasks 2.1-2.13)
+- You need the UI inconsistency checklist (Issue #7)
+- THEME_REDESIGN_TASKS.md is insufficient
+
+**Otherwise:** Skip this document, load THEME_REDESIGN_TASKS.md + source files instead
+
+---
+
+#### Context Loading Strategy
+
+**For Agent 1:**
+```
+Priority 1: PORTFOLIO_WIZARD_REVIEW_AND_EXECUTION_PLAN.md (sections 1.3, 3.2, Appendix B)
+Priority 2: scoring-engine.ts (read completely)
+Priority 3: confidence-calculator.ts (read completely)
+Priority 4: safeguards.ts, consistency-detector.ts, RiskProfiler.tsx (read as needed)
+```
+
+**For Agent 2:**
+```
+Priority 1: THEME_REDESIGN_TASKS.md (read completely)
+Priority 2: index.css, tailwind.config.ts (read completely)
+Priority 3: WelcomeStep.tsx, CapitalInput.tsx, ThankYouStep.tsx (examples)
+Priority 4: Portfolio3PartVisualization.tsx (visualization theme example)
+Priority 5: PORTFOLIO_WIZARD_REVIEW_AND_EXECUTION_PLAN.md (OPTIONAL - for task list)
+```
+
+**Total Context Budget:**
+- Agent 1: ~3,250 lines (500 from plan + 2,750 from source files)
+- Agent 2: ~3,800 lines (800 THEME_REDESIGN_TASKS.md + 3,000 from source files, plan optional +2,200)
+
+**Conclusion:**
+- Agent 1: This plan is ESSENTIAL for understanding issues deeply
+- Agent 2: This plan is HELPFUL but not required (THEME_REDESIGN_TASKS.md is primary)
+
+---
+
 ## Document Maintenance
 
 **Last Updated:** 2026-02-07
@@ -1763,6 +2368,7 @@ frontend/src/config/               (API config - untouched)
 **Contact:** [Project maintainer contact]
 
 **Version History:**
+- v2.0 (2026-02-07): Enhanced with detailed examples, context files specification, phase reporting requirements, and plan usage assessment
 - v1.0 (2026-02-07): Initial comprehensive review and execution plan
 
 ---
