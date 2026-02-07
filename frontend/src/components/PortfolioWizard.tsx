@@ -42,6 +42,7 @@ export interface SelectedPortfolioData {
 
 export interface WizardData {
   riskProfile: RiskProfile;
+  riskAnalysis: any;
   capital: number;
   selectedStocks: PortfolioAllocation[];
   portfolioMetrics: PortfolioMetrics | null;
@@ -63,6 +64,7 @@ export const PortfolioWizard = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [wizardData, setWizardData] = useState<WizardData>({
     riskProfile: null,
+    riskAnalysis: null,
     capital: 0,
     selectedStocks: [],
     portfolioMetrics: null,
@@ -110,8 +112,9 @@ export const PortfolioWizard = () => {
           <RiskProfiler
             onNext={nextStep}
             onPrev={prevStep}
-            onProfileUpdate={(profile) => updateWizardData({ riskProfile: profile })}
+            onProfileUpdate={(profile, analysis) => updateWizardData({ riskProfile: profile, riskAnalysis: analysis })}
             currentProfile={wizardData.riskProfile}
+            currentAnalysis={wizardData.riskAnalysis}
           />
         );
       case 'capital':
@@ -151,6 +154,7 @@ export const PortfolioWizard = () => {
             riskProfile={wizardData.riskProfile || 'moderate'}
             capital={wizardData.capital}
             portfolioMetrics={wizardData.portfolioMetrics}
+            initialSelectedPortfolio={wizardData.selectedPortfolio}
             onPortfolioSelection={(portfolio) => {
               console.log('📊 Portfolio selection received:', portfolio.source, portfolio.tickers);
               updateWizardData({ selectedPortfolio: portfolio });

@@ -714,15 +714,28 @@ class PortfolioAnalytics:
                     annual_risk = None
                     
                     # Try different possible key names
+                    # Note: annualized_return may be stored as percentage (12) or decimal (0.12)
                     if cached_metrics.get('annualized_return') is not None:
                         annual_return = float(cached_metrics['annualized_return'])
                     elif cached_metrics.get('annual_return') is not None:
                         annual_return = float(cached_metrics['annual_return'])
+                    elif cached_metrics.get('expected_return') is not None:
+                        annual_return = float(cached_metrics['expected_return'])
+                    # Normalize to decimal: if value > 1, assume percentage format
+                    if annual_return is not None and abs(annual_return) > 1:
+                        annual_return = annual_return / 100.0
                     
                     if cached_metrics.get('risk') is not None:
                         annual_risk = float(cached_metrics['risk'])
                     elif cached_metrics.get('annual_risk') is not None:
                         annual_risk = float(cached_metrics['annual_risk'])
+                    elif cached_metrics.get('annualized_risk') is not None:
+                        annual_risk = float(cached_metrics['annualized_risk'])
+                    elif cached_metrics.get('volatility') is not None:
+                        annual_risk = float(cached_metrics['volatility'])
+                    # Normalize to decimal: if value > 1, assume percentage format
+                    if annual_risk is not None and annual_risk > 1:
+                        annual_risk = annual_risk / 100.0
                     
                     # Only use cached metrics if both return and risk are available
                     if annual_return is not None and annual_risk is not None:

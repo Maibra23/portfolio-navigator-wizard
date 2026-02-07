@@ -102,6 +102,7 @@ interface PortfolioOptimizationProps {
   capital: number;
   portfolioMetrics?: PortfolioMetrics | null;
   onPortfolioSelection?: (portfolio: SelectedPortfolioData) => void;
+  initialSelectedPortfolio?: SelectedPortfolioData | null;
 }
 
 interface PortfolioAllocation {
@@ -369,9 +370,10 @@ export const PortfolioOptimization = ({
   riskProfile, 
   capital,
   portfolioMetrics: initialMetrics,
-  onPortfolioSelection
+  onPortfolioSelection,
+  initialSelectedPortfolio
 }: PortfolioOptimizationProps) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'optimization' | 'analysis' | 'recommendations'>('optimization');
+  const [activeTab, setActiveTab] = useState<'overview' | 'optimization' | 'analysis' | 'recommendations'>(initialSelectedPortfolio ? 'analysis' : 'optimization');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingEligibleTickers, setIsLoadingEligibleTickers] = useState(false);
   const [optimizationResults, setOptimizationResults] = useState<OptimizationResult | null>(null);

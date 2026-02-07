@@ -401,6 +401,16 @@ const getCorrelationColor = (value: number) => {
 
 const formatPercent = (value: number) => `${(value * 100).toFixed(2)}%`;
 
+/** Chart expects decimal (0.12 = 12%). Normalize if backend sends percentage (12). */
+const toDecimalReturn = (v: number | undefined) => {
+  const n = v ?? 0;
+  return Math.abs(n) > 1 ? n / 100 : n;
+};
+const toDecimalRisk = (v: number | undefined) => {
+  const n = v ?? 0;
+  return n > 1 ? n / 100 : n;
+};
+
 const fetchVisualizationData = async (
   payload: Record<string, unknown>,
   signal?: AbortSignal
@@ -712,8 +722,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
       return {
         symbol: point.symbol ?? point.label ?? '—',
         portfolioLabel,
-        annualReturn: point.returnValue ?? 0,
-        risk: point.risk ?? 0,
+        annualReturn: toDecimalReturn(point.returnValue),
+        risk: toDecimalRisk(point.risk),
         diversificationScore: point.diversificationScore ?? 0,
         sector: point.sector ?? 'Unknown',
         allocation: point.allocation ?? 0,
@@ -735,22 +745,13 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
       return {
         symbol: point.symbol ?? '—',
         portfolioLabel,
-        annualReturn: point.returnValue ?? 0,
-        risk: point.risk ?? 0,
+        annualReturn: toDecimalReturn(point.returnValue),
+        risk: toDecimalRisk(point.risk),
         diversificationScore: 0, // Not applicable for individual tickers
         sector: point.sector ?? 'Unknown',
         allocation: 0,
         color,
       };
-    });
-
-    // Log for debugging
-    const selectedPortfolioTickers = mapped.filter(p => p.portfolioLabel === portfolioNameMap.get('Selected Portfolio') || p.portfolioLabel.includes('Selected'));
-    console.log('[Portfolio3PartVisualization] Normalized ticker points:', {
-      total: mapped.length,
-      selectedPortfolioCount: selectedPortfolioTickers.length,
-      selectedPortfolioTickers: selectedPortfolioTickers.map(t => ({ symbol: t.symbol, return: t.annualReturn, risk: t.risk })),
-      allLabels: [...new Set(mapped.map(p => p.portfolioLabel))]
     });
 
     return mapped;

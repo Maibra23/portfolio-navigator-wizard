@@ -57,40 +57,33 @@ const defaultState: PortfolioState = {
   lastSaved: new Date().toISOString()
 };
 
-export const usePortfolioState = () => {
-  const [state, setState] = useState<PortfolioState>(defaultState);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // Load state from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Always start the builder with an empty constructed portfolio so
-        // users select all stocks themselves, even if a previous session
-        // was saved in localStorage.
-        setState({
-          ...defaultState,
-          ...parsed,
-          constructedPortfolio: [],
-          optimizedPortfolio: null,
-          stressTestResults: null,
-          tabCompletion: {
-            ...defaultState.tabCompletion,
-            ...parsed.tabCompletion,
-            builder: false,
-            optimize: false,
-            analysis: false
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Error loading portfolio state:', error);
-    } finally {
-      setIsLoaded(true);
+function loadInitialState(): PortfolioState {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<PortfolioState>;
+      // Always start with empty builder and no optimization/stress so the user
+      // does not see stale "5 tickers" or analytics from a previous session.
+      // Restore only tax settings and tab completion so choices persist.
+      return {
+        ...defaultState,
+        taxSettings: { ...defaultState.taxSettings, ...parsed.taxSettings },
+        tabCompletion: { ...defaultState.tabCompletion, ...parsed.tabCompletion },
+        lastSaved: parsed.lastSaved ?? defaultState.lastSaved,
+        constructedPortfolio: [],
+        optimizedPortfolio: null,
+        stressTestResults: null,
+      };
     }
-  }, []);
+  } catch (error) {
+    console.error('Error loading portfolio state:', error);
+  }
+  return defaultState;
+}
+
+export const usePortfolioState = () => {
+  const [state, setState] = useState<PortfolioState>(loadInitialState);
+  const [isLoaded, setIsLoaded] = useState(true);
 
   // Auto-save to localStorage whenever state changes
   useEffect(() => {

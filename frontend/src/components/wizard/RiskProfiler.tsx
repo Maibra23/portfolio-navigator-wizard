@@ -12,8 +12,9 @@ import type { RiskProfile } from '../PortfolioWizard';
 interface RiskProfilerProps {
   onNext: () => void;
   onPrev: () => void;
-  onProfileUpdate: (profile: RiskProfile) => void;
+  onProfileUpdate: (profile: RiskProfile, analysis: any) => void;
   currentProfile: RiskProfile;
+  currentAnalysis?: any;
 }
 
 // Screening Questions Interface
@@ -1089,8 +1090,8 @@ import { REVERSE_CODED_QUESTIONS } from './reverse-coded';
 import { CONSISTENCY_PAIRS } from './question-pools';
 import { ResultsPage } from './ResultsPage';
 
-export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }: RiskProfilerProps) => {
-  const [step, setStep] = useState<'screening' | 'questions' | 'result'>('screening');
+export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, currentAnalysis }: RiskProfilerProps) => {
+  const [step, setStep] = useState<'screening' | 'questions' | 'result'>(currentAnalysis ? 'result' : 'screening');
   const [screeningData, setScreeningData] = useState<ScreeningData>({
     ageGroup: null,
     experience: null,
@@ -1101,7 +1102,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [answerTimings, setAnswerTimings] = useState<Record<string, number>>({});
   const [selectedOptionValues, setSelectedOptionValues] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<any>(currentAnalysis || null);
   const [storylineProgress, setStorylineProgress] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState('');
@@ -1353,7 +1354,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile }
     });
 
     setResult(scoringResult);
-    onProfileUpdate(scoringResult.risk_category);
+    onProfileUpdate(scoringResult.risk_category, scoringResult);
     setStep('result');
   };
 

@@ -28,42 +28,55 @@ class CSVExportGenerator:
             return ""
         return f"{value:.{decimals}f}"
     
-    def generate_portfolio_holdings_csv(self, portfolio: List[Dict]) -> str:
+    def generate_portfolio_holdings_csv(self, portfolio: List[Dict], portfolio_value: Optional[float] = None) -> str:
         """
-        Generate portfolio_holdings.csv
-        
+        Generate portfolio_holdings.csv.
+        When portfolio_value is provided, Value (SEK) is computed as portfolio_value * allocation (same as PDF).
+
         Args:
-            portfolio: List of portfolio positions
-            
+            portfolio: List of portfolio positions (allocation 0-1 per position)
+            portfolio_value: Total portfolio value in SEK; used to compute value per holding when not in pos
+
         Returns:
             CSV content as string
         """
         output = StringIO()
         writer = csv.writer(output)
-        
+
         # Header
-        writer.writerow(['Ticker', 'Symbol', 'Shares', 'Allocation', 'Value (SEK)', 'Name', 'Asset Type'])
-        
+        writer.writerow(['Ticker', 'Symbol', 'Shares', 'Allocation (%)', 'Value (SEK)', 'Name', 'Asset Type', 'Sector'])
+
         # Data rows
         for pos in portfolio:
             ticker = pos.get('ticker', pos.get('symbol', ''))
             symbol = pos.get('symbol', ticker)
             shares = pos.get('shares', 0)
             allocation = pos.get('allocation', 0.0)
-            value = pos.get('value', 0.0)
+            # Normalize allocation if stored as percentage (e.g. 25 instead of 0.25)
+            if allocation > 1:
+                allocation = allocation / 100.0
+            # Value: use pos value if set, else compute from portfolio_value (align with PDF)
+            if pos.get('value') is not None and pos.get('value') != '':
+                value = float(pos.get('value', 0) or 0)
+            elif portfolio_value is not None and portfolio_value > 0:
+                value = portfolio_value * allocation
+            else:
+                value = 0.0
             name = pos.get('name', '')
             asset_type = pos.get('assetType', '')
-            
+            sector = pos.get('sector', '')
+
             writer.writerow([
                 ticker,
                 symbol,
                 shares,
-                self._format_number(allocation * 100, decimals=4),  # Percentage
+                self._format_number(allocation * 100, decimals=4),
                 self._format_number(value, decimals=2),
                 name,
-                asset_type
+                asset_type,
+                sector
             ])
-        
+
         return output.getvalue()
     
     def _get(self, d: Dict, *keys: str):
@@ -579,5 +592,55 @@ class CSVExportGenerator:
             writer.writerow(['Setup Cost', self._format_number(courtage_info.get('setupCost', 0), decimals=2), 'SEK'])
             writer.writerow(['Annual Rebalancing', self._format_number(courtage_info.get('annualRebalancing', 0), decimals=2), 'SEK'])
             writer.writerow(['Total First Year', self._format_number(courtage_info.get('totalFirstYear', 0), decimals=2), 'SEK'])
+
+        return output.getvalue()
+
+    def generate_executive_summary_csv(
+        self,
+        portfolio_value: float,
+        account_type: str,
+        tax_year: int,
+        metrics: Optional[Dict] = None,
+        portfolio_name: Optional[str] = None,
+    ) -> str:
+        """
+        Generate executive_summary.csv (same high-level info as PDF Section 1).
+
+        Args:
+            portfolio_value: Total portfolio value (SEK)
+            account_type: ISK, KF, or AF
+            tax_year: Tax year
+            metrics: Optional dict with expectedReturn, risk, sharpeRatio, diversificationScore
+            portfolio_name: Optional report title
+
+        Returns:
+            CSV content as string
+        """
+        output = StringIO()
+        writer = csv.writer(output)
+
+        writer.writerow(['Executive Summary', '', ''])
+        if portfolio_name:
+            writer.writerow(['Portfolio Name', portfolio_name, ''])
+        writer.writerow(['Portfolio Value (SEK)', self._format_number(float(portfolio_value), decimals=0), ''])
+        writer.writerow(['Account Type', account_type or 'N/A', ''])
+        writer.writerow(['Tax Year', str(tax_year), ''])
+        writer.writerow(['', '', ''])
+
+        if metrics:
+            exp_ret = self._get(metrics, 'expectedReturn', 'expected_return')
+            if exp_ret is not None:
+                pct = self._pct_for_csv(exp_ret) or exp_ret * 100
+                writer.writerow(['Expected Return', self._format_number(float(pct), decimals=2), '%'])
+            risk = self._get(metrics, 'risk', 'risk')
+            if risk is not None:
+                pct = self._pct_for_csv(risk) or risk * 100
+                writer.writerow(['Risk (Volatility)', self._format_number(float(pct), decimals=2), '%'])
+            sharpe = self._get(metrics, 'sharpeRatio', 'sharpe_ratio')
+            if sharpe is not None:
+                writer.writerow(['Sharpe Ratio', self._format_number(float(sharpe), decimals=3), ''])
+            div_score = self._get(metrics, 'diversificationScore', 'diversification_score')
+            if div_score is not None:
+                writer.writerow(['Diversification Score', self._format_number(float(div_score), decimals=2), ''])
 
         return output.getvalue()

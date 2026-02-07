@@ -9330,11 +9330,21 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
                 _store_portfolio_metrics_cache(cache_key, portfolio_metrics)
                 cache_misses += 1
         
-        # Build scatter point for selected portfolio
+        def _to_decimal_return(val):
+            """Ensure return is decimal (0.12 for 12%). If > 1, assume percentage format."""
+            v = float(val) if val is not None else 0.0
+            return v / 100.0 if abs(v) > 1 else v
+
+        def _to_decimal_risk(val):
+            """Ensure risk is decimal (0.15 for 15%). If > 1, assume percentage format."""
+            v = float(val) if val is not None else 0.0
+            return v / 100.0 if v > 1 else v
+
+        # Build scatter point for selected portfolio (chart expects decimals)
         selected_point = {
             'label': 'Selected Portfolio',
-            'risk': float(portfolio_metrics.get('risk', 0.0)),
-            'returnValue': float(portfolio_metrics.get('expected_return', 0.0)),
+            'risk': _to_decimal_risk(portfolio_metrics.get('risk', 0.0)),
+            'returnValue': _to_decimal_return(portfolio_metrics.get('expected_return', 0.0)),
             'symbol': None,
             'sector': None
         }
@@ -9349,17 +9359,15 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
             benchmark_label = f"Benchmark {benchmark_index + 1}"
             benchmark_index += 1
             
-            # Use recommendation-level metrics
-            benchmark_metrics = {
-                'expected_return': recommendation.get('expectedReturn', 0.0),
-                'risk': recommendation.get('risk', 0.0)
-            }
+            # Use recommendation-level metrics (chart expects decimals)
+            exp_ret = recommendation.get('expectedReturn') or recommendation.get('expected_return', 0.0)
+            rsk = recommendation.get('risk', 0.0)
             
             # Build scatter point for benchmark
             benchmark_point = {
                 'label': benchmark_label,
-                'risk': float(benchmark_metrics.get('risk', 0.0)),
-                'returnValue': float(benchmark_metrics.get('expected_return', 0.0)),
+                'risk': _to_decimal_risk(rsk),
+                'returnValue': _to_decimal_return(exp_ret),
                 'symbol': None,
                 'sector': None
             }
@@ -10698,16 +10706,33 @@ async def export_csv(request: CSVExportRequest):
     try:
         files = []
         portfolio_list = _normalize_export_portfolio(request.portfolio)
-        
+
+        # Executive summary (same info as PDF Section 1) - include when we have core data
+        if request.portfolioValue is not None and request.accountType and request.taxYear is not None:
+            exec_csv = csv_generator.generate_executive_summary_csv(
+                portfolio_value=float(request.portfolioValue),
+                account_type=request.accountType,
+                tax_year=int(request.taxYear),
+                metrics=request.metrics,
+                portfolio_name=request.portfolioName,
+            )
+            files.append({
+                "filename": "executive_summary.csv",
+                "content": base64.b64encode(exec_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(exec_csv.encode('utf-8')),
+            })
+
         # Generate requested CSV files
         if "holdings" in request.includeFiles and portfolio_list:
-            holdings_csv = csv_generator.generate_portfolio_holdings_csv(portfolio_list)
+            holdings_csv = csv_generator.generate_portfolio_holdings_csv(
+                portfolio_list, portfolio_value=request.portfolioValue
+            )
             files.append({
                 "filename": "portfolio_holdings.csv",
                 "content": base64.b64encode(holdings_csv.encode('utf-8')).decode('utf-8'),
                 "size": len(holdings_csv.encode('utf-8'))
             })
-        
+
         if "tax" in request.includeFiles and request.taxData:
             tax_csv = csv_generator.generate_tax_analysis_csv(request.taxData)
             files.append({

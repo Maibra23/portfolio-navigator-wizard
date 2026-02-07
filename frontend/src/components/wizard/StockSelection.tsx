@@ -169,7 +169,9 @@ export const StockSelection = ({
   riskProfile, 
   capital 
 }: StockSelectionProps) => {
-  const [activeTab, setActiveTab] = useState<'mini-lesson' | 'recommendations' | 'full-customization' | 'dynamic-generation'>('mini-lesson');
+  const [activeTab, setActiveTab] = useState<'mini-lesson' | 'recommendations' | 'full-customization' | 'dynamic-generation'>(
+    selectedStocks && selectedStocks.length > 0 ? 'recommendations' : 'mini-lesson'
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
