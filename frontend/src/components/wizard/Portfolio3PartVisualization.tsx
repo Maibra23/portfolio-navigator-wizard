@@ -84,17 +84,17 @@ type ClusterHull = {
 const clusterColorForLabel = (label: string, index: number): string => {
   const normalized = label.toLowerCase();
   if (normalized.includes('selected')) {
-    return visualizationTheme.clusterPalette.selected;
+    return vividPalette[0];
   }
   if (normalized.includes('benchmark 1')) {
-    return visualizationTheme.clusterPalette.benchmark1;
+    return vividPalette[1];
   }
   if (normalized.includes('benchmark 2')) {
-    return visualizationTheme.clusterPalette.benchmark2;
+    return vividPalette[2];
   }
 
-  const palette = visualizationTheme.clusterPalette.benchmarks;
-  return palette[index % palette.length] ?? visualizationTheme.clusterPalette.fallback;
+  const palette = vividPalette.slice(1);
+  return palette[index % palette.length] ?? vividPalette[3];
 };
 
 const getPortfolioColorGenerator = (palette: string[]) => {
@@ -103,11 +103,11 @@ const getPortfolioColorGenerator = (palette: string[]) => {
 
   return (label: string) => {
     if (!assignments.has(label)) {
-      const color = palette[nextIndex % palette.length] ?? visualizationTheme.clusterPalette.fallback;
+      const color = palette[nextIndex % palette.length] ?? vividPalette[3];
       assignments.set(label, color);
       nextIndex += 1;
     }
-    return assignments.get(label) ?? visualizationTheme.clusterPalette.fallback;
+    return assignments.get(label) ?? vividPalette[3];
   };
 };
 
@@ -682,7 +682,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   const normalizedScatterPoints = useMemo<ScatterPoint[]>(() => {
     if (!data?.scatter?.points) return [];
 
-    const colorForPortfolio = getPortfolioColorGenerator(visualizationTheme.portfolioPalette);
+    const colorForPortfolio = getPortfolioColorGenerator(vividPalette);
 
     return data.scatter.points.map((point) => {
       const baseLabel = point.label ?? 'Portfolio';
@@ -705,7 +705,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   const normalizedTickerPoints = useMemo<ScatterPoint[]>(() => {
     if (!data?.scatter?.tickerPoints) return [];
 
-    const colorForPortfolio = getPortfolioColorGenerator(visualizationTheme.portfolioPalette);
+    const colorForPortfolio = getPortfolioColorGenerator(vividPalette);
 
     const mapped = data.scatter.tickerPoints.map((point) => {
       const baseLabel = point.label ?? 'Portfolio';
@@ -753,7 +753,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         if (!points || points.length < 3) return null;
         const hullPoints = computeConvexHull(points);
         if (!hullPoints.length) return null;
-        const color = points[0]?.color ?? visualizationTheme.clusterPalette.fallback;
+        const color = points[0]?.color ?? vividPalette[3];
         return {
           label,
           color,
@@ -785,7 +785,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     const hulls = Array.from(groups.entries())
       .map(([label, points]) => {
         if (!points || points.length === 0) return null;
-        const color = points[0]?.color ?? visualizationTheme.clusterPalette.fallback;
+        const color = points[0]?.color ?? vividPalette[3];
         
         console.log(`tickerHulls: Processing ${label} with ${points.length} points`);
         
@@ -957,7 +957,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     // Convert to array and sort by weight
     const sectors = Array.from(sectorWeights.entries())
       .map(([sector, data], index) => {
-        const color = visualizationTheme.pie.palette[index % visualizationTheme.pie.palette.length];
+        const color = vividPalette[index % vividPalette.length];
         // Sort stock allocations by allocation percentage (descending)
         const sortedAllocations = [...data.stockAllocations].sort((a, b) => b.allocation - a.allocation);
         return {
@@ -1102,9 +1102,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     <div
       className="space-y-6"
       style={{
-        background: visualizationTheme.canvas,
-        padding: visualizationTheme.spacing.cardPadding,
-        borderRadius: visualizationTheme.radius,
+        background: chartTheme.canvas,
+        padding: layoutConstants.spacing.cardPadding,
+        borderRadius: layoutConstants.radius,
       }}
     >
       {warnings.length > 0 && (
@@ -1249,8 +1249,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
           <CardContent
             className={compactMode ? "h-[320px] md:h-[400px]" : "h-[500px]"}
             style={{
-              background: visualizationTheme.canvas,
-              borderRadius: visualizationTheme.radius,
+              background: chartTheme.canvas,
+              borderRadius: layoutConstants.radius,
               padding: compactMode ? '10px' : '12px',
             }}
           >
@@ -1293,21 +1293,21 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     }
                   }}
                 >
-                  <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
+                  <CartesianGrid strokeDasharray="3 4" stroke={chartTheme.grid} />
                   <XAxis
                     type="number"
                     dataKey="risk"
                     name="Risk"
                     tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                    axisLine={{ stroke: visualizationTheme.axes.line }}
+                    axisLine={{ stroke: chartTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
-                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                    tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                     domain={zoomDomain?.x || [0, 'auto']}
                     label={{
                       value: 'Risk',
                       position: 'insideBottom',
                       offset: -6,
-                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                      style: { fill: chartTheme.axes.label, fontWeight: 500 },
                     }}
                   />
                   <YAxis
@@ -1316,15 +1316,15 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     name="Return"
                     scale="log"
                     tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                    axisLine={{ stroke: visualizationTheme.axes.line }}
+                    axisLine={{ stroke: chartTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
-                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                    tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                     domain={zoomDomain?.y || [0.01, 'auto']}
                     label={{
                       value: 'Return',
                       angle: -90,
                       position: 'insideLeft',
-                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                      style: { fill: chartTheme.axes.label, fontWeight: 500 },
                     }}
                   />
                   <RechartsTooltip 
@@ -1337,8 +1337,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <Legend
                     wrapperStyle={{
                       paddingTop: 12,
-                      fontSize: visualizationTheme.legend.fontSize,
-                      color: visualizationTheme.legend.color,
+                      fontSize: layoutConstants.legend.fontSize,
+                      color: chartTheme.text.secondary,
                     }}
                   />
                   {portfolioHulls.map((hull) => (
@@ -1365,7 +1365,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         key={label}
                         name={label}
                         data={points}
-                        fill={points[0]?.color ?? visualizationTheme.clusterPalette.fallback}
+                        fill={points[0]?.color ?? vividPalette[3]}
                         shape={(props) => {
                           const point = props.payload as ScatterPoint;
                           const highlightActive = highlightedSymbols.size > 0;
@@ -1375,7 +1375,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                           const strokeWidth = 1.6;
                           const strokeOpacity = isHovered || isHighlighted ? 1.0 : 0.7;
                           const fillOpacity = highlightActive 
-                            ? (isHighlighted ? 1.0 : visualizationTheme.hoverFadeOpacity) 
+                            ? (isHighlighted ? 1.0 : layoutConstants.hoverFadeOpacity) 
                             : 0.85;
                           
                           return (
@@ -1407,9 +1407,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     <Brush
                       dataKey="risk"
                       height={30}
-                      stroke={visualizationTheme.axes.line}
+                      stroke={chartTheme.axes.line}
                       strokeWidth={1.5}
-                      fill={visualizationTheme.grid}
+                      fill={chartTheme.grid}
                       fillOpacity={0.4}
                       data={brushData}
                       onChange={(brushEvent) => {
@@ -1462,21 +1462,21 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     }
                   }}
                 >
-                  <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
+                  <CartesianGrid strokeDasharray="3 4" stroke={chartTheme.grid} />
                   <XAxis
                     type="number"
                     dataKey="risk"
                     name="Risk"
                     tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                    axisLine={{ stroke: visualizationTheme.axes.line }}
+                    axisLine={{ stroke: chartTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
-                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                    tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                     domain={zoomDomain?.x || [0, 'auto']}
                     label={{
                       value: 'Risk',
                       position: 'insideBottom',
                       offset: -6,
-                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                      style: { fill: chartTheme.axes.label, fontWeight: 500 },
                     }}
                   />
                   <YAxis
@@ -1485,15 +1485,15 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     name="Return"
                     scale="log"
                     tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                    axisLine={{ stroke: visualizationTheme.axes.line }}
+                    axisLine={{ stroke: chartTheme.axes.line }}
                     tickLine={{ stroke: 'transparent' }}
-                    tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                    tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                     domain={zoomDomain?.y || [0.01, 'auto']}
                     label={{
                       value: 'Return',
                       angle: -90,
                       position: 'insideLeft',
-                      style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                      style: { fill: chartTheme.axes.label, fontWeight: 500 },
                     }}
                   />
                   <RechartsTooltip 
@@ -1506,8 +1506,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <Legend
                     wrapperStyle={{
                       paddingTop: 12,
-                      fontSize: visualizationTheme.legend.fontSize,
-                      color: visualizationTheme.legend.color,
+                      fontSize: layoutConstants.legend.fontSize,
+                      color: chartTheme.text.secondary,
                     }}
                   />
                   {portfolioHulls.map((hull) => (
@@ -1535,7 +1535,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         key={label}
                         name={label}
                         data={points}
-                        fill={points[0]?.color ?? visualizationTheme.clusterPalette.fallback}
+                        fill={points[0]?.color ?? vividPalette[3]}
                         shape={(props) => {
                           const point = props.payload as ScatterPoint;
                           const highlightActive = highlightedSymbols.size > 0;
@@ -1546,7 +1546,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                           const strokeWidth = 1.6;
                           const strokeOpacity = isHovered || isHighlighted ? 1.0 : 0.7;
                           const fillOpacity = highlightActive 
-                            ? (isHighlighted ? 1.0 : visualizationTheme.hoverFadeOpacity) 
+                            ? (isHighlighted ? 1.0 : layoutConstants.hoverFadeOpacity) 
                             : 0.85;
                           
                           return (
@@ -1578,9 +1578,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     <Brush
                       dataKey="risk"
                       height={30}
-                      stroke={visualizationTheme.axes.line}
+                      stroke={chartTheme.axes.line}
                       strokeWidth={1.5}
-                      fill={visualizationTheme.grid}
+                      fill={chartTheme.grid}
                       fillOpacity={0.4}
                       data={brushData}
                       onChange={(brushEvent) => {
@@ -1638,7 +1638,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               </CardHeader>
               <CardContent
                 className="h-[200px] overflow-auto"
-                style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '10px' }}
+                style={{ background: chartTheme.canvas, borderRadius: layoutConstants.radius, padding: '10px' }}
               >
               {isLoading && (
                 <div className="flex h-64 items-center justify-center">
@@ -1650,7 +1650,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                 <div className="min-w-full space-y-1">
                   <div
                     className="sticky top-0 z-10 flex"
-                    style={{ background: visualizationTheme.canvas, color: chartTheme.text.secondary, fontWeight: 600 }}
+                    style={{ background: chartTheme.canvas, color: chartTheme.text.secondary, fontWeight: 600 }}
                   >
                     <div
                       className="w-24 flex-shrink-0 border-r p-2 text-xs uppercase"
@@ -1674,7 +1674,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         className="w-24 flex-shrink-0 border-r p-2 text-xs font-medium"
                         style={{
                           borderColor: chartTheme.border,
-                          background: visualizationTheme.canvas,
+                          background: chartTheme.canvas,
                           color: chartTheme.text.primary,
                         }}
                       >
@@ -1744,7 +1744,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             </CardHeader>
             <CardContent
               className="h-[200px]"
-              style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '12px' }}
+              style={{ background: chartTheme.canvas, borderRadius: layoutConstants.radius, padding: '12px' }}
             >
               {isLoading && (
                 <div className="flex h-full items-center justify-center">
@@ -1769,7 +1769,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         const isHovered = hoveredSector === sector.sector;
                         const highlightsActive = highlightedSymbols.size > 0;
                         const hasHighlightedHolding = sector.holdings.some((symbol) => highlightedSymbols.has(symbol));
-                        const paletteColor = visualizationTheme.pie.palette[index % visualizationTheme.pie.palette.length];
+                        const paletteColor = vividPalette[index % vividPalette.length];
                         return (
                           <Cell
                             key={`${sector.sector}-${index}`}
@@ -1778,7 +1778,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                               highlightsActive
                                 ? hasHighlightedHolding || isHovered
                                   ? 0.95
-                                  : visualizationTheme.hoverFadeOpacity
+                                  : layoutConstants.hoverFadeOpacity
                                 : isHovered
                                 ? 0.95
                                 : 0.85
@@ -1819,7 +1819,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               </CardHeader>
               <CardContent
                 className="max-h-[420px] overflow-auto"
-                style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
+                style={{ background: chartTheme.canvas, borderRadius: layoutConstants.radius, padding: '16px' }}
               >
                 {isLoading && (
                   <div className="flex h-64 items-center justify-center">
@@ -1831,7 +1831,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <div className="min-w-full space-y-1">
                     <div
                       className="sticky top-0 z-10 flex"
-                      style={{ background: visualizationTheme.canvas, color: chartTheme.text.secondary, fontWeight: 600 }}
+                      style={{ background: chartTheme.canvas, color: chartTheme.text.secondary, fontWeight: 600 }}
                     >
                       <div
                         className="w-24 flex-shrink-0 border-r p-2 text-xs uppercase"
@@ -1855,7 +1855,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                           className="w-24 flex-shrink-0 border-r p-2 text-xs font-medium"
                           style={{
                             borderColor: chartTheme.border,
-                            background: visualizationTheme.canvas,
+                            background: chartTheme.canvas,
                             color: chartTheme.text.primary,
                           }}
                         >
@@ -1928,7 +1928,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               </CardHeader>
               <CardContent
                 className="h-[320px]"
-                style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
+                style={{ background: chartTheme.canvas, borderRadius: layoutConstants.radius, padding: '16px' }}
               >
                 {isLoading && (
                   <div className="flex h-full items-center justify-center">
@@ -1953,7 +1953,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                           const isHovered = hoveredSector === sector.sector;
                           const highlightsActive = highlightedSymbols.size > 0;
                           const hasHighlightedHolding = sector.holdings.some((symbol) => highlightedSymbols.has(symbol));
-                          const paletteColor = visualizationTheme.pie.palette[index % visualizationTheme.pie.palette.length];
+                          const paletteColor = vividPalette[index % vividPalette.length];
                           return (
                             <Cell
                               key={`${sector.sector}-${index}`}
@@ -1962,7 +1962,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                                 highlightsActive
                                   ? hasHighlightedHolding || isHovered
                                     ? 0.95
-                                    : visualizationTheme.hoverFadeOpacity
+                                    : layoutConstants.hoverFadeOpacity
                                   : isHovered
                                   ? 0.95
                                   : 0.85
