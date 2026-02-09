@@ -215,7 +215,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
 
   if (loading) {
     return (
-      <Alert className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+      <Alert className="bg-muted border border-border">
         <Sparkles className="h-4 w-4 animate-pulse" />
         <AlertTitle>Analyzing Your Settings...</AlertTitle>
         <AlertDescription className="text-xs">
@@ -227,7 +227,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
 
   if (recommendations.length === 0) {
     return (
-      <Alert className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
+      <Alert className="bg-muted border border-border">
         <CheckCircle className="h-4 w-4 text-green-600" />
         <AlertTitle>Optimized Configuration</AlertTitle>
         <AlertDescription className="text-xs">
@@ -239,7 +239,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
 
   return (
     <div className="space-y-3">
-      <Alert className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+      <Alert className="bg-muted border border-border">
         <Sparkles className="h-4 w-4 text-purple-600" />
         <AlertTitle className="text-base">Smart Recommendations</AlertTitle>
         <AlertDescription className="text-xs text-muted-foreground">
@@ -263,7 +263,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
             <AlertDescription className="text-xs mt-1">
               {rec.description}
               {rec.savings && rec.savings > 0 && (
-                <div className="mt-2 p-2 bg-white rounded border">
+                <div className="mt-2 p-2 bg-card border border-border rounded">
                   <p className="font-semibold text-green-700">
                     Potential 5-Year Savings: {rec.savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
                   </p>

@@ -446,7 +446,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                   <Button
                     onClick={handleRunStressTest}
                     disabled={!selectedScenario || isLoading || !selectedPortfolio}
-                    className="bg-gradient-primary hover:opacity-90 min-w-[200px]"
+                    className="bg-primary hover:bg-primary/90 min-w-[200px]"
                     size="lg"
                   >
                     {isLoading ? (
@@ -2691,7 +2691,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           }
                         }}
                         disabled={hypotheticalLoading || !selectedPortfolio}
-                        className="w-full bg-gradient-primary hover:opacity-90"
+                        className="w-full bg-primary hover:bg-primary/90"
                       >
                         {hypotheticalLoading ? (
                           <>
@@ -2831,7 +2831,7 @@ export const StressTest: React.FC<StressTestProps> = ({
               )}
               <Button 
                 onClick={onNext}
-                className="bg-gradient-primary hover:opacity-90"
+                className="bg-primary hover:bg-primary/90"
               >
                 {stressTestResults ? 'Complete & Proceed' : 'Skip Stress Test'}
                 <ArrowRight className="ml-2 h-4 w-4" />

@@ -168,7 +168,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Chart */}
           <div className="lg:col-span-2">
-            <ResponsiveContainer width="100%" height={400}>
+            <ResponsiveContainer width="100%" height={500}>
               <ComposedChart data={allData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
@@ -198,7 +198,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                     type="monotone"
                     dataKey="return"
                     data={frontierData}
-                    stroke="#8884d8"
+                    stroke="#60a5fa"
                     strokeWidth={2}
                     dot={false}
                     name="Efficient Frontier"
@@ -209,7 +209,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                 <Scatter
                   dataKey="return"
                   data={assetData}
-                  fill="#82ca9d"
+                  fill="#4ade80"
                   name="Individual Assets"
                 />
                 
@@ -218,7 +218,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                   <Scatter
                     dataKey="return"
                     data={optimalData}
-                    fill="#ff7300"
+                    fill="#fb923c"
                     name="Optimal Portfolio"
                   />
                 )}
@@ -227,7 +227,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                 <Scatter
                   dataKey="return"
                   data={currentPortfolioData}
-                  fill="#ff0000"
+                  fill="#f87171"
                   name="Current Portfolio"
                 />
               </ComposedChart>

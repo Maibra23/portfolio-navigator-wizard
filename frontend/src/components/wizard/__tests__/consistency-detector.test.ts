@@ -31,9 +31,11 @@ describe('consistency-detector', () => {
     expect(checkAnswerVariance(answers, maxScores)).toBe(false);
   });
 
-  it('checkCompletionSpeed returns true when avg time < 3 seconds', () => {
+  it('checkCompletionSpeed uses 5 sec threshold for short (<=6) and 3 sec for standard', () => {
     expect(checkCompletionSpeed(10, 4)).toBe(true);
-    expect(checkCompletionSpeed(12, 4)).toBe(false);
+    expect(checkCompletionSpeed(24, 4)).toBe(false);
+    expect(checkCompletionSpeed(20, 8)).toBe(true);
+    expect(checkCompletionSpeed(24, 8)).toBe(false);
   });
 
   it('checkCompletionSpeed returns false when questionCount <= 0', () => {

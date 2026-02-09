@@ -215,11 +215,11 @@ export const PortfolioWizard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-background">
       {/* Navigation Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-card border-b border-border px-6 py-4">
         <div className="max-w-7xl mx-auto flex justify-center items-center">
-          <h1 className="text-2xl font-bold text-gray-900">Portfolio Navigator Wizard</h1>
+          <h1 className="text-2xl font-bold text-foreground">Portfolio Navigator Wizard</h1>
         </div>
       </div>
 
@@ -228,21 +228,21 @@ export const PortfolioWizard = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white font-semibold text-sm">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary text-primary-foreground font-semibold text-sm">
                 {currentStep + 1}
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">
+                <h2 className="text-lg font-semibold text-foreground">
                   {STEPS[currentStep].title}
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Step {currentStep + 1} of {STEPS.length}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm font-medium text-gray-700">{Math.round(progress)}%</div>
-              <div className="text-xs text-gray-500">Complete</div>
+              <div className="text-sm font-medium text-muted-foreground">{Math.round(progress)}%</div>
+              <div className="text-xs text-muted-foreground">Complete</div>
             </div>
           </div>
           <Progress value={progress} className="h-1.5" />

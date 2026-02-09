@@ -96,7 +96,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
   const lowestTaxAccount = taxResults.find(r => r.annualTax === lowestTax);
 
   return (
-    <Card className="border-2 border-dashed border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50">
+    <Card className="border-2 border-dashed border-border bg-muted">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Calculator className="h-5 w-5 text-blue-600" />
@@ -192,8 +192,8 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
                     key={result.accountType}
                     className={`${
                       isLowest
-                        ? 'border-2 border-green-500 bg-green-50'
-                        : 'border border-gray-200 bg-white'
+                        ? 'border-2 border-green-500 bg-primary/10'
+                        : 'border border-border bg-card'
                     }`}
                   >
                     <CardContent className="pt-3 pb-3 text-center">
@@ -214,11 +214,11 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
 
             {/* Insight */}
             {lowestTaxAccount && (
-              <div className="bg-white rounded-lg border border-green-300 p-3">
-                <p className="text-xs font-semibold text-green-900 mb-1">
+              <div className="bg-card rounded-lg border border-border p-3">
+                <p className="text-xs font-semibold text-foreground mb-1">
                   Result:
                 </p>
-                <p className="text-xs text-green-800">
+                <p className="text-xs text-muted-foreground">
                   With <strong>{simulatedCapital.toLocaleString('sv-SE')} SEK</strong> in tax year{' '}
                   <strong>{simulatedTaxYear}</strong>, the <strong>{lowestTaxAccount.accountType}</strong>{' '}
                   account type offers the lowest tax burden at{' '}

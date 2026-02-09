@@ -112,6 +112,9 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
 
   const maxScoresByQuestion: Record<string, number> = {};
 
+  // MPT vs Prospect weights are unequal (e.g. ~54.5% MPT / ~45.5% Prospect) due to question pool
+  // sizes (more MPT questions for the analytical dimension). This is intentional; normalized_mpt
+  // and normalized_prospect are computed separately and then combined for the composite score.
   selectedQuestions.forEach((question) => {
     if (!question || question.group === 'SCREENING' || question.maxScore === 0 || question.excludeFromScoring) return;
     maxScoresByQuestion[question.id] = question.maxScore;
@@ -131,15 +134,20 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
     }
   });
 
-  const normalizedScore = maxAdj > 0 ? Math.min(100, Math.max(0, (rawAdj / maxAdj) * 100)) : 0;
-  const normalizedMPT = maxAdjMPT > 0 ? (rawAdjMPT / maxAdjMPT) * 100 : 0;
-  const normalizedProspect = maxAdjProspect > 0 ? (rawAdjProspect / maxAdjProspect) * 100 : 0;
+  if (maxAdj === 0) {
+    throw new Error('Insufficient data for risk assessment. Please answer at least one question.');
+  }
 
+  const normalizedScore = Math.min(100, Math.max(0, (rawAdj / maxAdj) * 100));
+  const normalizedMPT = maxAdjMPT > 0 ? Math.min(100, Math.max(0, (rawAdjMPT / maxAdjMPT) * 100)) : 0;
+  const normalizedProspect = maxAdjProspect > 0 ? Math.min(100, Math.max(0, (rawAdjProspect / maxAdjProspect) * 100)) : 0;
+
+  /** Exclusive upper bounds: score in [0,20) -> very-conservative, [20,40) -> conservative, etc. */
   const categoryFromScore = (score: number): string => {
-    if (score <= 20) return 'very-conservative';
-    if (score <= 40) return 'conservative';
-    if (score <= 60) return 'moderate';
-    if (score <= 80) return 'aggressive';
+    if (score < 20) return 'very-conservative';
+    if (score < 40) return 'conservative';
+    if (score < 60) return 'moderate';
+    if (score < 80) return 'aggressive';
     return 'very-aggressive';
   };
 
@@ -162,7 +170,8 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
     normalizedMPT,
     normalizedProspect,
     completionTimeSeconds,
-    selectedQuestions.length
+    selectedQuestions.length,
+    maxScoresByQuestion
   );
 
   const visualizationData: VisualizationData = {
@@ -187,15 +196,17 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
   const colorCode = colorFromCategory(finalCategory);
 
   // --- Adjust Scores if Overridden ---
-  // If the category was overridden (e.g. capped at Moderate), we need to align the visual scores
-  // to prevent confusion (e.g. showing "Moderate" but a score of 95).
+  // When category is overridden (e.g. time_horizon or high_uncertainty caps at Moderate), we align
+  // the displayed composite, MPT, and Prospect scores so the UI is consistent (e.g. not showing
+  // "Moderate" with a score of 95). We reduce both MPT and Prospect proportionally by the same
+  // factor (capScore / finalScore) so the analytical/emotional balance is preserved; only the
+  // overall level is capped. Example: score 95 capped to 60 -> factor 60/95; both dimensions scaled.
   let finalScore = normalizedScore;
   let finalMPT = normalizedMPT;
   let finalProspect = normalizedProspect;
 
   if (safeguardsResult.category_was_overridden) {
     let capScore = 100;
-    // Determine the cap based on the final category
     switch (finalCategory) {
       case 'very-conservative': capScore = 20; break;
       case 'conservative': capScore = 40; break;
@@ -204,7 +215,6 @@ export const computeScoring = (params: ComputeScoringParams): ScoringResult => {
       default: capScore = 100;
     }
 
-    // Only cap if the raw score exceeds the category limit
     if (finalScore > capScore) {
       const reductionFactor = capScore / finalScore;
       finalScore = capScore;

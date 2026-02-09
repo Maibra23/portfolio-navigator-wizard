@@ -43,10 +43,10 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
 
   return (
     <div className="max-w-2xl mx-auto">
-      <Card className="shadow-card">
+      <Card>
         <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-primary flex items-center justify-center">
-            <DollarSign className="h-8 w-8 text-white" />
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center border border-border">
+            <DollarSign className="h-8 w-8 text-primary" />
           </div>
           <CardTitle className="text-2xl">Investment Capital</CardTitle>
           <p className="text-muted-foreground">
@@ -82,7 +82,7 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
               </span>
             </div>
             {capitalValue > 0 && (
-              <p className={`text-sm ${isValid ? 'text-green-600' : 'text-orange-600'}`} style={{ fontFamily: 'inherit', fontWeight: 'normal' }}>
+              <p className={`text-sm ${isValid ? 'text-moderate' : 'text-destructive'}`} style={{ fontFamily: 'inherit', fontWeight: 'normal' }}>
                 Investment amount: <span style={{ fontWeight: 'normal' }}>{formatNumber(capitalValue)}</span> SEK
                 {!isValid && capitalValue > 0 && (
                   <span className="ml-2">(Minimum 1,000 SEK required)</span>

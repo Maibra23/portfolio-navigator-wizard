@@ -173,7 +173,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
     if (!active || !payload || payload.length === 0) return null;
 
     return (
-      <div className="bg-white border rounded-lg shadow-lg p-4 space-y-2">
+      <div className="bg-popover text-popover-foreground border border-border rounded-lg shadow-lg p-4 space-y-2">
         <p className="font-semibold text-sm border-b pb-2">Year {label}</p>
         {payload.map((entry: any, index: number) => {
           const value = entry.value;

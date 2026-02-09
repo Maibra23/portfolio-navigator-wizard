@@ -794,19 +794,19 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   
                   {displayMetrics && (
                     <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-                      <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
+                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
                         <div className="text-xl font-bold text-emerald-700">
                           {formatPercent(displayMetrics.expectedReturn)}
                         </div>
                         <div className="text-xs text-emerald-600 mt-0.5">Expected Return</div>
                       </div>
-                      <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
                         <div className="text-xl font-bold text-amber-700">
                           {formatPercent(displayMetrics.risk)}
                         </div>
                         <div className="text-xs text-amber-600 mt-0.5">Risk Level</div>
                       </div>
-                      <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
                         <div className="text-xl font-bold text-purple-700">
                           {formatPercent(displayMetrics.diversificationScore)}
                         </div>

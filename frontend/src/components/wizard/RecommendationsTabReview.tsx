@@ -251,7 +251,7 @@ const PrimaryRecommendationCard = ({
 
   // ... rest of the rendering logic
   return (
-    <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+    <Card className="border border-border bg-muted">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2 text-blue-900">
           <Target className="h-5 w-5" />
@@ -361,7 +361,7 @@ const PerformanceSummaryCard = ({
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Current → Selected Comparison */}
-          <div className="p-4 rounded-lg bg-gradient-to-br from-red-50 to-green-50 border">
+          <div className="p-4 rounded-lg bg-muted border border-border">
             <div className="text-sm font-medium text-gray-600 mb-2">
               Current → {selectedLabel}
             </div>
@@ -388,7 +388,7 @@ const PerformanceSummaryCard = ({
           </div>
           
           {/* Risk Profile Compliance */}
-          <div className="p-4 rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 border">
+          <div className="p-4 rounded-lg bg-muted border border-border">
             <div className="text-sm font-medium text-gray-600 mb-2">Risk Profile Compliance</div>
             <div className="space-y-2">
               <div className="flex justify-between items-center">

@@ -5,7 +5,7 @@ import { BookOpen, Calculator, TrendingUp } from 'lucide-react';
 
 export const TaxEducationPanel: React.FC = () => {
   return (
-    <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+    <Card className="bg-muted border border-border">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-blue-600" />
@@ -18,7 +18,7 @@ export const TaxEducationPanel: React.FC = () => {
       <CardContent>
         <Accordion type="single" collapsible className="w-full space-y-2">
           {/* ISK */}
-          <AccordionItem value="isk" className="bg-white rounded-lg border px-4">
+          <AccordionItem value="isk" className="bg-card rounded-lg border border-border px-4">
             <AccordionTrigger className="text-sm font-semibold hover:no-underline">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -34,7 +34,7 @@ export const TaxEducationPanel: React.FC = () => {
                   interest rate, regardless of your actual investment performance.
                 </p>
 
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200 space-y-2">
+                <div className="bg-muted p-4 rounded-lg border border-border space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Calculator className="h-4 w-4 text-green-700" />
                     <h4 className="font-semibold text-green-900">Example Calculation (2026):</h4>
@@ -64,11 +64,11 @@ export const TaxEducationPanel: React.FC = () => {
                       <span className="text-muted-foreground">× Income tax rate:</span>
                       <span className="font-semibold">30%</span>
                     </div>
-                    <div className="flex justify-between border-t pt-1.5 mt-1.5 bg-white/50 rounded px-2 py-1">
+                    <div className="flex justify-between border-t pt-1.5 mt-1.5 bg-muted/30 rounded px-2 py-1">
                       <span className="font-bold text-green-700">Annual tax:</span>
                       <span className="font-bold text-green-700">2,130 SEK</span>
                     </div>
-                    <div className="flex justify-between bg-white/50 rounded px-2 py-1">
+                    <div className="flex justify-between bg-muted/30 rounded px-2 py-1">
                       <span className="font-bold text-green-700">Effective rate:</span>
                       <span className="font-bold text-green-700">0.43%</span>
                     </div>
@@ -95,7 +95,7 @@ export const TaxEducationPanel: React.FC = () => {
           </AccordionItem>
 
           {/* KF */}
-          <AccordionItem value="kf" className="bg-white rounded-lg border px-4">
+          <AccordionItem value="kf" className="bg-card rounded-lg border border-border px-4">
             <AccordionTrigger className="text-sm font-semibold hover:no-underline">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -111,7 +111,7 @@ export const TaxEducationPanel: React.FC = () => {
                   schablonbeskattning system and tax-free levels.
                 </p>
 
-                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-4 rounded-lg border border-blue-200 space-y-2">
+                <div className="bg-muted p-4 rounded-lg border border-border space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="h-4 w-4 text-blue-700" />
                     <h4 className="font-semibold text-blue-900">Key Difference:</h4>
@@ -142,7 +142,7 @@ export const TaxEducationPanel: React.FC = () => {
           </AccordionItem>
 
           {/* AF */}
-          <AccordionItem value="af" className="bg-white rounded-lg border px-4">
+          <AccordionItem value="af" className="bg-card rounded-lg border border-border px-4">
             <AccordionTrigger className="text-sm font-semibold hover:no-underline">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
@@ -158,7 +158,7 @@ export const TaxEducationPanel: React.FC = () => {
                   realize gains (sell stocks) or receive dividends.
                 </p>
 
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-lg border border-purple-200 space-y-2">
+                <div className="bg-muted p-4 rounded-lg border border-border space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Calculator className="h-4 w-4 text-purple-700" />
                     <h4 className="font-semibold text-purple-900">Example Calculation:</h4>
@@ -180,7 +180,7 @@ export const TaxEducationPanel: React.FC = () => {
                       <span className="text-muted-foreground">× Capital gains tax:</span>
                       <span className="font-semibold">30%</span>
                     </div>
-                    <div className="flex justify-between border-t pt-1.5 mt-1.5 bg-white/50 rounded px-2 py-1">
+                    <div className="flex justify-between border-t pt-1.5 mt-1.5 bg-muted/30 rounded px-2 py-1">
                       <span className="font-bold text-purple-700">Tax owed:</span>
                       <span className="font-bold text-purple-700">15,000 SEK</span>
                     </div>
@@ -217,7 +217,7 @@ export const TaxEducationPanel: React.FC = () => {
           </AccordionItem>
 
           {/* Comparison */}
-          <AccordionItem value="comparison" className="bg-white rounded-lg border px-4">
+          <AccordionItem value="comparison" className="bg-card rounded-lg border border-border px-4">
             <AccordionTrigger className="text-sm font-semibold hover:no-underline">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
@@ -228,7 +228,7 @@ export const TaxEducationPanel: React.FC = () => {
             </AccordionTrigger>
             <AccordionContent className="text-sm space-y-3 pt-2">
               <div className="space-y-3">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-3 rounded-lg border border-green-200">
+                <div className="bg-muted p-3 rounded-lg border border-border">
                   <p className="font-semibold text-green-900 mb-1.5 text-xs">Choose ISK/KF if:</p>
                   <ul className="list-disc ml-5 space-y-0.5 text-xs text-muted-foreground">
                     <li>You expect returns <strong>higher than the schablonränta</strong> (~3-4%)</li>
@@ -238,7 +238,7 @@ export const TaxEducationPanel: React.FC = () => {
                   </ul>
                 </div>
 
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-3 rounded-lg border border-purple-200">
+                <div className="bg-muted p-3 rounded-lg border border-border">
                   <p className="font-semibold text-purple-900 mb-1.5 text-xs">Choose AF if:</p>
                   <ul className="list-disc ml-5 space-y-0.5 text-xs text-muted-foreground">
                     <li>You plan to buy and hold for many years</li>

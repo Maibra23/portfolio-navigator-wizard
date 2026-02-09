@@ -90,29 +90,29 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
 
   const chartBlock = (
     <div className="relative w-full">
-      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-medium text-gray-600">
+      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-medium text-muted-foreground">
         Analytical (MPT) →
       </div>
-      <div className="absolute top-1/2 -left-1 -translate-y-1/2 -rotate-90 text-[10px] font-medium text-gray-600">
+      <div className="absolute top-1/2 -left-1 -translate-y-1/2 -rotate-90 text-[10px] font-medium text-muted-foreground">
         Emotional (Prospect) →
       </div>
       <div className="h-[200px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 5, right: 5, bottom: 20, left: 30 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.08)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
             <XAxis
               type="number"
               dataKey="x"
               domain={[0, 100]}
               ticks={[0, 50, 100]}
-              tick={{ fontSize: 10, fill: '#9ca3af' }}
+              tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.6)' }}
             />
             <YAxis
               type="number"
               dataKey="y"
               domain={[0, 100]}
               ticks={[0, 50, 100]}
-              tick={{ fontSize: 10, fill: '#9ca3af' }}
+              tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.6)' }}
             />
             <ReferenceArea x1={50} x2={100} y1={50} y2={100} fill="rgba(16, 185, 129, 0.35)" />
             <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="rgba(245, 158, 11, 0.35)" />
@@ -139,10 +139,10 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
                 if (!active || !payload?.length) return null;
                 const point = payload[0].payload;
                 return (
-                  <div className="rounded-lg border-2 border-blue-200 bg-white p-2.5 shadow-lg text-xs">
-                    <div className="font-bold text-blue-900 mb-1">Your Position</div>
-                    <div className="text-blue-700">Analytical: {Math.round(point.x)}</div>
-                    <div className="text-indigo-700">Emotional: {Math.round(point.y)}</div>
+                  <div className="rounded-lg border-2 border-border bg-popover text-popover-foreground p-2.5 shadow-lg text-xs">
+                    <div className="font-bold mb-1">Your Position</div>
+                    <div>Analytical: {Math.round(point.x)}</div>
+                    <div>Emotional: {Math.round(point.y)}</div>
                   </div>
                 );
               }}

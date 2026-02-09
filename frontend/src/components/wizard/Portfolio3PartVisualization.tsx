@@ -31,32 +31,24 @@ import { Loader2, RefreshCw, ZoomOut } from 'lucide-react';
 import clsx from 'clsx';
 
 const vividPalette = [
-  '#16a34a', // Vibrant green
-  '#dc2626', // Vibrant red
-  '#2563eb', // Vibrant blue
-  '#ca8a04', // Vibrant yellow/gold
-  '#9333ea', // Vibrant purple
-  '#ea580c', // Vibrant orange
-  '#0891b2', // Vibrant cyan
-  '#be185d', // Vibrant pink
-  '#65a30d', // Vibrant lime
-  '#0e7490', // Vibrant teal
+  '#4ade80', '#f87171', '#60a5fa', '#fbbf24', '#a78bfa',
+  '#fb923c', '#22d3ee', '#f472b6', '#84cc16', '#06b6d4',
 ];
 
 const visualizationTheme = {
-  canvas: '#FAFAF4',
-  cardBackground: '#FFFFFF',
-  border: 'rgba(90, 90, 82, 0.12)',
-  grid: 'rgba(226, 226, 221, 0.7)',
+  canvas: '#0c0d0e',
+  cardBackground: '#14151a',
+  border: 'rgba(255, 255, 255, 0.08)',
+  grid: 'rgba(255, 255, 255, 0.06)',
   axes: {
-    line: 'rgba(94, 94, 86, 0.28)',
-    tick: 'rgba(75, 75, 68, 0.82)',
-    label: '#3B3B33',
+    line: 'rgba(255, 255, 255, 0.1)',
+    tick: 'rgba(255, 255, 255, 0.5)',
+    label: 'rgba(255, 255, 255, 0.7)',
   },
   text: {
-    primary: '#2F2F29',
-    secondary: '#6D6D62',
-    subtle: 'rgba(90, 90, 82, 0.65)',
+    primary: 'rgba(255, 255, 255, 0.9)',
+    secondary: 'rgba(255, 255, 255, 0.6)',
+    subtle: 'rgba(255, 255, 255, 0.4)',
   },
   clusterPalette: {
     selected: vividPalette[0],
@@ -81,7 +73,7 @@ const visualizationTheme = {
   hoverFadeOpacity: 0.4,
   legend: {
     fontSize: 12,
-    color: 'rgba(59, 59, 51, 0.8)',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -1277,7 +1269,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             </CardTitle>
           </CardHeader>
           <CardContent
-            className={compactMode ? "h-[240px] md:h-[280px]" : "h-[420px]"}
+            className={compactMode ? "h-[320px] md:h-[400px]" : "h-[500px]"}
             style={{
               background: visualizationTheme.canvas,
               borderRadius: visualizationTheme.radius,
@@ -1957,7 +1949,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                 )}
               </CardHeader>
               <CardContent
-                className="h-[240px]"
+                className="h-[320px]"
                 style={{ background: visualizationTheme.canvas, borderRadius: visualizationTheme.radius, padding: '16px' }}
               >
                 {isLoading && (

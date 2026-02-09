@@ -46,10 +46,10 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Card className="shadow-elegant">
+      <Card>
         <CardHeader className="text-center pb-4">
-          <div className="w-20 h-20 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="h-10 w-10 text-primary-foreground" aria-hidden />
+          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 border border-border">
+            <CheckCircle className="h-10 w-10 text-foreground" aria-hidden />
           </div>
           <h2 className="text-2xl font-semibold text-foreground mb-2">Thank you</h2>
           <p className="text-muted-foreground text-lg max-w-xl mx-auto">
@@ -65,7 +65,7 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
               <ArrowLeft className="h-4 w-4" />
               Back to summary
             </Button>
-            <Button variant="gradient" onClick={onStartOver} className="gap-2">
+            <Button onClick={onStartOver} className="gap-2">
               <RotateCcw className="h-4 w-4" />
               Start over
             </Button>

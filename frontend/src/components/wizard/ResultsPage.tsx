@@ -150,7 +150,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
         </Button>
         <Button
           onClick={onContinue}
-          className="flex-1 max-w-[200px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+          className="flex-1 max-w-[200px] bg-primary hover:bg-primary/90 text-primary-foreground"
         >
           Continue
           <ArrowRight className="ml-2 h-4 w-4" />

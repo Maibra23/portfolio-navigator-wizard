@@ -204,7 +204,7 @@ export const PerformanceSummaryCard = ({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg bg-gradient-to-br from-red-50 to-green-50 border">
+          <div className="p-4 rounded-lg bg-muted border border-border">
             <div className="text-sm font-medium text-gray-600 mb-2">Current → {selectedLabel}</div>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
@@ -227,7 +227,7 @@ export const PerformanceSummaryCard = ({
               </div>
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 border">
+          <div className="p-4 rounded-lg bg-muted border border-border">
             <div className="text-sm font-medium text-gray-600 mb-2">Risk Profile Compliance</div>
             <div className="space-y-2">
               <div className="flex justify-between items-center">

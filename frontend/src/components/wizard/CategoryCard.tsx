@@ -161,7 +161,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         </div>
 
         {/* Equity style guidance (stock-only, no bonds) */}
-        <div className="flex items-center gap-2 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 rounded-md p-2">
+        <div className="flex items-center gap-2 text-xs bg-muted rounded-md p-2 border border-border">
           <span className="font-semibold text-blue-900">Style:</span>
           <span className="text-blue-800">{content.typical_allocation}</span>
         </div>

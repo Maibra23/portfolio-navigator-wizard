@@ -1080,7 +1080,7 @@ You do NOT touch UI/theming (that's Agent 2's domain).
 
 ## Tasks
 
-**CRITICAL: After EACH phase (every 3 issues or 1 hour), provide a progress report:**
+**CRITICAL: After EACH phase (every 3 issues), provide a progress report:**
 ```markdown
 ## Phase [N] Progress Report
 
@@ -1825,7 +1825,7 @@ Start by reading THEME_REDESIGN_TASKS.md to understand the design system, then u
 **Agent 1 and Agent 2 can run in parallel** because:
 - ✅ **No file overlap** (Agent 1 = logic files, Agent 2 = UI files)
 - ✅ **No dependency** (Agent 2's UI changes don't affect Agent 1's calculations)
-- ✅ **Independent testing** (Agent 1 tests with unit tests, Agent 2 tests visually)
+**- ✅ **Independent testing** (**Agent 1 tests with unit tests, Agent 2 tests visually)
 
 **Coordination Points:**
 1. **After both agents complete:** Integration test

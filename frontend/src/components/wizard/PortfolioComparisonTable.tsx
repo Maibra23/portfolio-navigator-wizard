@@ -4,21 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatPercent, formatNumber } from '@/utils/numberFormat';
 
-// Visualization theme matching PortfolioOptimization
+// Dark theme for Linear-inspired design
 const visualizationTheme = {
-  canvas: '#FAFAF4',
-  cardBackground: '#FFFFFF',
-  border: 'rgba(90, 90, 82, 0.12)',
-  grid: 'rgba(200, 200, 195, 0.8)',
+  canvas: '#0c0d0e',
+  cardBackground: '#14151a',
+  border: 'rgba(255, 255, 255, 0.08)',
+  grid: 'rgba(255, 255, 255, 0.06)',
   axes: {
-    line: 'rgba(94, 94, 86, 0.28)',
-    tick: 'rgba(75, 75, 68, 0.82)',
-    label: '#3B3B33',
+    line: 'rgba(255, 255, 255, 0.1)',
+    tick: 'rgba(255, 255, 255, 0.5)',
+    label: 'rgba(255, 255, 255, 0.7)',
   },
   text: {
-    primary: '#2F2F29',
-    secondary: '#6D6D62',
-    subtle: 'rgba(90, 90, 82, 0.65)',
+    primary: 'rgba(255, 255, 255, 0.9)',
+    secondary: 'rgba(255, 255, 255, 0.6)',
+    subtle: 'rgba(255, 255, 255, 0.4)',
   },
   spacing: {
     cardPadding: '28px',
@@ -27,7 +27,7 @@ const visualizationTheme = {
   radius: '18px',
   legend: {
     fontSize: 12,
-    color: 'rgba(59, 59, 51, 0.8)',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -410,14 +410,14 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                     <Button
                       variant={selectedPortfolio === 'current' ? 'default' : 'outline'}
                       onClick={() => onPortfolioSelect('current')}
-                      className={`w-full text-sm ${selectedPortfolio === 'current' ? 'bg-red-600 hover:bg-red-700 text-white border-red-600' : 'border-gray-300'}`}
+                      className={`w-full text-sm ${selectedPortfolio === 'current' ? 'bg-red-600 hover:bg-red-700 text-white border-red-600' : 'border-border bg-card'}`}
                     >
                       {selectedPortfolio === 'current' ? 'Selected' : 'Select Current'}
                     </Button>
                     <Button
                       variant={selectedPortfolio === 'weights' ? 'default' : 'outline'}
                       onClick={() => onPortfolioSelect('weights')}
-                      className={`w-full text-sm ${selectedPortfolio === 'weights' ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'border-gray-300'}`}
+                      className={`w-full text-sm ${selectedPortfolio === 'weights' ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'border-border bg-card'}`}
                     >
                       {selectedPortfolio === 'weights' ? 'Selected' : 'Select Weights-Opt'}
                     </Button>
@@ -426,7 +426,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                       <Button
                         variant={selectedPortfolio === 'market' ? 'default' : 'outline'}
                         onClick={() => onPortfolioSelect('market')}
-                        className={`w-full text-sm ${selectedPortfolio === 'market' ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' : 'border-gray-300'}`}
+                        className={`w-full text-sm ${selectedPortfolio === 'market' ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' : 'border-border bg-card'}`}
                       >
                         {selectedPortfolio === 'market' ? 'Selected' : 'Select Market-Opt'}
                       </Button>

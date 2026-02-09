@@ -63,11 +63,11 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
       <CardContent className="space-y-4">
         {/* Visual bar representation */}
         <div className="space-y-2">
-          <div className="relative h-16 bg-gradient-to-r from-green-100 to-red-100 rounded-lg overflow-hidden border-2">
+          <div className="relative h-16 bg-muted rounded-lg overflow-hidden border-2 border-border">
             {taxFreeAmount > 0 && (
               <div
                 style={{ width: `${taxFreePercentage}%` }}
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-400 to-green-500 flex items-center justify-center transition-all duration-300"
+                className="absolute left-0 top-0 h-full bg-moderate flex items-center justify-center transition-all duration-300"
               >
                 {taxFreePercentage > 20 && (
                   <div className="text-white text-xs font-bold px-2 text-center">
@@ -80,7 +80,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
             {taxableAmount > 0 && (
               <div
                 style={{ width: `${taxablePercentage}%`, left: `${taxFreePercentage}%` }}
-                className="absolute top-0 h-full bg-gradient-to-r from-red-400 to-red-500 flex items-center justify-center transition-all duration-300"
+                className="absolute top-0 h-full bg-aggressive flex items-center justify-center transition-all duration-300"
               >
                 {taxablePercentage > 20 && (
                   <div className="text-white text-xs font-bold px-2 text-center">
@@ -100,7 +100,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
 
         {/* Breakdown */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white rounded-lg border-2 border-green-300 p-3">
+          <div className="bg-card rounded-lg border-2 border-border p-3">
             <div className="flex items-center gap-2 mb-1">
               <Shield className="h-4 w-4 text-green-600" />
               <p className="text-xs font-semibold text-green-700">Tax-Free Portion</p>
@@ -116,7 +116,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
             </p>
           </div>
 
-          <div className={`rounded-lg border-2 p-3 ${taxableAmount > 0 ? 'bg-white border-red-300' : 'bg-gray-50 border-gray-200'}`}>
+          <div className={`rounded-lg border-2 p-3 ${taxableAmount > 0 ? 'bg-card border-destructive/50' : 'bg-muted/30 border-border'}`}>
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className={`h-4 w-4 ${taxableAmount > 0 ? 'text-red-600' : 'text-gray-400'}`} />
               <p className={`text-xs font-semibold ${taxableAmount > 0 ? 'text-red-700' : 'text-gray-500'}`}>

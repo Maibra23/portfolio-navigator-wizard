@@ -32,7 +32,8 @@ export const checkAnswerVariance = (answers: number[], maxScores: number[]): boo
 
 export const checkCompletionSpeed = (totalSeconds: number, questionCount: number): boolean => {
   if (questionCount <= 0) return false;
-  return (totalSeconds / questionCount) < 3;
+  const threshold = questionCount <= 6 ? 5 : 3; // 5 sec for gamified/short, 3 sec for standard
+  return (totalSeconds / questionCount) < threshold;
 };
 
 export const checkReverseCodedConsistency = (

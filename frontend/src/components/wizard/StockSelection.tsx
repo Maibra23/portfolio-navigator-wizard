@@ -1725,7 +1725,7 @@ export const StockSelection = ({
     <div className="max-w-6xl mx-auto p-6">
       <Card>
         <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-primary flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center border border-border">
             <TrendingUp className="h-8 w-8 text-white" />
           </div>
           <CardTitle className="text-2xl">Enhanced Portfolio Construction</CardTitle>
@@ -1759,10 +1759,10 @@ export const StockSelection = ({
 
             {/* Mini-Lesson Tab - Enhanced with Asset Selection */}
             <TabsContent value="mini-lesson" className="space-y-4">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200">
+              <div className="bg-muted rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 mb-3">
                   <Lightbulb className="h-5 w-5 text-blue-600" />
-                  <h3 className="text-lg font-semibold text-blue-900">How Risk and Return Trade Off</h3>
+                  <h3 className="text-lg font-semibold text-foreground">How Risk and Return Trade Off</h3>
                 </div>
                 <div className="bg-muted/30 rounded-lg p-3 border border-border/50 mb-3">
                   <p className="text-xs text-muted-foreground">
@@ -1791,7 +1791,7 @@ export const StockSelection = ({
                           <TooltipTrigger asChild>
                             <Button
                               variant={selectedPairId === pair.pair_id ? "default" : "outline"}
-                              className={`p-3 h-auto min-h-[90px] max-h-[120px] text-left w-full flex-shrink-0 group relative ${selectedPairId === pair.pair_id ? 'bg-blue-600 text-white' : 'bg-white text-blue-900 border-blue-200 hover:border-blue-300'}`}
+                              className={`p-3 h-auto min-h-[90px] max-h-[120px] text-left w-full flex-shrink-0 group relative ${selectedPairId === pair.pair_id ? 'bg-primary text-primary-foreground' : 'bg-card text-foreground border-border hover:bg-accent/50'}`}
                               onClick={() => {
                                 setSelectedPairId(pair.pair_id);
                                 if (pair.pair_id !== 'random') {
@@ -1996,7 +1996,7 @@ export const StockSelection = ({
                     )}
 
                     {/* Portfolio Metrics */}
-                    <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border-0 shadow-lg">
+                    <Card className="bg-card border border-border">
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center gap-2 text-slate-800">
                           <BarChart3 className="h-5 w-5 text-blue-600" />
@@ -2009,7 +2009,7 @@ export const StockSelection = ({
                       <CardContent className="pt-0">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Expected Return */}
-                          <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 border border-emerald-200">
+                          <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border">
                             <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-200 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-1.5 mb-1.5">
@@ -2026,7 +2026,7 @@ export const StockSelection = ({
                           </div>
 
                           {/* Risk Level */}
-                          <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 p-4 border border-amber-200">
+                          <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border">
                             <div className="absolute top-0 right-0 w-16 h-16 bg-amber-200 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-1.5 mb-1.5">
@@ -2262,11 +2262,11 @@ export const StockSelection = ({
                           {searchResults.map((stock) => (
                             <div
                               key={stock.symbol}
-                              className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                              className="flex items-center justify-between p-3 border border-border rounded-lg bg-card hover:bg-accent/50"
                             >
                               <div>
-                                <div className="font-medium">{stock.symbol}</div>
-                                <div className="text-sm text-gray-600">{stock.shortname}</div>
+                                <div className="font-medium text-foreground">{stock.symbol}</div>
+                                <div className="text-sm text-muted-foreground">{stock.shortname}</div>
                               </div>
                               <Button
                                 onClick={() => addStock(stock)}
@@ -2292,7 +2292,7 @@ export const StockSelection = ({
                       </div>
 
                       {/* Portfolio Overview - Moved here, below Selected Assets */}
-                      <div className={`border rounded-lg p-3 ${totalAllocation > 100 ? 'bg-red-50 border-red-200' : 'bg-muted/30'}`}>
+                      <div className={`border rounded-lg p-3 ${totalAllocation > 100 ? 'alert-error' : 'bg-muted/30'}`}>
                         <div className="grid grid-cols-3 gap-3 text-center">
                           <div>
                             <div className="text-xl font-bold text-primary">{selectedStocks.length}</div>
@@ -2368,7 +2368,7 @@ export const StockSelection = ({
                             const randomIndex = Math.floor(Math.random() * randomTexts.length);
                             
                             return (
-                              <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                              <div className="mt-3 alert-success border rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-emerald-800">
                                   <CheckCircle className="h-4 w-4" />
                                   <span className="text-sm font-medium">Smart Allocation Strategy!</span>
@@ -2403,8 +2403,8 @@ export const StockSelection = ({
                           const randomIndex = Math.floor(Math.random() * randomTexts.length);
                           
                           return (
-                            <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-emerald-800">
+                            <div className="mt-3 alert-success border rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-foreground">
                                 <CheckCircle className="h-4 w-4" />
                                 <span className="text-sm font-medium">Smart Allocation Strategy!</span>
                               </div>
@@ -2478,7 +2478,7 @@ export const StockSelection = ({
                                     updateAllocation(stock.symbol, 0);
                                   }
                                 }}
-                                className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 bg-red-50' : ''}`}
+                                className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 alert-error' : ''}`}
                                 min="0"
                                 max="100"
                                 step="0.1"
@@ -2498,7 +2498,7 @@ export const StockSelection = ({
                         
                         {/* Allocation Warning */}
                         {selectedStocks.some(stock => stock.allocation > 100) && (
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                          <div className="alert-error border rounded-lg p-3">
                             <div className="flex items-center gap-2 text-red-800">
                               <AlertTriangle className="h-4 w-4" />
                               <span className="text-sm font-medium">Allocation Warning</span>
@@ -2556,7 +2556,7 @@ export const StockSelection = ({
 
               {/* Portfolio Metrics Section - Enhanced UX Design */}
               {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
-                <Card className="bg-gradient-to-br from-slate-50 to-blue-50 border-0 shadow-lg">
+                <Card className="bg-card border border-border">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl flex items-center gap-3 text-slate-800">
                       <BarChart3 className="h-6 w-6 text-blue-600" />
@@ -2580,7 +2580,7 @@ export const StockSelection = ({
                     ) : portfolioMetrics ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {/* Expected Return */}
-                      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 border border-emerald-200">
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-6 border border-border">
                         <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                         <div className="relative z-10">
                           <div className="flex items-center gap-2 mb-2">
@@ -2597,7 +2597,7 @@ export const StockSelection = ({
                       </div>
 
                       {/* Risk Level */}
-                      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 p-6 border border-amber-200">
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-6 border border-border">
                         <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                         <div className="relative z-10">
                           <div className="flex items-center gap-2 mb-2">
@@ -2614,7 +2614,7 @@ export const StockSelection = ({
                       </div>
 
                       {/* Diversification Score */}
-                      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 p-6 border border-violet-200">
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-6 border border-border">
                         <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                         <div className="relative z-10">
                           <div className="flex items-center gap-2 mb-2">
@@ -2696,7 +2696,7 @@ export const StockSelection = ({
                   <CardContent className="space-y-3 pt-0">
                     {/* Error message display */}
                     {error && (
-                      <Alert className="bg-red-50 border-red-200 text-xs">
+                      <Alert className="alert-error border text-xs">
                         <AlertTriangle className="h-4 w-4 text-red-600" />
                         <AlertDescription className="text-red-800">
                           {error}
@@ -2757,7 +2757,7 @@ export const StockSelection = ({
                       <div className="space-y-2">
                         {/* Generation limit reached warning */}
                         {(generationCounts[selectedStrategy] || 0) >= 2 && (
-                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs">
+                          <div className="alert-warning border rounded-lg p-3 text-xs">
                             <div className="flex items-start gap-2">
                               <svg className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -2784,7 +2784,7 @@ export const StockSelection = ({
                         
                         {/* Approaching limit warning (1/2) */}
                         {(generationCounts[selectedStrategy] || 0) === 1 && (
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
+                          <div className="alert-info border rounded-lg p-3 text-xs">
                             <div className="flex items-start gap-2">
                               <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />

@@ -56,9 +56,9 @@ interface SectorDistributionChartProps {
 }
 
 const COLORS = [
-  '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8',
-  '#82CA9D', '#FFC658', '#FF6B6B', '#4ECDC4', '#45B7D1',
-  '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
+  '#4ade80', '#f87171', '#60a5fa', '#fbbf24', '#a78bfa',
+  '#fb923c', '#22d3ee', '#f472b6', '#84cc16', '#06b6d4',
+  '#94a3b8', '#facc15', '#c084fc', '#2dd4bf', '#38bdf8'
 ];
 
 const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
@@ -130,7 +130,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white p-3 border rounded-lg shadow-lg">
+        <div className="bg-popover text-popover-foreground p-3 border border-border rounded-lg shadow-lg">
           <p className="font-semibold">{label}</p>
           <p>Allocation: {formatPercentage(data.allocation)}</p>
           <p>Return: {formatPercentage(data.return)}</p>
@@ -175,7 +175,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chart */}
           <div>
-            <ResponsiveContainer width="100%" height={400}>
+            <ResponsiveContainer width="100%" height={500}>
               {viewMode === 'pie' ? (
                 <PieChart>
                   <Pie

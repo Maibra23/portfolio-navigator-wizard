@@ -45,21 +45,21 @@ interface EfficientFrontierChartProps {
   showInteractiveLegend?: boolean;
 }
 
-// Visualization theme matching PortfolioOptimization
+// Dark theme for Linear-inspired design
 const visualizationTheme = {
-  canvas: '#FAFAF4',
-  cardBackground: '#FFFFFF',
-  border: 'rgba(90, 90, 82, 0.12)',
-  grid: 'rgba(200, 200, 195, 0.8)',
+  canvas: '#0c0d0e',
+  cardBackground: '#14151a',
+  border: 'rgba(255, 255, 255, 0.08)',
+  grid: 'rgba(255, 255, 255, 0.06)',
   axes: {
-    line: 'rgba(94, 94, 86, 0.28)',
-    tick: 'rgba(75, 75, 68, 0.82)',
-    label: '#3B3B33',
+    line: 'rgba(255, 255, 255, 0.1)',
+    tick: 'rgba(255, 255, 255, 0.5)',
+    label: 'rgba(255, 255, 255, 0.7)',
   },
   text: {
-    primary: '#2F2F29',
-    secondary: '#6D6D62',
-    subtle: 'rgba(90, 90, 82, 0.65)',
+    primary: 'rgba(255, 255, 255, 0.9)',
+    secondary: 'rgba(255, 255, 255, 0.6)',
+    subtle: 'rgba(255, 255, 255, 0.4)',
   },
   spacing: {
     cardPadding: '28px',
@@ -68,7 +68,7 @@ const visualizationTheme = {
   radius: '18px',
   legend: {
     fontSize: 12,
-    color: 'rgba(59, 59, 51, 0.8)',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -390,13 +390,13 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('randomPortfolios')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.randomPortfolios
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.randomPortfolios ? 'Hide Random Portfolios' : 'Show Random Portfolios'}
               >
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#cbd5e1' }} />
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Random</span>
+                <span className="font-medium">Random</span>
               </button>
             )}
             
@@ -406,13 +406,13 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('efficientFrontier')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.efficientFrontier
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.efficientFrontier ? 'Hide Efficient Frontier' : 'Show Efficient Frontier'}
               >
                 <div className="w-4 h-0.5" style={{ backgroundColor: '#64748b' }} />
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Efficient</span>
+                <span className="font-medium text-foreground">Efficient</span>
               </button>
             )}
             
@@ -422,8 +422,8 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('inefficientFrontier')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.inefficientFrontier
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.inefficientFrontier ? 'Hide Inefficient Frontier' : 'Show Inefficient Frontier'}
               >
@@ -431,7 +431,7 @@ export const EfficientFrontierChart = ({
                   <div className="w-1.5 h-0.5" style={{ backgroundColor: '#64748b' }} />
                   <div className="w-1.5 h-0.5" style={{ backgroundColor: '#64748b' }} />
                 </div>
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Inefficient</span>
+                <span className="font-medium text-foreground">Inefficient</span>
               </button>
             )}
             
@@ -441,8 +441,8 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('cml')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.cml
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.cml ? 'Hide Capital Market Line' : 'Show Capital Market Line'}
               >
@@ -450,7 +450,7 @@ export const EfficientFrontierChart = ({
                   <div className="w-1 h-0.5" style={{ backgroundColor: '#9333ea' }} />
                   <div className="w-1 h-0.5" style={{ backgroundColor: '#9333ea' }} />
                 </div>
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>CML</span>
+                <span className="font-medium text-foreground">CML</span>
               </button>
             )}
             
@@ -460,13 +460,13 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('currentPortfolio')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.currentPortfolio
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.currentPortfolio ? 'Hide Current Portfolio' : 'Show Current Portfolio'}
               >
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Current</span>
+                <span className="font-medium text-foreground">Current</span>
               </button>
             )}
             
@@ -476,13 +476,13 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('weightsOptimized')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.weightsOptimized
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.weightsOptimized ? 'Hide Weights-Optimized' : 'Show Weights-Optimized'}
               >
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#3b82f6' }} />
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Weights</span>
+                <span className="font-medium text-foreground">Weights</span>
               </button>
             )}
             
@@ -492,22 +492,22 @@ export const EfficientFrontierChart = ({
                 onClick={() => toggleSeriesVisibility('marketOptimized')}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                   visibleSeries.marketOptimized
-                    ? 'border-gray-300 bg-white hover:bg-gray-50'
-                    : 'border-gray-200 bg-gray-100 opacity-50'
+                    ? 'border-border bg-card hover:bg-accent text-foreground'
+                    : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                 }`}
                 title={visibleSeries.marketOptimized ? 'Hide Market-Optimized' : 'Show Market-Optimized'}
               >
                 <svg width="12" height="12" viewBox="0 0 16 16">
                   <polygon points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6" fill="#22c55e" stroke="#fff" strokeWidth="0.5"/>
                 </svg>
-                <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Market</span>
+                <span className="font-medium text-foreground">Market</span>
               </button>
             )}
           </div>
         )}
       </CardHeader>
       <CardContent
-        className="h-[420px]"
+        className="min-h-[500px] h-[500px]"
         style={{
           background: visualizationTheme.canvas,
           borderRadius: visualizationTheme.radius,

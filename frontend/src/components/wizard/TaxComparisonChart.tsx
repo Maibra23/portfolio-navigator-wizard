@@ -137,7 +137,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
 
     const data = payload[0].payload;
     return (
-      <div className="bg-white border rounded-lg shadow-lg p-3 space-y-1">
+      <div className="bg-popover text-popover-foreground border border-border rounded-lg shadow-lg p-3 space-y-1">
         <p className="font-semibold text-sm">{data.displayName}</p>
         <p className="text-xs text-muted-foreground">Annual Tax</p>
         <p className="font-bold text-red-600">{data.annualTax.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK</p>

@@ -1151,7 +1151,9 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
     if (isUnder19) {
       // For under-19 users, use the gamified storyline
       // Map storyline to question objects with proper metadata (group, maxScore)
-      // Balanced mix to ensure meaningful scores on both MPT (Analytical) and Prospect (Emotional) dimensions
+      // Gamified path construct balance: 3 MPT (60%) + 2 Prospect (40%)
+      // MPT: story-1 (time_horizon), story-2 (market_reaction), story-5 (volatility_tolerance)
+      // Prospect: story-3 (risk_seeking), story-4 (overconfidence)
       const STORY_MAPPINGS: Record<string, { group: 'MPT' | 'PROSPECT'; construct: string }> = {
         'story-1': { group: 'MPT', construct: 'time_horizon' },      // Savings vs Growth (Time/Risk)
         'story-2': { group: 'MPT', construct: 'market_reaction' },   // Market drop behavior
@@ -1421,7 +1423,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
     
     return (
       <div className="max-w-2xl mx-auto">
-        <Card className="shadow-elegant">
+        <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-2xl mb-2">Investment Profile Screening</CardTitle>
             <p className="text-muted-foreground">
@@ -1512,7 +1514,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                   }
                 }}
                 disabled={!isComplete}
-                className="bg-gradient-primary hover:opacity-90 disabled:opacity-50"
+                className="bg-primary hover:bg-primary/90 disabled:opacity-50"
               >
                 Start Risk Assessment
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -1541,13 +1543,13 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
     if (showFeedback && isUnder19) {
       return (
         <div className="max-w-2xl mx-auto">
-          <Card className="shadow-elegant bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200">
+          <Card className="bg-muted border border-border">
             <CardContent className="text-center py-12">
               <div className="text-6xl mb-4">✨</div>
-              <h3 className="text-xl font-bold mb-4 text-green-700">Your Choice!</h3>
-              <p className="text-lg text-gray-700 mb-6">{currentFeedback}</p>
+              <h3 className="text-xl font-bold mb-4 text-foreground">Your Choice!</h3>
+              <p className="text-lg text-foreground mb-6">{currentFeedback}</p>
               <div className="animate-pulse">
-                <p className="text-sm text-gray-500">Continuing your adventure...</p>
+                <p className="text-sm text-muted-foreground">Continuing your adventure...</p>
               </div>
             </CardContent>
           </Card>
@@ -1557,7 +1559,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
     
     return (
       <div className="max-w-2xl mx-auto">
-        <Card className="shadow-elegant">
+        <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-2xl mb-2">
               {isUnder19 ? 'Your Adventure Continues!' : 'Risk Assessment'}
@@ -1574,7 +1576,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
               <div className="space-y-6">
                 <div className="text-center mb-6">
                   <div className="text-4xl mb-4">{fullQuestion.storylineData.visual}</div>
-                  <h3 className="text-lg font-semibold text-gray-800 leading-relaxed">
+                  <h3 className="text-lg font-semibold text-foreground leading-relaxed">
                     {fullQuestion.storylineData.scenario}
                   </h3>
                 </div>
@@ -1584,19 +1586,19 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                     <div
                       key={index}
                       onClick={() => handleAnswerSubmit(option.score)}
-                      className="p-4 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all cursor-pointer group"
+                      className="p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-muted transition-all cursor-pointer group"
                     >
                       <div className="flex items-center space-x-3">
                         <div className="text-2xl">{option.icon}</div>
                         <div className="flex-1">
-                          <div className="font-medium text-gray-900 group-hover:text-blue-700">
+                          <div className="font-medium text-foreground group-hover:text-primary">
                             {option.text}
                           </div>
-                          <div className="text-sm text-gray-600 mt-1">
+                          <div className="text-sm text-muted-foreground mt-1">
                             {option.consequence}
                           </div>
                         </div>
-                        <div className="text-gray-400 group-hover:text-blue-500">
+                        <div className="text-muted-foreground group-hover:text-primary">
                           <ArrowRight className="h-5 w-5" />
                         </div>
                       </div>
@@ -1605,8 +1607,8 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                 </div>
                 
                 {fullQuestion.storylineData.feedback && (
-                  <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <p className="text-sm text-yellow-800 text-center">
+                  <div className="mt-6 p-4 bg-muted rounded-lg border border-border">
+                    <p className="text-sm text-foreground text-center">
                       💡 {fullQuestion.storylineData.feedback}
                     </p>
                   </div>
@@ -1649,7 +1651,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                 <Button
                   onClick={() => handleAnswerSubmit(answers[currentQuestion.id] || 1)}
                   disabled={!answers[currentQuestion.id]}
-                  className="bg-gradient-primary hover:opacity-90 disabled:opacity-50"
+                  className="bg-primary hover:bg-primary/90 disabled:opacity-50"
                 >
                   {questionSelector?.isComplete() ? 'Calculate Profile' : 'Next Question'}
                   <ArrowRight className="ml-2 h-4 w-4" />

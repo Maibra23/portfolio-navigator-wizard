@@ -53,15 +53,15 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
   const bandRight = Math.min(100, confidenceBand.upper);
   const bandWidth = bandRight - bandLeft;
 
-  // Get gradient intensity styles
+  // Get marker border intensity (no shadows per design)
   const getMarkerGlow = (intensity: typeof visualizationData.gradient_intensity) => {
     switch (intensity) {
       case 'narrow':
-        return 'shadow-[0_0_4px_rgba(59,130,246,0.5)]';
+        return 'ring-2 ring-primary/50';
       case 'medium':
-        return 'shadow-[0_0_8px_rgba(59,130,246,0.6)]';
+        return 'ring-2 ring-primary';
       case 'wide':
-        return 'shadow-[0_0_16px_rgba(59,130,246,0.7),0_0_24px_rgba(59,130,246,0.4)] animate-pulse';
+        return 'ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse';
       default:
         return '';
     }

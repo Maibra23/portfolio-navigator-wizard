@@ -17,7 +17,8 @@ export interface VisualizationData {
 export const ADJUSTMENT_TOOLTIPS = {
   variance: "Your answers showed varied preferences across questions—this is natural and suggests flexibility.",
   speed: "You completed quickly. Consider if answers reflect your considered preferences.",
-  divergence: "Your analytical and emotional risk responses differ, which is common."
+  divergence: "Your analytical and emotional risk responses differ, which is common.",
+  zero_variance: "All answers were identical—consider if this reflects your genuine range of preferences."
 };
 
 const BASE_UNCERTAINTY = 5;
@@ -31,11 +32,12 @@ const standardDeviation = (values: number[]): number => {
   return Math.sqrt(variance);
 };
 
+/** Exclusive upper bounds: [0,20) very-conservative, [20,40) conservative, [40,60) moderate, [60,80) aggressive, [80,100] very-aggressive */
 export const getCategory = (score: number): string => {
-  if (score <= 20) return 'very-conservative';
-  if (score <= 40) return 'conservative';
-  if (score <= 60) return 'moderate';
-  if (score <= 80) return 'aggressive';
+  if (score < 20) return 'very-conservative';
+  if (score < 40) return 'conservative';
+  if (score < 60) return 'moderate';
+  if (score < 80) return 'aggressive';
   return 'very-aggressive';
 };
 
@@ -79,26 +81,26 @@ export const calculateConfidenceBand = (
   mptScore: number,
   prospectScore: number,
   completionTimeSeconds: number,
-  questionCount: number
+  questionCount: number,
+  maxScoresByQuestion: Record<string, number> = {}
 ): ConfidenceBand => {
   let adjustment = BASE_UNCERTAINTY;
   const reasons: string[] = [];
 
-  // For gamified (under-19) path with only 5 questions, use reduced penalties
-  // to avoid false "high uncertainty" flags from naturally higher variance
   const isShortAssessment = questionCount <= 6;
   const variancePenalty = isShortAssessment ? 1 : 2;
   const divergencePenalty = isShortAssessment ? 1.5 : 3;
 
-  const answerValues = Object.values(answers);
-  const maxAnswer = answerValues.reduce((max, value) => Math.max(max, value), 0);
-  const normalizedAnswers = maxAnswer <= 1
-    ? answerValues
-    : answerValues.map((value) => {
-      const denom = maxAnswer <= 4 ? 3 : 4;
-      return clamp((value - 1) / denom, 0, 1);
-    });
+  const normalizedAnswers = Object.entries(answers).map(([qId, value]) => {
+    const maxScore = maxScoresByQuestion[qId] ?? 5;
+    if (maxScore <= 1) return 0;
+    return clamp((value - 1) / (maxScore - 1), 0, 1);
+  });
   const variance = standardDeviation(normalizedAnswers);
+  if (variance === 0 && normalizedAnswers.length > 1) {
+    adjustment += 2;
+    reasons.push('zero_variance');
+  }
   if (variance > 0.3) {
     adjustment += variancePenalty;
     reasons.push('variance');

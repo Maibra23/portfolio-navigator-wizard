@@ -79,10 +79,10 @@ describe('Sprint 2 Integration Tests', () => {
       expect(result.branchingPath).toBe('gamified');
       expect(result.branchingState).toBeNull(); // Gamified doesn't use branching state
 
-      // Check that all questions are storyline
+      // Gamified path: 5 storyline questions, 3 MPT + 2 PROSPECT
       result.selectedQuestions.forEach(q => {
         expect(q.id).toMatch(/^story-/);
-        expect(q.group).toBe('PROSPECT');
+        expect(['MPT', 'PROSPECT']).toContain(q.group);
       });
 
       // Verify scoring result

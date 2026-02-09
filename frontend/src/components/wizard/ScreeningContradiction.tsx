@@ -23,7 +23,7 @@ export const ScreeningContradiction: React.FC<ScreeningContradictionProps> = ({
   className,
 }) => {
   return (
-    <Card className={cn("w-full shadow-elegant border-2 border-amber-100", className)}>
+    <Card className={cn("w-full border border-border", className)}>
       <CardHeader className="text-center pb-2">
         <div className="mx-auto w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mb-4">
           <HelpCircle className="h-6 w-6 text-amber-600" />

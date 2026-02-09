@@ -50,7 +50,7 @@ describe('question-selector', () => {
       const q = selector.getNextQuestion();
       expect(q).toBeTruthy();
       expect(q!.id).toBe('story-1');
-      expect(q!.group).toBe('PROSPECT');
+      expect(['MPT', 'PROSPECT']).toContain(q!.group);
       expect(q!.maxScore).toBe(4);
       expect(selector.getBranchingPath()).toBe('gamified');
       expect(selector.getState()).toBeNull();

@@ -36,7 +36,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   const bodyText = ExtremeProfileModalContent.body.replace('{category}', category);
 
   return (
-    <Card className={cn("w-full shadow-elegant border-2 border-blue-100", className)}>
+    <Card className={cn("w-full border border-border", className)}>
       <CardHeader className="text-center pb-2">
         <div className="mx-auto w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-4">
           <AlertCircle className="h-6 w-6 text-blue-600" />
@@ -54,7 +54,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
         <Button
           type="button"
           onClick={onConfirm}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          className="w-full bg-primary text-primary-foreground hover:opacity-90 transition-colors"
         >
           {ExtremeProfileModalContent.options.confirm.label}
         </Button>
@@ -62,7 +62,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           type="button"
           variant="outline"
           onClick={onReview}
-          className="w-full border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors"
+          className="w-full border-border text-foreground hover:bg-accent transition-colors"
         >
           {ExtremeProfileModalContent.options.review.label}
         </Button>

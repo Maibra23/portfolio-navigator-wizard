@@ -42,9 +42,9 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Card className="shadow-elegant">
+      <Card>
         <CardHeader className="text-center pb-6">
-          <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 border border-border">
             <TrendingUp className="h-8 w-8 text-primary-foreground" />
           </div>
           <CardTitle className="text-3xl mb-4">Welcome to Portfolio Wizard</CardTitle>
@@ -60,8 +60,8 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             {features.map((feature, index) => {
               const Icon = feature.icon;
               return (
-                <div key={index} className="flex flex-col items-center text-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3">
+                <div key={index} className="flex flex-col items-center text-center p-4 rounded-lg bg-muted hover:bg-muted/80 transition-colors">
+                  <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-3 border border-border">
                     <Icon className="h-6 w-6 text-primary" />
                   </div>
                   <h3 className="font-semibold mb-2">{feature.title}</h3>
@@ -71,23 +71,23 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             })}
           </div>
 
-          <div className="bg-accent/10 rounded-lg p-6 mb-8">
-            <h3 className="font-semibold text-accent mb-2">What You'll Learn</h3>
+          <div className="bg-muted rounded-lg p-6 mb-8 border border-border">
+            <h3 className="font-semibold text-foreground mb-2">What You'll Learn</h3>
             <ul className="space-y-2 text-sm">
               <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-accent rounded-full" />
+                <div className="w-2 h-2 bg-primary rounded-full" />
                 Your personal risk tolerance and investment style
               </li>
               <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-accent rounded-full" />
+                <div className="w-2 h-2 bg-primary rounded-full" />
                 How to optimize your portfolio for the best risk-return ratio
               </li>
               <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-accent rounded-full" />
+                <div className="w-2 h-2 bg-primary rounded-full" />
                 How your investments might perform during market stress
               </li>
               <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-accent rounded-full" />
+                <div className="w-2 h-2 bg-primary rounded-full" />
                 Professional portfolio management techniques
               </li>
             </ul>
@@ -97,7 +97,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             <Button 
               onClick={onNext} 
               size="lg" 
-              className="bg-gradient-primary hover:opacity-90 transition-opacity"
+              className="bg-primary hover:bg-primary/90 transition-colors"
             >
               Start Building Your Portfolio
               <ArrowRight className="ml-2 h-5 w-5" />

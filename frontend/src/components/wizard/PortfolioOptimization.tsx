@@ -42,22 +42,21 @@ import {
   EyeOff
 } from 'lucide-react';
 
-// Visualization theme matching Portfolio3PartVisualization
+// Dark theme for Linear-inspired design
 const visualizationTheme = {
-  canvas: '#FAFAF4',
-  cardBackground: '#FFFFFF',
-  border: 'rgba(90, 90, 82, 0.12)',
-  // Slightly darker, higher-contrast grid lines for better readability (AES-001)
-  grid: 'rgba(200, 200, 195, 0.8)',
+  canvas: '#0c0d0e',
+  cardBackground: '#14151a',
+  border: 'rgba(255, 255, 255, 0.08)',
+  grid: 'rgba(255, 255, 255, 0.06)',
   axes: {
-    line: 'rgba(94, 94, 86, 0.28)',
-    tick: 'rgba(75, 75, 68, 0.82)',
-    label: '#3B3B33',
+    line: 'rgba(255, 255, 255, 0.1)',
+    tick: 'rgba(255, 255, 255, 0.5)',
+    label: 'rgba(255, 255, 255, 0.7)',
   },
   text: {
-    primary: '#2F2F29',
-    secondary: '#6D6D62',
-    subtle: 'rgba(90, 90, 82, 0.65)',
+    primary: 'rgba(255, 255, 255, 0.9)',
+    secondary: 'rgba(255, 255, 255, 0.6)',
+    subtle: 'rgba(255, 255, 255, 0.4)',
   },
   spacing: {
     cardPadding: '28px',
@@ -66,7 +65,7 @@ const visualizationTheme = {
   radius: '18px',
   legend: {
     fontSize: 12,
-    color: 'rgba(59, 59, 51, 0.8)',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -2249,7 +2248,7 @@ export const PortfolioOptimization = ({
     <div className="max-w-6xl mx-auto p-6">
       <Card>
         <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-primary flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center border border-border">
             <BarChart3 className="h-8 w-8 text-white" />
           </div>
           <CardTitle className="text-2xl">Portfolio Optimization</CardTitle>
@@ -2300,7 +2299,7 @@ export const PortfolioOptimization = ({
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-4">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200">
+              <div className="bg-muted rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 mb-2">
                   <Lightbulb className="h-5 w-5 text-blue-600" />
                   <h3 className="text-lg font-semibold text-blue-900">Portfolio Optimization</h3>
@@ -2350,19 +2349,19 @@ export const PortfolioOptimization = ({
                   
                   {currentMetrics && (
                     <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-                      <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
+                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
                         <div className="text-xl font-bold text-emerald-700">
                           {((currentMetrics.expectedReturn || 0) * 100).toFixed(1)}%
                         </div>
                         <div className="text-xs text-emerald-600 mt-0.5">Expected Return</div>
                       </div>
-                      <div className="text-center p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
                         <div className="text-xl font-bold text-amber-700">
                           {((currentMetrics.risk || 0) * 100).toFixed(1)}%
                         </div>
                         <div className="text-xs text-amber-600 mt-0.5">Risk Level</div>
                       </div>
-                      <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
                         <div className="text-xl font-bold text-purple-700">
                           {(currentMetrics.diversificationScore || 0).toFixed(0)}%
                         </div>
@@ -2537,7 +2536,7 @@ export const PortfolioOptimization = ({
                     </div>
                   </CardHeader>
                   <CardContent
-                    className="h-[420px]"
+                    className="min-h-[500px] h-[500px]"
                     style={{
                       background: visualizationTheme.canvas,
                       borderRadius: visualizationTheme.radius,
@@ -2908,8 +2907,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('randomPortfolios')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.randomPortfolios
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.randomPortfolios ? 'Hide Random Portfolios' : 'Show Random Portfolios'}
                       >
@@ -2922,8 +2921,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('efficientFrontier')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.efficientFrontier
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.efficientFrontier ? 'Hide Efficient Frontier' : 'Show Efficient Frontier'}
                       >
@@ -2936,8 +2935,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('inefficientFrontier')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.inefficientFrontier
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.inefficientFrontier ? 'Hide Inefficient Frontier' : 'Show Inefficient Frontier'}
                       >
@@ -2953,8 +2952,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('cml')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.cml
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.cml ? 'Hide Capital Market Line' : 'Show Capital Market Line'}
                       >
@@ -2970,8 +2969,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('currentPortfolio')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.currentPortfolio
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.currentPortfolio ? 'Hide Current Portfolio' : 'Show Current Portfolio'}
                       >
@@ -2984,8 +2983,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('weightsOptimized')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.weightsOptimized
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.weightsOptimized ? 'Hide Weights-Optimized' : 'Show Weights-Optimized'}
                       >
@@ -2998,8 +2997,8 @@ export const PortfolioOptimization = ({
                         onClick={() => toggleSeriesVisibility('marketOptimized')}
                         className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                           visibleSeries.marketOptimized
-                            ? 'border-gray-300 bg-white hover:bg-gray-50'
-                            : 'border-gray-200 bg-gray-100 opacity-50'
+                            ? 'border-border bg-card hover:bg-accent text-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground opacity-70'
                         }`}
                         title={visibleSeries.marketOptimized ? 'Hide Market-Optimized' : 'Show Market-Optimized'}
                       >
@@ -3041,7 +3040,7 @@ export const PortfolioOptimization = ({
                         })()}
                         
                   <CardContent
-                    className="h-[420px]"
+                    className="min-h-[500px] h-[500px]"
                     style={{
                       background: visualizationTheme.canvas,
                       borderRadius: visualizationTheme.radius,
@@ -3995,14 +3994,14 @@ export const PortfolioOptimization = ({
                                       <Button
                                         variant={selectedPortfolio === 'current' ? 'default' : 'outline'}
                                         onClick={() => setSelectedPortfolio('current')}
-                                        className={`w-full text-sm ${selectedPortfolio === 'current' ? 'bg-red-600 hover:bg-red-700 text-white border-red-600' : 'border-gray-300'}`}
+                                        className={`w-full text-sm ${selectedPortfolio === 'current' ? 'bg-red-600 hover:bg-red-700 text-white border-red-600' : 'border-border bg-card'}`}
                                       >
                                         {selectedPortfolio === 'current' ? 'Selected' : 'Select Current'}
                                       </Button>
                                       <Button
                                         variant={selectedPortfolio === 'weights' ? 'default' : 'outline'}
                                         onClick={() => setSelectedPortfolio('weights')}
-                                        className={`w-full text-sm ${selectedPortfolio === 'weights' ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'border-gray-300'}`}
+                                        className={`w-full text-sm ${selectedPortfolio === 'weights' ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600' : 'border-border bg-card'}`}
                                       >
                                         {selectedPortfolio === 'weights' ? 'Selected' : 'Select Weights-Opt'}
                                       </Button>
@@ -4011,7 +4010,7 @@ export const PortfolioOptimization = ({
                                         <Button
                                           variant={selectedPortfolio === 'market' ? 'default' : 'outline'}
                                           onClick={() => setSelectedPortfolio('market')}
-                                          className={`w-full text-sm ${selectedPortfolio === 'market' ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' : 'border-gray-300'}`}
+                                          className={`w-full text-sm ${selectedPortfolio === 'market' ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' : 'border-border bg-card'}`}
                                         >
                                           {selectedPortfolio === 'market' ? 'Selected' : 'Select Market-Opt'}
                                         </Button>
@@ -4032,7 +4031,7 @@ export const PortfolioOptimization = ({
                           
                           {/* Data Quality Warning */}
                           {dualOptimizationResults?.comparison?.current_metrics_unreliable && (
-                            <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300">
+                            <div className="mb-4 p-3 rounded-lg bg-muted border border-border">
                               <div className="flex items-start gap-2">
                                 <svg className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -4054,7 +4053,7 @@ export const PortfolioOptimization = ({
                           
                           {/* Interpretation Guide */}
                           {dualOptimizationResults?.comparison && (
-                            <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-slate-50 to-gray-50 border border-slate-200">
+                            <div className="mt-4 p-3 rounded-lg bg-muted border border-border">
                               <div className="text-xs space-y-2" style={{ color: visualizationTheme.text.secondary }}>
                                 <div className="font-semibold mb-2" style={{ color: visualizationTheme.text.primary }}>Understanding This Comparison:</div>
                                 <div>• <strong>Expected Return:</strong> Annualized return based on historical data. Higher is generally better, but unrealistic values (&gt;50%) may indicate data quality issues.</div>
@@ -4072,7 +4071,7 @@ export const PortfolioOptimization = ({
                           
                           {/* Sharpe Ratio Insight Box */}
                           {dualOptimizationResults?.comparison && (
-                            <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
+                            <div className="mt-4 p-3 rounded-lg bg-muted border border-border">
                               {(() => {
                                 const currentSharpe = dualOptimizationResults.current_portfolio?.metrics?.sharpe_ratio ?? 0;
                                 const optimizedSharpe = mvoResults.optimized_portfolio.metrics?.sharpe_ratio ?? 0;
@@ -4164,7 +4163,7 @@ export const PortfolioOptimization = ({
                               .sort(([,a], [,b]) => (b as number) - (a as number))
                               .slice(0, 6)
                               .map(([ticker, weight], index) => (
-                                <div key={ticker} className="flex items-center justify-between p-3 border rounded-lg bg-gradient-to-r from-green-50/50 to-emerald-50/50 border-green-200">
+                                <div key={ticker} className="flex items-center justify-between p-3 border rounded-lg bg-muted border-border">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                                   <span className="text-sm font-medium text-green-600">{index + 1}</span>
@@ -4212,7 +4211,7 @@ export const PortfolioOptimization = ({
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Current vs Optimized - Uses Triple or Dual Results */}
-                        <div className="p-6 rounded-lg bg-gradient-to-br from-red-50 to-green-50 border">
+                        <div className="p-6 rounded-lg bg-muted border border-border">
                           <div className="text-base font-semibold text-gray-700 mb-4">
                             {tripleOptimizationResults ? 'Current → Recommended' : 'Current → Optimized'}
                           </div>
@@ -4293,7 +4292,7 @@ export const PortfolioOptimization = ({
                                   </div>
                                   
                         {/* Risk Profile Compliance */}
-                        <div className="p-6 rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 border">
+                        <div className="p-6 rounded-lg bg-muted border border-border">
                           <div className="text-base font-semibold text-gray-700 mb-4 flex items-center gap-1 group relative">
                             Risk Profile Compliance
                             <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
@@ -5135,7 +5134,7 @@ export const PortfolioOptimization = ({
                     </div>
                     
                     {/* Risk Profile Specific Pre-recommendations */}
-                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-6 border border-indigo-200">
+                  <div className="bg-muted rounded-lg p-6 border border-border">
                     <h4 className="font-medium text-indigo-900 mb-3">
                         General Tips for {getRiskProfileDisplay(riskProfile)} Investors
                     </h4>
