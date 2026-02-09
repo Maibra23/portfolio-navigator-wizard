@@ -897,6 +897,64 @@ def get_available_tickers(limit: int = Query(100, description="Maximum number of
         logger.error(f"Error getting available tickers: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get available tickers: {str(e)}")
 
+
+def _ticker_region_from_symbol(ticker: str) -> str:
+    """Classify ticker into region by symbol suffix. Returns 'swedish', 'european', 'us', or 'other'."""
+    if not ticker or not isinstance(ticker, str):
+        return "other"
+    t = ticker.upper().strip()
+    if t.endswith(".ST") or t.endswith(".SS"):
+        return "swedish"
+    european_suffixes = (
+        ".DE", ".F", ".XETR", ".PA", ".EPA", ".L", ".LSE", ".MI", ".BIT",
+        ".AS", ".AMS", ".MC", ".MCE", ".SW", ".VX", ".OL", ".OSL",
+        ".CO", ".CPH", ".HE", ".HEL", ".BR", ".LS", ".WA", ".VI"
+    )
+    if any(t.endswith(s) for s in european_suffixes):
+        return "european"
+    if "." not in t or t.endswith(".US"):
+        return "us"
+    return "other"
+
+
+@router.get("/ticker-universe")
+def get_ticker_universe():
+    """
+    Redis-backed ticker universe for UI: approximate count and exchange/region breakdown.
+    Used for the info bar e.g. '~1,400 tickers across US, European, and Swedish exchanges'.
+    """
+    try:
+        selectable = _rds.list_cached_tickers()
+        selectable_count = len(selectable)
+        master_list = _rds.all_tickers or []
+        total_in_master = len(master_list)
+
+        region_counts = {"us": 0, "european": 0, "swedish": 0, "other": 0}
+        for t in selectable:
+            region = _ticker_region_from_symbol(t)
+            region_counts[region] = region_counts.get(region, 0) + 1
+
+        regions = []
+        if region_counts.get("us", 0) > 0:
+            regions.append({"label": "US (e.g. S&P 500)", "count": region_counts["us"]})
+        if region_counts.get("european", 0) > 0:
+            regions.append({"label": "European", "count": region_counts["european"]})
+        if region_counts.get("swedish", 0) > 0:
+            regions.append({"label": "Swedish", "count": region_counts["swedish"]})
+        if region_counts.get("other", 0) > 0:
+            regions.append({"label": "Other", "count": region_counts["other"]})
+
+        return {
+            "selectable_count": selectable_count,
+            "total_in_master": total_in_master,
+            "regions": regions,
+            "source": "redis",
+        }
+    except Exception as e:
+        logger.error(f"Error getting ticker universe: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get ticker universe: {str(e)}")
+
+
 @router.post("/tickers/refresh")
 def refresh_tickers():
     """
@@ -4987,9 +5045,26 @@ def run_hypothetical_scenario(request: Dict[str, Any]):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to run hypothetical scenario: {str(e)}")
 
+def _warm_tickers_for_recommendations(symbols: List[str]) -> None:
+    """Background helper: warm Redis cache for tickers used in recommendations (non-blocking)."""
+    if not symbols:
+        return
+    try:
+        for sym in symbols:
+            try:
+                _ = _rds.get_monthly_data(sym)
+                _ = _rds.get_ticker_info(sym)
+            except Exception:
+                continue
+        logger.debug(f"✅ Background warm completed for {len(symbols)} tickers")
+    except Exception as e:
+        logger.debug(f"Background warm skipped: {e}")
+
+
 @router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
-def get_portfolio_recommendations(risk_profile: str):
-    """Get portfolio recommendations from Enhanced Portfolio System"""
+def get_portfolio_recommendations(risk_profile: str, background_tasks: BackgroundTasks):
+    """Get portfolio recommendations from Enhanced Portfolio System.
+    Portfolios are cached in Redis; ticker data is warmed in background so response returns quickly."""
     try:
         if risk_profile not in ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']:
             raise HTTPException(status_code=400, detail="Invalid risk profile")
@@ -5028,23 +5103,15 @@ def get_portfolio_recommendations(risk_profile: str):
         except Exception:
             pass
         
-        # Warm cache for all tickers in the recommendations to ensure consistent metrics downstream
-        try:
-            symbols_to_warm = set()
-            for p in portfolios:
-                for a in p.get('allocations', []):
-                    s = a.get('symbol')
-                    if s:
-                        symbols_to_warm.add(s)
-            for sym in symbols_to_warm:
-                try:
-                    # These calls are Redis-first; EnhancedDataFetcher is lazy and fast-startup aware
-                    _ = _rds.get_monthly_data(sym)
-                    _ = _rds.get_ticker_info(sym)
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        # Collect symbols to warm in background (do not block the response)
+        symbols_to_warm = []
+        for p in portfolios:
+            for a in p.get('allocations', []):
+                s = a.get('symbol')
+                if s:
+                    symbols_to_warm.append(s)
+        if symbols_to_warm:
+            background_tasks.add_task(_warm_tickers_for_recommendations, list(set(symbols_to_warm)))
 
         # Order portfolios by expectedReturn (desc) and convert to response format
         # Top Pick first

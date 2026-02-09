@@ -78,6 +78,23 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
   const [showWeightEditor, setShowWeightEditor] = useState(false);
   const [portfolioMetrics, setPortfolioMetrics] = useState<PortfolioMetrics | null>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+  const [tickerUniverse, setTickerUniverse] = useState<{ count: number; regionLabels: string[] } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portfolio/ticker-universe')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const count = data.selectable_count;
+        const labels = Array.isArray(data.regions) ? data.regions.map((r: { label: string }) => r.label) : [];
+        if (typeof count === 'number') {
+          setTickerUniverse({ count, regionLabels: labels });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Calculate total allocation
   const totalAllocation = selectedStocks.reduce((sum, stock) => sum + (stock.allocation || 0), 0);
@@ -315,8 +332,10 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Customize Your Portfolio</CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          {fullUniverse 
-            ? 'Search and select stocks from the full universe (~600 tickers)'
+          {fullUniverse
+            ? (tickerUniverse
+                ? `Search and select stocks from the available universe (~${tickerUniverse.count.toLocaleString()} tickers${tickerUniverse.regionLabels.length > 0 ? ` across ${tickerUniverse.regionLabels.join(', ')} exchanges` : ''})`
+                : 'Search and select stocks from the available universe')
             : 'Modify the selected portfolio by adding or removing stocks and adjusting allocations'
           }
         </p>
