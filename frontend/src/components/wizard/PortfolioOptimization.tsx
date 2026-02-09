@@ -41,23 +41,11 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
+import { getChartTheme, getPortfolioColors, getVisualizationPalette } from '@/utils/chartThemes';
 
-// Dark theme for Linear-inspired design
-const visualizationTheme = {
-  canvas: '#0c0d0e',
-  cardBackground: '#14151a',
-  border: 'rgba(255, 255, 255, 0.08)',
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axes: {
-    line: 'rgba(255, 255, 255, 0.1)',
-    tick: 'rgba(255, 255, 255, 0.5)',
-    label: 'rgba(255, 255, 255, 0.7)',
-  },
-  text: {
-    primary: 'rgba(255, 255, 255, 0.9)',
-    secondary: 'rgba(255, 255, 255, 0.6)',
-    subtle: 'rgba(255, 255, 255, 0.4)',
-  },
+// Layout constants (theme-independent)
+const layoutConstants = {
   spacing: {
     cardPadding: '28px',
     sectionGap: '28px',
@@ -65,7 +53,6 @@ const visualizationTheme = {
   radius: '18px',
   legend: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -372,6 +359,12 @@ export const PortfolioOptimization = ({
   onPortfolioSelection,
   initialSelectedPortfolio
 }: PortfolioOptimizationProps) => {
+  // Get current theme for dynamic colors
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
+  const portfolioColors = getPortfolioColors(theme);
+  const vividPalette = getVisualizationPalette(theme);
+
   const [activeTab, setActiveTab] = useState<'overview' | 'optimization' | 'analysis' | 'recommendations'>(initialSelectedPortfolio ? 'analysis' : 'optimization');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingEligibleTickers, setIsLoadingEligibleTickers] = useState(false);
@@ -2378,22 +2371,22 @@ export const PortfolioOptimization = ({
               <div
                 className="space-y-6"
                 style={{
-                  background: visualizationTheme.canvas,
-                  padding: visualizationTheme.spacing.cardPadding,
-                  borderRadius: visualizationTheme.radius,
+                  background: chartTheme.canvas,
+                  padding: layoutConstants.spacing.cardPadding,
+                  borderRadius: layoutConstants.radius,
                 }}
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h3
                       className="text-lg font-semibold mb-1"
-                      style={{ color: visualizationTheme.text.primary }}
+                      style={{ color: chartTheme.text.primary }}
                     >
                       Portfolio Optimization
                     </h3>
                     <p
                       className="text-sm"
-                      style={{ color: visualizationTheme.text.secondary }}
+                      style={{ color: chartTheme.text.secondary }}
                     >
                       View all eligible tickers and your current portfolio on the risk-return graph
                     </p>
@@ -2454,7 +2447,7 @@ export const PortfolioOptimization = ({
                       fetchEligibleTickers();
                     }}
                     disabled={isLoadingEligibleTickers}
-                    style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.primary }}
+                    style={{ borderColor: chartTheme.border, color: chartTheme.text.primary }}
                   >
                     {isLoadingEligibleTickers ? (
                       <>
@@ -2472,18 +2465,18 @@ export const PortfolioOptimization = ({
                 {/* 2D Risk-Return Graph */}
                 <Card
                   className="w-full"
-                  style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+                  style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
                 >
                   <CardHeader className="flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 text-center">
                       <CardTitle
                           className="text-lg"
-                          style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+                          style={{ color: chartTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
                       >
                         Stock Universe
                       </CardTitle>
-                        <p className="text-xs mt-1" style={{ color: visualizationTheme.text.subtle }}>
+                        <p className="text-xs mt-1" style={{ color: chartTheme.text.subtle }}>
                           Drag to zoom • Use buttons to navigate
                         </p>
                       </div>
@@ -2538,8 +2531,8 @@ export const PortfolioOptimization = ({
                   <CardContent
                     className="min-h-[500px] h-[500px]"
                     style={{
-                      background: visualizationTheme.canvas,
-                      borderRadius: visualizationTheme.radius,
+                      background: chartTheme.canvas,
+                      borderRadius: layoutConstants.radius,
                       padding: '12px',
                     }}
                   >
@@ -2562,22 +2555,22 @@ export const PortfolioOptimization = ({
                             }
                           }}
                           >
-                          <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
+                          <CartesianGrid strokeDasharray="3 4" stroke={chartTheme.grid} />
                           <XAxis
                             type="number"
                             dataKey="volatility"
                             name="Risk"
                             tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                            axisLine={{ stroke: visualizationTheme.axes.line }}
+                            axisLine={{ stroke: chartTheme.axes.line }}
                             tickLine={{ stroke: 'transparent' }}
-                            tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                            tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                             domain={eligibleTickersCurrentDomain?.x || eligibleTickersDomain?.x || [0, 'dataMax']}
                             allowDataOverflow={true}
                             label={{
                               value: 'Risk',
                               position: 'insideBottom',
                               offset: -6,
-                              style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                              style: { fill: chartTheme.axes.label, fontWeight: 500 },
                             }}
                           />
                           <YAxis
@@ -2590,9 +2583,9 @@ export const PortfolioOptimization = ({
                               if (value < 0) return '';
                               return `${(value * 100).toFixed(1)}%`;
                             }}
-                            axisLine={{ stroke: visualizationTheme.axes.line }}
+                            axisLine={{ stroke: chartTheme.axes.line }}
                             tickLine={{ stroke: 'transparent' }}
-                            tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                            tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                             allowDecimals={true}
                             allowDataOverflow={true}
                             domain={
@@ -2611,7 +2604,7 @@ export const PortfolioOptimization = ({
                               value: 'Return',
                               angle: -90,
                               position: 'insideLeft',
-                              style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                              style: { fill: chartTheme.axes.label, fontWeight: 500 },
                             }}
                           />
                           <RechartsTooltip
@@ -2626,17 +2619,17 @@ export const PortfolioOptimization = ({
                                 return (
                                   <div
                                     className="rounded-xl border p-3 shadow-sm max-w-xs"
-                                    style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+                                    style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
                                   >
-                                    <p className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                    <p className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                       {data.ticker}
                                     </p>
                                     {data.company_name && (
-                                      <p className="text-sm mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                                      <p className="text-sm mt-1" style={{ color: chartTheme.text.secondary }}>
                                         {data.company_name}
                                       </p>
                                     )}
-                                    <div className="mt-2 space-y-1 text-sm" style={{ color: visualizationTheme.text.primary }}>
+                                    <div className="mt-2 space-y-1 text-sm" style={{ color: chartTheme.text.primary }}>
                                       <p>
                                         Return:{' '}
                                         <span className="font-medium">{formatPercent(data.expected_return)}</span>
@@ -2646,7 +2639,7 @@ export const PortfolioOptimization = ({
                                         <span className="font-medium">{formatPercent(data.volatility)}</span>
                                       </p>
                                       {data.sector && (
-                                        <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                                        <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                                           Sector: {data.sector}
                                         </p>
                                       )}
@@ -2665,8 +2658,8 @@ export const PortfolioOptimization = ({
                           <Legend
                             wrapperStyle={{
                               paddingTop: 12,
-                              fontSize: visualizationTheme.legend.fontSize,
-                              color: visualizationTheme.legend.color,
+                              fontSize: layoutConstants.legend.fontSize,
+                              color: chartTheme.text.secondary,
                             }}
                           />
                           {/* All eligible tickers (gray dots) with jitter for overlapping points */}
@@ -2753,7 +2746,7 @@ export const PortfolioOptimization = ({
                         </ScatterChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                      <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                         <div className="text-center">
                           <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>No eligible tickers available</p>
@@ -2794,7 +2787,7 @@ export const PortfolioOptimization = ({
                     </div>
                     
                     {(!currentPortfolio || currentPortfolio.length < 2) && (
-                      <p className="text-sm text-center" style={{ color: visualizationTheme.text.secondary }}>
+                      <p className="text-sm text-center" style={{ color: chartTheme.text.secondary }}>
                         Select at least 2 stocks to enable optimization
                       </p>
                     )}
@@ -2822,21 +2815,21 @@ export const PortfolioOptimization = ({
               <div
                 className="space-y-6"
                 style={{
-                  background: visualizationTheme.canvas,
-                  padding: visualizationTheme.spacing.cardPadding,
-                  borderRadius: visualizationTheme.radius,
+                  background: chartTheme.canvas,
+                  padding: layoutConstants.spacing.cardPadding,
+                  borderRadius: layoutConstants.radius,
                 }}
               >
                 <div>
                   <h3
                     className="text-lg font-semibold mb-1"
-                    style={{ color: visualizationTheme.text.primary }}
+                    style={{ color: chartTheme.text.primary }}
                   >
                     Portfolio Analysis
                   </h3>
                   <p
                     className="text-sm"
-                    style={{ color: visualizationTheme.text.secondary }}
+                    style={{ color: chartTheme.text.secondary }}
                   >
                     Efficient frontier visualization with risk-return optimization results
                   </p>
@@ -2844,18 +2837,18 @@ export const PortfolioOptimization = ({
 
                 <Card
                   className="w-full"
-                  style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+                  style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
                 >
                   <CardHeader className="flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 text-center">
                       <CardTitle
                           className="text-lg"
-                          style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+                          style={{ color: chartTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
                       >
                         Efficient Frontier
                       </CardTitle>
-                        <p className="text-xs mt-1" style={{ color: visualizationTheme.text.subtle }}>
+                        <p className="text-xs mt-1" style={{ color: chartTheme.text.subtle }}>
                           Drag to zoom • Click legend to toggle series
                         </p>
                       </div>
@@ -2901,7 +2894,7 @@ export const PortfolioOptimization = ({
                     </div>
                     
                     {/* Interactive Legend with Visibility Toggles */}
-                    <div className="flex flex-wrap gap-2 justify-center border-t pt-3" style={{ borderColor: visualizationTheme.border }}>
+                    <div className="flex flex-wrap gap-2 justify-center border-t pt-3" style={{ borderColor: chartTheme.border }}>
                       {/* Random Portfolios Toggle */}
                       <button
                         onClick={() => toggleSeriesVisibility('randomPortfolios')}
@@ -2913,7 +2906,7 @@ export const PortfolioOptimization = ({
                         title={visibleSeries.randomPortfolios ? 'Hide Random Portfolios' : 'Show Random Portfolios'}
                       >
                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#cbd5e1' }} />
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Random</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>Random</span>
                       </button>
                       
                       {/* Efficient Frontier Toggle */}
@@ -2927,7 +2920,7 @@ export const PortfolioOptimization = ({
                         title={visibleSeries.efficientFrontier ? 'Hide Efficient Frontier' : 'Show Efficient Frontier'}
                       >
                         <div className="w-4 h-0.5" style={{ backgroundColor: '#64748b' }} />
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Efficient</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>Efficient</span>
                       </button>
                       
                       {/* Inefficient Frontier Toggle */}
@@ -2944,7 +2937,7 @@ export const PortfolioOptimization = ({
                           <div className="w-1.5 h-0.5" style={{ backgroundColor: '#64748b' }} />
                           <div className="w-1.5 h-0.5" style={{ backgroundColor: '#64748b' }} />
                         </div>
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Inefficient</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>Inefficient</span>
                       </button>
                       
                       {/* CML Toggle */}
@@ -2961,7 +2954,7 @@ export const PortfolioOptimization = ({
                           <div className="w-1 h-0.5" style={{ backgroundColor: '#9333ea' }} />
                           <div className="w-1 h-0.5" style={{ backgroundColor: '#9333ea' }} />
                         </div>
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>CML</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>CML</span>
                       </button>
                       
                       {/* Current Portfolio Toggle */}
@@ -2975,7 +2968,7 @@ export const PortfolioOptimization = ({
                         title={visibleSeries.currentPortfolio ? 'Hide Current Portfolio' : 'Show Current Portfolio'}
                       >
                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Current</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>Current</span>
                       </button>
                       
                       {/* Weights-Optimized Toggle */}
@@ -2989,7 +2982,7 @@ export const PortfolioOptimization = ({
                         title={visibleSeries.weightsOptimized ? 'Hide Weights-Optimized' : 'Show Weights-Optimized'}
                       >
                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#3b82f6' }} />
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Weights</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>Weights</span>
                       </button>
                       
                       {/* Market-Optimized Toggle */}
@@ -3003,7 +2996,7 @@ export const PortfolioOptimization = ({
                         title={visibleSeries.marketOptimized ? 'Hide Market-Optimized' : 'Show Market-Optimized'}
                       >
                         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#22c55e' }} />
-                        <span className="font-medium" style={{ color: visualizationTheme.text.secondary }}>Market</span>
+                        <span className="font-medium" style={{ color: chartTheme.text.secondary }}>Market</span>
                       </button>
                     </div>
                   </CardHeader>
@@ -3042,8 +3035,8 @@ export const PortfolioOptimization = ({
                   <CardContent
                     className="min-h-[500px] h-[500px]"
                     style={{
-                      background: visualizationTheme.canvas,
-                      borderRadius: visualizationTheme.radius,
+                      background: chartTheme.canvas,
+                      borderRadius: layoutConstants.radius,
                       padding: '12px',
                     }}
                   >
@@ -3075,15 +3068,15 @@ export const PortfolioOptimization = ({
                               }
                             }}
                             >
-                            <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
+                            <CartesianGrid strokeDasharray="3 4" stroke={chartTheme.grid} />
                             <XAxis
                               type="number"
                               dataKey="risk"
                               name="Risk"
                               tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                              axisLine={{ stroke: visualizationTheme.axes.line }}
+                              axisLine={{ stroke: chartTheme.axes.line }}
                               tickLine={{ stroke: 'transparent' }}
-                              tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                              tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                               domain={
                                 efficientFrontierCurrentDomain?.x 
                                   ? efficientFrontierCurrentDomain.x
@@ -3099,7 +3092,7 @@ export const PortfolioOptimization = ({
                                 value: 'Risk',
                                 position: 'insideBottom',
                                 offset: -6,
-                                style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                                style: { fill: chartTheme.axes.label, fontWeight: 500 },
                               }}
                             />
                             <YAxis
@@ -3107,9 +3100,9 @@ export const PortfolioOptimization = ({
                               dataKey="return"
                               name="Return"
                               tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                              axisLine={{ stroke: visualizationTheme.axes.line }}
+                              axisLine={{ stroke: chartTheme.axes.line }}
                               tickLine={{ stroke: 'transparent' }}
-                              tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                              tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                               allowDataOverflow={true}
                               domain={
                                 efficientFrontierCurrentDomain?.y 
@@ -3126,7 +3119,7 @@ export const PortfolioOptimization = ({
                                 angle: -90,
                                 position: 'left',
                                 offset: 16,
-                                style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                                style: { fill: chartTheme.axes.label, fontWeight: 500 },
                               }}
                             />
                             <RechartsTooltip
@@ -3197,15 +3190,15 @@ export const PortfolioOptimization = ({
                                   return (
                                     <div
                                       className="rounded-lg border p-2 shadow-md max-w-xs"
-                                      style={{ background: visualizationTheme.cardBackground, borderColor: '#64748b' }}
+                                      style={{ background: chartTheme.cardBackground, borderColor: '#64748b' }}
                                     >
                                       <p className="font-semibold text-sm" style={{ color: '#64748b' }}>
                                         Efficient Frontier
                                       </p>
-                                      <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                                      <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                                         Optimal portfolios offering maximum return for given risk levels.
                                       </p>
-                                      <div className="mt-2 space-y-1 text-xs" style={{ color: visualizationTheme.text.primary }}>
+                                      <div className="mt-2 space-y-1 text-xs" style={{ color: chartTheme.text.primary }}>
                                         <p>
                                           Return:{' '}
                                           <span className="font-medium">{formatPercent(data.return)}</span>
@@ -3229,12 +3222,12 @@ export const PortfolioOptimization = ({
                                   return (
                                     <div
                                       className="rounded-lg border p-2 shadow-md max-w-xs"
-                                      style={{ background: visualizationTheme.cardBackground, borderColor: '#9333ea' }}
+                                      style={{ background: chartTheme.cardBackground, borderColor: '#9333ea' }}
                                     >
                                       <p className="font-semibold text-sm" style={{ color: '#9333ea' }}>
                                         Capital Market Line (CML)
                                       </p>
-                                      <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                                      <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                                         Optimal risk-return combinations combining risk-free assets with the market portfolio.
                                       </p>
                                     </div>
@@ -3250,15 +3243,15 @@ export const PortfolioOptimization = ({
                                   return (
                                     <div
                                       className="rounded-lg border p-2 shadow-md max-w-xs"
-                                      style={{ background: visualizationTheme.cardBackground, borderColor: '#94a3b8' }}
+                                      style={{ background: chartTheme.cardBackground, borderColor: '#94a3b8' }}
                                     >
                                       <p className="font-semibold text-sm" style={{ color: '#94a3b8' }}>
                                         Inefficient Frontier
                                       </p>
-                                      <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                                      <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                                         Portfolios with minimum return for given risk levels (lower branch of the hyperbola).
                                       </p>
-                                      <div className="mt-2 space-y-1 text-xs" style={{ color: visualizationTheme.text.primary }}>
+                                      <div className="mt-2 space-y-1 text-xs" style={{ color: chartTheme.text.primary }}>
                                         <p>
                                           Return:{' '}
                                           <span className="font-medium">{formatPercent(data.return)}</span>
@@ -3284,9 +3277,9 @@ export const PortfolioOptimization = ({
                                 return (
                                   <div
                                     className="rounded-xl border p-3 shadow-lg max-w-xs"
-                                    style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+                                    style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
                                   >
-                                    <p className="font-bold text-sm pb-2 mb-2 border-b" style={{ color: visualizationTheme.text.primary, borderColor: visualizationTheme.border }}>
+                                    <p className="font-bold text-sm pb-2 mb-2 border-b" style={{ color: chartTheme.text.primary, borderColor: chartTheme.border }}>
                                       {data.type === 'current' ? 'Current Portfolio' :
                                        data.type === 'weights_optimized' ? 'Weights-Optimized Portfolio' :
                                        data.type === 'market_optimized' ? 'Market-Optimized Portfolio' :
@@ -3296,34 +3289,34 @@ export const PortfolioOptimization = ({
                                     </p>
                                     <div className="space-y-1.5 text-xs">
                                       <div className="flex justify-between">
-                                        <span style={{ color: visualizationTheme.text.secondary }}>Return (μ):</span>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>{formatPercent(data.return)}</span>
+                                        <span style={{ color: chartTheme.text.secondary }}>Return (μ):</span>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>{formatPercent(data.return)}</span>
                                       </div>
                                       <div className="flex justify-between">
-                                        <span style={{ color: visualizationTheme.text.secondary }}>Risk (σ):</span>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>{formatPercent(data.risk)}</span>
+                                        <span style={{ color: chartTheme.text.secondary }}>Risk (σ):</span>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>{formatPercent(data.risk)}</span>
                                       </div>
                                       {data.sharpe_ratio != null && typeof data.sharpe_ratio === 'number' && isFinite(data.sharpe_ratio) && (
                                         <div className="flex justify-between">
-                                          <span style={{ color: visualizationTheme.text.secondary }}>Sharpe Ratio:</span>
-                                          <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>{data.sharpe_ratio.toFixed(3)}</span>
+                                          <span style={{ color: chartTheme.text.secondary }}>Sharpe Ratio:</span>
+                                          <span className="font-semibold" style={{ color: chartTheme.text.primary }}>{data.sharpe_ratio.toFixed(3)}</span>
                                         </div>
                                       )}
                                     </div>
                                     
                                     {/* Comparison to current portfolio */}
                                     {showComparison && currentPortfolioMetrics && (
-                                      <div className="mt-3 pt-2 border-t" style={{ borderColor: visualizationTheme.border }}>
-                                        <div className="text-xs font-semibold mb-1.5" style={{ color: visualizationTheme.text.secondary }}>vs Current Portfolio:</div>
+                                      <div className="mt-3 pt-2 border-t" style={{ borderColor: chartTheme.border }}>
+                                        <div className="text-xs font-semibold mb-1.5" style={{ color: chartTheme.text.secondary }}>vs Current Portfolio:</div>
                                         <div className="space-y-1 text-xs">
                                           <div className="flex justify-between">
-                                            <span style={{ color: visualizationTheme.text.secondary }}>Δ Return:</span>
+                                            <span style={{ color: chartTheme.text.secondary }}>Δ Return:</span>
                                             <span className={`font-semibold ${data.return > currentPortfolioMetrics.expected_return ? 'text-green-600' : 'text-red-600'}`}>
                                               {data.return > currentPortfolioMetrics.expected_return ? '+' : ''}{formatPercent(data.return - currentPortfolioMetrics.expected_return)}
                                             </span>
                                           </div>
                                           <div className="flex justify-between">
-                                            <span style={{ color: visualizationTheme.text.secondary }}>Δ Risk:</span>
+                                            <span style={{ color: chartTheme.text.secondary }}>Δ Risk:</span>
                                             <span className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? 'text-green-600' : 'text-red-600'}`}>
                                               {data.risk < currentPortfolioMetrics.risk ? '' : '+'}{formatPercent(data.risk - currentPortfolioMetrics.risk)}
                                             </span>
@@ -3637,7 +3630,7 @@ export const PortfolioOptimization = ({
                           </ComposedChart>
                         </ResponsiveContainer>
                     ) : (
-                      <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                      <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                         <div className="text-center">
                           <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
                           <p>Run portfolio optimization to generate efficient frontier analysis.</p>
@@ -3655,7 +3648,7 @@ export const PortfolioOptimization = ({
                         {randomPortfolios.length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#cbd5e1' }}></div>
-                            <span style={{ color: visualizationTheme.text.secondary }}>
+                            <span style={{ color: chartTheme.text.secondary }}>
                               Random Portfolios ({randomPortfolios.length})
                             </span>
                           </div>
@@ -3663,13 +3656,13 @@ export const PortfolioOptimization = ({
                         {mvoResults.capital_market_line && mvoResults.capital_market_line.length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-0.5" style={{ background: '#9333ea', borderTop: '2px dashed #9333ea' }}></div>
-                            <span style={{ color: visualizationTheme.text.secondary }}>Capital Market Line (CML)</span>
+                            <span style={{ color: chartTheme.text.secondary }}>Capital Market Line (CML)</span>
                           </div>
                         )}
                         {efficientFrontier.length > 0 && (
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-slate-500"></div>
-                            <span style={{ color: visualizationTheme.text.secondary }}>
+                            <span style={{ color: chartTheme.text.secondary }}>
                               Efficient Frontier
                             </span>
                           </div>
@@ -3678,18 +3671,18 @@ export const PortfolioOptimization = ({
                           <>
                             <div className="flex items-center gap-2">
                               <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow"></div>
-                              <span style={{ color: visualizationTheme.text.secondary }}>Current Portfolio</span>
+                              <span style={{ color: chartTheme.text.secondary }}>Current Portfolio</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="w-3 h-3 rotate-45" style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', border: '2px solid white' }}></div>
-                              <span style={{ color: visualizationTheme.text.secondary }}>Weights-Optimized</span>
+                              <span style={{ color: chartTheme.text.secondary }}>Weights-Optimized</span>
                             </div>
                             {tripleOptimizationResults.market_optimized_portfolio && (
                               <div className="flex items-center gap-2">
                                 <svg width="14" height="14" viewBox="0 0 16 16">
                                   <polygon points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6" fill="#22c55e" stroke="#fff" strokeWidth="0.5"/>
                                 </svg>
-                                <span style={{ color: visualizationTheme.text.secondary }}>Market-Optimized</span>
+                                <span style={{ color: chartTheme.text.secondary }}>Market-Optimized</span>
                               </div>
                             )}
                           </>
@@ -3698,13 +3691,13 @@ export const PortfolioOptimization = ({
                             {mvoResults.current_portfolio && (
                               <div className="flex items-center gap-2">
                                 <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow"></div>
-                                <span style={{ color: visualizationTheme.text.secondary }}>Current Portfolio</span>
+                                <span style={{ color: chartTheme.text.secondary }}>Current Portfolio</span>
                               </div>
                             )}
                             {mvoResults.optimized_portfolio && (
                               <div className="flex items-center gap-2">
                                 <div className="w-4 h-4 rotate-45 bg-amber-500 border-2 border-white shadow"></div>
-                                <span style={{ color: visualizationTheme.text.secondary }}>Optimized Portfolio</span>
+                                <span style={{ color: chartTheme.text.secondary }}>Optimized Portfolio</span>
                               </div>
                             )}
                           </>
@@ -3713,33 +3706,33 @@ export const PortfolioOptimization = ({
                       
                       {/* Portfolio Comparison Table - Three Columns */}
                       {tripleOptimizationResults ? (
-                        <div className="mt-6 pt-6" style={{ borderTop: `1px solid ${visualizationTheme.border}` }}>
-                          <h5 className="font-semibold text-center mb-4" style={{ color: visualizationTheme.text.primary }}>
+                        <div className="mt-6 pt-6" style={{ borderTop: `1px solid ${chartTheme.border}` }}>
+                          <h5 className="font-semibold text-center mb-4" style={{ color: chartTheme.text.primary }}>
                             Portfolio Comparison
                           </h5>
                           
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm border-collapse">
                               <thead>
-                                <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-                                  <th className="text-left py-3 px-2 font-medium" style={{ color: visualizationTheme.text.secondary }}>Metric</th>
+                                <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+                                  <th className="text-left py-3 px-2 font-medium" style={{ color: chartTheme.text.secondary }}>Metric</th>
                                   <th className="text-center py-3 px-2" style={{ 
-                                    borderLeft: tripleOptimizationResults.optimization_metadata?.recommendation === 'current' ? '3px solid #ef4444' : '1px solid ' + visualizationTheme.border
+                                    borderLeft: tripleOptimizationResults.optimization_metadata?.recommendation === 'current' ? '3px solid #ef4444' : '1px solid ' + chartTheme.border
                                   }}>
                                     <div className="flex flex-col items-center gap-1">
                                       <div className="w-3 h-3 rounded-full bg-red-500 border border-white shadow-sm"></div>
-                                      <span className="font-medium text-sm" style={{ color: visualizationTheme.text.primary }}>Current</span>
+                                      <span className="font-medium text-sm" style={{ color: chartTheme.text.primary }}>Current</span>
                                       {tripleOptimizationResults.optimization_metadata?.recommendation === 'current' && (
                                         <span className="text-xs font-medium" style={{ color: '#ef4444' }}>Recommended</span>
                                       )}
                                     </div>
                                   </th>
                                   <th className="text-center py-3 px-2" style={{ 
-                                    borderLeft: tripleOptimizationResults.optimization_metadata?.recommendation === 'weights' ? '3px solid #3b82f6' : '1px solid ' + visualizationTheme.border
+                                    borderLeft: tripleOptimizationResults.optimization_metadata?.recommendation === 'weights' ? '3px solid #3b82f6' : '1px solid ' + chartTheme.border
                                   }}>
                                     <div className="flex flex-col items-center gap-1">
                                       <div className="w-3 h-3 rotate-45" style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', border: '2px solid white' }}></div>
-                                      <span className="font-medium text-sm" style={{ color: visualizationTheme.text.primary }}>Weights-Opt</span>
+                                      <span className="font-medium text-sm" style={{ color: chartTheme.text.primary }}>Weights-Opt</span>
                                       {tripleOptimizationResults.optimization_metadata?.recommendation === 'weights' && (
                                         <span className="text-xs font-medium" style={{ color: '#3b82f6' }}>Recommended</span>
                                       )}
@@ -3748,7 +3741,7 @@ export const PortfolioOptimization = ({
                                   {/* Market-Opt column - only show if market_optimized_portfolio exists */}
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <th className="text-center py-3 px-2" style={{ 
-                                      borderLeft: tripleOptimizationResults.optimization_metadata?.recommendation === 'market' ? '3px solid #22c55e' : '1px solid ' + visualizationTheme.border
+                                      borderLeft: tripleOptimizationResults.optimization_metadata?.recommendation === 'market' ? '3px solid #22c55e' : '1px solid ' + chartTheme.border
                                     }}>
                                       <div className="flex flex-col items-center gap-1">
                                         <svg width="14" height="14" viewBox="0 0 16 16">
@@ -3757,7 +3750,7 @@ export const PortfolioOptimization = ({
                                         <TooltipProvider>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
-                                              <span className="font-medium text-sm cursor-help" style={{ color: visualizationTheme.text.primary }}>Market-Opt</span>
+                                              <span className="font-medium text-sm cursor-help" style={{ color: chartTheme.text.primary }}>Market-Opt</span>
                                             </TooltipTrigger>
                                             <TooltipContent>
                                               <p className="max-w-xs">Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
@@ -3774,18 +3767,18 @@ export const PortfolioOptimization = ({
                               </thead>
                               <tbody>
                                 {/* Expected Return Row */}
-                                <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-                                  <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+                                <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+                                  <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                                     Expected Return
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                    <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                       {(tripleOptimizationResults.current_portfolio.metrics.expected_return * 100).toFixed(1)}%
                                     </span>
                                   </td>
                                   <td className="text-center py-3 px-2">
                                     <div>
-                                      <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                      <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                         {(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.expected_return * 100).toFixed(1)}%
                                       </span>
                                       {tripleOptimizationResults.comparison?.weights_vs_current && (
@@ -3799,7 +3792,7 @@ export const PortfolioOptimization = ({
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
                                       <div>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                           {(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.expected_return * 100).toFixed(1)}%
                                         </span>
                                         {tripleOptimizationResults.comparison?.market_vs_current && (
@@ -3812,18 +3805,18 @@ export const PortfolioOptimization = ({
                                   )}
                                 </tr>
                                 {/* Risk Row */}
-                                <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-                                  <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+                                <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+                                  <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                                     Risk (Volatility)
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                    <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                       {(tripleOptimizationResults.current_portfolio.metrics.risk * 100).toFixed(1)}%
                                     </span>
                                   </td>
                                   <td className="text-center py-3 px-2">
                                     <div>
-                                      <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                      <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                         {(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.risk * 100).toFixed(1)}%
                                       </span>
                                       {tripleOptimizationResults.comparison?.weights_vs_current && (
@@ -3837,7 +3830,7 @@ export const PortfolioOptimization = ({
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
                                       <div>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                           {(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.risk * 100).toFixed(1)}%
                                         </span>
                                         {tripleOptimizationResults.comparison?.market_vs_current && (
@@ -3850,18 +3843,18 @@ export const PortfolioOptimization = ({
                                   )}
                                 </tr>
                                 {/* Sharpe Ratio Row */}
-                                <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-                                  <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+                                <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+                                  <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                                     Sharpe Ratio
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                    <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                       {tripleOptimizationResults.current_portfolio.metrics.sharpe_ratio.toFixed(2)}
                                     </span>
                                   </td>
                                   <td className="text-center py-3 px-2">
                                     <div>
-                                      <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                      <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                         {tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio.toFixed(2)}
                                       </span>
                                       {tripleOptimizationResults.comparison?.weights_vs_current && (
@@ -3875,7 +3868,7 @@ export const PortfolioOptimization = ({
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
                                       <div>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                           {tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio.toFixed(2)}
                                         </span>
                                         {tripleOptimizationResults.comparison?.market_vs_current && (
@@ -3888,24 +3881,24 @@ export const PortfolioOptimization = ({
                                   )}
                                 </tr>
                                 {/* Tickers Row */}
-                                <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-                                  <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+                                <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+                                  <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                                     Tickers
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                                    <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                                       {tripleOptimizationResults.current_portfolio.tickers.join(', ') || 'N/A'}
                                     </span>
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                                    <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                                       {tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.tickers.join(', ') || 'N/A'}
                                     </span>
                                   </td>
                                   {/* Market-Opt cell - only show if market_optimized_portfolio exists */}
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
-                                      <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                                      <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                                         {tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.tickers.slice(0, 5).join(', ')}
                                         {(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.tickers.length > 5) && '...'}
                                       </span>
@@ -3913,12 +3906,12 @@ export const PortfolioOptimization = ({
                                   )}
                                 </tr>
                                 {/* Top 3 Weights Row */}
-                                <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-                                  <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+                                <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+                                  <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                                     Top 3 Weights
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                                    <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                                       {Object.entries(tripleOptimizationResults.current_portfolio.weights || {})
                                         .sort(([,a], [,b]) => (b as number) - (a as number))
                                         .slice(0, 3)
@@ -3927,7 +3920,7 @@ export const PortfolioOptimization = ({
                                     </span>
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                                    <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                                       {Object.entries(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.weights || {})
                                         .sort(([,a], [,b]) => (b as number) - (a as number))
                                         .slice(0, 3)
@@ -3938,7 +3931,7 @@ export const PortfolioOptimization = ({
                                   {/* Market-Opt cell - only show if market_optimized_portfolio exists */}
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
-                                      <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                                      <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                                         {Object.entries(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.weights || {})
                                           .sort(([,a], [,b]) => (b as number) - (a as number))
                                           .slice(0, 3)
@@ -3950,17 +3943,17 @@ export const PortfolioOptimization = ({
                                 </tr>
                                 {/* Key Strengths Row */}
                                 <tr>
-                                  <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+                                  <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                                     Key Strengths
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <div className="text-xs space-y-1" style={{ color: visualizationTheme.text.secondary }}>
+                                    <div className="text-xs space-y-1" style={{ color: chartTheme.text.secondary }}>
                                       <div>• Your actual holdings</div>
                                       <div>• Familiar stocks</div>
                                     </div>
                                   </td>
                                   <td className="text-center py-3 px-2">
-                                    <div className="text-xs space-y-1" style={{ color: visualizationTheme.text.secondary }}>
+                                    <div className="text-xs space-y-1" style={{ color: chartTheme.text.secondary }}>
                                       {tripleOptimizationResults.comparison.weights_vs_current.risk_difference < 0 && (
                                         <div>• Lower risk</div>
                                       )}
@@ -3974,7 +3967,7 @@ export const PortfolioOptimization = ({
                                   {/* Market-Opt cell - only show if market_optimized_portfolio exists */}
                                   {tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
-                                      <div className="text-xs space-y-1" style={{ color: visualizationTheme.text.secondary }}>
+                                      <div className="text-xs space-y-1" style={{ color: chartTheme.text.secondary }}>
                                         {tripleOptimizationResults.comparison.market_vs_current && tripleOptimizationResults.comparison.market_vs_current.return_difference > 0 && (
                                           <div>• Higher return</div>
                                         )}
@@ -4024,8 +4017,8 @@ export const PortfolioOptimization = ({
                         </div>
                       ) : mvoResults?.optimized_portfolio ? (
                         // Fallback to old two-column table for backward compatibility
-                        <div className="mt-6 pt-6" style={{ borderTop: `1px solid ${visualizationTheme.border}` }}>
-                          <h5 className="font-semibold text-center mb-4" style={{ color: visualizationTheme.text.primary }}>
+                        <div className="mt-6 pt-6" style={{ borderTop: `1px solid ${chartTheme.border}` }}>
+                          <h5 className="font-semibold text-center mb-4" style={{ color: chartTheme.text.primary }}>
                             Portfolio Comparison
                           </h5>
                           
@@ -4054,8 +4047,8 @@ export const PortfolioOptimization = ({
                           {/* Interpretation Guide */}
                           {dualOptimizationResults?.comparison && (
                             <div className="mt-4 p-3 rounded-lg bg-muted border border-border">
-                              <div className="text-xs space-y-2" style={{ color: visualizationTheme.text.secondary }}>
-                                <div className="font-semibold mb-2" style={{ color: visualizationTheme.text.primary }}>Understanding This Comparison:</div>
+                              <div className="text-xs space-y-2" style={{ color: chartTheme.text.secondary }}>
+                                <div className="font-semibold mb-2" style={{ color: chartTheme.text.primary }}>Understanding This Comparison:</div>
                                 <div>• <strong>Expected Return:</strong> Annualized return based on historical data. Higher is generally better, but unrealistic values (&gt;50%) may indicate data quality issues.</div>
                                 <div>• <strong>Risk (Volatility):</strong> Standard deviation of returns. Lower is generally better for the same return level.</div>
                                 <div>• <strong>Sharpe Ratio:</strong> Risk-adjusted return. Values &gt;1 are good, &gt;2 are excellent, &gt;3 are rare. If current portfolio shows &gt;3, metrics may be unreliable.</div>
@@ -4151,8 +4144,8 @@ export const PortfolioOptimization = ({
                       
                       {/* Optimized Portfolio Allocations - GREEN */}
                       {mvoResults?.optimized_portfolio?.weights && Object.keys(mvoResults.optimized_portfolio.weights).length > 0 && (
-                        <div className="space-y-4 mt-6 pt-6" style={{ borderTop: `1px solid ${visualizationTheme.border}` }}>
-                          <h5 className="font-semibold flex items-center gap-2" style={{ color: visualizationTheme.text.primary }}>
+                        <div className="space-y-4 mt-6 pt-6" style={{ borderTop: `1px solid ${chartTheme.border}` }}>
+                          <h5 className="font-semibold flex items-center gap-2" style={{ color: chartTheme.text.primary }}>
                             <svg width="16" height="16" viewBox="0 0 16 16">
                               <polygon points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6" fill="#22c55e" stroke="#fff" strokeWidth="1"/>
                             </svg>

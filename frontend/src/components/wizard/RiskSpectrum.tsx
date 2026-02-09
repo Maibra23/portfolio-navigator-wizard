@@ -96,8 +96,8 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
   return (
     <TooltipProvider>
       <Card className={cn("w-full", className)}>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-3 text-center">
+          <div className="flex flex-col items-center gap-1">
             <CardTitle className="text-base font-semibold">
               Risk Score: {score}
             </CardTitle>
@@ -182,7 +182,7 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
 
           {/* Adjustment Reasons - compact */}
           {confidenceBand.adjustment_reasons.length > 0 && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground text-center">
               <span className="font-medium">Range factors: </span>
               {confidenceBand.adjustment_reasons.join(', ')}
             </div>

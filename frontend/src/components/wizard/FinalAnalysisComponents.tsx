@@ -198,52 +198,52 @@ export const PerformanceSummaryCard = ({
   const isCompliant = selectedRisk <= maxRisk;
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="w-full">
+      <CardHeader className="pb-2">
         <CardTitle className="text-lg">Performance Summary</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg bg-muted border border-border">
-            <div className="text-sm font-medium text-gray-600 mb-2">Current → {selectedLabel}</div>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Return</span>
-                <span className={`font-semibold ${returnDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+          <div className="p-4 rounded-lg bg-muted/50 border border-border flex-1 min-w-0">
+            <div className="text-sm font-medium text-muted-foreground mb-2">Current → {selectedLabel}</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Return</span>
+                <span className={`font-semibold text-sm ${returnDiff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {returnDiff >= 0 ? '+' : ''}{(returnDiff * 100).toFixed(1)}%
                 </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Risk</span>
-                <span className={`font-semibold ${riskDiff <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Risk</span>
+                <span className={`font-semibold text-sm ${riskDiff <= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {riskDiff <= 0 ? '' : '+'}{(riskDiff * 100).toFixed(1)}%
                 </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Sharpe</span>
-                <span className={`font-semibold ${sharpeDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Sharpe</span>
+                <span className={`font-semibold text-sm ${sharpeDiff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {sharpeDiff >= 0 ? '+' : ''}{sharpeDiff.toFixed(2)}
                 </span>
               </div>
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-muted border border-border">
-            <div className="text-sm font-medium text-gray-600 mb-2">Risk Profile Compliance</div>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Max Allowed</span>
-                <span className="font-semibold text-indigo-600">{(maxRisk * 100).toFixed(0)}%</span>
+          <div className="p-4 rounded-lg bg-muted/50 border border-border flex-1 min-w-0">
+            <div className="text-sm font-medium text-muted-foreground mb-2">Risk Profile Compliance</div>
+            <div className="grid grid-cols-3 gap-3 items-center">
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Max Allowed</span>
+                <span className="font-semibold text-sm text-primary">{(maxRisk * 100).toFixed(0)}%</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Your Risk</span>
-                <span className={`font-semibold ${isCompliant ? 'text-green-600' : 'text-red-600'}`}>
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Your Risk</span>
+                <span className={`font-semibold text-sm ${isCompliant ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {(selectedRisk * 100).toFixed(1)}%
                 </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Status</span>
-                <Badge variant={isCompliant ? 'default' : 'destructive'} className={isCompliant ? 'bg-green-500' : ''}>
-                  {isCompliant ? '✓ Compliant' : '⚠ Over Limit'}
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Status</span>
+                <Badge variant={isCompliant ? 'default' : 'destructive'} className={isCompliant ? 'bg-green-600 dark:bg-green-700' : ''}>
+                  {isCompliant ? 'Compliant' : 'Over Limit'}
                 </Badge>
               </div>
             </div>

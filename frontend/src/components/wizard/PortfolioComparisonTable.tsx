@@ -3,33 +3,8 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatPercent, formatNumber } from '@/utils/numberFormat';
-
-// Dark theme for Linear-inspired design
-const visualizationTheme = {
-  canvas: '#0c0d0e',
-  cardBackground: '#14151a',
-  border: 'rgba(255, 255, 255, 0.08)',
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axes: {
-    line: 'rgba(255, 255, 255, 0.1)',
-    tick: 'rgba(255, 255, 255, 0.5)',
-    label: 'rgba(255, 255, 255, 0.7)',
-  },
-  text: {
-    primary: 'rgba(255, 255, 255, 0.9)',
-    secondary: 'rgba(255, 255, 255, 0.6)',
-    subtle: 'rgba(255, 255, 255, 0.4)',
-  },
-  spacing: {
-    cardPadding: '28px',
-    sectionGap: '28px',
-  },
-  radius: '18px',
-  legend: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-};
+import { useTheme } from '@/hooks/useTheme';
+import { getChartTheme } from '@/utils/chartThemes';
 
 interface TripleOptimizationResults {
   current_portfolio: {
@@ -96,37 +71,41 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
   showSelectionButtons = true,
   className = ''
 }) => {
+  // Get current theme for dynamic colors
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
+
   const hasMarketOptimized = !!tripleOptimizationResults.market_optimized_portfolio;
   const recommendation = tripleOptimizationResults.optimization_metadata?.recommendation;
 
   return (
-    <div className={`mt-6 pt-6 ${className}`} style={{ borderTop: `1px solid ${visualizationTheme.border}` }}>
-      <h5 className="font-semibold text-center mb-4" style={{ color: visualizationTheme.text.primary }}>
+    <div className={`mt-6 pt-6 ${className}`} style={{ borderTop: `1px solid ${chartTheme.border}` }}>
+      <h5 className="font-semibold text-center mb-4" style={{ color: chartTheme.text.primary }}>
         Portfolio Comparison
       </h5>
       
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-              <th className="text-left py-3 px-2 font-medium" style={{ color: visualizationTheme.text.secondary }}>Metric</th>
+            <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+              <th className="text-left py-3 px-2 font-medium" style={{ color: chartTheme.text.secondary }}>Metric</th>
               <th className="text-center py-3 px-2" style={{ 
-                borderLeft: recommendation === 'current' ? '3px solid #ef4444' : '1px solid ' + visualizationTheme.border
+                borderLeft: recommendation === 'current' ? '3px solid #ef4444' : '1px solid ' + chartTheme.border
               }}>
                 <div className="flex flex-col items-center gap-1">
                   <div className="w-3 h-3 rounded-full bg-red-500 border border-white shadow-sm"></div>
-                  <span className="font-medium text-sm" style={{ color: visualizationTheme.text.primary }}>Current</span>
+                  <span className="font-medium text-sm" style={{ color: chartTheme.text.primary }}>Current</span>
                   {recommendation === 'current' && (
                     <span className="text-xs font-medium" style={{ color: '#ef4444' }}>Recommended</span>
                   )}
                 </div>
               </th>
               <th className="text-center py-3 px-2" style={{ 
-                borderLeft: recommendation === 'weights' ? '3px solid #3b82f6' : '1px solid ' + visualizationTheme.border
+                borderLeft: recommendation === 'weights' ? '3px solid #3b82f6' : '1px solid ' + chartTheme.border
               }}>
                 <div className="flex flex-col items-center gap-1">
                   <div className="w-3 h-3 rotate-45" style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', border: '2px solid white' }}></div>
-                  <span className="font-medium text-sm" style={{ color: visualizationTheme.text.primary }}>Weights-Opt</span>
+                  <span className="font-medium text-sm" style={{ color: chartTheme.text.primary }}>Weights-Opt</span>
                   {recommendation === 'weights' && (
                     <span className="text-xs font-medium" style={{ color: '#3b82f6' }}>Recommended</span>
                   )}
@@ -135,7 +114,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               {/* Market-Opt column - only show if market_optimized_portfolio exists */}
               {hasMarketOptimized && (
                 <th className="text-center py-3 px-2" style={{ 
-                  borderLeft: recommendation === 'market' ? '3px solid #22c55e' : '1px solid ' + visualizationTheme.border
+                  borderLeft: recommendation === 'market' ? '3px solid #22c55e' : '1px solid ' + chartTheme.border
                 }}>
                   <div className="flex flex-col items-center gap-1">
                     <svg width="14" height="14" viewBox="0 0 16 16">
@@ -144,7 +123,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="font-medium text-sm cursor-help" style={{ color: visualizationTheme.text.primary }}>Market-Opt</span>
+                          <span className="font-medium text-sm cursor-help" style={{ color: chartTheme.text.primary }}>Market-Opt</span>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
@@ -161,18 +140,18 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
           </thead>
           <tbody>
             {/* Expected Return Row */}
-            <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-              <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+            <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+              <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                 Expected Return
               </td>
               <td className="text-center py-3 px-2">
-                <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                   {formatPercent(tripleOptimizationResults.current_portfolio.metrics.expected_return)}
                 </span>
               </td>
               <td className="text-center py-3 px-2">
                 <div>
-                  <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                  <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                     {formatPercent(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.expected_return)}
                   </span>
                   {tripleOptimizationResults.comparison?.weights_vs_current && (
@@ -186,7 +165,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               {hasMarketOptimized && tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
                                       <div>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                           {formatPercent(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.expected_return)}
                                         </span>
                                         {tripleOptimizationResults.comparison?.market_vs_current && (
@@ -199,18 +178,18 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               )}
             </tr>
             {/* Risk Row */}
-            <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-              <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+            <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+              <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                 Risk (Volatility)
               </td>
               <td className="text-center py-3 px-2">
-                <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                   {formatPercent(tripleOptimizationResults.current_portfolio.metrics.risk)}
                 </span>
               </td>
               <td className="text-center py-3 px-2">
                 <div>
-                  <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                  <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                     {formatPercent(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.risk)}
                   </span>
                   {tripleOptimizationResults.comparison?.weights_vs_current && (
@@ -224,7 +203,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               {hasMarketOptimized && tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
                                       <div>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                           {formatPercent(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.risk)}
                                         </span>
                                         {tripleOptimizationResults.comparison?.market_vs_current && (
@@ -237,18 +216,18 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               )}
             </tr>
             {/* Sharpe Ratio Row */}
-            <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-              <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+            <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+              <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                 Sharpe Ratio
               </td>
               <td className="text-center py-3 px-2">
-                <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                   {formatNumber(tripleOptimizationResults.current_portfolio.metrics.sharpe_ratio, { maxDecimals: 2 })}
                 </span>
               </td>
               <td className="text-center py-3 px-2">
                 <div>
-                  <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                  <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                     {formatNumber(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio, { maxDecimals: 2 })}
                   </span>
                   {tripleOptimizationResults.comparison?.weights_vs_current && (
@@ -262,7 +241,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               {hasMarketOptimized && tripleOptimizationResults.market_optimized_portfolio && (
                                     <td className="text-center py-3 px-2">
                                       <div>
-                                        <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+                                        <span className="font-semibold" style={{ color: chartTheme.text.primary }}>
                                           {formatNumber(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.metrics.sharpe_ratio, { maxDecimals: 2 })}
                                         </span>
                                         {tripleOptimizationResults.comparison?.market_vs_current && (
@@ -275,17 +254,17 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               )}
             </tr>
             {/* Tickers Row */}
-            <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-              <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+            <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+              <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                 Tickers
               </td>
               <td className="text-center py-3 px-2">
-                <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                   {tripleOptimizationResults.current_portfolio.tickers.join(', ') || 'N/A'}
                 </span>
               </td>
               <td className="text-center py-3 px-2">
-                <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                   {tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.tickers.join(', ') || 'N/A'}
                 </span>
               </td>
@@ -295,7 +274,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="text-xs cursor-help underline decoration-dotted" style={{ color: visualizationTheme.text.secondary }}>
+                        <span className="text-xs cursor-help underline decoration-dotted" style={{ color: chartTheme.text.secondary }}>
                           {tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.tickers.slice(0, 5).join(', ')}
                           {(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.tickers.length > 5) && '...'}
                         </span>
@@ -312,12 +291,12 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               )}
             </tr>
             {/* Top 3 Weights Row */}
-            <tr className="border-b" style={{ borderColor: visualizationTheme.border }}>
-              <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+            <tr className="border-b" style={{ borderColor: chartTheme.border }}>
+              <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                 Top 3 Weights
               </td>
               <td className="text-center py-3 px-2">
-                <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                   {Object.entries(tripleOptimizationResults.current_portfolio.weights || {})
                     .sort(([,a], [,b]) => (b as number) - (a as number))
                     .slice(0, 3)
@@ -326,7 +305,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                 </span>
               </td>
               <td className="text-center py-3 px-2">
-                <span className="text-xs" style={{ color: visualizationTheme.text.secondary }}>
+                <span className="text-xs" style={{ color: chartTheme.text.secondary }}>
                   {Object.entries(tripleOptimizationResults.weights_optimized_portfolio.optimized_portfolio.weights || {})
                     .sort(([,a], [,b]) => (b as number) - (a as number))
                     .slice(0, 3)
@@ -340,7 +319,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="text-xs cursor-help underline decoration-dotted" style={{ color: visualizationTheme.text.secondary }}>
+                        <span className="text-xs cursor-help underline decoration-dotted" style={{ color: chartTheme.text.secondary }}>
                           {Object.entries(tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio.weights || {})
                             .sort(([,a], [,b]) => (b as number) - (a as number))
                             .slice(0, 3)
@@ -365,17 +344,17 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
             </tr>
             {/* Key Strengths Row */}
             <tr>
-              <td className="py-3 px-2 font-medium" style={{ color: visualizationTheme.text.primary }}>
+              <td className="py-3 px-2 font-medium" style={{ color: chartTheme.text.primary }}>
                 Key Strengths
               </td>
               <td className="text-center py-3 px-2">
-                <div className="text-xs space-y-1" style={{ color: visualizationTheme.text.secondary }}>
+                <div className="text-xs space-y-1" style={{ color: chartTheme.text.secondary }}>
                   <div>• Your actual holdings</div>
                   <div>• Familiar stocks</div>
                 </div>
               </td>
               <td className="text-center py-3 px-2">
-                <div className="text-xs space-y-1" style={{ color: visualizationTheme.text.secondary }}>
+                <div className="text-xs space-y-1" style={{ color: chartTheme.text.secondary }}>
                   {tripleOptimizationResults.comparison.weights_vs_current.risk_difference < 0 && (
                     <div>• Lower risk</div>
                   )}
@@ -389,7 +368,7 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
               {/* Market-Opt cell - only show if market_optimized_portfolio exists */}
               {hasMarketOptimized && tripleOptimizationResults.market_optimized_portfolio && (
                 <td className="text-center py-3 px-2">
-                  <div className="text-xs space-y-1" style={{ color: visualizationTheme.text.secondary }}>
+                  <div className="text-xs space-y-1" style={{ color: chartTheme.text.secondary }}>
                     {tripleOptimizationResults.comparison.market_vs_current && tripleOptimizationResults.comparison.market_vs_current.return_difference > 0 && (
                       <div>• Higher return</div>
                     )}

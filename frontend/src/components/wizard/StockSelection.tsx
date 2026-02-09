@@ -1723,21 +1723,16 @@ export const StockSelection = ({
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <Card>
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center border border-border">
-            <TrendingUp className="h-8 w-8 text-white" />
-          </div>
+      <Card className="relative overflow-hidden">
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg bg-gradient-to-b from-primary/30 via-primary/20 to-transparent"
+          aria-hidden="true"
+        />
+        <CardHeader className="text-center pl-6">
           <CardTitle className="text-2xl">Enhanced Portfolio Construction</CardTitle>
-          <p className="text-muted-foreground">
-            Build your custom investment portfolio with {capital.toLocaleString()} SEK
+          <p className="text-sm text-muted-foreground mt-1">
+            Build your portfolio with {capital.toLocaleString()} SEK · Risk profile: {getRiskProfileDisplay()}
           </p>
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <Shield className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              Risk Profile: {getRiskProfileDisplay()}
-            </span>
-          </div>
         </CardHeader>
         
         <CardContent>

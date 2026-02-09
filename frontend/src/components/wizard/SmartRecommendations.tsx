@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, TrendingUp, Sparkles, AlertTriangle, DollarSign } from 'lucide-react';
 
 interface SmartRecommendationsProps {
@@ -215,64 +215,74 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
 
   if (loading) {
     return (
-      <Alert className="bg-muted border border-border">
-        <Sparkles className="h-4 w-4 animate-pulse" />
-        <AlertTitle>Analyzing Your Settings...</AlertTitle>
-        <AlertDescription className="text-xs">
-          Generating personalized recommendations
-        </AlertDescription>
-      </Alert>
+      <Card className="border border-border bg-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 animate-pulse text-muted-foreground" />
+            Smart Recommendations
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">Analyzing your settings...</p>
+        </CardContent>
+      </Card>
     );
   }
 
   if (recommendations.length === 0) {
     return (
-      <Alert className="bg-muted border border-border">
-        <CheckCircle className="h-4 w-4 text-green-600" />
-        <AlertTitle>Optimized Configuration</AlertTitle>
-        <AlertDescription className="text-xs">
-          Your current settings appear to be well-optimized for your situation. No immediate recommendations at this time.
-        </AlertDescription>
-      </Alert>
+      <Card className="border border-border bg-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+            Smart Recommendations
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">Your settings look well-optimized. No suggestions right now.</p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-3">
-      <Alert className="bg-muted border border-border">
-        <Sparkles className="h-4 w-4 text-purple-600" />
-        <AlertTitle className="text-base">Smart Recommendations</AlertTitle>
-        <AlertDescription className="text-xs text-muted-foreground">
-          Based on your portfolio settings, here are personalized suggestions to optimize your returns
-        </AlertDescription>
-      </Alert>
-
-      {recommendations.map((rec, index) => {
-        const alertVariant = rec.type === 'warning' ? 'default' : 'default';
-        const bgColor =
-          rec.type === 'success'
-            ? 'bg-green-50 border-green-200'
-            : rec.type === 'info'
-            ? 'bg-blue-50 border-blue-200'
-            : 'bg-amber-50 border-amber-200';
-
-        return (
-          <Alert key={index} className={bgColor}>
-            {rec.icon}
-            <AlertTitle className="text-sm font-semibold">{rec.title}</AlertTitle>
-            <AlertDescription className="text-xs mt-1">
-              {rec.description}
-              {rec.savings && rec.savings > 0 && (
-                <div className="mt-2 p-2 bg-card border border-border rounded">
-                  <p className="font-semibold text-green-700">
-                    Potential 5-Year Savings: {rec.savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
+    <Card className="border border-border bg-card w-full">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          Smart Recommendations
+        </CardTitle>
+        <p className="text-xs text-muted-foreground font-normal">
+          Personalized suggestions based on your portfolio settings
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-0">
+        {recommendations.map((rec, index) => (
+          <div
+            key={index}
+            className={`rounded-lg border p-3 ${
+              rec.type === 'success'
+                ? 'bg-green-500/10 border-green-500/30 dark:bg-green-500/5 dark:border-green-500/20'
+                : rec.type === 'info'
+                ? 'bg-primary/5 border-primary/20 dark:bg-primary/10 dark:border-primary/30'
+                : 'bg-amber-500/10 border-amber-500/30 dark:bg-amber-500/5 dark:border-amber-500/20'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0 [&_svg]:text-foreground">{rec.icon}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">{rec.title}</p>
+                <p className="text-xs text-muted-foreground mt-1">{rec.description}</p>
+                {rec.savings != null && rec.savings > 0 && (
+                  <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-2">
+                    Potential 5-year savings: {rec.savings.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
                   </p>
-                </div>
-              )}
-            </AlertDescription>
-          </Alert>
-        );
-      })}
-    </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 };

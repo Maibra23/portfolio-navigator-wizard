@@ -29,41 +29,14 @@ import {
 import type { TooltipProps, ValueType, NameType } from 'recharts';
 import { Loader2, RefreshCw, ZoomOut } from 'lucide-react';
 import clsx from 'clsx';
+import { useTheme } from '@/hooks/useTheme';
+import { getChartTheme, getVisualizationPalette, getPortfolioColors } from '@/utils/chartThemes';
 
-const vividPalette = [
-  '#4ade80', '#f87171', '#60a5fa', '#fbbf24', '#a78bfa',
-  '#fb923c', '#22d3ee', '#f472b6', '#84cc16', '#06b6d4',
-];
-
-const visualizationTheme = {
-  canvas: '#0c0d0e',
-  cardBackground: '#14151a',
-  border: 'rgba(255, 255, 255, 0.08)',
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axes: {
-    line: 'rgba(255, 255, 255, 0.1)',
-    tick: 'rgba(255, 255, 255, 0.5)',
-    label: 'rgba(255, 255, 255, 0.7)',
-  },
-  text: {
-    primary: 'rgba(255, 255, 255, 0.9)',
-    secondary: 'rgba(255, 255, 255, 0.6)',
-    subtle: 'rgba(255, 255, 255, 0.4)',
-  },
-  clusterPalette: {
-    selected: vividPalette[0],
-    benchmark1: vividPalette[1],
-    benchmark2: vividPalette[2],
-    benchmarks: vividPalette.slice(1),
-    fallback: vividPalette[3],
-  },
-  portfolioPalette: vividPalette,
+// Layout constants (theme-independent)
+const layoutConstants = {
   hull: {
     strokeOpacity: 0.55,
     strokeDasharray: '5 6',
-  },
-  pie: {
-    palette: vividPalette,
   },
   spacing: {
     cardPadding: '28px',
@@ -73,7 +46,6 @@ const visualizationTheme = {
   hoverFadeOpacity: 0.4,
   legend: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -451,6 +423,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
   strategyPortfolios = [],
   compactMode = false,
 }) => {
+  // Get current theme for dynamic colors
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
+  const vividPalette = getVisualizationPalette(theme);
+  const portfolioColors = getPortfolioColors(theme);
+
   const [data, setData] = useState<VisualizationResponse | null>(null);
   const [fetchState, setFetchState] = useState<FetchState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -1047,15 +1025,15 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     return (
       <div
         className="rounded-xl border p-3 shadow-sm max-w-xs"
-        style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+        style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
       >
-        <p className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+        <p className="font-semibold" style={{ color: chartTheme.text.primary }}>
           {point.symbol}
         </p>
-        <p className="text-sm mt-1" style={{ color: visualizationTheme.text.secondary }}>
+        <p className="text-sm mt-1" style={{ color: chartTheme.text.secondary }}>
           {point.portfolioLabel}
         </p>
-        <div className="mt-2 space-y-1 text-sm" style={{ color: visualizationTheme.text.primary }}>
+        <div className="mt-2 space-y-1 text-sm" style={{ color: chartTheme.text.primary }}>
           <p>
             Return:{' '}
             <span className="font-medium">{formatPercent(point.annualReturn)}</span>
@@ -1078,19 +1056,19 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     return (
       <div
         className="rounded-xl border p-3 shadow-sm max-w-xs"
-        style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+        style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
       >
-        <p className="font-semibold" style={{ color: visualizationTheme.text.primary }}>
+        <p className="font-semibold" style={{ color: chartTheme.text.primary }}>
           {sectorItem.sector}
         </p>
-        <div className="mt-2 space-y-1 text-sm" style={{ color: visualizationTheme.text.primary }}>
+        <div className="mt-2 space-y-1 text-sm" style={{ color: chartTheme.text.primary }}>
           <p>
             Total Allocation:{' '}
             <span className="font-medium">{sectorItem.percent.toFixed(2)}%</span>
           </p>
           {sectorItem.stockAllocations && sectorItem.stockAllocations.length > 0 && (
-            <div className="mt-2 pt-2 border-t" style={{ borderColor: visualizationTheme.border }}>
-              <p className="text-xs font-semibold mb-1" style={{ color: visualizationTheme.text.secondary }}>
+            <div className="mt-2 pt-2 border-t" style={{ borderColor: chartTheme.border }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: chartTheme.text.secondary }}>
                 Stock Allocations:
               </p>
               <div className="space-y-0.5">
@@ -1134,7 +1112,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
           <AlertDescription>
             <div className="space-y-1">
               {warnings.map((warning, index) => (
-                <p key={index} className="text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                <p key={index} className="text-sm" style={{ color: chartTheme.text.secondary }}>
                   {warning}
                 </p>
               ))}
@@ -1186,7 +1164,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
               size="sm"
               onClick={handleRetry}
               disabled={isLoading || !isDataReady}
-              style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.primary }}
+              style={{ borderColor: chartTheme.border, color: chartTheme.text.primary }}
               title="Refresh all visualization data including scatter plot, correlation matrix, and sector allocation"
             >
               {isLoading ? (
@@ -1211,7 +1189,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             size="sm"
             onClick={handleRetry}
             disabled={isLoading || !isDataReady}
-            style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.primary }}
+            style={{ borderColor: chartTheme.border, color: chartTheme.text.primary }}
             title="Refresh all visualization data including scatter plot, correlation matrix, and sector allocation"
           >
             {isLoading ? (
@@ -1258,12 +1236,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
         {/* Return vs Risk Tradeoff */}
         <Card
           className="w-full"
-          style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+          style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
         >
           <CardHeader className="pb-2">
             <CardTitle
               className={compactMode ? "text-sm md:text-base text-center" : "text-lg text-center"}
-              style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+              style={{ color: chartTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
             >
               Return vs. Risk Tradeoff
             </CardTitle>
@@ -1277,7 +1255,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             }}
           >
             {!isDataReady && (
-              <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+              <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                 Please select a portfolio with at least 3 stocks to view visualizations.
               </div>
             )}
@@ -1289,13 +1267,13 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
             )}
 
             {isDataReady && !isLoading && hasData && viewMode === 'portfolio' && groupedScatter.size === 0 && (
-              <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+              <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                 No data available for the current selection.
               </div>
             )}
 
             {isDataReady && !isLoading && hasData && viewMode === 'ticker' && normalizedTickerPoints.length === 0 && (
-              <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+              <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                 No ticker data available. Please refresh the data.
               </div>
             )}
@@ -1648,12 +1626,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card
               className="w-full"
-              style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+              style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
             >
               <CardHeader className="pb-2">
                 <CardTitle
                   className="text-sm md:text-base text-center"
-                  style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+                  style={{ color: chartTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
                 >
                   Correlation Matrix
                 </CardTitle>
@@ -1672,11 +1650,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                 <div className="min-w-full space-y-1">
                   <div
                     className="sticky top-0 z-10 flex"
-                    style={{ background: visualizationTheme.canvas, color: visualizationTheme.text.secondary, fontWeight: 600 }}
+                    style={{ background: visualizationTheme.canvas, color: chartTheme.text.secondary, fontWeight: 600 }}
                   >
                     <div
                       className="w-24 flex-shrink-0 border-r p-2 text-xs uppercase"
-                      style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.secondary, letterSpacing: '0.08em' }}
+                      style={{ borderColor: chartTheme.border, color: chartTheme.text.secondary, letterSpacing: '0.08em' }}
                     >
                       Ticker
                     </div>
@@ -1684,7 +1662,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       <div
                         key={`col-${ticker}`}
                         className="flex-1 border-r p-2 text-center text-xs font-semibold"
-                        style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.secondary }}
+                        style={{ borderColor: chartTheme.border, color: chartTheme.text.secondary }}
                       >
                         {ticker}
                       </div>
@@ -1695,13 +1673,13 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       <div
                         className="w-24 flex-shrink-0 border-r p-2 text-xs font-medium"
                         style={{
-                          borderColor: visualizationTheme.border,
+                          borderColor: chartTheme.border,
                           background: visualizationTheme.canvas,
-                          color: visualizationTheme.text.primary,
+                          color: chartTheme.text.primary,
                         }}
                       >
                         <div style={{ fontWeight: 600 }}>{data.correlation.tickers[rowIndex]}</div>
-                        <div style={{ color: visualizationTheme.text.secondary, fontSize: 10, fontWeight: 400 }}>
+                        <div style={{ color: chartTheme.text.secondary, fontSize: 10, fontWeight: 400 }}>
                           {data.correlation.portfolioLabels?.[rowIndex]}
                         </div>
                       </div>
@@ -1714,8 +1692,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                             className="flex-1 border-r border-b p-2 text-center text-xs font-medium"
                             style={{
                               background: isSelf ? 'rgba(130, 188, 176, 0.25)' : getCorrelationColor(value),
-                              borderColor: visualizationTheme.border,
-                              color: visualizationTheme.text.primary,
+                              borderColor: chartTheme.border,
+                              color: chartTheme.text.primary,
                             }}
                           >
                             {value.toFixed(2)}
@@ -1726,11 +1704,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   ))}
                 </div>
               ) : isDataReady && !isLoading ? (
-                <div className="flex h-64 items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                <div className="flex h-64 items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                   No correlation data available.
                 </div>
               ) : !isDataReady ? (
-                <div className="flex h-64 items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                <div className="flex h-64 items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                   Please select a portfolio to view correlation data.
                 </div>
               ) : null}
@@ -1739,12 +1717,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
 
           <Card
             className="w-full"
-            style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+            style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
           >
             <CardHeader className="pb-3">
             <CardTitle
               className="text-sm md:text-base text-center"
-              style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
+              style={{ color: chartTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}
             >
               Sector Allocation
             </CardTitle>
@@ -1754,9 +1732,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   variant="outline"
                   className="text-xs"
                   style={{
-                    borderColor: visualizationTheme.border,
-                    background: visualizationTheme.cardBackground,
-                    color: visualizationTheme.text.primary,
+                    borderColor: chartTheme.border,
+                    background: chartTheme.cardBackground,
+                    color: chartTheme.text.primary,
                   }}
                 >
                   Diversification: {selectedPortfolioDiversificationScore.toFixed(1)}%
@@ -1813,11 +1791,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   </PieChart>
                 </ResponsiveContainer>
               ) : isDataReady && !isLoading ? (
-                <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                   No sector allocation data available.
                 </div>
               ) : !isDataReady ? (
-                <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                   Please select a portfolio to view sector allocation.
                 </div>
               ) : null}
@@ -1829,12 +1807,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
           <>
             <Card
               className="w-full"
-              style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+              style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
             >
               <CardHeader>
                 <CardTitle
                   className="text-lg"
-                  style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+                  style={{ color: chartTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
                 >
                   Correlation Matrix
                 </CardTitle>
@@ -1853,11 +1831,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <div className="min-w-full space-y-1">
                     <div
                       className="sticky top-0 z-10 flex"
-                      style={{ background: visualizationTheme.canvas, color: visualizationTheme.text.secondary, fontWeight: 600 }}
+                      style={{ background: visualizationTheme.canvas, color: chartTheme.text.secondary, fontWeight: 600 }}
                     >
                       <div
                         className="w-24 flex-shrink-0 border-r p-2 text-xs uppercase"
-                        style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.secondary, letterSpacing: '0.08em' }}
+                        style={{ borderColor: chartTheme.border, color: chartTheme.text.secondary, letterSpacing: '0.08em' }}
                       >
                         Ticker
                       </div>
@@ -1865,7 +1843,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         <div
                           key={`col-${ticker}`}
                           className="flex-1 border-r p-2 text-center text-xs font-semibold"
-                          style={{ borderColor: visualizationTheme.border, color: visualizationTheme.text.secondary }}
+                          style={{ borderColor: chartTheme.border, color: chartTheme.text.secondary }}
                         >
                           {ticker}
                         </div>
@@ -1876,13 +1854,13 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                         <div
                           className="w-24 flex-shrink-0 border-r p-2 text-xs font-medium"
                           style={{
-                            borderColor: visualizationTheme.border,
+                            borderColor: chartTheme.border,
                             background: visualizationTheme.canvas,
-                            color: visualizationTheme.text.primary,
+                            color: chartTheme.text.primary,
                           }}
                         >
                           <div style={{ fontWeight: 600 }}>{data.correlation.tickers[rowIndex]}</div>
-                          <div style={{ color: visualizationTheme.text.secondary, fontSize: 10, fontWeight: 400 }}>
+                          <div style={{ color: chartTheme.text.secondary, fontSize: 10, fontWeight: 400 }}>
                             {data.correlation.portfolioLabels?.[rowIndex]}
                           </div>
                         </div>
@@ -1895,8 +1873,8 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                               className="flex-1 border-r border-b p-2 text-center text-xs font-medium"
                               style={{
                                 background: isSelf ? 'rgba(130, 188, 176, 0.25)' : getCorrelationColor(value),
-                                borderColor: visualizationTheme.border,
-                                color: visualizationTheme.text.primary,
+                                borderColor: chartTheme.border,
+                                color: chartTheme.text.primary,
                               }}
                             >
                               {value.toFixed(2)}
@@ -1907,11 +1885,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     ))}
                   </div>
                 ) : isDataReady && !isLoading ? (
-                  <div className="flex h-64 items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                  <div className="flex h-64 items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                     No correlation data available.
                   </div>
                 ) : !isDataReady ? (
-                  <div className="flex h-64 items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                  <div className="flex h-64 items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                     Please select a portfolio to view correlation data.
                   </div>
                 ) : null}
@@ -1920,12 +1898,12 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
 
             <Card
               className="w-full"
-              style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+              style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
             >
               <CardHeader>
                 <CardTitle
                   className="text-lg"
-                  style={{ color: visualizationTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
+                  style={{ color: chartTheme.text.primary, textAlign: 'center', fontWeight: 600, letterSpacing: '-0.01em' }}
                 >
                   Sector Allocation
                 </CardTitle>
@@ -1938,9 +1916,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                       variant="outline"
                       className="text-xs"
                       style={{
-                        borderColor: visualizationTheme.border,
-                        background: visualizationTheme.cardBackground,
-                        color: visualizationTheme.text.primary,
+                        borderColor: chartTheme.border,
+                        background: chartTheme.cardBackground,
+                        color: chartTheme.text.primary,
                       }}
                     >
                       Diversification: {selectedPortfolioDiversificationScore.toFixed(1)}%
@@ -1997,11 +1975,11 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                     </PieChart>
                   </ResponsiveContainer>
                 ) : isDataReady && !isLoading ? (
-                  <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                  <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                     No sector allocation data available.
                   </div>
                 ) : !isDataReady ? (
-                  <div className="flex h-full items-center justify-center text-sm" style={{ color: visualizationTheme.text.secondary }}>
+                  <div className="flex h-full items-center justify-center text-sm" style={{ color: chartTheme.text.secondary }}>
                     Please select a portfolio to view sector allocation.
                   </div>
                 ) : null}

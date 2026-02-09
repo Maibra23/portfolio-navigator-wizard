@@ -219,7 +219,7 @@ export const PortfolioWizard = () => {
       {/* Navigation Header */}
       <div className="bg-card border-b border-border px-6 py-4">
         <div className="max-w-7xl mx-auto flex justify-center items-center">
-          <h1 className="text-2xl font-bold text-foreground">Portfolio Navigator Wizard</h1>
+          <h1 className="text-2xl font-bold text-foreground">Portfolio Navigator</h1>
         </div>
       </div>
 

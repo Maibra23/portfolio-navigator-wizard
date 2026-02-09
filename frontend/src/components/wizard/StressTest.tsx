@@ -311,7 +311,7 @@ export const StressTest: React.FC<StressTestProps> = ({
             Test your portfolio's resilience during historical market crises
           </p>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="p-6 pt-0 space-y-6 w-full min-w-0">
           {/* Error Display */}
           {error && (
             <Alert variant="destructive">
@@ -539,8 +539,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                       Portfolio forwarded from Recommendations tab ({selectedPortfolio!.tickers.length} holdings)
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                    <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200 min-w-0">
                       <div className="text-xs text-gray-600 mb-1">Expected Return</div>
                       <div className="text-xl font-bold text-blue-700">
                         {(selectedPortfolio!.metrics.expected_return * 100).toFixed(1)}%
@@ -2492,7 +2492,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           
                           {/* Peak/Trough Summary */}
                           {stressTestResults.scenarios[selectedScenario || 'covid19']?.peaks_troughs && (
-                            <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t w-full">
                               {stressTestResults.scenarios[selectedScenario || 'covid19'].peaks_troughs.peak && (
                                 <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
                                   <div className="text-xs text-green-700 mb-1">Peak</div>
@@ -2505,7 +2505,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 </div>
                               )}
                               {stressTestResults.scenarios[selectedScenario || 'covid19'].peaks_troughs.trough && (
-                                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-center">
+                                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-center min-w-0">
                                   <div className="text-xs text-red-700 mb-1">Trough</div>
                                   <div className="text-lg font-bold text-red-800">
                                     {(stressTestResults.scenarios[selectedScenario || 'covid19'].peaks_troughs.trough.value * 100).toFixed(1)}%
@@ -2516,7 +2516,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 </div>
                               )}
                               {stressTestResults.scenarios[selectedScenario || 'covid19'].peaks_troughs.recovery_peak && (
-                                <div className="p-3 rounded-lg border text-center" style={{ backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }}>
+                                <div className="p-3 rounded-lg border text-center min-w-0" style={{ backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }}>
                                   <div className="text-xs mb-1" style={{ color: '#9333ea' }}>Recovery Peak</div>
                                   <div className="text-lg font-bold" style={{ color: '#7e22ce' }}>
                                     {(stressTestResults.scenarios[selectedScenario || 'covid19'].peaks_troughs.recovery_peak.value * 100).toFixed(1)}%
@@ -2550,7 +2550,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                       {/* Predefined Scenarios */}
                       <div className="space-y-4">
                         <div className="text-sm font-medium">Select Hypothetical Scenario</div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                           <div 
                             className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                               hypotheticalParams.scenario_type === 'tech_crash' 
@@ -2614,9 +2614,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                       </div>
                       
                       {/* Custom Parameters */}
-                      <div className="space-y-4 pt-4 border-t">
+                      <div className="space-y-4 pt-4 border-t w-full">
                         <div className="text-sm font-medium">Adjust Scenario Parameters</div>
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                           <div className="space-y-2">
                             <label className="text-xs text-muted-foreground">Market Decline (%)</label>
                             <input
@@ -2708,21 +2708,39 @@ export const StressTest: React.FC<StressTestProps> = ({
                       
                       {/* Results */}
                       {hypotheticalResults && (
-                        <div className="space-y-6 mt-6 pt-6 border-t">
-                          <div className="grid grid-cols-3 gap-4">
-                            <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+                        <div className="space-y-6 mt-6 pt-6 border-t w-full">
+                          {hypotheticalResults.scenario_type && (
+                            <div className="text-sm text-muted-foreground">
+                              <span className="font-medium">Scenario: </span>
+                              {hypotheticalResults.scenario_type === 'tech_crash' ? 'Tech Bubble Burst' :
+                               hypotheticalResults.scenario_type === 'inflation' ? 'Inflation Shock' :
+                               hypotheticalResults.scenario_type === 'geopolitical' ? 'Geopolitical Crisis' :
+                               hypotheticalResults.scenario_type === 'recession' ? 'Deep Recession' :
+                               hypotheticalResults.scenario_type}
+                              {hypotheticalResults.parameters && (() => {
+                                const p = hypotheticalResults.parameters;
+                                const parts = [];
+                                if (p.market_decline != null) parts.push(`${(p.market_decline * 100).toFixed(0)}% decline`);
+                                if (p.duration_months != null) parts.push(`${p.duration_months} mo`);
+                                if (p.recovery_rate) parts.push(`${p.recovery_rate} recovery`);
+                                return parts.length ? <span className="ml-2">({parts.join(', ')})</span> : null;
+                              })()}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                            <div className="p-4 rounded-lg bg-red-50 border border-red-200 min-w-0">
                               <div className="text-sm text-red-700 mb-1">Estimated Loss</div>
                               <div className="text-2xl font-bold text-red-800">
                                 {(hypotheticalResults.estimated_loss * 100).toFixed(1)}%
                               </div>
                             </div>
-                            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 min-w-0">
                               <div className="text-sm text-blue-700 mb-1">Portfolio Impact</div>
                               <div className="text-2xl font-bold text-blue-800">
                                 {hypotheticalResults.capital_at_risk ? hypotheticalResults.capital_at_risk.toLocaleString() : 'N/A'} SEK
                               </div>
                             </div>
-                            <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
+                            <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 min-w-0">
                               <div className="text-sm text-amber-700 mb-1">Recovery Estimate</div>
                               <div className="text-2xl font-bold text-amber-800">
                                 {hypotheticalResults.estimated_recovery_months || 'N/A'} months
@@ -2787,10 +2805,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                           )}
                           
                           {/* Sector Impact Analysis */}
-                          {hypotheticalResults.sector_impact && (
-                            <div className="space-y-2">
+                          {hypotheticalResults.sector_impact && Object.keys(hypotheticalResults.sector_impact).length > 0 && (
+                            <div className="space-y-2 w-full">
                               <div className="text-sm font-medium">Sector Impact Analysis</div>
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                                 {Object.entries(hypotheticalResults.sector_impact).map(([sector, impact]: [string, any]) => (
                                   <div key={sector} className="p-3 rounded-lg bg-gray-50 border">
                                     <div className="flex items-center justify-between">

@@ -164,7 +164,7 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
   return (
     <TooltipProvider>
       <Card className={cn('w-full', className)}>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 text-center">
           <CardTitle className="text-base font-semibold">
             Risk Breakdown
           </CardTitle>

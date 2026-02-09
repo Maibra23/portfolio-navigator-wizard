@@ -16,6 +16,8 @@ import {
 } from 'recharts';
 import { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
+import { getChartTheme, getPortfolioColors, getRechartsTheme } from '@/utils/chartThemes';
 
 interface PortfolioPoint {
   risk: number;
@@ -45,22 +47,8 @@ interface EfficientFrontierChartProps {
   showInteractiveLegend?: boolean;
 }
 
-// Dark theme for Linear-inspired design
-const visualizationTheme = {
-  canvas: '#0c0d0e',
-  cardBackground: '#14151a',
-  border: 'rgba(255, 255, 255, 0.08)',
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axes: {
-    line: 'rgba(255, 255, 255, 0.1)',
-    tick: 'rgba(255, 255, 255, 0.5)',
-    label: 'rgba(255, 255, 255, 0.7)',
-  },
-  text: {
-    primary: 'rgba(255, 255, 255, 0.9)',
-    secondary: 'rgba(255, 255, 255, 0.6)',
-    subtle: 'rgba(255, 255, 255, 0.4)',
-  },
+// Spacing and layout constants (theme-independent)
+const layoutConstants = {
   spacing: {
     cardPadding: '28px',
     sectionGap: '28px',
@@ -68,7 +56,6 @@ const visualizationTheme = {
   radius: '18px',
   legend: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
   },
 };
 
@@ -89,6 +76,12 @@ export const EfficientFrontierChart = ({
   showControls = true,
   showInteractiveLegend = true
 }: EfficientFrontierChartProps) => {
+  // Get current theme for dynamic colors
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
+  const portfolioColors = getPortfolioColors(theme);
+  const rechartsTheme = getRechartsTheme(theme);
+
   // Visibility toggles for chart series
   const [visibleSeries, setVisibleSeries] = useState({
     randomPortfolios: true,
@@ -333,14 +326,14 @@ export const EfficientFrontierChart = ({
   const hasMarketOptimized = portfolioPointsWithJitter.find(p => p.type === 'market-optimized');
 
   return (
-    <Card className={className} style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}>
+    <Card className={className} style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}>
       <CardHeader className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div className="flex-1 text-center">
-            <CardTitle className="text-lg" style={{ color: visualizationTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}>
+            <CardTitle className="text-lg" style={{ color: chartTheme.text.primary, fontWeight: 600, letterSpacing: '-0.01em' }}>
               Efficient Frontier
             </CardTitle>
-            <p className="text-xs mt-1" style={{ color: visualizationTheme.text.subtle }}>
+            <p className="text-xs mt-1" style={{ color: chartTheme.text.subtle }}>
               {showControls ? 'Drag to zoom • Click legend to toggle series' : 'Risk vs. Return analysis'}
             </p>
           </div>
@@ -383,7 +376,7 @@ export const EfficientFrontierChart = ({
 
         {/* Interactive Legend with Visibility Toggles */}
         {showInteractiveLegend && (
-          <div className="flex flex-wrap gap-2 justify-center border-t pt-3" style={{ borderColor: visualizationTheme.border }}>
+          <div className="flex flex-wrap gap-2 justify-center border-t pt-3" style={{ borderColor: chartTheme.border }}>
             {/* Random Portfolios Toggle */}
             {randomPortfolios && randomPortfolios.length > 0 && (
               <button
@@ -509,8 +502,8 @@ export const EfficientFrontierChart = ({
       <CardContent
         className="min-h-[500px] h-[500px]"
         style={{
-          background: visualizationTheme.canvas,
-          borderRadius: visualizationTheme.radius,
+          background: chartTheme.canvas,
+          borderRadius: layoutConstants.radius,
           padding: '12px',
         }}
       >
@@ -529,22 +522,22 @@ export const EfficientFrontierChart = ({
                 }
               }}
             >
-              <CartesianGrid strokeDasharray="3 4" stroke={visualizationTheme.grid} />
+              <CartesianGrid strokeDasharray="3 4" stroke={chartTheme.grid} />
               <XAxis
                 type="number"
                 dataKey="risk"
                 name="Risk"
                 tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                axisLine={{ stroke: visualizationTheme.axes.line }}
+                axisLine={{ stroke: chartTheme.axes.line }}
                 tickLine={{ stroke: 'transparent' }}
-                tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                 domain={effectiveDomain.x}
                 allowDataOverflow={true}
                 label={{
                   value: 'Risk',
                   position: 'insideBottom',
                   offset: -6,
-                  style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                  style: { fill: chartTheme.axes.label, fontWeight: 500 },
                 }}
               />
               <YAxis
@@ -552,9 +545,9 @@ export const EfficientFrontierChart = ({
                 dataKey="return"
                 name="Return"
                 tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
-                axisLine={{ stroke: visualizationTheme.axes.line }}
+                axisLine={{ stroke: chartTheme.axes.line }}
                 tickLine={{ stroke: 'transparent' }}
-                tick={{ fill: visualizationTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
+                tick={{ fill: chartTheme.axes.tick, fontSize: 12, fontWeight: 500 }}
                 allowDataOverflow={true}
                 domain={effectiveDomain.y}
                 label={{
@@ -562,7 +555,7 @@ export const EfficientFrontierChart = ({
                   angle: -90,
                   position: 'left',
                   offset: 16,
-                  style: { fill: visualizationTheme.axes.label, fontWeight: 500 },
+                  style: { fill: chartTheme.axes.label, fontWeight: 500 },
                 }}
               />
               <RechartsTooltip
@@ -592,15 +585,15 @@ export const EfficientFrontierChart = ({
                     return (
                       <div
                         className="rounded-lg border p-2 shadow-md max-w-xs"
-                        style={{ background: visualizationTheme.cardBackground, borderColor: '#64748b' }}
+                        style={{ background: chartTheme.cardBackground, borderColor: '#64748b' }}
                       >
                         <p className="font-semibold text-sm" style={{ color: '#64748b' }}>
                           Efficient Frontier
                         </p>
-                        <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                        <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                           Optimal portfolios offering maximum return for given risk levels.
                         </p>
-                        <div className="mt-2 space-y-1 text-xs" style={{ color: visualizationTheme.text.primary }}>
+                        <div className="mt-2 space-y-1 text-xs" style={{ color: chartTheme.text.primary }}>
                           <p>
                             Return: <span className="font-medium">{formatPercent(data.return)}</span>
                           </p>
@@ -621,15 +614,15 @@ export const EfficientFrontierChart = ({
                     return (
                       <div
                         className="rounded-lg border p-2 shadow-md max-w-xs"
-                        style={{ background: visualizationTheme.cardBackground, borderColor: '#94a3b8' }}
+                        style={{ background: chartTheme.cardBackground, borderColor: '#94a3b8' }}
                       >
                         <p className="font-semibold text-sm" style={{ color: '#94a3b8' }}>
                           Inefficient Frontier
                         </p>
-                        <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                        <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                           Portfolios with minimum return for given risk levels (lower branch).
                         </p>
-                        <div className="mt-2 space-y-1 text-xs" style={{ color: visualizationTheme.text.primary }}>
+                        <div className="mt-2 space-y-1 text-xs" style={{ color: chartTheme.text.primary }}>
                           <p>
                             Return: <span className="font-medium">{formatPercent(data.return)}</span>
                           </p>
@@ -645,12 +638,12 @@ export const EfficientFrontierChart = ({
                     return (
                       <div
                         className="rounded-lg border p-2 shadow-md max-w-xs"
-                        style={{ background: visualizationTheme.cardBackground, borderColor: '#9333ea' }}
+                        style={{ background: chartTheme.cardBackground, borderColor: '#9333ea' }}
                       >
                         <p className="font-semibold text-sm" style={{ color: '#9333ea' }}>
                           Capital Market Line (CML)
                         </p>
-                        <p className="text-xs mt-1" style={{ color: visualizationTheme.text.secondary }}>
+                        <p className="text-xs mt-1" style={{ color: chartTheme.text.secondary }}>
                           Optimal risk-return combinations combining risk-free assets with the market portfolio.
                         </p>
                       </div>
@@ -664,9 +657,9 @@ export const EfficientFrontierChart = ({
                   return (
                     <div
                       className="rounded-xl border p-3 shadow-lg max-w-xs"
-                      style={{ background: visualizationTheme.cardBackground, borderColor: visualizationTheme.border }}
+                      style={{ background: chartTheme.cardBackground, borderColor: chartTheme.border }}
                     >
-                      <p className="font-bold text-sm pb-2 mb-2 border-b" style={{ color: visualizationTheme.text.primary, borderColor: visualizationTheme.border }}>
+                      <p className="font-bold text-sm pb-2 mb-2 border-b" style={{ color: chartTheme.text.primary, borderColor: chartTheme.border }}>
                         {data.type === 'current' ? 'Current Portfolio' :
                          data.type === 'weights-optimized' ? 'Weights-Optimized Portfolio' :
                          data.type === 'market-optimized' ? 'Market-Optimized Portfolio' :
@@ -674,34 +667,34 @@ export const EfficientFrontierChart = ({
                       </p>
                       <div className="space-y-1.5 text-xs">
                         <div className="flex justify-between">
-                          <span style={{ color: visualizationTheme.text.secondary }}>Return (μ):</span>
-                          <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>{formatPercent(data.return)}</span>
+                          <span style={{ color: chartTheme.text.secondary }}>Return (μ):</span>
+                          <span className="font-semibold" style={{ color: chartTheme.text.primary }}>{formatPercent(data.return)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span style={{ color: visualizationTheme.text.secondary }}>Risk (σ):</span>
-                          <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>{formatPercent(data.risk)}</span>
+                          <span style={{ color: chartTheme.text.secondary }}>Risk (σ):</span>
+                          <span className="font-semibold" style={{ color: chartTheme.text.primary }}>{formatPercent(data.risk)}</span>
                         </div>
                         {data.sharpe_ratio != null && typeof data.sharpe_ratio === 'number' && isFinite(data.sharpe_ratio) && (
                           <div className="flex justify-between">
-                            <span style={{ color: visualizationTheme.text.secondary }}>Sharpe Ratio:</span>
-                            <span className="font-semibold" style={{ color: visualizationTheme.text.primary }}>{data.sharpe_ratio.toFixed(3)}</span>
+                            <span style={{ color: chartTheme.text.secondary }}>Sharpe Ratio:</span>
+                            <span className="font-semibold" style={{ color: chartTheme.text.primary }}>{data.sharpe_ratio.toFixed(3)}</span>
                           </div>
                         )}
                       </div>
 
                       {/* Comparison to current portfolio */}
                       {showComparison && currentPortfolioMetrics && (
-                        <div className="mt-3 pt-2 border-t" style={{ borderColor: visualizationTheme.border }}>
-                          <div className="text-xs font-semibold mb-1.5" style={{ color: visualizationTheme.text.secondary }}>vs Current Portfolio:</div>
+                        <div className="mt-3 pt-2 border-t" style={{ borderColor: chartTheme.border }}>
+                          <div className="text-xs font-semibold mb-1.5" style={{ color: chartTheme.text.secondary }}>vs Current Portfolio:</div>
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between">
-                              <span style={{ color: visualizationTheme.text.secondary }}>Δ Return:</span>
+                              <span style={{ color: chartTheme.text.secondary }}>Δ Return:</span>
                               <span className={`font-semibold ${data.return > currentPortfolioMetrics.return ? 'text-green-600' : 'text-red-600'}`}>
                                 {data.return > currentPortfolioMetrics.return ? '+' : ''}{formatPercent(data.return - currentPortfolioMetrics.return)}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span style={{ color: visualizationTheme.text.secondary }}>Δ Risk:</span>
+                              <span style={{ color: chartTheme.text.secondary }}>Δ Risk:</span>
                               <span className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? 'text-green-600' : 'text-red-600'}`}>
                                 {data.risk < currentPortfolioMetrics.risk ? '' : '+'}{formatPercent(data.risk - currentPortfolioMetrics.risk)}
                               </span>
@@ -882,7 +875,7 @@ export const EfficientFrontierChart = ({
           </ResponsiveContainer>
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm" style={{ color: visualizationTheme.text.secondary }}>
+            <p className="text-sm" style={{ color: chartTheme.text.secondary }}>
               Run portfolio optimization to generate efficient frontier analysis.
             </p>
           </div>
@@ -896,7 +889,7 @@ export const EfficientFrontierChart = ({
             {sortedFrontier.length > 0 && (
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-slate-500"></div>
-                <span style={{ color: visualizationTheme.text.secondary }}>
+                <span style={{ color: chartTheme.text.secondary }}>
                   Efficient Frontier
                 </span>
               </div>
@@ -904,13 +897,13 @@ export const EfficientFrontierChart = ({
             {hasCurrentPortfolio && (
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow"></div>
-                <span style={{ color: visualizationTheme.text.secondary }}>Current Portfolio</span>
+                <span style={{ color: chartTheme.text.secondary }}>Current Portfolio</span>
               </div>
             )}
             {hasWeightsOptimized && (
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rotate-45" style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', border: '2px solid white' }}></div>
-                <span style={{ color: visualizationTheme.text.secondary }}>Weights-Optimized</span>
+                <span style={{ color: chartTheme.text.secondary }}>Weights-Optimized</span>
               </div>
             )}
             {hasMarketOptimized && (
@@ -918,7 +911,7 @@ export const EfficientFrontierChart = ({
                 <svg width="14" height="14" viewBox="0 0 16 16">
                   <polygon points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6" fill="#22c55e" stroke="#fff" strokeWidth="0.5"/>
                 </svg>
-                <span style={{ color: visualizationTheme.text.secondary }}>Market-Optimized</span>
+                <span style={{ color: chartTheme.text.secondary }}>Market-Optimized</span>
               </div>
             )}
           </div>

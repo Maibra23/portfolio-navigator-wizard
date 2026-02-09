@@ -93,7 +93,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
       {/* Risk Breakdown - Graph full width, then stats + quadrant side by side */}
       <Card className="w-full shadow-sm border-muted">
         <CardContent className="p-4 space-y-4">
-          <div>
+          <div className="text-center">
             <h3 className="text-base font-semibold">Risk Breakdown</h3>
             <p className="text-xs text-muted-foreground">Analytical vs Emotional Risk Tolerance</p>
             {isGamifiedPath && (
