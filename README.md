@@ -21,6 +21,28 @@ Portfolio Navigator Wizard is a production-grade investment platform that helps 
 - **📈 Real-time Analytics** - Efficient frontier, Sharpe ratio, diversification metrics
 - **🧪 Comprehensive Testing** - 85%+ test coverage with 20+ test files
 - **♿ Accessible** - WCAG compliant, responsive design
+- **🎨 Dual Theme System** - Choose between Classic and Dark themes
+
+## 🎨 Theme Customization
+
+Portfolio Navigator Wizard offers two beautiful themes to suit your preferences:
+
+### **Classic Theme (Default)**
+- Bright, professional light theme
+- Blue and green gradients for visual depth
+- Perfect for daytime use
+- High contrast for maximum readability
+- Professional appearance for presentations
+
+### **Dark Theme (Alternative)**
+- Minimalist Linear-inspired design
+- Near-black backgrounds with subtle gray tones
+- Reduced eye strain for extended sessions
+- Modern, premium aesthetic
+- Ideal for low-light environments
+
+**How to Switch Themes:**
+Simply click the theme toggle button (☀️/🌙) in the top-right corner on the welcome screen. Your preference is automatically saved and will be remembered on your next visit.
 
 ## 📋 Table of Contents
 

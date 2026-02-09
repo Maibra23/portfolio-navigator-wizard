@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, TrendingUp, Shield, BarChart3, Target, Calculator, AlertTriangle } from 'lucide-react';
+import { ThemeSelector } from '@/components/ThemeSelector';
 
 interface WelcomeStepProps {
   onNext: () => void;
@@ -41,7 +42,10 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto relative">
+      {/* Theme Selector - Floating Button */}
+      <ThemeSelector />
+
       <Card>
         <CardHeader className="text-center pb-6">
           <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 border border-border">
