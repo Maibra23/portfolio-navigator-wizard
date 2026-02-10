@@ -42,21 +42,21 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
   const isValid = capitalValue >= 1000;
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-md mx-auto">
       <Card>
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center border border-border">
-            <DollarSign className="h-8 w-8 text-primary" />
+        <CardHeader className="text-center pb-2">
+          <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center border border-border">
+            <DollarSign className="h-5 w-5 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Investment Capital</CardTitle>
-          <p className="text-muted-foreground">
+          <CardTitle className="text-xl">Investment Capital</CardTitle>
+          <p className="text-muted-foreground text-sm">
             How much would you like to invest in your portfolio?
           </p>
         </CardHeader>
         
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="capital" className="text-base font-medium">
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="capital" className="text-sm font-medium">
               Investment Amount (SEK)
             </Label>
             <div className="relative">
@@ -72,7 +72,7 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
                     handleNext();
                   }
                 }}
-                className="text-sm h-12 pl-8"
+                className="text-sm h-10 pl-8"
                 style={{ fontFamily: 'inherit', fontWeight: 'normal' }}
                 min="1000"
                 step="1000"
@@ -98,9 +98,9 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
             </Alert>
           )}
 
-          <div className="bg-muted/50 rounded-lg p-4">
-            <h4 className="font-medium mb-2">Investment Guidelines</h4>
-            <ul className="text-sm text-muted-foreground space-y-1">
+          <div className="bg-muted/50 rounded-lg p-3">
+            <h4 className="font-medium text-sm mb-1.5">Investment Guidelines</h4>
+            <ul className="text-xs text-muted-foreground space-y-0.5">
               <li>• Minimum investment: 1,000 SEK</li>
               <li>• Consider your financial situation and emergency fund</li>
               <li>• Only invest money you can afford to lose</li>
@@ -108,7 +108,7 @@ export const CapitalInput = ({ onNext, onPrev, onCapitalUpdate, currentCapital }
             </ul>
           </div>
 
-          <div className="flex gap-4 pt-4">
+          <div className="flex gap-2 pt-2">
             <Button variant="outline" onClick={onPrev} className="flex-1">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Previous

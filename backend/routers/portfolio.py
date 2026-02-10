@@ -9530,12 +9530,15 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
                         ticker_risk = 0.15
                     if ticker_return is None:
                         ticker_return = 0.08
+                    # Ensure display values are valid so chart shows ticker (frontend filters out return<=0 or risk<0)
+                    display_risk = max(0.01, float(ticker_risk))
+                    display_return = float(ticker_return) if float(ticker_return) > 0 else 0.005
 
                     ticker_points.append({
                         'label': 'Selected Portfolio',
                         'symbol': ticker,
-                        'risk': float(ticker_risk),
-                        'returnValue': float(ticker_return),
+                        'risk': display_risk,
+                        'returnValue': display_return,
                         'sector': sector
                     })
                 elif sector != 'Unknown':
@@ -9647,12 +9650,15 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
                             ticker_risk = 0.15
                         if ticker_return is None:
                             ticker_return = 0.08
+                        # Ensure display values are valid so chart shows ticker (frontend filters out return<=0 or risk<0)
+                        display_risk = max(0.01, float(ticker_risk))
+                        display_return = float(ticker_return) if float(ticker_return) > 0 else 0.005
 
                         ticker_points.append({
                             'label': benchmark_label,
                             'symbol': ticker,
-                            'risk': float(ticker_risk),
-                            'returnValue': float(ticker_return),
+                            'risk': display_risk,
+                            'returnValue': display_return,
                             'sector': sector
                         })
                     elif sector != 'Unknown':

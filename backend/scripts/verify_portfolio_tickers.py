@@ -67,21 +67,19 @@ def check_tickers_in_redis(data_service: RedisFirstDataService, tickers: Set[str
             metrics_key = data_service._get_cache_key(ticker, 'metrics')
             has_metrics = data_service.redis_client.exists(metrics_key) > 0
             
-            # Check if metrics are valid (have expected_return and volatility)
+            # Check if metrics are valid (visualization uses risk + annualized_return/expected_return)
             metrics_valid = False
             if has_metrics:
                 try:
                     metrics_data = data_service._load_from_cache(ticker, 'metrics')
                     if metrics_data and isinstance(metrics_data, dict):
-                        expected_return = metrics_data.get('expected_return')
-                        volatility = metrics_data.get('volatility')
+                        ret = metrics_data.get('expected_return') or metrics_data.get('annualized_return') or metrics_data.get('annual_return')
+                        risk = metrics_data.get('volatility') or metrics_data.get('risk') or metrics_data.get('annualized_risk')
                         metrics_valid = (
-                            expected_return is not None and 
-                            volatility is not None and
-                            isinstance(expected_return, (int, float)) and
-                            isinstance(volatility, (int, float)) and
-                            not (isinstance(expected_return, float) and (isnan(expected_return) or not isfinite(expected_return))) and
-                            not (isinstance(volatility, float) and (isnan(volatility) or not isfinite(volatility)))
+                            ret is not None and risk is not None and
+                            isinstance(ret, (int, float)) and isinstance(risk, (int, float)) and
+                            not (isinstance(ret, float) and (isnan(ret) or not isfinite(ret))) and
+                            not (isinstance(risk, float) and (isnan(risk) or not isfinite(risk)))
                         )
                 except Exception as e:
                     logger.debug(f"Error validating metrics for {ticker}: {e}")

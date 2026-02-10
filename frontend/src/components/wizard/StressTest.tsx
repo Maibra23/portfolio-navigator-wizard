@@ -300,18 +300,18 @@ export const StressTest: React.FC<StressTestProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4">
       <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl flex items-center justify-center gap-2">
-            <Shield className="h-6 w-6 text-blue-600" />
+        <CardHeader className="text-center pb-2">
+          <CardTitle className="text-xl flex items-center justify-center gap-2">
+            <Shield className="h-5 w-5 text-blue-600" />
             Portfolio Stress Test
           </CardTitle>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground text-sm mt-1">
             Test your portfolio's resilience during historical market crises
           </p>
         </CardHeader>
-        <CardContent className="p-6 pt-0 space-y-6 w-full min-w-0">
+        <CardContent className="p-4 pt-0 space-y-4 w-full min-w-0">
           {/* Error Display */}
           {error && (
             <Alert variant="destructive">
@@ -321,33 +321,33 @@ export const StressTest: React.FC<StressTestProps> = ({
           )}
 
           {/* Step Indicator - Progressive Disclosure */}
-          <div className="flex items-center justify-center gap-4 mb-6 pb-6 border-b">
+          <div className="flex items-center justify-center gap-2 mb-4 pb-4 border-b">
             <div className="flex items-center gap-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                 selectedScenario ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
               }`}>
-                {selectedScenario ? <Check className="h-5 w-5" /> : '1'}
+                {selectedScenario ? <Check className="h-4 w-4" /> : '1'}
               </div>
               <span className="text-sm font-medium">Select Scenario</span>
             </div>
             <ArrowRight className="h-5 w-5 text-gray-400" />
             <div className="flex items-center gap-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                 isLoading ? 'bg-blue-500 text-white animate-pulse' : 
                 stressTestResults ? 'bg-green-500 text-white' : 
                 'bg-gray-200 text-gray-600'
               }`}>
-                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : 
-                 stressTestResults ? <Check className="h-5 w-5" /> : '2'}
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 
+                 stressTestResults ? <Check className="h-4 w-4" /> : '2'}
               </div>
               <span className="text-sm font-medium">Run Test</span>
             </div>
             <ArrowRight className="h-5 w-5 text-gray-400" />
             <div className="flex items-center gap-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                 stressTestResults ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
               }`}>
-                {stressTestResults ? <Check className="h-5 w-5" /> : '3'}
+                {stressTestResults ? <Check className="h-4 w-4" /> : '3'}
               </div>
               <span className="text-sm font-medium">Review Results</span>
             </div>
@@ -355,9 +355,9 @@ export const StressTest: React.FC<StressTestProps> = ({
 
           {/* Scenario Selection */}
           {!stressTestResults && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2">Select Stress Test Scenario</h3>
+                <h3 className="text-base font-semibold mb-1">Select Stress Test Scenario</h3>
                 <p className="text-sm text-muted-foreground">
                   Choose one scenario to test your portfolio's resilience
                 </p>

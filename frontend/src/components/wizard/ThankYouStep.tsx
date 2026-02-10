@@ -47,20 +47,20 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
   return (
     <div className="max-w-4xl mx-auto">
       <Card>
-        <CardHeader className="text-center pb-4">
-          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-4 border border-border">
-            <CheckCircle className="h-10 w-10 text-foreground" aria-hidden />
+        <CardHeader className="text-center pb-2">
+          <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-2 border border-border">
+            <CheckCircle className="h-6 w-6 text-foreground" aria-hidden />
           </div>
-          <h2 className="text-2xl font-semibold text-foreground mb-2">Thank you</h2>
-          <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+          <h2 className="text-xl font-semibold text-foreground mb-1">Thank you</h2>
+          <p className="text-muted-foreground text-sm max-w-xl mx-auto">
             You have completed the Portfolio Navigator Wizard. Your portfolio is set up and you can export your report anytime from the Tax & Summary step.
           </p>
         </CardHeader>
-        <CardContent className="text-center space-y-6 pt-2">
-          <p className="text-base font-medium text-foreground">
+        <CardContent className="text-center space-y-3 pt-0">
+          <p className="text-sm font-medium text-foreground">
             Good luck with your investments.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
+          <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
             <Button variant="outline" onClick={onBackToSummary} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
               Back to summary

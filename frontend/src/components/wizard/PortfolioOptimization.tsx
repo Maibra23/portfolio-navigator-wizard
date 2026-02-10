@@ -47,8 +47,8 @@ import { getChartTheme, getPortfolioColors, getVisualizationPalette } from '@/ut
 // Layout constants (theme-independent)
 const layoutConstants = {
   spacing: {
-    cardPadding: '28px',
-    sectionGap: '28px',
+    cardPadding: '16px',
+    sectionGap: '16px',
   },
   radius: '18px',
   legend: {
@@ -2238,17 +2238,17 @@ export const PortfolioOptimization = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4">
       <Card>
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center border border-border">
-            <BarChart3 className="h-8 w-8 text-white" />
+        <CardHeader className="text-center pb-2">
+          <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center border border-border">
+            <BarChart3 className="h-5 w-5 text-white" />
           </div>
-          <CardTitle className="text-2xl">Portfolio Optimization</CardTitle>
-          <p className="text-muted-foreground">
+          <CardTitle className="text-xl">Portfolio Optimization</CardTitle>
+          <p className="text-muted-foreground text-sm">
             Optimize your {capital ? capital.toLocaleString() : '0'} SEK portfolio for better risk-return balance
           </p>
-          <div className="flex items-center justify-center gap-2 mt-2">
+          <div className="flex items-center justify-center gap-2 mt-1">
             <Shield className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
               Risk Profile: {getRiskProfileDisplay()}
@@ -2256,7 +2256,7 @@ export const PortfolioOptimization = ({
           </div>
         </CardHeader>
         
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           <Tabs value={activeTab} onValueChange={(value) => {
             // Prevent manual switching if conditions aren't met
             if (value === 'analysis' && !mvoResults && !tripleOptimizationResults) return;
@@ -2292,10 +2292,10 @@ export const PortfolioOptimization = ({
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-4">
-              <div className="bg-muted rounded-lg p-4 border border-border">
-                <div className="flex items-center gap-2 mb-2">
-                  <Lightbulb className="h-5 w-5 text-blue-600" />
-                  <h3 className="text-lg font-semibold text-blue-900">Portfolio Optimization</h3>
+              <div className="bg-muted rounded-lg p-3 border border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <Lightbulb className="h-4 w-4 text-blue-600" />
+                  <h3 className="text-base font-semibold text-blue-900">Portfolio Optimization</h3>
                 </div>
                 <p className="text-xs text-blue-800">
                   Advanced algorithms analyze your portfolio to find the optimal balance between risk and return using modern portfolio theory.

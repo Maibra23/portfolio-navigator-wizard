@@ -1407,7 +1407,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
   if (step === 'screening') {
     if (showContradictionPrompt) {
       return (
-        <div className="max-w-2xl mx-auto py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="max-w-2xl mx-auto py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <ScreeningContradiction
             onKeepBeginner={() => {
               setShowContradictionPrompt(false);
@@ -1424,30 +1424,30 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
     return (
       <div className="max-w-2xl mx-auto">
         <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl mb-2">Investment Profile Screening</CardTitle>
-            <p className="text-muted-foreground">
+          <CardHeader className="text-center pb-2">
+            <CardTitle className="text-xl mb-1">Investment Profile Screening</CardTitle>
+            <p className="text-muted-foreground text-sm">
               Let's start with a few quick questions to personalize your experience
             </p>
           </CardHeader>
           
-          <CardContent className="space-y-8">
+          <CardContent className="space-y-4">
             {/* Age Group */}
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">1. What is your age group?</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-base">1. What is your age group?</h3>
               <RadioGroup
                 value={screeningData.ageGroup || ""}
                 onValueChange={(value) => setScreeningData(prev => ({ ...prev, ageGroup: value as 'under-19' | 'above-19' }))}
               >
-                <div className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                   <RadioGroupItem value="under-19" id="age-under-19" />
-                  <Label htmlFor="age-under-19" className="flex-1 cursor-pointer">
+                  <Label htmlFor="age-under-19" className="flex-1 cursor-pointer text-sm">
                     Under 19 years old
                   </Label>
                 </div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                   <RadioGroupItem value="above-19" id="age-above-19" />
-                  <Label htmlFor="age-above-19" className="flex-1 cursor-pointer">
+                  <Label htmlFor="age-above-19" className="flex-1 cursor-pointer text-sm">
                     19 years old or above
                   </Label>
                 </div>
@@ -1455,8 +1455,8 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
             </div>
 
             {/* Investment Experience */}
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">2. How many years of investing experience do you have?</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-base">2. How many years of investing experience do you have?</h3>
               <RadioGroup
                 value={screeningData.experience || ""}
                 onValueChange={(value) => setScreeningData(prev => ({ ...prev, experience: value as '0-2' | '3-5' | '6-10' | '10+' }))}
@@ -1467,9 +1467,9 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                   { value: '6-10', text: '6-10 years' },
                   { value: '10+', text: '10+ years' }
                 ].map((option) => (
-                  <div key={option.value} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                  <div key={option.value} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                     <RadioGroupItem value={option.value} id={`exp-${option.value}`} />
-                    <Label htmlFor={`exp-${option.value}`} className="flex-1 cursor-pointer">
+                    <Label htmlFor={`exp-${option.value}`} className="flex-1 cursor-pointer text-sm">
                       {option.text}
                     </Label>
                   </div>
@@ -1478,8 +1478,8 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
             </div>
 
             {/* Investment Knowledge */}
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">3. How would you rate your investment knowledge?</h3>
+            <div className="space-y-2">
+              <h3 className="font-semibold text-base">3. How would you rate your investment knowledge?</h3>
               <RadioGroup
                 value={screeningData.knowledge || ""}
                 onValueChange={(value) => setScreeningData(prev => ({ ...prev, knowledge: value as 'beginner' | 'intermediate' | 'advanced' }))}
@@ -1489,9 +1489,9 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                   { value: 'intermediate', text: 'Intermediate - I have some experience' },
                   { value: 'advanced', text: 'Advanced - I\'m experienced with various investments' }
                 ].map((option) => (
-                  <div key={option.value} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                  <div key={option.value} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                     <RadioGroupItem value={option.value} id={`knowledge-${option.value}`} />
-                    <Label htmlFor={`knowledge-${option.value}`} className="flex-1 cursor-pointer">
+                    <Label htmlFor={`knowledge-${option.value}`} className="flex-1 cursor-pointer text-sm">
                       {option.text}
                     </Label>
                   </div>
@@ -1499,7 +1499,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
               </RadioGroup>
             </div>
 
-            <div className="flex gap-4 justify-center pt-6 border-t">
+            <div className="flex gap-2 justify-center pt-3 border-t">
               <Button variant="outline" onClick={onPrev}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Previous
@@ -1544,10 +1544,10 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
       return (
         <div className="max-w-2xl mx-auto">
           <Card className="bg-muted border border-border">
-            <CardContent className="text-center py-12">
-              <div className="text-6xl mb-4">✨</div>
-              <h3 className="text-xl font-bold mb-4 text-foreground">Your Choice!</h3>
-              <p className="text-lg text-foreground mb-6">{currentFeedback}</p>
+            <CardContent className="text-center py-6">
+              <div className="text-4xl mb-2">✨</div>
+              <h3 className="text-lg font-bold mb-2 text-foreground">Your Choice!</h3>
+              <p className="text-base text-foreground mb-3">{currentFeedback}</p>
               <div className="animate-pulse">
                 <p className="text-sm text-muted-foreground">Continuing your adventure...</p>
               </div>
@@ -1560,46 +1560,46 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
     return (
       <div className="max-w-2xl mx-auto">
         <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl mb-2">
+          <CardHeader className="text-center pb-2">
+            <CardTitle className="text-xl mb-1">
               {isUnder19 ? 'Your Adventure Continues!' : 'Risk Assessment'}
             </CardTitle>
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground text-sm mb-2">
               {isUnder19 ? `Chapter ${currentIndex} of 5` : `Question ${currentIndex} of 12`}
             </p>
-            <Progress value={progress} className="w-full" />
+            <Progress value={progress} className="w-full h-1" />
           </CardHeader>
           
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-4">
             {isUnder19 && fullQuestion.storylineData ? (
               // Gamified storyline interface
-              <div className="space-y-6">
-                <div className="text-center mb-6">
-                  <div className="text-4xl mb-4">{fullQuestion.storylineData.visual}</div>
-                  <h3 className="text-lg font-semibold text-foreground leading-relaxed">
+              <div className="space-y-4">
+                <div className="text-center mb-3">
+                  <div className="text-3xl mb-2">{fullQuestion.storylineData.visual}</div>
+                  <h3 className="text-base font-semibold text-foreground leading-relaxed">
                     {fullQuestion.storylineData.scenario}
                   </h3>
                 </div>
                 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {fullQuestion.storylineData.options.map((option, index) => (
                     <div
                       key={index}
                       onClick={() => handleAnswerSubmit(option.score)}
-                      className="p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-muted transition-all cursor-pointer group"
+                      className="p-3 rounded-lg border-2 border-border hover:border-primary hover:bg-muted transition-all cursor-pointer group"
                     >
-                      <div className="flex items-center space-x-3">
-                        <div className="text-2xl">{option.icon}</div>
+                      <div className="flex items-center space-x-2">
+                        <div className="text-xl">{option.icon}</div>
                         <div className="flex-1">
-                          <div className="font-medium text-foreground group-hover:text-primary">
+                          <div className="font-medium text-sm text-foreground group-hover:text-primary">
                             {option.text}
                           </div>
-                          <div className="text-sm text-muted-foreground mt-1">
+                          <div className="text-xs text-muted-foreground mt-0.5">
                             {option.consequence}
                           </div>
                         </div>
                         <div className="text-muted-foreground group-hover:text-primary">
-                          <ArrowRight className="h-5 w-5" />
+                          <ArrowRight className="h-4 w-4" />
                         </div>
                       </div>
                     </div>
@@ -1607,7 +1607,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                 </div>
                 
                 {fullQuestion.storylineData.feedback && (
-                  <div className="mt-6 p-4 bg-muted rounded-lg border border-border">
+                  <div className="mt-3 p-3 bg-muted rounded-lg border border-border">
                     <p className="text-sm text-foreground text-center">
                       💡 {fullQuestion.storylineData.feedback}
                     </p>
@@ -1616,8 +1616,8 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
               </div>
             ) : (
               // Traditional multiple choice interface (full question text and options from lookup)
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">
+              <div className="space-y-2">
+                <h3 className="font-semibold text-base">
                   {fullQuestion.question ?? currentQuestion.id}
                 </h3>
                 
@@ -1632,7 +1632,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
                   }}
                 >
                   {shuffledOptionsForQuestion.map((option) => (
-                    <div key={option.value} className="flex items-center space-x-2 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                    <div key={option.value} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                       <RadioGroupItem value={String(option.value)} id={`q${currentQuestion.id}-${option.value}`} />
                       <Label 
                         htmlFor={`q${currentQuestion.id}-${option.value}`} 
@@ -1647,7 +1647,7 @@ export const RiskProfiler = ({ onNext, onPrev, onProfileUpdate, currentProfile, 
             )}
 
             {!isUnder19 && (
-              <div className="flex gap-4 justify-center pt-6 border-t">
+              <div className="flex gap-2 justify-center pt-3 border-t">
                 <Button
                   onClick={() => handleAnswerSubmit(answers[currentQuestion.id] || 1)}
                   disabled={!answers[currentQuestion.id]}

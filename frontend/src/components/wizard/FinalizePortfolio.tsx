@@ -642,14 +642,14 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
   if (!isLoaded) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Tabs value={hiddenTab || activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="builder" disabled={!canNavigateToTab('builder', state, activeTab)}>
@@ -681,18 +681,18 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         </TabsList>
 
         {/* Tab 1: Portfolio Builder */}
-        <TabsContent value="builder" className="space-y-6 mt-6">
+        <TabsContent value="builder" className="space-y-4 mt-3">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
                 Build Your Portfolio
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Select 3 to 4 stocks from the full universe and allocate 100% of your capital
               </p>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4">
               <PortfolioBuilder
                 selectedStocks={state.constructedPortfolio}
                 onStocksUpdate={handlePortfolioUpdate}
@@ -742,7 +742,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         </TabsContent>
 
         {/* Tab 2: Optimize */}
-        <TabsContent value="optimize" className="space-y-6 mt-6">
+        <TabsContent value="optimize" className="space-y-4 mt-3">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -996,7 +996,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         </TabsContent>
 
         {/* Tab 3: Final Analysis */}
-        <TabsContent value="analysis" className="space-y-6 mt-6">
+        <TabsContent value="analysis" className="space-y-4 mt-3">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -1131,7 +1131,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         )}
 
         {/* Tab 4: Tax, Cost & Summary */}
-        <TabsContent value="tax-cost" className="space-y-6 mt-6">
+        <TabsContent value="tax-cost" className="space-y-4 mt-3">
           {/* Educational Panel */}
           <TaxEducationPanel />
 

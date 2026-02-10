@@ -1722,14 +1722,14 @@ export const StockSelection = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4">
       <Card className="relative overflow-hidden">
         <div
           className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg bg-gradient-to-b from-primary/30 via-primary/20 to-transparent"
           aria-hidden="true"
         />
-        <CardHeader className="text-center pl-6">
-          <CardTitle className="text-2xl">Enhanced Portfolio Construction</CardTitle>
+        <CardHeader className="text-center pl-4 pb-2">
+          <CardTitle className="text-xl">Portfolio Construction</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
             Build your portfolio with {capital.toLocaleString()} SEK · Risk profile: {getRiskProfileDisplay()}
           </p>
@@ -1746,7 +1746,11 @@ export const StockSelection = ({
                 <Star className="h-4 w-4" />
                 Recommendations
               </TabsTrigger>
-              <TabsTrigger value="full-customization" className="flex items-center gap-2">
+              <TabsTrigger 
+                value="full-customization" 
+                className="flex items-center gap-2"
+                disabled={activeTab !== 'full-customization'}
+              >
                 <BarChart3 className="h-4 w-4" />
                 Visual Charts
               </TabsTrigger>
@@ -1853,12 +1857,12 @@ export const StockSelection = ({
                 )}
                 
                 {isLoadingMiniLesson ? (
-                  <div className="text-center py-8">
+                  <div className="text-center py-4">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                     <p className="mt-2 text-blue-700">Loading financial data...</p>
                   </div>
                 ) : twoAssetAnalysis && customPortfolio ? (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     {/* Asset Information Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <Card>
@@ -2085,7 +2089,7 @@ export const StockSelection = ({
               </div>
 
               {isLoadingRecommendations ? (
-                <div className="text-center py-8">
+                <div className="text-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                   <p className="mt-2 text-muted-foreground">Generating personalized recommendations...</p>
                 </div>
@@ -2568,14 +2572,14 @@ export const StockSelection = ({
                   </CardHeader>
                   <CardContent>
                     {isLoadingMetrics ? (
-                      <div className="flex items-center justify-center py-8">
+                      <div className="flex items-center justify-center py-4">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                         <span className="ml-3 text-slate-600">Calculating portfolio metrics...</span>
                       </div>
                     ) : portfolioMetrics ? (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {/* Expected Return */}
-                      <div className="relative overflow-hidden rounded-xl bg-muted p-6 border border-border">
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
                         <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                         <div className="relative z-10">
                           <div className="flex items-center gap-2 mb-2">
@@ -2592,7 +2596,7 @@ export const StockSelection = ({
                       </div>
 
                       {/* Risk Level */}
-                      <div className="relative overflow-hidden rounded-xl bg-muted p-6 border border-border">
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
                         <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                         <div className="relative z-10">
                           <div className="flex items-center gap-2 mb-2">
@@ -2609,7 +2613,7 @@ export const StockSelection = ({
                       </div>
 
                       {/* Diversification Score */}
-                      <div className="relative overflow-hidden rounded-xl bg-muted p-6 border border-border">
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
                         <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                         <div className="relative z-10">
                           <div className="flex items-center gap-2 mb-2">
@@ -2626,7 +2630,7 @@ export const StockSelection = ({
                       </div>
                     </div>
                     ) : (
-                      <div className="flex items-center justify-center py-8">
+                      <div className="flex items-center justify-center py-4">
                         <div className="text-center">
                           <div className="text-slate-500 mb-2">No metrics available</div>
                           <div className="text-sm text-slate-400">Please wait for calculation to complete</div>
@@ -2833,7 +2837,7 @@ export const StockSelection = ({
 
                     {/* Strategy Portfolios Display */}
                     {isLoadingStrategy ? (
-                        <div className="text-center py-8">
+                        <div className="text-center py-4">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                         <p className="mt-2 text-xs text-muted-foreground">Generating {selectedStrategy} strategy portfolios...</p>
                         </div>
