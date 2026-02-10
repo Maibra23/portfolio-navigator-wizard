@@ -43,6 +43,9 @@ import {
   Calendar,
   FileText
 } from 'lucide-react';
+import { ScenarioSelector, type ScenarioId } from './ScenarioSelector';
+import { ResilienceScore } from './ResilienceScore';
+import { TimelineScrollReveal } from './TimelineScrollReveal';
 
 interface SelectedPortfolioData {
   source: 'current' | 'weights' | 'market';
@@ -281,23 +284,6 @@ export const StressTest: React.FC<StressTestProps> = ({
     window.URL.revokeObjectURL(url);
   };
 
-  const getResilienceColor = (score: number) => {
-    if (score >= 70) return 'text-green-600';
-    if (score >= 50) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getResilienceBadgeColor = (score: number) => {
-    if (score >= 70) return 'bg-green-500';
-    if (score >= 50) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
-
-  const getResilienceLabel = (score: number) => {
-    if (score >= 70) return 'Strong';
-    if (score >= 50) return 'Moderate';
-    return 'Weak';
-  };
 
   return (
     <div className="max-w-6xl mx-auto p-4">
@@ -355,114 +341,16 @@ export const StressTest: React.FC<StressTestProps> = ({
 
           {/* Scenario Selection */}
           {!stressTestResults && (
-            <div className="space-y-3">
-              <div className="text-center">
-                <h3 className="text-base font-semibold mb-1">Select Stress Test Scenario</h3>
-                <p className="text-sm text-muted-foreground">
-                  Choose one scenario to test your portfolio's resilience
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* COVID-19 Scenario Card */}
-                <Card 
-                  className={`cursor-pointer transition-all ${
-                    selectedScenario === 'covid19' 
-                      ? 'border-2 border-blue-500 bg-blue-50 shadow-md' 
-                      : 'border border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                  }`}
-                  onClick={() => setSelectedScenario('covid19')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          {selectedScenario === 'covid19' && (
-                            <CheckCircle className="h-5 w-5 text-blue-600" />
-                          )}
-                          <AlertCircle className="h-5 w-5 text-blue-600" />
-                          <h3 className="font-semibold text-lg">2020 COVID-19 Crash</h3>
-                        </div>
-                        <p className="text-xs text-gray-600 mb-3">
-                          Fastest market crash in modern history (Feb-Apr 2020). Tests rapid volatility and recovery capability.
-                        </p>
-                        <div className="space-y-1 text-xs text-gray-500">
-                          <div>• Crisis Duration: 3 months</div>
-                          <div>• Recovery Pattern: V-shaped</div>
-                          <div>• Volatility: High</div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* 2008 Crisis Scenario Card */}
-                <Card 
-                  className={`cursor-pointer transition-all ${
-                    selectedScenario === '2008_crisis' 
-                      ? 'border-2 border-blue-500 bg-blue-50 shadow-md' 
-                      : 'border border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                  }`}
-                  onClick={() => setSelectedScenario('2008_crisis')}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          {selectedScenario === '2008_crisis' && (
-                            <CheckCircle className="h-5 w-5 text-blue-600" />
-                          )}
-                          <Building2 className="h-5 w-5 text-amber-600" />
-                          <h3 className="font-semibold text-lg">2008 Financial Crisis</h3>
-                        </div>
-                        <p className="text-xs text-gray-600 mb-3">
-                          Most severe crisis since Great Depression (Sep 2008 - Mar 2010). Tests prolonged drawdown and recovery behavior.
-                        </p>
-                        <div className="space-y-1 text-xs text-gray-500">
-                          <div>• Crisis Duration: 18 months</div>
-                          <div>• Recovery Pattern: Prolonged</div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Options */}
-              <div className="flex flex-col gap-3 pt-4">
-                {/* Progress Indicator */}
-                {isLoading && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">{loadingStep}</span>
-                      <span className="text-gray-600">{loadingProgress}%</span>
-                    </div>
-                    <Progress value={loadingProgress} className="h-2" />
-                  </div>
-                )}
-                
-                {/* Run Button */}
-                <div className="flex justify-center pt-2">
-                  <Button
-                    onClick={handleRunStressTest}
-                    disabled={!selectedScenario || isLoading || !selectedPortfolio}
-                    className="bg-primary hover:bg-primary/90 min-w-[200px]"
-                    size="lg"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Running Stress Test...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="mr-2 h-5 w-5" />
-                        Run Selected Scenario
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
+            <>
+              <ScenarioSelector
+                selectedScenario={selectedScenario as ScenarioId | null}
+                onSelectScenario={(id) => setSelectedScenario(id)}
+                onRunTest={handleRunStressTest}
+                isLoading={isLoading}
+                loadingProgress={loadingProgress}
+                loadingStep={loadingStep}
+                runDisabled={!selectedPortfolio}
+              />
 
               {!selectedPortfolio && (
                 <Alert>
@@ -472,7 +360,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                   </AlertDescription>
                 </Alert>
               )}
-            </div>
+            </>
           )}
 
           {/* Results Display */}
@@ -562,57 +450,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                 </CardContent>
               </Card>
 
-                  {/* Resilience Score Card */}
-                  <Card className="border-2 border-green-200">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Shield className="h-5 w-5 text-green-600" />
-                    Portfolio Resilience Score
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-6">
-                    <div className="relative w-32 h-32">
-                      <svg className="w-32 h-32 transform -rotate-90">
-                        <circle
-                          cx="64"
-                          cy="64"
-                          r="56"
-                          stroke="#e5e7eb"
-                          strokeWidth="12"
-                          fill="none"
-                        />
-                        <circle
-                          cx="64"
-                          cy="64"
-                          r="56"
-                          stroke={Math.min(100, stressTestResults.resilience_score) >= 70 ? '#22c55e' : Math.min(100, stressTestResults.resilience_score) >= 50 ? '#f59e0b' : '#ef4444'}
-                          strokeWidth="12"
-                          fill="none"
-                          strokeDasharray={`${(Math.min(100, Math.max(0, stressTestResults.resilience_score)) / 100) * 351.86} 351.86`}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-center">
-                          <div className={`text-2xl font-bold ${getResilienceColor(Math.min(100, stressTestResults.resilience_score))}`}>
-                            {Math.min(100, Math.max(0, stressTestResults.resilience_score)).toFixed(0)}
-                          </div>
-                          <div className="text-xs text-gray-500">out of 100</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 mb-3">
-                        {stressTestResults.overall_assessment}
-                      </p>
-                      <Badge className={`${getResilienceBadgeColor(stressTestResults.resilience_score)} text-white`}>
-                        {getResilienceLabel(stressTestResults.resilience_score)} Resilience
-                      </Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  <ResilienceScore
+                    score={stressTestResults.resilience_score}
+                    assessment={stressTestResults.overall_assessment}
+                  />
                   
                   {/* Scenario Results - Show based on selected scenario */}
                   {selectedScenario === 'covid19' && stressTestResults.scenarios.covid19 && (
@@ -1095,7 +936,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               dot={false}
                                               connectNulls={true}
                                               type="monotone"
-                                              isAnimationActive={false}
+                                              isAnimationActive={true}
+                                              animationDuration={1200}
+                                              animationEasing="ease-out"
                                               name="Aggressive"
                                             />
                                             {/* Moderate Trajectory - Blue (realistic recovery) */}
@@ -1107,7 +950,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               dot={false}
                                               connectNulls={true}
                                               type="monotone"
-                                              isAnimationActive={false}
+                                              isAnimationActive={true}
+                                              animationDuration={1200}
+                                              animationEasing="ease-out"
                                               name="Moderate"
                                             />
                                             {/* Conservative Trajectory - Orange (slowest recovery) */}
@@ -1119,7 +964,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               dot={false}
                                               connectNulls={true}
                                               type="monotone"
-                                              isAnimationActive={false}
+                                              isAnimationActive={true}
+                                              animationDuration={1200}
+                                              animationEasing="ease-out"
                                               name="Conservative"
                                             />
                                           </>
@@ -1796,7 +1643,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               dot={false}
                                               connectNulls={true}
                                               type="monotone"
-                                              isAnimationActive={false}
+                                              isAnimationActive={true}
+                                              animationDuration={1200}
+                                              animationEasing="ease-out"
                                               name="Aggressive"
                                             />
                                             {/* Moderate Trajectory - Blue (realistic recovery) */}
@@ -1808,7 +1657,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               dot={false}
                                               connectNulls={true}
                                               type="monotone"
-                                              isAnimationActive={false}
+                                              isAnimationActive={true}
+                                              animationDuration={1200}
+                                              animationEasing="ease-out"
                                               name="Moderate"
                                             />
                                             {/* Conservative Trajectory - Orange (slowest recovery) */}
@@ -1820,7 +1671,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               dot={false}
                                               connectNulls={true}
                                               type="monotone"
-                                              isAnimationActive={false}
+                                              isAnimationActive={true}
+                                              animationDuration={1200}
+                                              animationEasing="ease-out"
                                               name="Conservative"
                                             />
                                           </>
@@ -2455,9 +2308,12 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   <span>Warning</span>
                                 </button>
                               </div>
-                              <div className="space-y-2">
+                              <TimelineScrollReveal
+                                className="space-y-2"
+                                enabled={activeView === 'timeline'}
+                              >
                                 {crisisEvents[selectedScenario as keyof typeof crisisEvents]?.map((event, idx) => (
-                                  <div 
+                                  <div
                                     key={idx}
                                     className={`p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
                                       event.type === 'crisis' ? 'bg-red-50 border-red-200 hover:bg-red-100' : 
@@ -2486,7 +2342,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     )}
                                   </div>
                                 ))}
-                              </div>
+                              </TimelineScrollReveal>
                             </div>
                           </div>
                           

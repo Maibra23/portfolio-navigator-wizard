@@ -1,0 +1,44 @@
+VERIFICATION REPORT: Frontend UX Plan vs Backend Integration
+================================================================
+
+1) BUILD AND RUNTIME
+-------------------
+- Frontend build: SUCCESS (npm run build completes).
+- No API URLs, request bodies, or response handling were changed. All fetch() calls and API_ENDPOINTS usage are unchanged.
+
+2) BACKEND INTEGRATION (UNCHANGED)
+----------------------------------
+- No backend code or API contracts were modified.
+- Endpoints still used as before: search-tickers, recommendations, mini-lesson, two-asset-analysis, calculate-metrics, optimization/triple, stress-test, warm-tickers, tax/calculate, transaction-costs/estimate, export/pdf, export/csv, visualization/data, projection/five-year, what-if-scenario, etc.
+- Data flow: Wizard still uses wizardData (riskProfile, capital, selectedStocks, portfolioMetrics, selectedPortfolio). StockSelection still calls onStocksUpdate(selectedStocks); Reorder only passes a reordered array of the same shape (PortfolioAllocation[]). FinalizePortfolio, StressTest, and PortfolioOptimization still receive the same props and call the same APIs.
+
+3) TEST STATUS
+--------------
+- ConfirmationModal: 1 failing test (expects role="dialog") - PRE-EXISTING; not caused by these changes.
+- RiskSpectrum: 1 failing test (expects getByText('95')) - likely due to Framer Motion rendering in jsdom; "Risk Score: 95" is still in the component. Other RiskSpectrum tests passed.
+- Integration / RiskProfiler / ResultsPage: passed where run.
+- Recommendation: Run the app in the browser; fix or relax RiskSpectrum test (e.g. getByText(/95/) or wait for motion) and ConfirmationModal dialog role if you want full green.
+
+4) WHAT WAS ADDED (VS PREVIOUSLY)
+---------------------------------
+- Framer Motion: step transitions (slide/fade by direction), spring progress bar, AnimatedNumber, Reorder for stocks, allocation shake, RiskSpectrum marker animation.
+- Error handling: WizardStepErrorBoundary around each step (retry, step name).
+- Loading UX: Skeleton components (PortfolioCardSkeleton, MetricsSkeleton, OptimizationSkeleton, StockSearchSkeleton) used instead of spinners in StockSelection and PortfolioOptimization.
+- ThankYouStep: Optional auto-redirect with countdown and "Stay here" (no forced 30s redirect).
+- Charts: Recharts animations enabled (isAnimationActive, animationDuration, animationEasing) in EfficientFrontierChart, PortfolioOptimization, StressTest, Portfolio3PartVisualization.
+- New components: StockSearchBar, AllocationSummaryCard, ScenarioSelector, ResilienceScore, TimelineScrollReveal; skeleton set; WizardStepErrorBoundary; ui/skeleton.tsx, ui/animated-number.tsx.
+- GSAP: ScrollTrigger used in TimelineScrollReveal for timeline event list reveal on scroll.
+- Cleanup: All console.log removed from PortfolioWizard.
+
+5) WHAT TO EXPECT NOW
+---------------------
+- Smoother UX: Step transitions, progress bar animation, chart animations, skeleton loaders, optional thank-you redirect.
+- Clearer errors: Step-level error boundary with retry.
+- Stock step: Search via StockSearchBar, allocation summary via AllocationSummaryCard, drag-and-drop reorder in weight editor, shake when total allocation > 100%, animated metrics (AnimatedNumber).
+- Risk step: Animated RiskSpectrum marker and dot on result.
+- Stress test: ScenarioSelector and ResilienceScore components; timeline events reveal on scroll (Timeline tab).
+- No change to: backend, API contracts, or wizard data shape. Same steps, same APIs, same payloads.
+
+6) QUICK MANUAL CHECKLIST
+-------------------------
+- Run backend (e.g. uvicorn), then frontend (npm run dev). Go through: Welcome -> Risk (finish to see animated marker) -> Capital -> Stocks (search, add, reorder, see skeletons/validation) -> Optimization (see chart animation/skeleton) -> Stress Test (scenario, run, resilience score, Timeline tab scroll) -> Finalize -> Thank You (countdown / Stay here). Confirm no console errors and API calls in Network tab match previous behaviour.

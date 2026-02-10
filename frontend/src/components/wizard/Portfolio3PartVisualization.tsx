@@ -1330,8 +1330,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <RechartsTooltip 
                     cursor={{ strokeDasharray: '3 3' }} 
                     content={renderScatterTooltip}
-                    isAnimationActive={false}
-                    animationDuration={0}
+                    isAnimationActive={true}
+                    animationDuration={1200}
+                    animationEasing="ease-out"
                     active={hoveredSymbol !== null ? true : undefined}
                   />
                   <Legend
@@ -1499,8 +1500,9 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
                   <RechartsTooltip 
                     cursor={{ strokeDasharray: '3 3' }} 
                     content={renderScatterTooltip}
-                    isAnimationActive={false}
-                    animationDuration={0}
+                    isAnimationActive={true}
+                    animationDuration={1200}
+                    animationEasing="ease-out"
                     active={hoveredSymbol !== null ? true : undefined}
                   />
                   <Legend

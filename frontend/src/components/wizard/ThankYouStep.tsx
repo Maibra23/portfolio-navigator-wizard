@@ -6,7 +6,6 @@ import confetti from 'canvas-confetti';
 
 const REDIRECT_SECONDS = 30;
 
-// Theme-aligned colors for confetti (primary blue, accent green, indigo)
 const CONFETTI_COLORS = ['#2563eb', '#3b82f6', '#16a34a', '#22c55e', '#6366f1', '#8b5cf6'];
 
 interface ThankYouStepProps {
@@ -16,6 +15,8 @@ interface ThankYouStepProps {
 
 export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps) => {
   const hasTriggeredConfetti = useRef(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [autoRedirectEnabled, setAutoRedirectEnabled] = useState(true);
 
   useEffect(() => {
     if (hasTriggeredConfetti.current) return;
@@ -40,9 +41,28 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
   }, []);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => onStartOver(), REDIRECT_SECONDS * 1000);
-    return () => clearTimeout(timeoutId);
-  }, [onStartOver]);
+    if (!autoRedirectEnabled) return;
+    setCountdown(REDIRECT_SECONDS);
+  }, [autoRedirectEnabled]);
+
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return;
+    const t = setTimeout(() => {
+      setCountdown((c) => (c !== null && c <= 1 ? 0 : c - 1));
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  useEffect(() => {
+    if (countdown === 0 && autoRedirectEnabled) {
+      onStartOver();
+    }
+  }, [countdown, autoRedirectEnabled, onStartOver]);
+
+  const handleStayHere = () => {
+    setAutoRedirectEnabled(false);
+    setCountdown(null);
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -60,6 +80,18 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
           <p className="text-sm font-medium text-foreground">
             Good luck with your investments.
           </p>
+          {autoRedirectEnabled && countdown !== null && countdown > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Starting over in {countdown} seconds.{' '}
+              <button
+                type="button"
+                onClick={handleStayHere}
+                className="underline hover:no-underline text-primary font-medium"
+              >
+                Stay here
+              </button>
+            </p>
+          )}
           <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
             <Button variant="outline" onClick={onBackToSummary} className="gap-2">
               <ArrowLeft className="h-4 w-4" />

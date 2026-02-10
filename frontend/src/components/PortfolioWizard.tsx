@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { ArrowRight, TrendingUp, Shield, DollarSign, BarChart3, CheckCircle, FileText } from 'lucide-react';
 import { WelcomeStep } from './wizard/WelcomeStep';
 import { RiskProfiler } from './wizard/RiskProfiler';
@@ -11,6 +10,8 @@ import { PortfolioOptimization } from './wizard/PortfolioOptimization';
 import { StressTest } from './wizard/StressTest';
 import { FinalizePortfolio } from './wizard/FinalizePortfolio';
 import { ThankYouStep } from './wizard/ThankYouStep';
+import { WizardStepErrorBoundary } from './wizard/WizardStepErrorBoundary';
+import { ThemeSelector } from '@/components/ThemeSelector';
 
 export type RiskProfile = 'very-conservative' | 'conservative' | 'moderate' | 'aggressive' | 'very-aggressive' | null;
 
@@ -28,7 +29,6 @@ export interface PortfolioMetrics {
   sharpeRatio: number;
 }
 
-// Selected portfolio data from optimization step
 export interface SelectedPortfolioData {
   source: 'current' | 'weights' | 'market';
   tickers: string[];
@@ -60,7 +60,22 @@ const STEPS = [
   { id: 'thank-you', title: 'Complete', icon: CheckCircle },
 ];
 
-import { ThemeSelector } from '@/components/ThemeSelector';
+const stepTransition = {
+  initial: (direction: number) => ({
+    opacity: 0,
+    x: direction > 0 ? 80 : -80,
+  }),
+  animate: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: 0.3, ease: 'easeOut' },
+  },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: direction > 0 ? -80 : 80,
+    transition: { duration: 0.25, ease: 'easeIn' },
+  }),
+};
 
 export const PortfolioWizard = () => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -72,130 +87,125 @@ export const PortfolioWizard = () => {
     portfolioMetrics: null,
     selectedPortfolio: null,
   });
+  const directionRef = useRef(1);
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
 
   const nextStep = () => {
-    console.log('🔄 nextStep called. Current step:', currentStep, 'Max step:', STEPS.length - 1);
     if (currentStep < STEPS.length - 1) {
-      const newStep = currentStep + 1;
-      console.log('✅ Moving to step:', newStep, 'Step ID:', STEPS[newStep].id);
-      setCurrentStep(newStep);
-    } else {
-      console.log('⚠️ Already at last step');
+      directionRef.current = 1;
+      setCurrentStep((prev) => prev + 1);
     }
   };
 
   const prevStep = () => {
-    console.log('🔄 prevStep called. Current step:', currentStep);
     if (currentStep > 0) {
-      const newStep = currentStep - 1;
-      console.log('✅ Moving to step:', newStep, 'Step ID:', STEPS[newStep].id);
-      setCurrentStep(newStep);
-    } else {
-      console.log('⚠️ Already at first step');
+      directionRef.current = -1;
+      setCurrentStep((prev) => prev - 1);
     }
   };
 
   const updateWizardData = (data: Partial<WizardData>) => {
-    setWizardData(prev => ({ ...prev, ...data }));
+    setWizardData((prev) => ({ ...prev, ...data }));
   };
 
   const renderStep = () => {
-    console.log('🔄 renderStep called. Current step:', currentStep, 'Step ID:', STEPS[currentStep].id, 'Step title:', STEPS[currentStep].title);
-    
-    switch (STEPS[currentStep].id) {
+    const stepId = STEPS[currentStep].id;
+    const stepTitle = STEPS[currentStep].title;
+
+    switch (stepId) {
       case 'welcome':
-        console.log('📱 Rendering WelcomeStep');
-        return <WelcomeStep onNext={nextStep} />;
-      case 'risk':
-        console.log('📱 Rendering RiskProfiler');
         return (
-          <RiskProfiler
-            onNext={nextStep}
-            onPrev={prevStep}
-            onProfileUpdate={(profile, analysis) => updateWizardData({ riskProfile: profile, riskAnalysis: analysis })}
-            currentProfile={wizardData.riskProfile}
-            currentAnalysis={wizardData.riskAnalysis}
-          />
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <WelcomeStep onNext={nextStep} />
+          </WizardStepErrorBoundary>
+        );
+      case 'risk':
+        return (
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <RiskProfiler
+              onNext={nextStep}
+              onPrev={prevStep}
+              onProfileUpdate={(profile, analysis) => updateWizardData({ riskProfile: profile, riskAnalysis: analysis })}
+              currentProfile={wizardData.riskProfile}
+              currentAnalysis={wizardData.riskAnalysis}
+            />
+          </WizardStepErrorBoundary>
         );
       case 'capital':
-        console.log('📱 Rendering CapitalInput');
         return (
-          <CapitalInput
-            onNext={nextStep}
-            onPrev={prevStep}
-            onCapitalUpdate={(capital) => updateWizardData({ capital })}
-            currentCapital={wizardData.capital}
-          />
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <CapitalInput
+              onNext={nextStep}
+              onPrev={prevStep}
+              onCapitalUpdate={(capital) => updateWizardData({ capital })}
+              currentCapital={wizardData.capital}
+            />
+          </WizardStepErrorBoundary>
         );
       case 'stocks':
-        console.log('📱 Rendering StockSelection component with data:', {
-          riskProfile: wizardData.riskProfile,
-          capital: wizardData.capital,
-          selectedStocks: wizardData.selectedStocks.length
-        });
         return (
-          <StockSelection
-            onNext={nextStep}
-            onPrev={prevStep}
-            onStocksUpdate={(selectedStocks) => updateWizardData({ selectedStocks })}
-            onMetricsUpdate={(metrics) => updateWizardData({ portfolioMetrics: metrics })}
-            selectedStocks={wizardData.selectedStocks}
-            riskProfile={wizardData.riskProfile || 'moderate'}
-            capital={wizardData.capital}
-          />
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <StockSelection
+              onNext={nextStep}
+              onPrev={prevStep}
+              onStocksUpdate={(selectedStocks) => updateWizardData({ selectedStocks })}
+              onMetricsUpdate={(metrics) => updateWizardData({ portfolioMetrics: metrics })}
+              selectedStocks={wizardData.selectedStocks}
+              riskProfile={wizardData.riskProfile || 'moderate'}
+              capital={wizardData.capital}
+            />
+          </WizardStepErrorBoundary>
         );
       case 'optimization':
-        console.log('📱 Rendering PortfolioOptimization component');
         return (
-          <PortfolioOptimization
-            onNext={nextStep}
-            onPrev={prevStep}
-            selectedStocks={wizardData.selectedStocks}
-            riskProfile={wizardData.riskProfile || 'moderate'}
-            capital={wizardData.capital}
-            portfolioMetrics={wizardData.portfolioMetrics}
-            initialSelectedPortfolio={wizardData.selectedPortfolio}
-            onPortfolioSelection={(portfolio) => {
-              console.log('📊 Portfolio selection received:', portfolio.source, portfolio.tickers);
-              updateWizardData({ selectedPortfolio: portfolio });
-            }}
-          />
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <PortfolioOptimization
+              onNext={nextStep}
+              onPrev={prevStep}
+              selectedStocks={wizardData.selectedStocks}
+              riskProfile={wizardData.riskProfile || 'moderate'}
+              capital={wizardData.capital}
+              portfolioMetrics={wizardData.portfolioMetrics}
+              initialSelectedPortfolio={wizardData.selectedPortfolio}
+              onPortfolioSelection={(portfolio) => updateWizardData({ selectedPortfolio: portfolio })}
+            />
+          </WizardStepErrorBoundary>
         );
       case 'stress-test':
-        console.log('📱 Rendering StressTest component');
         return (
-          <StressTest
-            onNext={nextStep}
-            onPrev={prevStep}
-            selectedPortfolio={wizardData.selectedPortfolio}
-            capital={wizardData.capital}
-            riskProfile={wizardData.riskProfile || 'moderate'}
-          />
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <StressTest
+              onNext={nextStep}
+              onPrev={prevStep}
+              selectedPortfolio={wizardData.selectedPortfolio}
+              capital={wizardData.capital}
+              riskProfile={wizardData.riskProfile || 'moderate'}
+            />
+          </WizardStepErrorBoundary>
         );
       case 'finalize':
-        console.log('📱 Rendering FinalizePortfolio component');
         return (
-          <FinalizePortfolio
-            onComplete={() => {
-              console.log('✅ Portfolio finalized – moving to thank-you step');
-              nextStep();
-            }}
-            onPrev={prevStep}
-            capital={wizardData.capital}
-            riskProfile={wizardData.riskProfile || 'moderate'}
-          />
+          <WizardStepErrorBoundary stepName={stepTitle}>
+            <FinalizePortfolio
+              onComplete={nextStep}
+              onPrev={prevStep}
+              capital={wizardData.capital}
+              riskProfile={wizardData.riskProfile || 'moderate'}
+            />
+          </WizardStepErrorBoundary>
         );
       case 'thank-you':
         return (
           <ThankYouStep
             onBackToSummary={prevStep}
-            onStartOver={() => setCurrentStep(0)}
+            onStartOver={() => {
+              directionRef.current = -1;
+              setCurrentStep(0);
+            }}
           />
         );
       default:
-        console.log('📱 Rendering default step for:', STEPS[currentStep].id);
         return (
           <div className="text-center py-12">
             <h3 className="text-xl font-semibold mb-4">Step {currentStep + 1} - Coming Soon</h3>
@@ -218,10 +228,8 @@ export const PortfolioWizard = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Theme Switcher - Global */}
       <ThemeSelector />
 
-      {/* Main Wizard Content */}
       <div className="max-w-4xl mx-auto px-4 py-4">
         <div className="mb-3">
           <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -238,10 +246,28 @@ export const PortfolioWizard = () => {
             </div>
             <span className="text-xs text-muted-foreground tabular-nums">{Math.round(progress)}%</span>
           </div>
-          <Progress value={progress} className="h-1" />
+          <div className="relative h-1 w-full overflow-hidden rounded-full bg-secondary">
+            <motion.div
+              className="h-full bg-primary rounded-full"
+              initial={false}
+              animate={{ width: `${progress}%` }}
+              transition={{ type: 'spring', stiffness: 100, damping: 18 }}
+            />
+          </div>
         </div>
 
-        {renderStep()}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={currentStep}
+            custom={directionRef.current}
+            initial={stepTransition.initial(directionRef.current)}
+            animate={stepTransition.animate}
+            exit={stepTransition.exit(directionRef.current)}
+            className="relative"
+          >
+            {renderStep()}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

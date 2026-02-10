@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { getChartTheme, getPortfolioColors, getVisualizationPalette } from '@/utils/chartThemes';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Layout constants (theme-independent)
 const layoutConstants = {
@@ -2537,8 +2538,12 @@ export const PortfolioOptimization = ({
                     }}
                   >
                     {isLoadingEligibleTickers ? (
-                      <div className="flex h-full items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <div className="flex h-full w-full flex-col gap-4 p-4">
+                        <Skeleton className="h-full min-h-[400px] w-full rounded-lg" />
+                        <div className="flex gap-2 justify-end">
+                          <Skeleton className="h-9 w-24" />
+                          <Skeleton className="h-9 w-24" />
+                        </div>
                       </div>
                     ) : eligibleTickers && Array.isArray(eligibleTickers) && eligibleTickers.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
@@ -3381,7 +3386,9 @@ export const PortfolioOptimization = ({
                                   strokeWidth={2.5}
                                   dot={false}
                                   activeDot={{ r: 4, fill: '#64748b', stroke: '#fff', strokeWidth: 2 }}
-                                  isAnimationActive={false}
+                                  isAnimationActive={true}
+                                  animationDuration={1500}
+                                  animationEasing="ease-out"
                                   connectNulls={true}
                                   xAxisId={0}
                                   yAxisId={0}
@@ -3436,7 +3443,9 @@ export const PortfolioOptimization = ({
                                   strokeOpacity={0.7}
                                   dot={false}
                                   activeDot={{ r: 6, fill: '#64748b', stroke: '#fff', strokeWidth: 2 }}
-                                  isAnimationActive={false}
+                                  isAnimationActive={true}
+                                  animationDuration={1500}
+                                  animationEasing="ease-out"
                                   connectNulls={true}
                                   xAxisId={0}
                                   yAxisId={0}
@@ -3460,7 +3469,9 @@ export const PortfolioOptimization = ({
                                   strokeDasharray="5 5"
                                   dot={false}
                                   activeDot={false}
-                                  isAnimationActive={false}
+                                  isAnimationActive={true}
+                                  animationDuration={1500}
+                                  animationEasing="ease-out"
                                   connectNulls={true}
                                   xAxisId={0}
                                   yAxisId={0}

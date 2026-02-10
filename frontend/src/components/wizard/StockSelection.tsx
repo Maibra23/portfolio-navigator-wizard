@@ -34,12 +34,18 @@ import {
   Database,
   XCircle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Pencil
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { TwoAssetChart } from './TwoAssetChart';
 import { Portfolio3PartVisualization } from './Portfolio3PartVisualization';
 import { VisualizationErrorBoundary } from './VisualizationErrorBoundary';
+import { PortfolioCardSkeleton, MetricsSkeleton } from './skeletons';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import { StockSearchBar } from './StockSearchBar';
+import { AllocationSummaryCard } from './AllocationSummaryCard';
+import { Reorder } from 'framer-motion';
 
 interface StockSelectionProps {
   onNext: () => void;
@@ -211,6 +217,7 @@ export const StockSelection = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasSelectedPortfolio, setHasSelectedPortfolio] = useState(false);
   const [selectedPortfolioIndex, setSelectedPortfolioIndex] = useState<number | null>(null);
+  const [showCustomizeSection, setShowCustomizeSection] = useState(false);
   const [originalRecommendation, setOriginalRecommendation] = useState<PortfolioRecommendation | null>(null);
   const [hasUserModified, setHasUserModified] = useState<boolean>(false);
   // Added: track original symbols, allocation history snapshots, and last removed original
@@ -391,6 +398,8 @@ export const StockSelection = ({
     customizedStocks: PortfolioAllocation[];
     hasUserModified: boolean;
   } | null>(null);
+  const customizeSectionRef = useRef<HTMLDivElement>(null);
+  const recommendationsGridRef = useRef<HTMLDivElement>(null);
 
   // Load dynamic recommendations from backend
   useEffect(() => {
@@ -1212,6 +1221,7 @@ export const StockSelection = ({
   const acceptRecommendation = (recommendation: PortfolioRecommendation, index: number) => {
     setSelectedPortfolioIndex(index);
     setOriginalRecommendation(recommendation);
+    setShowCustomizeSection(false);
     onStocksUpdate(recommendation.allocations);
     setHasSelectedPortfolio(true);
     setHasUserModified(false);
@@ -1857,9 +1867,9 @@ export const StockSelection = ({
                 )}
                 
                 {isLoadingMiniLesson ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="mt-2 text-blue-700">Loading financial data...</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <PortfolioCardSkeleton />
+                    <PortfolioCardSkeleton />
                   </div>
                 ) : twoAssetAnalysis && customPortfolio ? (
                   <div className="space-y-4">
@@ -2089,12 +2099,13 @@ export const StockSelection = ({
               </div>
 
               {isLoadingRecommendations ? (
-                <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="mt-2 text-muted-foreground">Generating personalized recommendations...</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <PortfolioCardSkeleton />
+                  <PortfolioCardSkeleton />
+                  <PortfolioCardSkeleton />
                 </div>
               ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div ref={recommendationsGridRef} className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {(dynamicRecommendations.length > 0 ? dynamicRecommendations : recommendations).map((recommendation, index) => (
                   <Card 
                     key={index} 
@@ -2202,27 +2213,140 @@ export const StockSelection = ({
               </div>
               )}
 
-              {/* Advanced Options Button - Small and at the bottom */}
-              {!hasSelectedPortfolio && activeTab === 'recommendations' && (
+              {/* Below recommendations: Advanced Options only when no selection; Customize button only after selection */}
+              {activeTab === 'recommendations' && (
                 <div className="text-center mt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab('dynamic-generation')}
-                    className="flex items-center gap-1.5 mx-auto text-xs h-8"
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    Advanced Options
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {!hasSelectedPortfolio && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveTab('dynamic-generation')}
+                        className="flex items-center gap-1.5 text-xs h-8"
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        Advanced Options
+                      </Button>
+                    )}
+                    {hasSelectedPortfolio && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (showCustomizeSection) {
+                            setShowCustomizeSection(false);
+                          } else {
+                            setShowCustomizeSection(true);
+                            setTimeout(() => {
+                              if (customizeSectionRef.current) {
+                                customizeSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }
+                            }, 100);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 text-xs h-8"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        {showCustomizeSection ? 'Hide Customize' : 'Customize Your Portfolio'}
+                      </Button>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Generate custom portfolios using AI optimization algorithms
+                    {hasSelectedPortfolio
+                      ? 'Modify allocations below or view your portfolio performance'
+                      : 'Generate custom portfolios using AI optimization algorithms'}
                   </p>
                 </div>
               )}
 
-              {/* Portfolio Customization Section - Only show after selection AND on recommendations tab */}
-              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
-                <Card>
+              {/* Your Portfolio Performance - right under button row when no customize section; below Customize when opened */}
+              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && !showCustomizeSection && (
+                <Card className="bg-card border border-border">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl flex items-center gap-3 text-slate-800">
+                      <BarChart3 className="h-6 w-6 text-blue-600" />
+                      Your Portfolio Performance
+                      {isLoadingMetrics && (
+                        <div className="ml-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        </div>
+                      )}
+                    </CardTitle>
+                    <p className="text-slate-600">
+                      {isLoadingMetrics ? 'Calculating metrics...' : 'Real-time metrics based on your current allocation and market data'}
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingMetrics ? (
+                      <MetricsSkeleton />
+                    ) : portfolioMetrics ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Expected Return */}
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            <TrendingUp className="h-5 w-5 text-emerald-600" />
+                            <span className="text-sm font-medium text-emerald-700">Expected Return</span>
+                          </div>
+                          <div className="text-3xl font-bold text-emerald-800 mb-1">
+                            <AnimatedNumber value={portfolioMetrics.expectedReturn} format="percent" decimals={1} />
+                          </div>
+                          <div className="text-xs text-emerald-600">
+                            Annualized projection
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Risk Level */}
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Shield className="h-5 w-5 text-amber-600" />
+                            <span className="text-sm font-medium text-amber-700">Risk Level</span>
+                          </div>
+                          <div className="text-3xl font-bold text-amber-800 mb-1">
+                            <AnimatedNumber value={portfolioMetrics.risk} format="percent" decimals={1} />
+                          </div>
+                          <div className="text-xs text-amber-600">
+                            Volatility measure
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Diversification Score */}
+                      <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-2 mb-2">
+                            <PieChart className="h-5 w-5 text-violet-600" />
+                            <span className="text-sm font-medium text-violet-700">Diversification</span>
+                          </div>
+                          <div className="text-3xl font-bold text-violet-800 mb-1">
+                            <AnimatedNumber value={portfolioMetrics.diversificationScore / 100} format="percent" decimals={0} />
+                          </div>
+                          <div className="text-xs text-violet-600">
+                            Portfolio balance
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    ) : (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="text-center">
+                          <div className="text-slate-500 mb-2">No metrics available</div>
+                          <div className="text-sm text-slate-400">Please wait for calculation to complete</div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Portfolio Customization Section - only when user clicked Customize Your Portfolio */}
+              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && showCustomizeSection && (
+                <Card ref={customizeSectionRef}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Customize Your Portfolio</CardTitle>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -2232,53 +2356,16 @@ export const StockSelection = ({
                   <CardContent className="space-y-4 pt-0">
                     {/* Stock Search */}
                     <div className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-medium text-foreground mb-1.5">
-                          Add More Stocks
-                        </label>
-                        <div className="flex gap-2">
-                          <Input
-                            type="text"
-                            placeholder="Search for stocks (e.g., AAPL, MSFT)"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="flex-1"
-                          />
-                          <Button
-                            onClick={() => searchStocks(searchTerm)}
-                            disabled={!searchTerm.trim() || isLoading}
-                            size="sm"
-                          >
-                            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Search Results */}
-                      {searchTerm.trim() && searchResults.length > 0 && (
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-2">
-                          <h4 className="text-sm font-medium">Search Results:</h4>
-                          {searchResults.map((stock) => (
-                            <div
-                              key={stock.symbol}
-                              className="flex items-center justify-between p-3 border border-border rounded-lg bg-card hover:bg-accent/50"
-                            >
-                              <div>
-                                <div className="font-medium text-foreground">{stock.symbol}</div>
-                                <div className="text-sm text-muted-foreground">{stock.shortname}</div>
-                              </div>
-                              <Button
-                                onClick={() => addStock(stock)}
-                                size="sm"
-                                variant="outline"
-                                disabled={selectedStocks.some(s => s.symbol === stock.symbol) || selectedStocks.length >= 4}
-                              >
-                                {selectedStocks.some(s => s.symbol === stock.symbol) ? 'Added' : 'Add'}
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <StockSearchBar
+                        searchTerm={searchTerm}
+                        onSearchTermChange={setSearchTerm}
+                        searchResults={searchResults}
+                        isLoading={isLoading}
+                        onSearch={() => searchStocks(searchTerm)}
+                        onAddStock={addStock}
+                        selectedSymbols={selectedStocks.map((s) => s.symbol)}
+                        maxStocks={4}
+                      />
                     </div>
 
                     {/* Selected Assets Section */}
@@ -2290,30 +2377,11 @@ export const StockSelection = ({
                         </div>
                       </div>
 
-                      {/* Portfolio Overview - Moved here, below Selected Assets */}
-                      <div className={`border rounded-lg p-3 ${totalAllocation > 100 ? 'alert-error' : 'bg-muted/30'}`}>
-                        <div className="grid grid-cols-3 gap-3 text-center">
-                          <div>
-                            <div className="text-xl font-bold text-primary">{selectedStocks.length}</div>
-                            <div className="text-xs text-muted-foreground">Stocks</div>
-                          </div>
-                          <div>
-                            <div className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
-                              {totalAllocation.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-muted-foreground">Total Allocation</div>
-                          </div>
-                          <div>
-                            <div className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}>
-                              {totalAllocation > 100 ? '✗' : '✓'}
-                            </div>
-                            <div className="text-xs text-muted-foreground">Status</div>
-                          </div>
-                        </div>
-                        <div className={`mt-2 text-center text-xs ${totalAllocation > 100 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
-                          Total Allocation: {totalAllocation.toFixed(1)}%
-                        </div>
-                      </div>
+                      <AllocationSummaryCard
+                        stockCount={selectedStocks.length}
+                        totalAllocation={totalAllocation}
+                        isValid={isValidAllocation}
+                      />
 
                       {/* Allocation Outcome Warnings - Only in Selected Assets section */}
                       {(() => {
@@ -2445,55 +2513,64 @@ export const StockSelection = ({
                       />
                     </div>
 
-                    {/* Weight Editor */}
+                    {/* Weight Editor - drag to reorder */}
                     {showWeightEditor && (
                       <div className="space-y-3">
-                        {selectedStocks.map((stock, index) => (
-                          <div key={stock.symbol} className="flex items-center gap-3">
-                            <div className="flex-1">
-                              <div className="font-medium">{stock.symbol}</div>
-                              <div className="text-sm text-muted-foreground">{stock.name || stock.symbol}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                value={stock.allocation || ''}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  if (value === '') {
-                                    // Allow empty input
-                                    updateAllocation(stock.symbol, 0);
-                                  } else {
-                                    const numValue = parseFloat(value);
-                                    if (!isNaN(numValue)) {
-                                      updateAllocation(stock.symbol, numValue);
-                                    }
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  // When input loses focus, ensure we have a valid number
-                                  const value = e.target.value;
-                                  if (value === '' || isNaN(parseFloat(value))) {
-                                    updateAllocation(stock.symbol, 0);
-                                  }
-                                }}
-                                className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 alert-error' : ''}`}
-                                min="0"
-                                max="100"
-                                step="0.1"
-                                placeholder="0"
-                              />
-                              <span className="text-sm text-muted-foreground">%</span>
-                            </div>
-                            <Button
-                              onClick={() => removeStock(stock.symbol)}
-                              size="sm"
-                              variant="destructive"
+                        <Reorder.Group
+                          axis="y"
+                          values={selectedStocks}
+                          onReorder={(newOrder) => onStocksUpdate(newOrder)}
+                          className="space-y-3"
+                        >
+                          {selectedStocks.map((stock) => (
+                            <Reorder.Item
+                              key={stock.symbol}
+                              value={stock}
+                              className="flex items-center gap-3 p-2 rounded-lg border border-border bg-card cursor-grab active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                             >
-                              Remove
-                            </Button>
-                          </div>
-                        ))}
+                              <div className="flex-1">
+                                <div className="font-medium">{stock.symbol}</div>
+                                <div className="text-sm text-muted-foreground">{stock.name || stock.symbol}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  value={stock.allocation || ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === '') {
+                                      updateAllocation(stock.symbol, 0);
+                                    } else {
+                                      const numValue = parseFloat(value);
+                                      if (!isNaN(numValue)) {
+                                        updateAllocation(stock.symbol, numValue);
+                                      }
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const value = e.target.value;
+                                    if (value === '' || isNaN(parseFloat(value))) {
+                                      updateAllocation(stock.symbol, 0);
+                                    }
+                                  }}
+                                  className={`w-20 text-center ${stock.allocation > 100 ? 'border-red-500 alert-error' : ''}`}
+                                  min="0"
+                                  max="100"
+                                  step="0.1"
+                                  placeholder="0"
+                                />
+                                <span className="text-sm text-muted-foreground">%</span>
+                              </div>
+                              <Button
+                                onClick={() => removeStock(stock.symbol)}
+                                size="sm"
+                                variant="destructive"
+                              >
+                                Remove
+                              </Button>
+                            </Reorder.Item>
+                          ))}
+                        </Reorder.Group>
                         
                         {/* Allocation Warning */}
                         {selectedStocks.some(stock => stock.allocation > 100) && (
@@ -2553,8 +2630,8 @@ export const StockSelection = ({
                 </Card>
               )}
 
-              {/* Portfolio Metrics Section - Enhanced UX Design */}
-              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && (
+              {/* Your Portfolio Performance - below Customize Your Portfolio when that section is open */}
+              {hasSelectedPortfolio && selectedStocks.length > 0 && activeTab === 'recommendations' && showCustomizeSection && (
                 <Card className="bg-card border border-border">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl flex items-center gap-3 text-slate-800">
@@ -2572,10 +2649,7 @@ export const StockSelection = ({
                   </CardHeader>
                   <CardContent>
                     {isLoadingMetrics ? (
-                      <div className="flex items-center justify-center py-4">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                        <span className="ml-3 text-slate-600">Calculating portfolio metrics...</span>
-                      </div>
+                      <MetricsSkeleton />
                     ) : portfolioMetrics ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {/* Expected Return */}
@@ -2587,7 +2661,7 @@ export const StockSelection = ({
                             <span className="text-sm font-medium text-emerald-700">Expected Return</span>
                           </div>
                           <div className="text-3xl font-bold text-emerald-800 mb-1">
-                            {(portfolioMetrics.expectedReturn * 100).toFixed(1)}%
+                            <AnimatedNumber value={portfolioMetrics.expectedReturn} format="percent" decimals={1} />
                           </div>
                           <div className="text-xs text-emerald-600">
                             Annualized projection
@@ -2604,7 +2678,7 @@ export const StockSelection = ({
                             <span className="text-sm font-medium text-amber-700">Risk Level</span>
                           </div>
                           <div className="text-3xl font-bold text-amber-800 mb-1">
-                            {(portfolioMetrics.risk * 100).toFixed(1)}%
+                            <AnimatedNumber value={portfolioMetrics.risk} format="percent" decimals={1} />
                           </div>
                           <div className="text-xs text-amber-600">
                             Volatility measure
@@ -2621,7 +2695,7 @@ export const StockSelection = ({
                             <span className="text-sm font-medium text-violet-700">Diversification</span>
                           </div>
                           <div className="text-3xl font-bold text-violet-800 mb-1">
-                            {portfolioMetrics.diversificationScore}%
+                            <AnimatedNumber value={portfolioMetrics.diversificationScore / 100} format="percent" decimals={0} />
                           </div>
                           <div className="text-xs text-violet-600">
                             Portfolio balance
@@ -2634,8 +2708,8 @@ export const StockSelection = ({
                         <div className="text-center">
                           <div className="text-slate-500 mb-2">No metrics available</div>
                           <div className="text-sm text-slate-400">Please wait for calculation to complete</div>
+                        </div>
                       </div>
-                    </div>
                     )}
                   </CardContent>
                 </Card>
@@ -2837,9 +2911,9 @@ export const StockSelection = ({
 
                     {/* Strategy Portfolios Display */}
                     {isLoadingStrategy ? (
-                        <div className="text-center py-4">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                        <p className="mt-2 text-xs text-muted-foreground">Generating {selectedStrategy} strategy portfolios...</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <PortfolioCardSkeleton />
+                          <PortfolioCardSkeleton />
                         </div>
                       ) : strategyPortfolios.length > 0 ? (
                         <div className="mt-4">

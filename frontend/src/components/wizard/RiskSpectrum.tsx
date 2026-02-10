@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -151,19 +152,26 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
               ))}
             </div>
 
-            {/* Score marker */}
+            {/* Score marker - animated on mount */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div
+                <motion.div
                   className={cn(
-                    "absolute top-1/2 transform -translate-y-1/2 -translate-x-1/2 z-10",
+                    "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10",
                     "w-5 h-5 bg-white rounded-full border-3 border-blue-600 shadow-lg",
                     getMarkerGlow(visualizationData.gradient_intensity)
                   )}
-                  style={{ left: `${markerPosition}%` }}
+                  initial={{ left: '0%' }}
+                  animate={{ left: `${markerPosition}%` }}
+                  transition={{ type: 'spring', stiffness: 80, damping: 18 }}
                 >
-                  <div className="absolute inset-1 bg-blue-600 rounded-full" />
-                </div>
+                  <motion.div
+                    className="absolute inset-1 bg-blue-600 rounded-full"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.2, type: 'spring', stiffness: 200, damping: 15 }}
+                  />
+                </motion.div>
               </TooltipTrigger>
               <TooltipContent>
                 <p>{SPECTRUM_TOOLTIPS.score_marker}</p>

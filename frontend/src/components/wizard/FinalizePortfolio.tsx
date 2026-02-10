@@ -819,9 +819,8 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   <Button
                     onClick={() => handleTabChange('analysis')}
                     disabled={!canNavigateToTab('analysis', state, activeTab)}
-                    className="w-full mt-4"
+                    className="w-full mt-4 bg-primary hover:bg-primary/90"
                     size="lg"
-                    variant="secondary"
                   >
                     Continue to Final Analysis
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -973,9 +972,8 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   <Button
                     onClick={() => handleTabChange('analysis')}
                     disabled={!canNavigateToTab('analysis', state, activeTab)}
-                    className="w-full mt-4"
+                    className="w-full mt-4 bg-primary hover:bg-primary/90"
                     size="lg"
-                    variant="secondary"
                   >
                     Continue to Final Analysis
                     <ArrowRight className="ml-2 h-4 w-4" />

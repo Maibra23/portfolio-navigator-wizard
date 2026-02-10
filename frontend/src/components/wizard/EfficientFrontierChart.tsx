@@ -757,7 +757,9 @@ export const EfficientFrontierChart = ({
                   strokeOpacity={0.7}
                   dot={false}
                   activeDot={{ r: 6, fill: '#64748b', stroke: '#fff', strokeWidth: 2 }}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={1500}
+                  animationEasing="ease-out"
                   connectNulls={true}
                 />
               )}
@@ -773,7 +775,9 @@ export const EfficientFrontierChart = ({
                   strokeWidth={2.5}
                   dot={false}
                   activeDot={{ r: 4, fill: '#64748b', stroke: '#fff', strokeWidth: 2 }}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={1500}
+                  animationEasing="ease-out"
                   connectNulls={true}
                 />
               )}
@@ -790,7 +794,9 @@ export const EfficientFrontierChart = ({
                   strokeDasharray="4 3"
                   dot={false}
                   activeDot={{ r: 4, fill: '#9333ea', stroke: '#fff', strokeWidth: 2 }}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={1500}
+                  animationEasing="ease-out"
                   connectNulls={true}
                 />
               )}
