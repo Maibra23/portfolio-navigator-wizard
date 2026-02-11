@@ -66,6 +66,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   const [activeTab, setActiveTab] = useState<'builder' | 'optimize' | 'analysis' | 'tax-cost'>('builder');
   const [hiddenTab, setHiddenTab] = useState<'stress-test' | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizeButtonClicked, setOptimizeButtonClicked] = useState(false); // hide button immediately on click
   const [optimizationError, setOptimizationError] = useState<string | null>(null);
   const [portfolioMetrics, setPortfolioMetrics] = useState<PortfolioMetrics | null>(null);
   const [taxCalculation, setTaxCalculation] = useState<any>(null);
@@ -206,6 +207,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       setOptimizationError(error.message || 'Failed to optimize portfolio');
     } finally {
       setIsOptimizing(false);
+      setOptimizeButtonClicked(false);
     }
   };
 
@@ -883,9 +885,12 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               </Card>
 
               {/* Optimize Button: disappears as soon as clicked to avoid double-submit */}
-              {!isOptimizing && (
+              {!isOptimizing && !optimizeButtonClicked && (
                 <Button
-                  onClick={handleOptimize}
+                  onClick={() => {
+                    setOptimizeButtonClicked(true);
+                    handleOptimize();
+                  }}
                   disabled={state.constructedPortfolio.length === 0}
                   className="w-full"
                   size="lg"
@@ -894,7 +899,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   Optimize
                 </Button>
               )}
-              {isOptimizing && (
+              {(isOptimizing || optimizeButtonClicked) && (
                 <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin" />
                   Optimizing...
