@@ -379,7 +379,7 @@ const fetchVisualizationData = async (
   payload: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<VisualizationResponse> => {
-  const response = await fetch('/api/portfolio/visualization/data', {
+  const response = await fetch('/api/v1/portfolio/visualization/data', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -512,7 +512,7 @@ export const Portfolio3PartVisualization: React.FC<Portfolio3PartVisualizationPr
     }
 
     try {
-      await fetch('/api/portfolio/warm-tickers', {
+      await fetch('/api/v1/portfolio/warm-tickers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

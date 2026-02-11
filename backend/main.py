@@ -7,14 +7,22 @@ FastAPI application with Enhanced Portfolio Generator System
 import asyncio
 import logging
 import os
+import time
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import FastAPI, HTTPException, Request
+from prometheus_client import make_asgi_app
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+from shared.errors import error_response, is_production
+from shared.structured_logging import set_request_id, configure_structured_logging
+from shared.metrics import REQUEST_COUNT, REQUEST_LATENCY
 
 # Import existing routers
 from routers import portfolio, strategy_buckets
@@ -25,8 +33,9 @@ from utils.strategy_portfolio_optimizer import StrategyPortfolioOptimizer
 # Import will be done locally in lifespan function
 from utils.port_analytics import PortfolioAnalytics
 
-# Configure logging
+# Configure logging (structured JSON in production, plain in development)
 logging.basicConfig(level=logging.INFO)
+configure_structured_logging()
 logger = logging.getLogger(__name__)
 
 # Global variables for enhanced portfolio system
@@ -151,80 +160,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ Strategy portfolio cache check failed: {e}")
             logger.info("💡 Portfolios will be generated on-demand if needed")
-        
-        # Check and generate missing portfolios on startup (lazy generation integration)
-        logger.info("🚀 Checking portfolio recommendations cache...")
-        try:
-            risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
-            total_portfolios = 0
-            profiles_needing_generation = []
-            
-            for risk_profile in risk_profiles:
-                portfolio_count = redis_manager.get_portfolio_count(risk_profile)
-                total_portfolios += portfolio_count
-                
-                if portfolio_count < 12:  # Need at least 12 portfolios per profile
-                    profiles_needing_generation.append(risk_profile)
-                    logger.info(f"📊 {risk_profile}: {portfolio_count}/12 portfolios - needs generation")
-                else:
-                    logger.debug(f"✅ {risk_profile}: {portfolio_count}/12 portfolios - sufficient")
-            
-            logger.info(f"📊 Total portfolios in Redis: {total_portfolios}/60")
-            
-            # Schedule background generation for missing portfolios (non-blocking)
-            if profiles_needing_generation:
-                logger.warning(f"⚠️ Missing portfolios detected for {len(profiles_needing_generation)} profiles")
-                logger.info("⏱️  Background generation will take ~2-3 minutes; API stays responsive")
-                
-                async def background_generate_missing_portfolios():
-                    try:
-                        logger.info("🚀 Background portfolio generation started...")
-                        from routers.portfolio import _ensure_missing_portfolios_generated
-                        import time
-                        
-                        start_time = time.time()
-                        generated_count = 0
-                        
-                        for risk_profile in profiles_needing_generation:
-                            try:
-                                logger.info(f"🔄 Generating portfolios for {risk_profile}...")
-                                await asyncio.to_thread(_ensure_missing_portfolios_generated, risk_profile)
-                                
-                                # Verify generation
-                                count = redis_manager.get_portfolio_count(risk_profile)
-                                if count >= 12:
-                                    generated_count += 1
-                                    logger.info(f"✅ {risk_profile}: {count}/12 portfolios generated")
-                                else:
-                                    logger.warning(f"⚠️ {risk_profile}: Only {count}/12 portfolios generated")
-                            except Exception as e:
-                                logger.error(f"❌ Error generating portfolios for {risk_profile}: {e}")
-                                continue
-                        
-                        elapsed = time.time() - start_time
-                        logger.info("="*80)
-                        logger.info("✅ PORTFOLIO GENERATION COMPLETED!")
-                        logger.info(f"   ⏱️  Processing Time: {elapsed:.2f}s")
-                        logger.info(f"   📊 Profiles Generated: {generated_count}/{len(profiles_needing_generation)}")
-                        logger.info("="*80)
-                        logger.info("✅ Portfolio recommendations are now ready!")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Background portfolio generation failed: {e}")
-                        import traceback
-                        traceback.print_exc()
-                
-                asyncio.create_task(background_generate_missing_portfolios())
-                logger.info("✅ API will serve using lazy generation until portfolios are ready")
-            else:
-                logger.info("✅ All portfolios available - no generation needed")
-                
-        except Exception as e:
-            logger.error(f"❌ Portfolio cache check failed: {e}")
-            logger.info("💡 Portfolios will be generated on-demand via lazy generation")
-        
-        # Using Redis TTL for automatic expiration (7 days for portfolios)
-        logger.info("✅ Using Redis TTL for automatic portfolio expiration (7 days)")
         
         # Pre-compute eligible tickers cache in background (for full-dev mode)
         logger.info("🚀 Checking eligible tickers cache...")
@@ -621,6 +556,43 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Set a unique request_id on each request for tracing and structured logging."""
+
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        request.state.request_id = request_id
+        set_request_id(request_id)
+        response = await call_next(request)
+        response.headers["x-request-id"] = request_id
+        return response
+
+
+app.add_middleware(RequestIDMiddleware)
+
+
+class PrometheusMiddleware(BaseHTTPMiddleware):
+    """Record request count and latency for Prometheus."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        path = request.scope.get("path", "").split("?")[0] or "unknown"
+        method = request.method
+        response = await call_next(request)
+        duration = time.perf_counter() - start
+        status = response.status_code
+        REQUEST_LATENCY.labels(method=method, path=path).observe(duration)
+        REQUEST_COUNT.labels(method=method, path=path, status=status).inc()
+        return response
+
+
+app.add_middleware(PrometheusMiddleware)
+
+# Mount Prometheus metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
 # Add CORS middleware with environment-based configuration
 import os
 
@@ -645,41 +617,49 @@ app.add_middleware(
 )
 
 # Include existing routers
-app.include_router(portfolio.router, tags=["portfolio"])
-app.include_router(strategy_buckets.router, prefix="/api/strategy-buckets", tags=["strategy-buckets"])
+# Mount the portfolio router under both the versioned prefix and the legacy prefix
+# so existing clients that call /api/portfolio/... keep working while new clients
+# use /api/v1/portfolio/ for versioning.
+app.include_router(portfolio.router, prefix="/api/v1/portfolio", tags=["portfolio"])
+app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio", "legacy"])
+app.include_router(strategy_buckets.router, prefix="/api/v1/strategy-buckets", tags=["strategy-buckets"])
 
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
+# Health check endpoints (/health and /healthz for load balancers and Kubernetes)
+async def _health_response():
     try:
-        # Check if enhanced portfolio system is available
         if redis_manager:
             portfolio_status = redis_manager.get_all_portfolio_buckets_status()
-            available_buckets = sum(1 for status in portfolio_status.values() if status.get('available'))
-            
+            available_buckets = sum(1 for status in portfolio_status.values() if status.get("available"))
             return {
                 "status": "healthy",
                 "enhanced_portfolio_system": True,
                 "available_portfolio_buckets": available_buckets,
                 "total_risk_profiles": 5,
-                "lazy_generation": True
+                "lazy_generation": True,
             }
-        else:
-            return {
-                "status": "degraded",
-                "enhanced_portfolio_system": False,
-                "message": "Enhanced portfolio system not initialized"
-            }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
         return {
-            "status": "unhealthy",
-            "error": str(e)
+            "status": "degraded",
+            "enhanced_portfolio_system": False,
+            "message": "Enhanced portfolio system not initialized",
         }
+    except Exception as e:
+        logger.error("Health check failed: %s", e)
+        return {"status": "unhealthy", "error": str(e)}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return await _health_response()
+
+
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes-style health check (same as /health)."""
+    return await _health_response()
 
 # Portfolio bucket status endpoint
-@app.get("/api/enhanced-portfolio/buckets")
+@app.get("/api/v1/enhanced-portfolio/buckets")
 async def get_portfolio_buckets_status():
     """Get status of all portfolio buckets"""
     try:
@@ -693,34 +673,49 @@ async def get_portfolio_buckets_status():
         logger.error(f"Failed to get portfolio buckets status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Portfolio bucket status endpoint
-@app.get("/api/enhanced-portfolio/buckets")
-async def get_portfolio_buckets_status():
-    """Get status of all portfolio buckets"""
-    try:
-        if not redis_manager:
-            raise HTTPException(status_code=503, detail="Redis portfolio manager not available")
-        
-        status = redis_manager.get_all_portfolio_buckets_status()
-        return status
-        
-    except Exception as e:
-        logger.error(f"Failed to get portfolio buckets status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Standardized error handlers
+def _request_id(request: Request) -> str:
+    return getattr(request.state, "request_id", None) or ""
 
-# Error handler for unhandled exceptions
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler"""
-    logger.error(f"Unhandled exception: {exc}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": "Internal server error",
-            "error": str(exc),
-            "timestamp": str(datetime.now())
-        }
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Return HTTPException as standard error response schema."""
+    request_id = _request_id(request)
+    if isinstance(exc.detail, str):
+        message = exc.detail
+        details = None
+    elif isinstance(exc.detail, list):
+        message = "Validation error"
+        details = {"errors": exc.detail}
+    else:
+        message = "Request failed"
+        details = {"detail": exc.detail}
+    body = error_response(
+        code=f"HTTP_{exc.status_code}",
+        message=message,
+        details=details,
+        request_id=request_id,
     )
+    return JSONResponse(status_code=exc.status_code, content=body)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler; do not expose internal errors in production."""
+    request_id = _request_id(request)
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
+    message = "Internal server error"
+    details = None
+    if not is_production():
+        details = {"error": str(exc)}
+    body = error_response(
+        code="INTERNAL_ERROR",
+        message=message,
+        details=details,
+        request_id=request_id,
+    )
+    return JSONResponse(status_code=500, content=body)
 
 if __name__ == "__main__":
     import uvicorn

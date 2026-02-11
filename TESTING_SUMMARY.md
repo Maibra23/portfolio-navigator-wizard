@@ -234,7 +234,7 @@ Portfolio Navigator Wizard | Redis TTL Monitoring System
 **I just deployed, what now?**
 ```bash
 # 1. Warm the cache (takes 90 minutes, do this ONCE)
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-cache
 
 # 2. Wait for Slack notification confirming completion
 
@@ -244,7 +244,7 @@ curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
 **How do I check if everything is working?**
 ```bash
 # Check cache status
-curl https://your-backend.railway.app/api/portfolio/cache-status
+curl https://your-backend.railway.app/api/v1/portfolio/cache-status
 
 # Should show: "total_tickers": 1432
 ```
@@ -268,13 +268,13 @@ Rarely! Only when:
 **How to manually refresh:**
 ```bash
 # Monthly smart refresh (recommended, 10-20 mins)
-curl -X POST https://your-backend.railway.app/api/portfolio/ticker-table/smart-refresh
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/ticker-table/smart-refresh
 
 # OR refresh expiring tickers only (5-10 mins)
-curl -X POST "https://your-backend.railway.app/api/portfolio/cache/refresh-expiring?days_threshold=7"
+curl -X POST "https://your-backend.railway.app/api/v1/portfolio/cache/refresh-expiring?days_threshold=7"
 
 # OR add specific tickers
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-tickers \
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{"tickers": ["AAPL", "MSFT", "GOOGL"]}'
 ```
@@ -353,7 +353,7 @@ git push origin main
 
 5. **Warm Cache** (90 mins, automated)
    ```bash
-   curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
+   curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
    ```
 
 6. **Verify** (5 mins)
@@ -412,7 +412,7 @@ git push origin main
 # Check backend logs for errors
 # Verify Yahoo Finance is accessible
 # Try warming specific tickers first:
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-tickers \
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{"tickers": ["AAPL", "MSFT"]}'
 ```

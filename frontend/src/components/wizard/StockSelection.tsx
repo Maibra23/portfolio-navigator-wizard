@@ -274,7 +274,7 @@ export const StockSelection = ({
       const uniqueTickers = Array.from(new Set(tickers.map(t => t.toUpperCase().trim()).filter(Boolean)));
       if (uniqueTickers.length === 0) return;
 
-      const response = await fetch('/api/portfolio/warm-tickers', {
+      const response = await fetch('/api/v1/portfolio/warm-tickers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tickers: uniqueTickers }),
@@ -448,7 +448,7 @@ export const StockSelection = ({
       setIsLoadingRecommendations(true);
       try {
         console.log('Loading dynamic recommendations for risk profile:', riskProfile);
-        const response = await fetch(`/api/portfolio/recommendations/${riskProfile}`);
+        const response = await fetch(`/api/v1/portfolio/recommendations/${riskProfile}`);
         
         if (response.ok) {
           const data = await response.json();
@@ -595,7 +595,7 @@ export const StockSelection = ({
       let response: Response | null = null;
       for (let retryAttempt = 1; retryAttempt <= 3; retryAttempt++) {
         try {
-          response = await fetch('/api/portfolio/mini-lesson/assets');
+          response = await fetch('/api/v1/portfolio/mini-lesson/assets');
           if (response.ok) break;
           if (retryAttempt < 3) await new Promise(res => setTimeout(res, retryAttempt * 500));
         } catch (e) {
@@ -861,7 +861,7 @@ export const StockSelection = ({
           return;
         }
         
-        const apiUrl = `/api/portfolio/two-asset-analysis?ticker1=${encodeURIComponent(ticker1)}&ticker2=${encodeURIComponent(ticker2)}`;
+        const apiUrl = `/api/v1/portfolio/two-asset-analysis?ticker1=${encodeURIComponent(ticker1)}&ticker2=${encodeURIComponent(ticker2)}`;
         
         // Simple retry with backoff: try up to 2 times
         let response: Response | null = null;
@@ -978,7 +978,7 @@ export const StockSelection = ({
       console.log(`Searching for: "${query}"`);
       
       // FIXED: Use correct endpoint path to match backend
-      const response = await fetch(`/api/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=10`);
+      const response = await fetch(`/api/v1/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=10`);
 
       console.log(`Response status: ${response.status}`);
       
@@ -1406,7 +1406,7 @@ export const StockSelection = ({
       
       console.log('Sending metrics calculation request:', requestBody);
       
-      const response = await fetch('/api/portfolio/calculate-metrics', {
+      const response = await fetch('/api/v1/portfolio/calculate-metrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -1616,7 +1616,7 @@ export const StockSelection = ({
         strategy: selectedStrategy
       });
       
-      const response = await fetch(`/api/portfolio/recommendations/strategy-pure?${params}`, {
+      const response = await fetch(`/api/v1/portfolio/recommendations/strategy-pure?${params}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -1706,7 +1706,7 @@ export const StockSelection = ({
     }
     
     try {
-      const response = await fetch('/api/portfolio/optimize/analysis', {
+      const response = await fetch('/api/v1/portfolio/optimize/analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -61,7 +61,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
     }
     setLoading(true);
     setError(null);
-    fetch('/api/portfolio/projection/five-year', {
+    fetch('/api/v1/portfolio/projection/five-year', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -245,6 +245,11 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
+        {accountType === 'AF' && (
+          <p className="text-xs text-muted-foreground rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2">
+            We assume gains are realized each year (e.g. rebalancing); actual AF tax depends on when you sell.
+          </p>
+        )}
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Card className="border-green-200 bg-green-50/50">

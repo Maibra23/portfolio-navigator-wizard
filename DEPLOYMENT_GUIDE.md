@@ -1,481 +1,276 @@
-# Deployment Guide - Portfolio Navigator Wizard
+# Deployment Guide – Railway Only
+
+This guide covers deploying Portfolio Navigator Wizard to Railway and whether the project is production-ready. It also explains how deployment affects performance, especially ticker search and Redis.
+
+---
+
+## Deployment architecture (intended for user)
+
+What runs where and how traffic flows after a successful deploy:
+
+```
+  User browser
+       |
+       v
+  [ Frontend ]  (Railway service: root=frontend, serve dist on $PORT)
+  https://<your-frontend>.up.railway.app
+       |
+       |  VITE_API_BASE_URL = backend URL (set at build time)
+       |  ALLOWED_ORIGINS on backend must include this exact origin
+       v
+  [ Backend ]   (Railway service: root=backend, uvicorn on $PORT)
+  https://<your-backend>.up.railway.app
+       |
+       |  REDIS_URL from Railway Redis (same project)
+       v
+  [ Redis ]     (Railway Database: Redis)
+  Private/internal URL linked to backend
+
+  GitHub (repo) --> Railway project: 3 services
+    - 1x Redis (add from template)
+    - 1x Backend (deploy from repo, root=backend)
+    - 1x Frontend (deploy from repo, root=frontend)
+```
+
+Important: The frontend talks only to the backend (same-origin or CORS). The backend talks to Redis. There is no browser-to-Redis connection. Health checks: use backend `/health` or `/api/v1/portfolio/health`; do not expose Redis publicly.
+
+---
 
 ## Table of Contents
+
 1. [Overview](#overview)
-2. [Prerequisites](#prerequisites)
-3. [Architecture & Requirements](#architecture--requirements)
-4. [Deployment Options](#deployment-options)
-5. [Option 1: Render.com (Recommended)](#option-1-rendercom-recommended)
-6. [Option 2: Railway.app](#option-2-railwayapp)
-7. [Option 3: Vercel + Render](#option-3-vercel--render)
-8. [Pre-Deployment Checklist](#pre-deployment-checklist)
-9. [Post-Deployment](#post-deployment)
-10. [Troubleshooting](#troubleshooting)
+2. [Production Readiness Review](#production-readiness-review)
+3. [Railway Deployment Steps](#railway-deployment-steps)
+4. [Environment Variables](#environment-variables)
+5. [Performance: Will Deployment Be Faster?](#performance-will-deployment-be-faster)
+6. [Post-Deployment](#post-deployment)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-Your Portfolio Navigator Wizard has three components that need hosting:
-- **Frontend**: React + Vite static app
-- **Backend**: FastAPI Python server
-- **Database**: Redis for caching
+The app has three parts:
 
-**Important**: GitHub Pages can only host static files, so it won't work for your backend or Redis. You need a platform that supports full-stack applications.
+- **Frontend**: React + Vite (static build served by `serve` or similar).
+- **Backend**: FastAPI (Python), single service.
+- **Redis**: Used for ticker cache, master list, metrics, and session-like data.
 
----
-
-## Prerequisites
-
-Before deploying, ensure you have:
-
-- [ ] Git repository with your code
-- [ ] GitHub account (if using GitHub integration)
-- [ ] Alpha Vantage API key (get free at https://www.alphavantage.co/support/#api-key)
-- [ ] Credit card (optional, for paid tiers, but NOT required for free tiers)
+Railway runs backend and Redis in the same project (and usually same region). The frontend can be on Railway or another host; only CORS and `VITE_API_BASE_URL` must match.
 
 ---
 
-## Architecture & Requirements
+## Production Readiness Review
 
-### Backend Requirements
-- Python 3.9+
-- Dependencies: FastAPI, Redis, yfinance, pandas, numpy, etc. (see `backend/requirements.txt`)
-- Environment variables:
-  - `ALPHA_VANTAGE_API_KEY` (required)
-  - `REDIS_URL` or `REDIS_HOST`/`REDIS_PORT`
-  - `ENVIRONMENT` (optional, defaults to 'development')
-  - `USE_LIVE_DATA` (optional, defaults to 'false')
+### What Is Already Production-Ready
 
-### Frontend Requirements
-- Node.js 18+
-- Build command: `npm run build`
-- Build output directory: `frontend/dist`
+- **Redis**
+  - Uses `REDIS_URL` (no localhost hardcode). See `backend/utils/redis_first_data_service.py`: `redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')`, and `_init_redis_from_url()` supports `redis://` and `rediss://`.
+  - Connection timeouts and optional TLS are in place.
 
-### Redis Requirements
-- Redis 5.0+
-- At least 100MB memory recommended
-- Persistent storage optional but recommended
+- **CORS**
+  - Driven by env: `ALLOWED_ORIGINS` in `backend/main.py` (comma-separated list). Add your production frontend URL(s) in Railway.
 
----
+- **Frontend API URL**
+  - `frontend/src/config/api.ts` uses `import.meta.env.VITE_API_BASE_URL || ''`. Set `VITE_API_BASE_URL` at build time to your backend URL.
 
-## Deployment Options
+- **Backend structure**
+  - `backend/main.py` uses lifespan, structured logging, and initializes Redis-first data service. No hardcoded dev-only assumptions that block production.
 
-| Option | Best For | Cost | Complexity |
-|--------|----------|------|------------|
-| **Render.com** (Recommended) | Full-stack apps | Free tier available | Low |
-| **Railway.app** | Quick deployment | Free $5/month credit | Very Low |
-| **Vercel + Render** | Separate frontend/backend | Mostly free | Medium |
+- **Docker**
+  - `backend/Dockerfile` and `docker-compose.yml` exist if you want to run the backend as a container on Railway.
 
----
+### What You Must Set for Production
 
-## Option 1: Render.com (Recommended)
+| Item | Where | Notes |
+|------|--------|------|
+| `REDIS_URL` | Railway (from Redis service) | Railway provides this when you add Redis. |
+| `ALLOWED_ORIGINS` | Railway backend env | Include your real frontend URL, e.g. `https://your-app.railway.app`. |
+| `VITE_API_BASE_URL` | Railway frontend env (build) | Backend URL, e.g. `https://your-backend.railway.app`. |
+| `ALPHA_VANTAGE_API_KEY` | Railway backend env | Optional but recommended; app works with Yahoo Finance only if unset. |
+| `ENVIRONMENT` | Railway backend env | Set to `production` for production. |
 
-Render provides free hosting for web services, databases, and static sites.
+### Optional but Recommended
 
-### Step 1: Create Render Account
-1. Go to https://render.com
-2. Sign up with GitHub (recommended for auto-deploy)
-3. Authorize Render to access your repository
+- Rate limiting: already used in the app (e.g. slowapi). Ensure it’s enabled in production.
+- Health checks: use `/health` or `/api/v1/portfolio/health` for Railway’s health checks.
+- TTL monitoring: background task in main.py; ensure it doesn’t overwhelm Redis in production.
 
-### Step 2: Deploy Redis
-1. In Render dashboard, click "New +" → "Redis"
-2. Name: `portfolio-wizard-redis`
-3. Select free tier ($0/month) - **Note: Limited to 25MB**
-4. Click "Create Redis"
-5. **Save the Internal Redis URL** - looks like: `redis://red-xxxxx:6379`
+### Verdict
 
-### Step 3: Deploy Backend
-1. Click "New +" → "Web Service"
-2. Connect your GitHub repository
-3. Configure:
-   - **Name**: `portfolio-wizard-backend`
-   - **Region**: Select closest to your users
-   - **Branch**: `main` (or your default branch)
-   - **Root Directory**: `backend`
-   - **Runtime**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Select **Free** tier ($0/month)
-   - ⚠️ Free tier sleeps after 15 min of inactivity
-   - First request after sleep takes ~30 seconds to wake up
-5. Add Environment Variables:
-   - `ALPHA_VANTAGE_API_KEY` = `your_api_key_here`
-   - `REDIS_URL` = `redis://red-xxxxx:6379` (from Step 2)
-   - `ENVIRONMENT` = `production`
-   - `USE_LIVE_DATA` = `true` (if you want real-time data)
-6. Click "Create Web Service"
-7. Wait for deployment (5-10 minutes)
-8. **Save the backend URL** - looks like: `https://portfolio-wizard-backend.onrender.com`
+**Production-ready from a configuration perspective** provided you:
 
-### Step 4: Deploy Frontend
-1. Click "New +" → "Static Site"
-2. Connect your GitHub repository
-3. Configure:
-   - **Name**: `portfolio-wizard-frontend`
-   - **Branch**: `main`
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Publish Directory**: `dist`
-4. Add Environment Variable:
-   - `VITE_API_BASE_URL` = `https://portfolio-wizard-backend.onrender.com` (your backend URL)
-5. Click "Create Static Site"
-6. Wait for deployment (3-5 minutes)
-7. Your app is live at: `https://portfolio-wizard-frontend.onrender.com`
-
-### Step 5: Update CORS (Important!)
-After frontend deployment, you need to update backend CORS settings:
-
-1. Go to your backend code in `backend/main.py`
-2. Find the CORS middleware section (around line 120-130)
-3. Add your frontend URL to allowed origins:
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "https://portfolio-wizard-frontend.onrender.com",  # Add this
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
-4. Commit and push changes - Render will auto-deploy
-
-### Limitations of Free Tier
-- **Backend**: Sleeps after 15 min inactivity (wakes on first request in ~30s)
-- **Redis**: Only 25MB storage (should be enough for ~500-1000 tickers cached)
-- **Static Site**: No limitations
-- **Bandwidth**: 100GB/month across all services
+1. Set the variables above on Railway.
+2. Point the frontend build at the correct backend URL.
+3. Warm or populate Redis (see Post-Deployment) so search and recommendations work well.
 
 ---
 
-## Option 2: Railway.app
+## Railway Deployment Steps
 
-Railway is simpler but uses a credit system.
+### 1. Railway account and project
 
-### Step 1: Create Railway Account
-1. Go to https://railway.app
-2. Sign up with GitHub
-3. Get $5 free monthly credit (no credit card needed)
+- Sign up at https://railway.app (e.g. with GitHub).
+- Create a new project and connect the repo (or use CLI).
 
-### Step 2: Create New Project
-1. Click "New Project"
-2. Select "Deploy from GitHub repo"
-3. Choose your repository
+### 2. Add Redis
 
-### Step 3: Add Redis
-1. In project dashboard, click "+ New"
-2. Select "Database" → "Redis"
-3. Redis will be created automatically
-4. Click on Redis service → "Variables" → Copy `REDIS_URL`
+- In the project: **New → Database → Redis**.
+- After creation, open the Redis service → **Variables** (or **Connect**) and copy **REDIS_URL**. You will give this to the backend.
 
-### Step 4: Add Backend Service
-1. Click "+ New" → "GitHub Repo" → Select your repo
-2. Railway auto-detects it's a Python app
-3. Configure:
-   - **Root Directory**: `backend`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Add Environment Variables:
-   - `ALPHA_VANTAGE_API_KEY` = `your_api_key_here`
-   - `REDIS_URL` = Paste from Step 3
-   - `ENVIRONMENT` = `production`
-   - `PORT` = `8000`
-5. Click "Deploy"
-6. Go to "Settings" → "Networking" → "Generate Domain"
-7. **Save the backend URL**
+### 3. Deploy backend
 
-### Step 5: Add Frontend Service
-1. Click "+ New" → "GitHub Repo" → Select your repo (add again)
-2. Configure:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build && npm install -g serve`
-   - **Start Command**: `serve -s dist -p $PORT`
-3. Add Environment Variable:
-   - `VITE_API_BASE_URL` = `your_backend_url_from_step_4`
-4. Click "Deploy"
-5. Generate domain in Settings → Networking
-6. Your app is live!
+- **New → GitHub Repo** (or “Empty” and connect later). Select the same repo.
+- Configure the service:
+  - **Root directory**: `backend`
+  - **Build command**: `pip install -r requirements.txt` (or leave default if it already does this).
+  - **Start command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+  - **Watch paths**: `backend/**` if available.
+- **Variables**: Add at least:
+  - `REDIS_URL` = value from Redis service (Railway can reference it as `$REDIS_URL` from the Redis service if linked).
+  - `ALLOWED_ORIGINS` = your frontend URL(s), e.g. `https://your-frontend.railway.app`
+  - `ENVIRONMENT` = `production`
+  - `ALPHA_VANTAGE_API_KEY` = your key (optional).
+- **Settings → Networking**: Generate a public domain and note the URL (e.g. `https://your-backend.railway.app`).
 
-### Cost Estimate
-- Free $5/month credit
-- Typical usage: $3-5/month (backend + Redis)
-- No sleep mode - always on!
-- After free credit: ~$5/month
+### 4. Deploy frontend
+
+- **New → GitHub Repo** (same repo, second service).
+- Configure:
+  - **Root directory**: `frontend`
+  - **Build command**: `npm ci && npm run build` (or `npm install && npm run build`).
+  - **Start command**: `npx serve -s dist -l $PORT` (or `serve -s dist -p $PORT` if `serve` is in dependencies).
+- **Variables** (must be set at build time):
+  - `VITE_API_BASE_URL` = backend URL from step 3 (e.g. `https://your-backend.railway.app`).
+- **Settings → Networking**: Generate a domain (e.g. `https://your-frontend.railway.app`).
+
+### 5. CORS
+
+- Ensure `ALLOWED_ORIGINS` on the backend includes the exact frontend URL (and any custom domain). No trailing slash. Example: `https://your-frontend.railway.app`.
 
 ---
 
-## Option 3: Vercel + Render
+## Environment Variables
 
-Use Vercel (fastest) for frontend, Render for backend/Redis.
+### Backend (Railway)
 
-### Frontend on Vercel
-1. Go to https://vercel.com
-2. Sign up with GitHub
-3. Click "Add New..." → "Project"
-4. Import your GitHub repository
-5. Configure:
-   - **Framework Preset**: Vite
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-6. Add Environment Variable:
-   - `VITE_API_BASE_URL` = (you'll add this after backend deployment)
-7. Click "Deploy"
+| Variable | Required | Example / Notes |
+|----------|----------|------------------|
+| `REDIS_URL` | Yes | From Railway Redis service |
+| `ALLOWED_ORIGINS` | Yes | `https://your-frontend.railway.app` |
+| `ENVIRONMENT` | Recommended | `production` |
+| `ALPHA_VANTAGE_API_KEY` | Optional | Improves data options; app works without it |
+| `PORT` | Set by Railway | Usually provided automatically |
 
-### Backend on Render
-- Follow "Option 1" steps 2-3 for Redis and Backend deployment
-- After backend is deployed, go back to Vercel:
-  - Project Settings → Environment Variables
-  - Add `VITE_API_BASE_URL` with your backend URL
-  - Redeploy frontend
+### Frontend (Railway, build-time)
 
-### Benefits
-- Frontend on Vercel CDN (faster global performance)
-- Backend on Render (easier Python deployment)
-- Both have generous free tiers
+| Variable | Required | Example / Notes |
+|----------|----------|------------------|
+| `VITE_API_BASE_URL` | Yes | `https://your-backend.railway.app` |
 
 ---
 
-## Pre-Deployment Checklist
+## Performance: Will Deployment Be Faster?
 
-Before deploying, you should update your code. Here are the issues:
+### Short answer
 
-### 1. ⚠️ Redis Configuration (Required Fix)
+Yes. Once Redis and the backend run on Railway (same region/network), anything that talks to Redis tends to get faster: lower latency per Redis call and no home/office network in the path. Ticker search and all Redis-backed features benefit.
 
-**Current issue**: Redis is hardcoded to `localhost:6379` in `backend/utils/redis_first_data_service.py:28`
+### Why ticker search is slow locally
 
-**Fix needed**: Update to support environment variable:
-```python
-def __init__(self, redis_host: str = None, redis_port: int = None):
-    # Support REDIS_URL (full URL) or separate host/port
-    redis_url = os.getenv('REDIS_URL')
-    if redis_url:
-        # Parse redis://host:port format
-        import urllib.parse
-        parsed = urllib.parse.urlparse(redis_url)
-        redis_host = parsed.hostname or 'localhost'
-        redis_port = parsed.port or 6379
-    else:
-        redis_host = redis_host or os.getenv('REDIS_HOST', 'localhost')
-        redis_port = redis_port or int(os.getenv('REDIS_PORT', '6379'))
+From your logs, search does things like:
 
-    self.redis_client = self._init_redis(redis_host, redis_port)
-```
+- “Searching 'baba' through 1432 cached tickers”
+- “Searching 'm' through 1432 cached tickers” → 294 candidates
+- “Searching 'msft' through 1432 cached tickers”
 
-### 2. ⚠️ Frontend API URL (Required Fix)
+Current implementation (in `backend/utils/redis_first_data_service.py`):
 
-**Current issue**: `frontend/src/config/api.ts` has empty `API_BASE_URL`
+1. **Build “cached” list**: For each of the master tickers (e.g. 1432), it calls Redis twice (`_is_cached(t, 'prices')` and `_is_cached(t, 'sector')`). So each search does on the order of **2 × N Redis round-trips** (N = number of master tickers) just to see which tickers are cached.
+2. **Pre-filter**: Iterates that list for symbol/prefix and optionally company-name matches; for company name it may load sector data from Redis for many tickers.
+3. **Score and return**: For each candidate it may call `get_ticker_info(ticker)` (more Redis).
 
-**Fix needed**:
-```typescript
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-```
+So locally you see high latency because:
 
-Then create `frontend/.env.production`:
-```
-VITE_API_BASE_URL=https://your-backend-url.onrender.com
-```
+- Many sequential Redis round-trips (network latency per call).
+- Possible CPU/contention on your machine.
 
-### 3. ⚠️ CORS Configuration (Critical)
+### Why it will be faster on Railway
 
-**Current issue**: Backend may not allow requests from production frontend
+- **Redis and backend on the same provider/region**: Redis round-trip time drops (often to well under 1 ms per call instead of a few ms over your local network). Same number of calls, but total time for “build cached list + candidates + ticker_info” goes down.
+- **Dedicated CPU/memory**: The backend process isn’t competing with your IDE and other local apps, so request handling can be faster.
+- **No cold start from “sleep”**: If you use Railway’s always-on plan, there’s no 30s wake-up like on some free tiers elsewhere.
 
-**Fix needed**: In `backend/main.py`, update CORS to include your production frontend URL:
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",  # Keep for local dev
-        "https://your-frontend-url.onrender.com",  # Add production URL
-        "https://your-frontend-url.vercel.app",  # If using Vercel
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
+So:
 
-### 4. Create `.env.example` File
+- **Ticker search**: Same code, but faster (often noticeably: e.g. 30–50 s locally → much lower on Railway, depending on query and cache state). Exact numbers depend on Redis plan and region.
+- **Anything that uses Redis** (recommendations, stress test, metrics, cache warming, etc.): Same idea — fewer ms per Redis call and more stable performance.
 
-Create `backend/.env.example` for documentation:
-```bash
-# Alpha Vantage API Key (Required)
-# Get free key at: https://www.alphavantage.co/support/#api-key
-ALPHA_VANTAGE_API_KEY=your_api_key_here
+### Making search even faster later (optional)
 
-# Redis Connection (Required for production)
-REDIS_URL=redis://localhost:6379
+The current design does **O(N)** Redis `EXISTS` (and possibly more) per search. To improve further without changing UX:
 
-# Or use separate host/port:
-# REDIS_HOST=localhost
-# REDIS_PORT=6379
+- **Cache the list of “cached tickers”**: Maintain one structure (e.g. a Redis set or a key listing ticker symbols) that is updated when tickers are added/refreshed/expired. Then search can use that list instead of 2×N `_is_cached` calls per request.
+- **In-memory cache**: Cache the “cached tickers” list in the backend process with a short TTL (e.g. 60 s) so repeated searches don’t hit Redis for the same list every time.
 
-# Environment (optional)
-ENVIRONMENT=production
-
-# Use live market data (optional, default: false)
-USE_LIVE_DATA=true
-
-# Logging (optional)
-LOG_LEVEL=INFO
-```
-
-### 5. Test Production Build Locally
-
-Before deploying, test the build locally:
-
-```bash
-# Build frontend
-cd frontend
-npm install
-npm run build
-npm run preview  # Test the build
-
-# Run backend in production mode
-cd ../backend
-export ENVIRONMENT=production
-export ALPHA_VANTAGE_API_KEY=your_key
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
+Those are optimizations; deployment alone should already make search and all Redis-related flows faster.
 
 ---
 
 ## Post-Deployment
 
-### 1. Warm Up Redis Cache
-Your app uses Redis for caching ticker data. On first deployment, cache is empty.
+### 1. Health check
 
-**Options**:
-- Let it populate naturally (slower first few uses)
-- Use the cache warming endpoint: `GET /api/portfolio/cache/warm`
-- Run the backend script: `python backend/scripts/review_redis_tickers.py`
+- Backend: `GET https://your-backend.railway.app/health` or `GET https://your-backend.railway.app/api/v1/portfolio/health`.
+- Confirm Redis is up (backend logs and health response).
 
-### 2. Monitor Performance
-- Check Render/Railway logs for errors
-- Monitor Redis memory usage (free tier = 25MB limit)
-- Watch for API rate limits (Alpha Vantage free = 500 calls/day)
+### 2. Redis cache warming
 
-### 3. Set Up Custom Domain (Optional)
-Both Render and Railway support custom domains:
-1. Buy domain (e.g., from Namecheap, Google Domains)
-2. In platform settings, add custom domain
-3. Update DNS records as instructed
-4. Update CORS to include new domain
+- New Redis starts empty. Either:
+  - Let it fill as users search and use features, or
+  - Call your cache-warming endpoint if you have one (e.g. `GET /api/v1/portfolio/cache/warm` or similar), or
+  - Run any backend script you use to preload master list and key tickers.
+- Until Redis is populated, first searches and recommendations may be slower or depend on live fetches.
 
-### 4. Enable HTTPS
-Most platforms provide free SSL certificates automatically. Verify your site uses `https://`.
+### 3. Frontend
+
+- Open the frontend URL, try search and a full flow. If you see CORS errors, double-check `ALLOWED_ORIGINS` and that `VITE_API_BASE_URL` was set when the frontend was built.
+
+### 4. Monitoring
+
+- Use Railway logs for backend and Redis.
+- Watch Redis memory; upgrade plan if you approach limits with your ticker set and TTLs.
 
 ---
 
 ## Troubleshooting
 
-### Frontend can't connect to backend
-**Symptoms**: API calls fail, CORS errors in browser console
+### Frontend cannot reach backend (CORS / network)
 
-**Solutions**:
-1. Check `VITE_API_BASE_URL` is set correctly
-2. Verify backend URL is accessible (visit `https://your-backend.com/api/portfolio/health`)
-3. Update CORS in `backend/main.py` to include frontend URL
-4. Check backend logs for errors
+- Confirm `ALLOWED_ORIGINS` includes the exact frontend origin (no trailing slash).
+- Confirm `VITE_API_BASE_URL` was set at **build** time and matches the backend URL.
+- Test backend directly: `curl https://your-backend.railway.app/health`.
 
-### Backend crashes on startup
-**Symptoms**: Backend service fails to start, shows error in logs
+### Redis connection errors
 
-**Solutions**:
-1. Check all environment variables are set correctly
-2. Verify Redis connection (test `REDIS_URL` format)
-3. Check `requirements.txt` is in `backend/` directory
-4. Review startup logs for specific error messages
+- Ensure backend has `REDIS_URL` from the Redis service (copy from Redis service Variables in Railway).
+- If Redis is in the same project, use Railway’s internal URL if documented (sometimes faster and more reliable than public URL).
 
-### Redis connection fails
-**Symptoms**: Backend errors about Redis, cache not working
+### Ticker search still slow after deploy
 
-**Solutions**:
-1. Verify `REDIS_URL` format: `redis://host:port`
-2. Check Redis service is running (in platform dashboard)
-3. Test connection from backend service (same network/region)
-4. Ensure Redis accepts connections from backend
+- Check Redis and backend are in the same region.
+- Confirm Redis has enough memory and isn’t evicting keys under load.
+- Consider adding the “cached tickers list” cache (or in-memory cache) described above for further gains.
 
-### Frontend shows blank page
-**Symptoms**: Deployment succeeds but site is blank
+### Build or start command fails
 
-**Solutions**:
-1. Check browser console for errors (F12)
-2. Verify build output directory is `dist` not `build`
-3. Check routes work (SPA routing may need config)
-4. Verify all environment variables are set during build
-
-### Alpha Vantage API errors
-**Symptoms**: Ticker search fails, market data errors
-
-**Solutions**:
-1. Verify `ALPHA_VANTAGE_API_KEY` is set correctly
-2. Check API rate limits (500 calls/day free tier)
-3. Your app primarily uses Yahoo Finance (free, unlimited)
-4. Alpha Vantage is fallback - app works without it
-
-### Free tier limitations hit
-**Symptoms**: Backend slow, Redis evicting data, bandwidth warnings
-
-**Solutions**:
-1. **Backend sleep**: Upgrade to paid tier ($7/month on Render)
-2. **Redis memory**: Reduce cache size, clear old data, or upgrade
-3. **Bandwidth**: Optimize assets, use CDN for frontend
-4. Consider upgrading to paid tier for production use
+- Backend: Ensure `backend/requirements.txt` exists and `uvicorn main:app` runs from `backend` (root directory set to `backend`).
+- Frontend: Ensure `VITE_API_BASE_URL` is set in Railway for the frontend service so the build embeds the correct API URL.
 
 ---
 
-## Cost Summary
+## Summary
 
-### Free Tier (Development/Testing)
-| Service | Platform | Cost | Limitations |
-|---------|----------|------|-------------|
-| Frontend | Vercel/Render | $0 | 100GB bandwidth |
-| Backend | Render | $0 | Sleeps after 15 min |
-| Redis | Render | $0 | 25MB memory |
-| **Total** | | **$0** | Good for demo/testing |
-
-### Paid Tier (Production)
-| Service | Platform | Cost | Benefits |
-|---------|----------|------|----------|
-| Frontend | Vercel | $0 | CDN, always on |
-| Backend | Render | $7/mo | Always on, 512MB RAM |
-| Redis | Render | $10/mo | 256MB, persistence |
-| **Total** | | **$7-17/mo** | Production-ready |
-
-### Railway Alternative
-| Service | Cost | Benefits |
-|---------|------|----------|
-| All-in-one | $5/mo | Everything in one place, always on |
-
----
-
-## Recommended Path
-
-For your first deployment, I recommend:
-
-1. **Start with Render free tier** - Test everything works
-2. **Use Railway for $5/month** - If you want always-on without sleep
-3. **Upgrade to Render paid** - When you need more Redis and no sleep
-
-All platforms support:
-- Auto-deploy from GitHub (push code → auto-deploy)
-- Environment variables
-- SSL certificates (HTTPS)
-- Logs and monitoring
-- Easy upgrades
-
----
-
-## Next Steps
-
-1. Choose your deployment platform
-2. Fix the code issues listed in "Pre-Deployment Checklist"
-3. Follow the step-by-step guide for your chosen platform
-4. Test thoroughly after deployment
-5. Monitor logs and performance
-
-Need help with any specific step? Let me know!
+- **Deployment target**: Railway only (this guide).
+- **Production readiness**: Configuration is production-ready; set `REDIS_URL`, `ALLOWED_ORIGINS`, `VITE_API_BASE_URL`, and `ENVIRONMENT` correctly.
+- **Performance**: Deployment will make Redis-bound work (including ticker search) faster due to lower Redis latency and dedicated resources; for even faster search, add a cached list of cached tickers or an in-memory cache later.

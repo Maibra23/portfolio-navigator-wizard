@@ -510,7 +510,7 @@ export const checkCompletionSpeed = (
 
 ### 2.1 Mathematical Accuracy Assessment
 
-#### ✅ Tax & Cost Calculations: 100% VERIFIED CORRECT
+#### ✅ **Tax** & Cost Calculations: 100% VERIFIED CORRECT
 
 **Swedish Tax Calculations:**
 - **ISK 2025:** `(Capital - 150,000) × 2.96% × 30%` ✓ CORRECT

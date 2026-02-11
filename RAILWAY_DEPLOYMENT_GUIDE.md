@@ -617,10 +617,10 @@ python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # 4. Test endpoints
 curl http://localhost:8000/health
-curl http://localhost:8000/api/portfolio/cache/ttl-status
+curl http://localhost:8000/api/v1/portfolio/cache/ttl-status
 
 # 5. Test rate limiting (should block after limit)
-for i in {1..35}; do curl http://localhost:8000/api/portfolio/search-tickers?q=AAPL; done
+for i in {1..35}; do curl http://localhost:8000/api/v1/portfolio/search-tickers?q=AAPL; done
 ```
 
 ---
@@ -797,10 +797,10 @@ BACKEND_URL="https://portfolio-backend-production.up.railway.app"
 curl $BACKEND_URL/health
 
 # Test cache status
-curl $BACKEND_URL/api/portfolio/cache-status
+curl $BACKEND_URL/api/v1/portfolio/cache-status
 
 # Test TTL monitoring
-curl $BACKEND_URL/api/portfolio/cache/ttl-status
+curl $BACKEND_URL/api/v1/portfolio/cache/ttl-status
 ```
 
 ---
@@ -888,12 +888,12 @@ jobs:
       - name: Call TTL Status Endpoint
         run: |
           echo "Checking TTL status..."
-          curl -X GET "${{ secrets.BACKEND_URL }}/api/portfolio/cache/ttl-report"
+          curl -X GET "${{ secrets.BACKEND_URL }}/api/v1/portfolio/cache/ttl-report"
 
       - name: Refresh Expiring Tickers
         run: |
           echo "Refreshing expiring tickers..."
-          curl -X POST "${{ secrets.BACKEND_URL }}/api/portfolio/cache/refresh-expiring?days_threshold=7"
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/portfolio/cache/refresh-expiring?days_threshold=7"
 ```
 
 **Setup:**
@@ -976,10 +976,10 @@ Use **EasyCron** or **Cron-job.org** (both have free tiers):
 
 1. Sign up at https://www.easycron.com
 2. Create new cron job:
-   - **URL:** `https://your-backend.railway.app/api/portfolio/cache/ttl-status`
+   - **URL:** `https://your-backend.railway.app/api/v1/portfolio/cache/ttl-status`
    - **Schedule:** Daily at 6 AM
 3. Add another for auto-refresh:
-   - **URL:** `https://your-backend.railway.app/api/portfolio/cache/refresh-expiring?days_threshold=7`
+   - **URL:** `https://your-backend.railway.app/api/v1/portfolio/cache/refresh-expiring?days_threshold=7`
    - **Schedule:** Daily at 6:30 AM
 
 ---
@@ -1069,7 +1069,7 @@ Edit `backend/routers/portfolio.py` rate limit decorators.
 
 **Step 1: Verify Redis Connection**
 ```bash
-curl https://your-backend.railway.app/api/portfolio/cache-status
+curl https://your-backend.railway.app/api/v1/portfolio/cache-status
 ```
 
 **Expected response:**
@@ -1085,7 +1085,7 @@ curl https://your-backend.railway.app/api/portfolio/cache-status
 
 **Option A: Use warm-cache endpoint** (Automatic)
 ```bash
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-cache
 ```
 
 This will take ~90 minutes to fetch all 1,432 tickers.
@@ -1093,7 +1093,7 @@ This will take ~90 minutes to fetch all 1,432 tickers.
 **Option B: Warm specific tickers** (Faster initial deployment)
 ```bash
 # Warm top 100 popular tickers first (5-10 minutes)
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-tickers \
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{
     "tickers": [
@@ -1115,24 +1115,24 @@ curl -X POST https://your-backend.railway.app/api/portfolio/warm-tickers \
 Then schedule full warming overnight:
 ```bash
 # Later, warm remaining tickers
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-cache
 ```
 
 **Step 3: Monitor Cache Warming Progress**
 
 ```bash
 # Check progress every few minutes
-watch -n 300 'curl https://your-backend.railway.app/api/portfolio/cache-status'
+watch -n 300 'curl https://your-backend.railway.app/api/v1/portfolio/cache-status'
 ```
 
 **Step 4: Verify Cache is Populated**
 
 ```bash
 # Should show ~1,432 tickers after full warming
-curl https://your-backend.railway.app/api/portfolio/cache-status
+curl https://your-backend.railway.app/api/v1/portfolio/cache-status
 
 # Check TTL status
-curl https://your-backend.railway.app/api/portfolio/cache/ttl-status
+curl https://your-backend.railway.app/api/v1/portfolio/cache/ttl-status
 ```
 
 **Expected after warming:**
@@ -1163,20 +1163,20 @@ curl https://your-backend.railway.app/health
 # Expected: {"status": "healthy"}
 
 # Redis connection
-curl https://your-backend.railway.app/api/portfolio/cache-status
+curl https://your-backend.railway.app/api/v1/portfolio/cache-status
 # Expected: Shows ticker count
 ```
 
 **2. API Endpoints**
 ```bash
 # Search
-curl "https://your-backend.railway.app/api/portfolio/search-tickers?q=AAPL"
+curl "https://your-backend.railway.app/api/v1/portfolio/search-tickers?q=AAPL"
 
 # Ticker info
-curl "https://your-backend.railway.app/api/portfolio/tickers"
+curl "https://your-backend.railway.app/api/v1/portfolio/tickers"
 
 # TTL status
-curl "https://your-backend.railway.app/api/portfolio/cache/ttl-status"
+curl "https://your-backend.railway.app/api/v1/portfolio/cache/ttl-status"
 ```
 
 **3. Frontend**
@@ -1194,7 +1194,7 @@ curl -H "Origin: https://evil.com" https://your-backend.railway.app/health
 
 # Test rate limiting (should block after limit)
 for i in {1..35}; do
-  curl "https://your-backend.railway.app/api/portfolio/search-tickers?q=AAPL"
+  curl "https://your-backend.railway.app/api/v1/portfolio/search-tickers?q=AAPL"
 done
 # Should see "Rate limit exceeded" after ~30 requests
 ```
@@ -1219,7 +1219,7 @@ done
 **Manual (Optional):**
 ```bash
 # Quick health check
-curl https://your-backend.railway.app/api/portfolio/cache/ttl-report
+curl https://your-backend.railway.app/api/v1/portfolio/cache/ttl-report
 ```
 
 ### Weekly Review
@@ -1237,10 +1237,10 @@ curl https://your-backend.railway.app/api/portfolio/cache/ttl-report
 3. **Cache Health:**
    ```bash
    # Check cache status
-   curl https://your-backend.railway.app/api/portfolio/cache-status
+   curl https://your-backend.railway.app/api/v1/portfolio/cache-status
 
    # Check TTL status
-   curl https://your-backend.railway.app/api/portfolio/cache/ttl-status
+   curl https://your-backend.railway.app/api/v1/portfolio/cache/ttl-status
    ```
 
 ### Monthly Maintenance
@@ -1268,10 +1268,10 @@ curl https://your-backend.railway.app/api/portfolio/cache/ttl-report
 3. **Cache Cleanup:**
    ```bash
    # Clear old cache (if needed)
-   curl -X POST https://your-backend.railway.app/api/portfolio/cache/clear
+   curl -X POST https://your-backend.railway.app/api/v1/portfolio/cache/clear
 
    # Re-warm cache
-   curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
+   curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-cache
    ```
 
 ### Scaling Considerations

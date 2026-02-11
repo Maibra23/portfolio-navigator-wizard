@@ -40,9 +40,22 @@ import random
 logger = logging.getLogger(__name__)
 portfolio_regen_logger = get_job_logger("portfolio_regeneration")
 
-router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
+# Define a router without a hardcoded prefix so it can be mounted under
+# multiple prefixes (v1 and legacy) by the main application.
+router = APIRouter()
 
-# Initialize rate limiter
+# Include domain-focused sub-routers
+from .admin import router as admin_router
+router.include_router(admin_router)
+
+# Domain routers (routes in this file are attached to these).
+# Sub-routers are included at the end of this file so all route decorators run first.
+portfolios_router = APIRouter()
+optimization_router = APIRouter()
+analytics_router = APIRouter()
+export_router = APIRouter()
+
+# Initialize rate limiter (used by routes still in this file)
 limiter = Limiter(key_func=get_remote_address)
 
 # Initialize portfolio analytics
@@ -68,7 +81,7 @@ def _sanitize_number(value: Any, default: Optional[float] = None) -> Optional[fl
     except Exception:
         return default
 
-@router.get("/top-pick/{risk_profile}")
+@portfolios_router.get("/top-pick/{risk_profile}")
 def get_top_pick(risk_profile: str):
     """Return the precomputed Top Pick for a given risk profile or compute if missing."""
     try:
@@ -124,7 +137,7 @@ class PortfolioOptimizationResponse(BaseModel):
     improvement: Dict
     recommendations: List[str]
 
-@router.post("/calculate-metrics", response_model=PortfolioMetricsResponse)
+@portfolios_router.post("/calculate-metrics", response_model=PortfolioMetricsResponse)
 def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
     """
     Calculate real-time portfolio metrics based on current allocations
@@ -248,7 +261,7 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
         logger.error(f"Error calculating portfolio metrics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/optimize", response_model=PortfolioOptimizationResponse)
+@portfolios_router.post("/optimize", response_model=PortfolioOptimizationResponse)
 def optimize_portfolio(request: PortfolioOptimizationRequest):
     """
     Optimize portfolio allocations using advanced algorithms
@@ -492,7 +505,7 @@ def optimize_custom_weights(returns_data: Dict[str, pd.Series], risk_profile: st
         logger.error(f"Error in custom optimization: {e}")
         return [1.0/len(returns_data)] * len(returns_data)
 
-@router.get("/search-tickers")
+@portfolios_router.get("/search-tickers")
 def search_tickers(
     q: str = Query(..., description="Search query"), 
     limit: int = Query(10, description="Maximum results"),
@@ -547,7 +560,7 @@ def search_tickers(
         logger.error(f"Error in enhanced ticker search: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
-@router.get("/search-suggestions")
+@portfolios_router.get("/search-suggestions")
 def search_suggestions(
     q: str = Query(..., description="Search query for autocomplete"),
     limit: int = Query(8, description="Maximum suggestions")
@@ -565,7 +578,7 @@ def search_suggestions(
         logger.error(f"Error in search suggestions: {e}")
         raise HTTPException(status_code=500, detail=f"Suggestions failed: {str(e)}")
 
-@router.get("/ticker-info/{ticker}")
+@portfolios_router.get("/ticker-info/{ticker}")
 def get_ticker_info(ticker: str):
     """Get comprehensive ticker information with Redis-first approach"""
     try:
@@ -579,7 +592,7 @@ def get_ticker_info(ticker: str):
         logger.error(f"Error getting ticker info for {ticker}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get ticker info: {str(e)}")
 
-@router.get("/ticker-price-history/{ticker}")
+@portfolios_router.get("/ticker-price-history/{ticker}")
 def get_ticker_price_history(ticker: str, days: int = Query(30, description="Number of days")):
     """Get ticker price history with Redis-first approach"""
     try:
@@ -593,7 +606,7 @@ def get_ticker_price_history(ticker: str, days: int = Query(30, description="Num
         logger.error(f"Error getting price history for {ticker}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get price history: {str(e)}")
 
-@router.get("/ticker-monthly-data/{ticker}")
+@portfolios_router.get("/ticker-monthly-data/{ticker}")
 def get_ticker_monthly_data(ticker: str):
     """Get monthly data for a ticker with Redis-first approach"""
     try:
@@ -607,268 +620,9 @@ def get_ticker_monthly_data(ticker: str):
         logger.error(f"Error getting monthly data for {ticker}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get monthly data: {str(e)}")
 
-@router.post("/warm-cache")
-@limiter.limit("2/hour")  # Allow cache warming only twice per hour
-async def warm_cache(request: Request):
-    """Warm up the Redis cache with Redis-first approach"""
-    try:
-        results = _rds.warm_cache()
-        return {"message": "Cache warming completed", "results": results}
-    except Exception as e:
-        logger.error(f"Cache warming error: {e}")
-        raise HTTPException(status_code=500, detail=f"Cache warming failed: {str(e)}")
+# (Admin routes: warm-cache, warm-tickers, cache-status, clear-cache, TTL, force-refresh, health -> routers/admin.py)
 
-@router.post("/warm-tickers")
-def warm_tickers(request: dict):
-    """Warm up ticker data for a list of tickers"""
-    try:
-        tickers = request.get('tickers', [])
-        if not tickers or not isinstance(tickers, list):
-            return {"status": "error", "message": "Invalid tickers list", "warmed": 0, "total": 0}
-        
-        warmed = 0
-        failed = []
-        
-        # Deduplicate and normalize tickers
-        unique_tickers = list(set([str(t).upper().strip() for t in tickers if t and str(t).strip()]))
-        
-        logger.info(f"🔥 Warming {len(unique_tickers)} tickers...")
-        
-        for ticker in unique_tickers:
-            try:
-                # Warm monthly data (Redis-first)
-                _ = _rds.get_monthly_data(ticker)
-                # Warm ticker info (sector, metadata)
-                _ = _rds.get_ticker_info(ticker)
-                # Warm cached metrics if available
-                try:
-                    _ = _rds.get_cached_metrics(ticker)
-                except Exception:
-                    pass  # Metrics are optional
-                warmed += 1
-            except Exception as e:
-                failed.append(ticker)
-                logger.debug(f"Failed to warm {ticker}: {e}")
-                continue
-        
-        logger.info(f"✅ Warmed {warmed}/{len(unique_tickers)} tickers")
-        
-        return {
-            "status": "success",
-            "warmed": warmed,
-            "total": len(unique_tickers),
-            "failed": failed[:10]  # Limit failed list
-        }
-    except Exception as e:
-        logger.error(f"Ticker warming error: {e}")
-        return {"status": "error", "message": str(e), "warmed": 0, "total": 0}
-
-@router.get("/cache-status")
-def get_cache_status():
-    """Get cache status with Redis-first approach"""
-    try:
-        status = _rds.get_cache_status()
-        return status
-    except Exception as e:
-        logger.error(f"Cache status error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get cache status: {str(e)}")
-
-@router.post("/clear-cache")
-def clear_cache():
-    """Clear all cached data with Redis-first approach"""
-    try:
-        results = _rds.clear_cache()
-        return {"message": "Cache cleared successfully", "results": results}
-    except Exception as e:
-        logger.error(f"Cache clearing error: {e}")
-        raise HTTPException(status_code=500, detail=f"Cache clearing failed: {str(e)}")
-
-# ============================================================================
-# TTL MONITORING ENDPOINTS
-# ============================================================================
-
-@router.get("/cache/ttl-status")
-@limiter.limit("10/minute")
-async def get_cache_ttl_status(request: Request):
-    """
-    Get TTL (Time-To-Live) status for all cached tickers
-
-    Returns categorization by expiration urgency:
-    - Expired: Already expired
-    - Critical: < 1 day left
-    - Warning: < 7 days left
-    - Info: < 14 days left
-    - Healthy: >= 14 days left
-    """
-    try:
-        if not _rds.redis_client:
-            return {
-                "error": "Redis not available",
-                "message": "TTL monitoring requires Redis connection"
-            }
-
-        monitor = RedisTTLMonitor(_rds.redis_client)
-        status = monitor.check_ttl_status()
-
-        return {
-            "success": True,
-            "status": status,
-            "message": "TTL status retrieved successfully"
-        }
-    except Exception as e:
-        logger.error(f"TTL status error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get TTL status: {str(e)}"
-        )
-
-
-@router.get("/cache/ttl-report")
-@limiter.limit("10/minute")
-async def get_cache_ttl_report(request: Request):
-    """
-    Get human-readable TTL report
-
-    Returns a formatted text report showing:
-    - Total tickers cached
-    - Breakdown by expiration category
-    - Sample of expiring tickers
-    - Recommended actions
-    """
-    try:
-        if not _rds.redis_client:
-            return {
-                "error": "Redis not available",
-                "report": "TTL monitoring requires Redis connection"
-            }
-
-        monitor = RedisTTLMonitor(_rds.redis_client)
-        report = monitor.generate_ttl_report()
-
-        return {
-            "success": True,
-            "report": report,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"TTL report error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate TTL report: {str(e)}"
-        )
-
-
-@router.post("/cache/refresh-expiring")
-@limiter.limit("2/hour")  # Expensive operation, limit to 2 per hour
-async def refresh_expiring_tickers(
-    request: Request,
-    days_threshold: int = Query(7, description="Refresh tickers expiring within this many days")
-):
-    """
-    Automatically refresh tickers that are expiring soon
-
-    Args:
-        days_threshold: Refresh tickers expiring within this many days (default: 7)
-
-    Returns:
-        Statistics about the refresh operation
-    """
-    try:
-        if not _rds.redis_client:
-            raise HTTPException(
-                status_code=503,
-                detail="Redis not available"
-            )
-
-        if days_threshold < 1 or days_threshold > 30:
-            raise HTTPException(
-                status_code=400,
-                detail="days_threshold must be between 1 and 30"
-            )
-
-        monitor = RedisTTLMonitor(_rds.redis_client)
-
-        # Get list of expiring tickers first
-        expiring_tickers = monitor.get_expiring_tickers(days_threshold)
-
-        if not expiring_tickers:
-            return {
-                "success": True,
-                "message": "No tickers need refreshing",
-                "total_expiring": 0,
-                "refreshed": 0,
-                "failed": 0
-            }
-
-        logger.info(f"🔄 Starting refresh of {len(expiring_tickers)} expiring tickers...")
-
-        # Perform refresh
-        result = monitor.refresh_expiring_tickers(
-            days_threshold=days_threshold,
-            data_service=_rds
-        )
-
-        return {
-            "success": True,
-            "message": f"Refreshed {result['refreshed']} out of {result['total_expiring']} tickers",
-            **result
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Refresh expiring tickers error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to refresh expiring tickers: {str(e)}"
-        )
-
-
-@router.get("/cache/expiring-list")
-@limiter.limit("20/minute")
-async def get_expiring_tickers_list(
-    request: Request,
-    days_threshold: int = Query(7, description="Get tickers expiring within this many days")
-):
-    """
-    Get list of tickers expiring within threshold
-
-    Args:
-        days_threshold: Number of days threshold (default: 7)
-
-    Returns:
-        List of ticker symbols that need refreshing
-    """
-    try:
-        if not _rds.redis_client:
-            return {
-                "error": "Redis not available",
-                "tickers": []
-            }
-
-        monitor = RedisTTLMonitor(_rds.redis_client)
-        expiring_tickers = monitor.get_expiring_tickers(days_threshold)
-
-        return {
-            "success": True,
-            "days_threshold": days_threshold,
-            "count": len(expiring_tickers),
-            "tickers": expiring_tickers,
-            "message": f"Found {len(expiring_tickers)} tickers expiring within {days_threshold} days"
-        }
-
-    except Exception as e:
-        logger.error(f"Get expiring list error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get expiring tickers: {str(e)}"
-        )
-
-# ============================================================================
-# END TTL MONITORING ENDPOINTS
-# ============================================================================
-
-@router.get("/tickers/master")
+@portfolios_router.get("/tickers/master")
 def get_master_tickers():
     """Get master ticker list with Redis-first approach"""
     try:
@@ -882,7 +636,7 @@ def get_master_tickers():
         logger.error(f"Error getting master tickers: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get master tickers: {str(e)}")
 
-@router.get("/tickers/available")
+@portfolios_router.get("/tickers/available")
 def get_available_tickers(limit: int = Query(100, description="Maximum number of tickers")):
     """Get available tickers with Redis-first approach"""
     try:
@@ -917,7 +671,7 @@ def _ticker_region_from_symbol(ticker: str) -> str:
     return "other"
 
 
-@router.get("/ticker-universe")
+@portfolios_router.get("/ticker-universe")
 def get_ticker_universe():
     """
     Redis-backed ticker universe for UI: approximate count and exchange/region breakdown.
@@ -955,7 +709,7 @@ def get_ticker_universe():
         raise HTTPException(status_code=500, detail=f"Failed to get ticker universe: {str(e)}")
 
 
-@router.post("/tickers/refresh")
+@portfolios_router.post("/tickers/refresh")
 def refresh_tickers():
     """
     Refresh ticker lists from sources
@@ -1918,7 +1672,7 @@ def _get_eligible_tickers_internal(
         raise HTTPException(status_code=500, detail=f"Failed to get eligible tickers: {str(e)}")
 
 # Task 1.1: Get Eligible Tickers for Optimization (API Endpoint)
-@router.get("/optimization/eligible-tickers")
+@optimization_router.get("/optimization/eligible-tickers")
 def get_eligible_tickers_for_optimization(
     min_data_points: int = Query(30, ge=12, le=180, description="Minimum historical data points required"),
     filter_negative_returns: bool = Query(True, description="Filter out tickers with negative expected returns"),
@@ -1961,7 +1715,7 @@ class TickerMetricsRequest(BaseModel):
     min_overlap_months: int = 12
     strict_overlap: bool = True
 
-@router.post("/optimization/ticker-metrics")
+@optimization_router.post("/optimization/ticker-metrics")
 def get_ticker_metrics_batch(request: TickerMetricsRequest):
     """
     Get mean returns (μ) and covariance matrix (Σ) for a list of tickers
@@ -2388,13 +2142,13 @@ def get_mvo_optimizer():
         _mvo_optimizer = PortfolioMVOptimizer(get_ticker_metrics_func=get_ticker_metrics_internal)
     return _mvo_optimizer
 
-@router.post("/optimization/mvo", response_model=MVOOptimizationResponse)
+@optimization_router.post("/optimization/mvo", response_model=MVOOptimizationResponse)
 def optimize_portfolio_mvo(request: MVOOptimizationRequest):
     """
     Mean-Variance Optimization using PyPortfolioOpt
     
     This endpoint integrates with Agent 1 endpoints to:
-    1. Get ticker metrics (μ and Σ) from /api/portfolio/optimization/ticker-metrics
+    1. Get ticker metrics (μ and Σ) from /api/v1/portfolio/optimization/ticker-metrics
     2. Perform MVO optimization using PyPortfolioOpt
     3. Generate efficient frontier and random portfolios for visualization
     
@@ -3049,7 +2803,7 @@ def build_triple_comparison(current: Dict[str, Any], weights_opt: Dict[str, Any]
         "best_sharpe": best_sharpe
     }
 
-@router.post("/optimization/dual", response_model=DualOptimizationResponse)
+@optimization_router.post("/optimization/dual", response_model=DualOptimizationResponse)
 def optimize_dual_portfolio(request: DualOptimizationRequest):
     """
     Portfolio Optimization: Compare user's current portfolio vs optimized portfolio from market
@@ -3718,7 +3472,7 @@ def optimize_dual_portfolio(request: DualOptimizationRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to perform dual optimization: {str(e)}")
 
-@router.post("/optimization/triple", response_model=TripleOptimizationResponse)
+@optimization_router.post("/optimization/triple", response_model=TripleOptimizationResponse)
 def optimize_triple_portfolio(request: TripleOptimizationRequest):
     """
     Combined Strategy Optimization: Compare current, weights-optimized, and market-optimized portfolios
@@ -4254,7 +4008,7 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to perform triple optimization: {str(e)}")
 
-@router.post("/stress-test")
+@analytics_router.post("/stress-test")
 def run_stress_test(request: Dict[str, Any]):
     """
     Run stress test scenarios on selected portfolio.
@@ -4474,7 +4228,7 @@ def run_stress_test(request: Dict[str, Any]):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to run stress test: {str(e)}")
 
-@router.post("/what-if-scenario")
+@analytics_router.post("/what-if-scenario")
 def run_what_if_scenario(request: Dict[str, Any]):
     """
     Run What-If scenario simulation with custom parameters.
@@ -4784,7 +4538,7 @@ def _handle_hypothetical_scenario(request: Dict[str, Any], start_time: float):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to run hypothetical scenario: {str(e)}")
 
-@router.post("/hypothetical-scenario")
+@analytics_router.post("/hypothetical-scenario")
 def run_hypothetical_scenario(request: Dict[str, Any]):
     """
     Run hypothetical stress test scenario with custom parameters.
@@ -5061,7 +4815,7 @@ def _warm_tickers_for_recommendations(symbols: List[str]) -> None:
         logger.debug(f"Background warm skipped: {e}")
 
 
-@router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
+@portfolios_router.get("/recommendations/{risk_profile}", response_model=List[PortfolioResponse])
 def get_portfolio_recommendations(risk_profile: str, background_tasks: BackgroundTasks):
     """Get portfolio recommendations from Enhanced Portfolio System.
     Portfolios are cached in Redis; ticker data is warmed in background so response returns quickly."""
@@ -5404,7 +5158,7 @@ def _ensure_missing_portfolios_generated(risk_profile: str) -> dict:
     return stats
 
 # NEW: Dynamic Portfolio Generation Endpoint - LIVE GENERATION
-@router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
+@portfolios_router.post("/recommendations/dynamic", response_model=List[PortfolioResponse])
 async def generate_dynamic_portfolio_recommendations(
     risk_profile: str,
     target_return: Optional[float] = None,
@@ -5482,7 +5236,7 @@ async def generate_dynamic_portfolio_recommendations(
         return _get_static_portfolio_recommendations(risk_profile)
 
 # NEW: Strategy Portfolio Generation Endpoint (Pure + Personalized)
-@router.post("/recommendations/strategy-pure", response_model=List[PortfolioResponse])
+@portfolios_router.post("/recommendations/strategy-pure", response_model=List[PortfolioResponse])
 async def generate_pure_strategy_portfolios(
     risk_profile: str,
     strategy: str
@@ -5721,7 +5475,7 @@ async def generate_pure_strategy_portfolios(
         return _get_static_portfolio_recommendations(risk_profile)
 
 # NEW: Pure vs Personalized Strategy Comparison for Optimization Tab
-@router.post("/optimize/strategy-comparison")
+@portfolios_router.post("/optimize/strategy-comparison")
 async def optimize_strategy_comparison(risk_profile: str, strategy: str = 'diversification'):
     """
     Compare Pure Strategy vs Personalized Strategy portfolios for the Analyze Optimization tab
@@ -5779,7 +5533,7 @@ async def optimize_strategy_comparison(risk_profile: str, strategy: str = 'diver
         raise HTTPException(status_code=500, detail=f"Strategy comparison failed: {str(e)}")
 
 # NEW: Portfolio Optimization Analysis Endpoint
-@router.post("/optimize/analysis", response_model=Dict)
+@portfolios_router.post("/optimize/analysis", response_model=Dict)
 def analyze_portfolio_optimization(
     current_portfolio: List[PortfolioAllocation],
     risk_profile: str,
@@ -5977,7 +5731,7 @@ def _get_static_portfolio_recommendations(risk_profile: str) -> List[PortfolioRe
     
     return responses
 
-@router.post("/recommendations/strategy-comparison")
+@portfolios_router.post("/recommendations/strategy-comparison")
 async def generate_strategy_comparison(strategy: str, risk_profile: str):
     """
     OPTIMIZED: Get strategy comparison portfolios with cache-first approach
@@ -6043,7 +5797,7 @@ async def generate_strategy_comparison(strategy: str, risk_profile: str):
         # Fallback to static recommendations
         return _get_static_portfolio_recommendations(risk_profile)
 
-@router.post("/strategy-portfolios/pre-generate")
+@portfolios_router.post("/strategy-portfolios/pre-generate")
 async def pre_generate_strategy_portfolios():
     """
     Pre-generate ALL strategy portfolios and store in Redis cache
@@ -6085,7 +5839,7 @@ async def pre_generate_strategy_portfolios():
             "summary": None
         }
 
-@router.get("/strategy-portfolios/cache-status")
+@portfolios_router.get("/strategy-portfolios/cache-status")
 async def get_strategy_portfolio_cache_status():
     """
     Get status of strategy portfolio caches in Redis
@@ -6134,7 +5888,7 @@ async def get_strategy_portfolio_cache_status():
             "error": str(e)
         }
 
-@router.post("/strategy-portfolios/clear-cache")
+@portfolios_router.post("/strategy-portfolios/clear-cache")
 async def clear_strategy_portfolio_cache():
     """
     Clear all strategy portfolio caches from Redis
@@ -6169,7 +5923,7 @@ async def clear_strategy_portfolio_cache():
             "error": str(e)
         }
 
-@router.post("", response_model=PortfolioResponse)
+@portfolios_router.post("/", response_model=PortfolioResponse)
 def create_portfolio(data: PortfolioRequest):
     # Validate portfolio has allocations
     if not data.selectedStocks:
@@ -6264,7 +6018,7 @@ def create_portfolio(data: PortfolioRequest):
         sharpeRatio=sharpe_ratio
     ) 
 
-@router.get("/two-asset-analysis")
+@portfolios_router.get("/two-asset-analysis")
 def two_asset_analysis(ticker1: str, ticker2: str):
     """
     Get two-asset analysis for educational mini-lesson
@@ -6331,7 +6085,7 @@ def two_asset_analysis(ticker1: str, ticker2: str):
 
 # REMOVED: Duplicate ticker-info endpoint - using the Redis-first one above
 
-@router.get("/portfolio-validation/{risk_profile}")
+@portfolios_router.get("/portfolio-validation/{risk_profile}")
 def get_portfolio_validation(risk_profile: str):
     """
     Get portfolio validation and uniqueness status for a specific risk profile
@@ -6381,8 +6135,11 @@ def get_portfolio_validation(risk_profile: str):
         logger.error(f"Error validating portfolios for {risk_profile}: {e}")
         raise HTTPException(status_code=500, detail=f"Error validating portfolios: {str(e)}")
 
-# Redis connection for enhanced analytics
-redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+# Use app Redis (REDIS_URL) for enhanced analytics; no localhost
+def _analytics_redis():
+    if _rds and getattr(_rds, 'redis_client', None):
+        return _rds.redis_client
+    return None
 
 # Pydantic models for new endpoints
 class RiskProfile(BaseModel):
@@ -6398,6 +6155,9 @@ class PortfolioAnalyticsRequest(BaseModel):
 # Helper function to get price data from Redis
 def get_price_data_from_redis(tickers: List[str]) -> Dict[str, pd.Series]:
     price_data = {}
+    redis_client = _analytics_redis()
+    if not redis_client:
+        return price_data
     for ticker in tickers:
         try:
             # Try to get compressed data first
@@ -6504,7 +6264,7 @@ def calculate_diversification_score(correlation_matrix: pd.DataFrame, selected_s
     
     return min(diversification_score, 1.0)  # Cap at 1.0
 
-@router.post("/analytics/risk-return-analysis")
+@analytics_router.post("/analytics/risk-return-analysis")
 async def risk_return_analysis(request: PortfolioAnalyticsRequest):
     try:
         selected_stocks = request.selected_stocks
@@ -6592,12 +6352,19 @@ async def risk_return_analysis(request: PortfolioAnalyticsRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating risk-return analysis: {str(e)}")
 
-@router.get("/sector-distribution/enhanced")
+@analytics_router.get("/sector-distribution/enhanced")
 async def enhanced_sector_distribution():
     try:
-        # Get all tickers from Redis
+        redis_client = _analytics_redis()
+        if not redis_client:
+            raise HTTPException(status_code=503, detail="Redis not available")
+        # Get all tickers from Redis (handle bytes when decode_responses=False)
         all_keys = redis_client.keys("sector_data:*")
-        tickers = [key.split(":")[1] for key in all_keys]
+        tickers = []
+        for key in all_keys:
+            sep = b":" if isinstance(key, bytes) else ":"
+            part = key.split(sep)[1]
+            tickers.append(part.decode() if isinstance(part, bytes) else part)
         
         if not tickers:
             raise HTTPException(status_code=404, detail="No sector data found")
@@ -6719,7 +6486,7 @@ def get_risk_rating(risk: float) -> str:
 class SmartRefreshRequest(BaseModel):
     tickers: Optional[List[str]] = None
 
-@router.post("/ticker-table/refresh")
+@analytics_router.post("/ticker-table/refresh")
 async def refresh_ticker_table():
     """
     Force refresh of all ticker data in Redis using Redis-first approach
@@ -6738,7 +6505,7 @@ async def refresh_ticker_table():
         logger.error(f"Error refreshing ticker table: {e}")
         raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}")
 
-@router.post("/ticker-table/smart-refresh")
+@analytics_router.post("/ticker-table/smart-refresh")
 async def smart_monthly_refresh(request: SmartRefreshRequest = Body(default=SmartRefreshRequest())):
     """
     Smart monthly refresh that only fetches the latest month of data using Redis-first approach
@@ -6781,7 +6548,7 @@ async def smart_monthly_refresh(request: SmartRefreshRequest = Body(default=Smar
         logger.error(f"Error in smart monthly refresh: {e}")
         raise HTTPException(status_code=500, detail=f"Error in smart monthly refresh: {str(e)}")
 
-@router.get("/tickers/ttl-status")
+@analytics_router.get("/tickers/ttl-status")
 async def get_ttl_status():
     """
     Get TTL status for all tickers using AutoRefreshService
@@ -6826,7 +6593,7 @@ async def get_ttl_status():
         logger.error(f"Error getting TTL status: {e}")
         raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
 
-@router.post("/regenerate-recommendations")
+@portfolios_router.post("/regenerate-recommendations")
 async def regenerate_recommendation_portfolios(risk_profile: str = None):
     """
     Regenerate recommendation portfolios (regular portfolios) for specific or all risk profiles.
@@ -6894,7 +6661,7 @@ async def regenerate_recommendation_portfolios(risk_profile: str = None):
         logger.error(f"Error regenerating recommendation portfolios: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to regenerate portfolios: {str(e)}")
 
-@router.post("/regenerate")
+@portfolios_router.post("/regenerate")
 async def regenerate_all_portfolios():
     """
     Regenerate all portfolios using EnhancedPortfolioGenerator + RedisPortfolioManager
@@ -6908,8 +6675,10 @@ async def regenerate_all_portfolios():
         logger.info("🚀 Starting portfolio regeneration for all risk profiles")
         portfolio_regen_logger.info("Portfolio regeneration requested from UI")
         
-        # Initialize services
-        redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        # Initialize services (use app Redis from REDIS_URL)
+        redis_client = (redis_manager and getattr(redis_manager, 'redis_client', None)) or (getattr(_rds, 'redis_client', None) if _rds else None)
+        if not redis_client:
+            raise HTTPException(status_code=503, detail="Redis not available")
         portfolio_manager = RedisPortfolioManager(redis_client)
         # Use conservative approach + Strategy 5 for aggressive profiles
         portfolio_generator = EnhancedPortfolioGenerator(_rds, portfolio_analytics, use_conservative_approach=True)
@@ -6972,7 +6741,7 @@ async def regenerate_all_portfolios():
         portfolio_regen_logger.error("Portfolio regeneration failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Portfolio regeneration failed: {str(e)}")
 
-@router.get("/ticker-table/data")
+@analytics_router.get("/ticker-table/data")
 async def get_ticker_table_data():
     """
     Get ticker table data with return and risk metrics using Redis-first approach
@@ -7206,7 +6975,7 @@ async def get_ticker_table_data():
         logger.error(f"Error getting ticker table data: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
 
-@router.get("/mini-lesson/assets")
+@portfolios_router.get("/mini-lesson/assets")
 def get_mini_lesson_assets():
     """
     Get available assets for mini-lesson with predefined sector-based asset lists
@@ -7558,7 +7327,7 @@ def get_mini_lesson_assets():
         logger.error(f"Error getting mini-lesson assets: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting mini-lesson assets: {str(e)}")
 
-@router.get("/mini-lesson/random-pair")
+@portfolios_router.get("/mini-lesson/random-pair")
 def get_random_asset_pair():
     """
     Generate a truly random educational asset pair from all available assets
@@ -7642,7 +7411,7 @@ def get_random_asset_pair():
         raise HTTPException(status_code=500, detail=f"Error generating random asset pair: {str(e)}")
 
 
-@router.post("/mini-lesson/custom-portfolio")
+@portfolios_router.post("/mini-lesson/custom-portfolio")
 def calculate_custom_portfolio(request: dict):
     """
     Calculate custom portfolio metrics for interactive slider
@@ -7709,7 +7478,7 @@ def calculate_custom_portfolio(request: dict):
         logger.error(f"Error calculating custom portfolio: {e}")
         raise HTTPException(status_code=500, detail=f"Error calculating custom portfolio: {str(e)}")
 
-@router.post("/optimize/risk-parity")
+@portfolios_router.post("/optimize/risk-parity")
 async def optimize_risk_parity(request: dict):
     """
     Optimize portfolio using risk parity approach
@@ -7817,7 +7586,7 @@ async def optimize_risk_parity(request: dict):
         logger.error(f"Error in risk parity optimization: {e}")
         raise HTTPException(status_code=500, detail=f"Error in risk parity optimization: {str(e)}")
 
-@router.post("/optimize/mean-variance")
+@portfolios_router.post("/optimize/mean-variance")
 async def optimize_mean_variance(request: dict):
     """
     Optimize portfolio using mean-variance optimization (Markowitz)
@@ -7948,7 +7717,7 @@ async def optimize_mean_variance(request: dict):
         logger.error(f"Error in mean-variance optimization: {e}")
         raise HTTPException(status_code=500, detail=f"Error in mean-variance optimization: {str(e)}")
 
-@router.get("/analytics/performance-attribution")
+@analytics_router.get("/analytics/performance-attribution")
 async def performance_attribution(portfolio_id: str = None, allocations: str = None):
     """
     Analyze performance attribution for a portfolio
@@ -8077,7 +7846,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
         logger.error(f"Error in performance attribution: {e}")
         raise HTTPException(status_code=500, detail=f"Error in performance attribution: {str(e)}")
 
-@router.get("/analytics/risk-decomposition")
+@analytics_router.get("/analytics/risk-decomposition")
 async def risk_decomposition(allocations: str):
     """
     Decompose portfolio risk into systematic and idiosyncratic components
@@ -8188,7 +7957,7 @@ async def risk_decomposition(allocations: str):
         logger.error(f"Error in risk decomposition: {e}")
         raise HTTPException(status_code=500, detail=f"Error in risk decomposition: {str(e)}") 
 
-@router.post("/rebalance/check")
+@analytics_router.post("/rebalance/check")
 async def check_rebalancing_needs(request: dict):
     """
     Check if portfolio needs rebalancing based on drift thresholds
@@ -8283,7 +8052,7 @@ async def check_rebalancing_needs(request: dict):
         logger.error(f"Error checking rebalancing needs: {e}")
         raise HTTPException(status_code=500, detail=f"Error checking rebalancing needs: {str(e)}")
 
-@router.post("/monitor/performance-tracking")
+@analytics_router.post("/monitor/performance-tracking")
 async def track_portfolio_performance(request: dict):
     """
     Track portfolio performance over time with historical analysis
@@ -8436,58 +8205,7 @@ async def track_portfolio_performance(request: dict):
         logger.error(f"Error tracking portfolio performance: {e}")
         raise HTTPException(status_code=500, detail=f"Error tracking portfolio performance: {str(e)}")
 
-@router.get("/health")
-async def health_check():
-    """
-    Health check endpoint for portfolio service
-    Returns: Service status and dependencies
-    """
-    try:
-        # Check Redis connection
-        redis_status = "healthy"
-        try:
-            redis_client.ping()
-        except Exception as e:
-            redis_status = f"unhealthy: {str(e)}"
-        
-        # Check data fetcher status
-        data_fetcher_status = "healthy"
-        try:
-            cache_status = _rds.get_cache_status()
-            data_fetcher_status = "healthy" if cache_status else "unhealthy"
-        except Exception as e:
-            data_fetcher_status = f"unhealthy: {str(e)}"
-        
-        # Check portfolio analytics
-        analytics_status = "healthy"
-        try:
-            # Simple test calculation
-            test_data = {'allocations': [{'symbol': 'AAPL', 'allocation': 100}]}
-            test_result = portfolio_analytics.calculate_real_portfolio_metrics(test_data)
-            analytics_status = "healthy" if test_result else "unhealthy"
-        except Exception as e:
-            analytics_status = f"unhealthy: {str(e)}"
-        
-        return {
-            'service': 'portfolio-service',
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'dependencies': {
-                'redis': redis_status,
-                'data_fetcher': data_fetcher_status,
-                'portfolio_analytics': analytics_status
-            },
-            'version': '1.0.0'
-        }
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return {
-            'service': 'portfolio-service',
-            'status': 'unhealthy',
-            'timestamp': datetime.now().isoformat(),
-            'error': str(e)
-        }
+# (Health check -> routers/admin.py)
 
 # Enhanced Ticker Table Endpoints
 
@@ -8501,7 +8219,7 @@ def get_auto_refresh_service():
         auto_refresh_service = None
     return auto_refresh_service
 
-@router.get("/ticker-table/enhanced")
+@analytics_router.get("/ticker-table/enhanced")
 def get_enhanced_ticker_table():
     """Get enhanced ticker table with ID column and quality indicators"""
     try:
@@ -8601,7 +8319,7 @@ def get_ticker_days_left(ticker: str) -> str:
         logger.warning(f"Error getting days left for {ticker}: {e}")
         return "28 days"
 
-@router.get("/ticker-table/status")
+@analytics_router.get("/ticker-table/status")
 async def get_enhanced_ticker_status():
     """Get status of enhanced ticker table and auto-refresh service"""
     try:
@@ -8630,7 +8348,7 @@ async def get_enhanced_ticker_status():
         logger.error(f"Error getting enhanced status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get enhanced status: {str(e)}")
 
-@router.post("/ticker-table/start-auto-refresh")
+@analytics_router.post("/ticker-table/start-auto-refresh")
 async def start_auto_refresh_service():
     """Start the automatic refresh service"""
     try:
@@ -8647,7 +8365,7 @@ async def start_auto_refresh_service():
         logger.error(f"Error starting auto-refresh: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start auto-refresh: {str(e)}")
 
-@router.post("/ticker-table/stop-auto-refresh")
+@analytics_router.post("/ticker-table/stop-auto-refresh")
 async def stop_auto_refresh_service():
     """Stop the automatic refresh service"""
     try:
@@ -8665,7 +8383,7 @@ async def stop_auto_refresh_service():
         raise HTTPException(status_code=500, detail=f"Failed to stop auto-refresh: {str(e)}")
 
 
-@router.get("/ticker-table/data-quality-report")
+@analytics_router.get("/ticker-table/data-quality-report")
 async def get_data_quality_report():
     """Get comprehensive data quality report"""
     try:
@@ -8718,7 +8436,7 @@ async def get_data_quality_report():
         logger.error(f"Error getting data quality report: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get quality report: {str(e)}")
 
-@router.get("/ticker-table/enhanced-html")
+@analytics_router.get("/ticker-table/enhanced-html")
 async def get_enhanced_ticker_table_html():
     """Serve the enhanced ticker table HTML page"""
     try:
@@ -8885,30 +8603,10 @@ def _generate_portfolio_description(risk_profile: str, option: int) -> str:
     profile_descriptions = descriptions.get(risk_profile, descriptions['moderate'])
     return profile_descriptions[option % len(profile_descriptions)]
 
-@router.post("/force-refresh-expired-data")
-def force_refresh_expired_data():
-    """Force refresh of expired data using Redis-first approach"""
-    try:
-        _rds.force_refresh_expired_data()
-        return {"message": "Force refresh completed successfully"}
-    except Exception as e:
-        logger.error(f"Force refresh error: {e}")
-        raise HTTPException(status_code=500, detail=f"Force refresh failed: {str(e)}")
-
-@router.post("/smart-monthly-refresh")
-def smart_monthly_refresh():
-    """Smart monthly refresh using Redis-first approach"""
-    try:
-        result = _rds.smart_monthly_refresh()
-        return {"message": "Smart monthly refresh completed", "result": result}
-    except Exception as e:
-        logger.error(f"Smart monthly refresh error: {e}")
-        raise HTTPException(status_code=500, detail=f"Smart monthly refresh failed: {str(e)}")
-
-
+# (force-refresh-expired-data, smart-monthly-refresh -> routers/admin.py)
 
 # New: Table-friendly portfolios endpoint (all profiles + strategy portfolios)
-@router.get("/portfolios-table/data")
+@analytics_router.get("/portfolios-table/data")
 def get_all_portfolios_table_data():
     """
     Get all portfolios for all risk profiles in a table-friendly format.
@@ -9111,7 +8809,7 @@ def get_all_portfolios_table_data():
 
 
 
-@router.get("/ticker-table/refresh/preview")
+@analytics_router.get("/ticker-table/refresh/preview")
 async def refresh_ticker_table_preview():
     """Return an estimate of how many tickers would be refreshed and estimated time."""
     try:
@@ -9140,7 +8838,7 @@ async def refresh_ticker_table_preview():
         logger.error(f"Error generating refresh preview: {e}")
         raise HTTPException(status_code=500, detail=f"Error generating refresh preview: {str(e)}")
 
-@router.get("/ticker-table/smart-refresh/preview")
+@analytics_router.get("/ticker-table/smart-refresh/preview")
 async def smart_refresh_preview():
     """Return how many tickers would be refreshed by smart-refresh, without executing it."""
     try:
@@ -9159,7 +8857,7 @@ async def smart_refresh_preview():
         raise HTTPException(status_code=500, detail=f"Error generating smart-refresh preview: {str(e)}")
 
 
-@router.get("/regenerate/estimate")
+@portfolios_router.get("/regenerate/estimate")
 async def estimate_portfolio_regeneration():
     """Return an estimated duration for regenerating portfolios."""
     try:
@@ -9704,7 +9402,7 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
         logger.error(f"Error preparing scatter data: {error_msg}\n{error_trace}")
         raise HTTPException(status_code=500, detail=f"Scatter data preparation failed: {error_msg}")
 
-@router.get("/visualization/correlation-matrix", response_model=CorrelationMatrixResponse)
+@analytics_router.get("/visualization/correlation-matrix", response_model=CorrelationMatrixResponse)
 async def correlation_matrix(
     tickers: str = Query(..., description="Comma-separated list of ticker symbols"),
     portfolioLabels: Optional[str] = Query(None, description="JSON string or comma-separated portfolio labels"),
@@ -9860,7 +9558,7 @@ async def correlation_matrix(
             detail=f"Correlation matrix calculation failed: {error_msg}. Missing tickers: {', '.join(missing_tickers) if missing_tickers else 'none'}"
         )
 
-@router.get("/visualization/sector-allocation", response_model=SectorAllocationResponse)
+@analytics_router.get("/visualization/sector-allocation", response_model=SectorAllocationResponse)
 async def sector_allocation(
     tickers: str = Query(..., description="Comma-separated list of ticker symbols"),
     weights: str = Query(..., description="Comma-separated list of weights (percentages)"),
@@ -9950,7 +9648,7 @@ async def sector_allocation(
         logger.error(f"Error calculating sector allocation: {error_msg}\n{error_trace}")
         raise HTTPException(status_code=500, detail=f"Sector allocation calculation failed: {error_msg}")
 
-@router.post("/visualization/data", response_model=VisualizationDataResponse)
+@analytics_router.post("/visualization/data", response_model=VisualizationDataResponse)
 async def visualization_data(request: VisualizationDataRequest):
     """
     Consolidated endpoint that returns clustering, correlation, and sector allocation data.
@@ -10071,7 +9769,7 @@ async def visualization_data(request: VisualizationDataRequest):
 
 
 # New: Consolidated HTML with two tabs (Tickers + Portfolios) and search inputs
-@router.post("/portfolios/verify-tickers")
+@portfolios_router.post("/portfolios/verify-tickers")
 async def verify_portfolio_tickers():
     """
     Verify all tickers in cached portfolios and fetch missing ones
@@ -10206,17 +9904,18 @@ csv_generator = CSVExportGenerator()
 shareable_link_generator = None
 
 def get_shareable_link_generator():
-    """Get or initialize shareable link generator"""
+    """Get or initialize shareable link generator (uses REDIS_URL / app Redis)"""
     global shareable_link_generator
     if shareable_link_generator is None:
-        # Try to use existing redis_client from portfolio router
         try:
-            redis_cli = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-            redis_cli.ping()
-            shareable_link_generator = ShareableLinkGenerator(redis_client=redis_cli)
+            redis_cli = (getattr(_rds, 'redis_client', None) if _rds else None)
+            if redis_cli and redis_cli.ping():
+                shareable_link_generator = ShareableLinkGenerator(redis_client=redis_cli)
+            else:
+                shareable_link_generator = ShareableLinkGenerator()
         except Exception as e:
             logger.warning(f"Could not initialize shareable link generator with Redis: {e}")
-            shareable_link_generator = ShareableLinkGenerator()  # Will try to create its own connection
+            shareable_link_generator = ShareableLinkGenerator()
     return shareable_link_generator
 
 # Pydantic models for tax calculation
@@ -10227,6 +9926,7 @@ class TaxCalculationRequest(BaseModel):
     realizedGains: Optional[float] = None  # For AF
     dividends: Optional[float] = None  # For AF
     fundHoldings: Optional[float] = None  # For AF
+    expectedReturn: Optional[float] = None  # Decimal e.g. 0.07; used to compute afterTaxReturn
 
 class TaxCalculationResponse(BaseModel):
     accountType: str
@@ -10239,7 +9939,7 @@ class TaxCalculationResponse(BaseModel):
     afterTaxReturn: Optional[float] = None
     details: Dict[str, Any]
 
-@router.post("/tax/calculate", response_model=TaxCalculationResponse)
+@export_router.post("/tax/calculate", response_model=TaxCalculationResponse)
 async def calculate_tax(request: TaxCalculationRequest):
     """
     Calculate Swedish tax for portfolio
@@ -10280,7 +9980,11 @@ async def calculate_tax(request: TaxCalculationRequest):
                 tax_year=request.taxYear,
                 capital_underlag=request.portfolioValue
             )
-            
+            after_tax_return = None
+            if request.expectedReturn is not None and request.portfolioValue and request.portfolioValue > 0:
+                gross_return_amount = request.portfolioValue * request.expectedReturn
+                after_tax_return_amount = gross_return_amount - result["annual_tax"]
+                after_tax_return = after_tax_return_amount / request.portfolioValue  # as decimal
             return TaxCalculationResponse(
                 accountType=result["account_type"],
                 taxYear=result["tax_year"],
@@ -10289,6 +9993,7 @@ async def calculate_tax(request: TaxCalculationRequest):
                 taxableCapital=result.get("taxable_capital"),
                 annualTax=result["annual_tax"],
                 effectiveTaxRate=result["effective_tax_rate"],
+                afterTaxReturn=round(after_tax_return, 4) if after_tax_return is not None else None,
                 details=result
             )
         
@@ -10300,12 +10005,16 @@ async def calculate_tax(request: TaxCalculationRequest):
                 dividends=request.dividends or 0.0,
                 fund_holdings=request.fundHoldings or 0.0
             )
-            
+            after_tax_return = None
+            if request.expectedReturn is not None:
+                # AF: 30% tax on gains -> after-tax return = expectedReturn * (1 - 0.30)
+                after_tax_return = request.expectedReturn * 0.70
             return TaxCalculationResponse(
                 accountType=result["account_type"],
                 taxYear=result["tax_year"],
                 annualTax=result["total_tax"],
                 effectiveTaxRate=0.0,  # AF doesn't have a simple effective rate
+                afterTaxReturn=round(after_tax_return, 4) if after_tax_return is not None else None,
                 details=result
             )
         else:
@@ -10334,7 +10043,7 @@ class TransactionCostResponse(BaseModel):
     totalFirstYearCost: float
     costOptimization: Dict[str, Any]
 
-@router.post("/transaction-costs/estimate", response_model=TransactionCostResponse)
+@export_router.post("/transaction-costs/estimate", response_model=TransactionCostResponse)
 async def estimate_transaction_costs(request: TransactionCostRequest):
     """
     Estimate transaction costs for portfolio
@@ -10416,7 +10125,7 @@ class FiveYearProjectionResponse(BaseModel):
     pessimistic: List[float]
 
 
-@router.post("/projection/five-year", response_model=FiveYearProjectionResponse)
+@export_router.post("/projection/five-year", response_model=FiveYearProjectionResponse)
 async def projection_five_year(request: FiveYearProjectionRequest):
     """
     Five-year portfolio projection with Swedish tax and transaction costs.
@@ -10463,7 +10172,7 @@ class TaxAdjustedMetricsResponse(BaseModel):
     netExpectedReturn: float
     fiveYearProjection: List[Dict[str, Any]]
 
-@router.post("/metrics/tax-adjusted", response_model=TaxAdjustedMetricsResponse)
+@export_router.post("/metrics/tax-adjusted", response_model=TaxAdjustedMetricsResponse)
 async def calculate_tax_adjusted_metrics(request: TaxAdjustedMetricsRequest):
     """
     Calculate tax-adjusted portfolio metrics
@@ -10658,7 +10367,7 @@ class PDFExportRequest(BaseModel):
     recommendations: Optional[List[str]] = None
     educationalSummary: Optional[Dict[str, Any]] = None
 
-@router.post("/export/pdf")
+@export_router.post("/export/pdf")
 async def export_pdf(request: PDFExportRequest):
     """
     Generate PDF report
@@ -10750,7 +10459,7 @@ class CSVExportResponse(BaseModel):
     files: List[Dict[str, Any]]
     zipFile: Optional[str] = None  # base64 encoded zip if multiple files
 
-@router.post("/export/csv", response_model=CSVExportResponse)
+@export_router.post("/export/csv", response_model=CSVExportResponse)
 async def export_csv(request: CSVExportRequest):
     """
     Generate CSV exports
@@ -11002,7 +10711,7 @@ class ShareLinkResponse(BaseModel):
     shareableUrl: str
     expiresAt: str
 
-@router.post("/share/create", response_model=ShareLinkResponse)
+@export_router.post("/share/create", response_model=ShareLinkResponse)
 async def create_shareable_link(request: ShareLinkRequest):
     """
     Create shareable link
@@ -11034,7 +10743,7 @@ async def create_shareable_link(request: ShareLinkRequest):
         expires_at = link_info.get("expires_at") if link_info else None
         
         # Construct shareable URL (adjust domain as needed)
-        shareable_url = f"/api/portfolio/share/{link_id}"
+        shareable_url = f"/api/v1/portfolio/share/{link_id}"
         
         return ShareLinkResponse(
             linkId=link_id,
@@ -11048,7 +10757,7 @@ async def create_shareable_link(request: ShareLinkRequest):
         logger.error(f"Error creating shareable link: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create shareable link: {str(e)}")
 
-@router.get("/share/{link_id}")
+@export_router.get("/share/{link_id}")
 async def get_shareable_link(link_id: str, password: Optional[str] = None):
     """
     Retrieve shareable link data
@@ -11080,7 +10789,7 @@ async def get_shareable_link(link_id: str, password: Optional[str] = None):
         logger.error(f"Error retrieving shareable link: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve shareable link: {str(e)}")
 
-@router.get("/share/{link_id}/info")
+@export_router.get("/share/{link_id}/info")
 async def get_shareable_link_info(link_id: str):
     """
     Get shareable link metadata (without requiring password)
@@ -11109,7 +10818,7 @@ async def get_shareable_link_info(link_id: str):
         logger.error(f"Error getting shareable link info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get shareable link info: {str(e)}")
 
-@router.get("/consolidated-table")
+@analytics_router.get("/consolidated-table")
 async def get_consolidated_table_html():
     """Serve consolidated HTML page with Tickers and Portfolios tabs and search."""
     try:
@@ -11338,7 +11047,7 @@ async def get_consolidated_table_html():
       const q = document.getElementById('search-tickers').value.trim();
       if (q.length >= 3) {
         try {
-          const res = await fetch(`/api/portfolio/search-tickers?q=${encodeURIComponent(q)}&limit=50`);
+          const res = await fetch(`/api/v1/portfolio/search-tickers?q=${encodeURIComponent(q)}&limit=50`);
           if (res.ok) {
             const data = await res.json();
             const results = data || [];
@@ -11373,7 +11082,7 @@ async def get_consolidated_table_html():
     // Refresh endpoints
     async function refreshTickers() {
       try {
-        const res = await fetch('/api/portfolio/ticker-table/refresh/preview');
+        const res = await fetch('/api/v1/portfolio/ticker-table/refresh/preview');
         if (res.ok) {
           const data = await res.json();
           fullRefreshPreview = data;
@@ -11399,12 +11108,12 @@ async def get_consolidated_table_html():
     function closeRefreshModal(){ document.getElementById('refreshModal').style.display='none'; }
     async function proceedRefresh(){
       closeRefreshModal();
-      try { await fetch('/api/portfolio/ticker-table/refresh', { method: 'POST' }); } catch(_) {}
+      try { await fetch('/api/v1/portfolio/ticker-table/refresh', { method: 'POST' }); } catch(_) {}
       alert('Full refresh initiated');
     }
     async function smartRefreshTickers() {
       try {
-        const res = await fetch('/api/portfolio/ticker-table/smart-refresh/preview');
+        const res = await fetch('/api/v1/portfolio/ticker-table/smart-refresh/preview');
         if (res.ok) {
           const data = await res.json();
           smartRefreshPreview = data;
@@ -11469,7 +11178,7 @@ async def get_consolidated_table_html():
               body: JSON.stringify({ tickers: candidates })
             }
           : { method: 'POST' };
-        await fetch('/api/portfolio/ticker-table/smart-refresh', options);
+        await fetch('/api/v1/portfolio/ticker-table/smart-refresh', options);
       } catch(_) {}
       alert('Smart refresh initiated');
     }
@@ -11558,7 +11267,7 @@ async def get_consolidated_table_html():
     async function proceedRegenRecommendations(){
       closeRegenRecommendationsModal();
       try { 
-        const res = await fetch('/api/portfolio/regenerate-recommendations', { method: 'POST' });
+        const res = await fetch('/api/v1/portfolio/regenerate-recommendations', { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           alert(`Portfolio regeneration started: ${data.message || 'Processing...'}`);
@@ -11577,7 +11286,7 @@ async def get_consolidated_table_html():
     async function proceedRegenStrategies(){
       closeRegenStrategiesModal();
       try { 
-        const res = await fetch('/api/portfolio/pre-generate-strategy-portfolios', { method: 'POST' });
+        const res = await fetch('/api/v1/portfolio/pre-generate-strategy-portfolios', { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           alert(`Strategy portfolio regeneration started: ${data.message || 'Processing...'}`);
@@ -11597,3 +11306,10 @@ async def get_consolidated_table_html():
     except Exception as e:
         logger.error(f"Error serving consolidated table: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to serve consolidated table: {str(e)}")
+
+
+# Mount domain sub-routers after all route decorators have run (so routes are registered)
+router.include_router(portfolios_router)
+router.include_router(optimization_router)
+router.include_router(analytics_router)
+router.include_router(export_router)

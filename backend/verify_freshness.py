@@ -5,7 +5,7 @@ import sys
 import urllib.request
 
 try:
-    url = "http://localhost:8000/api/portfolio/ticker-table/data"
+    url = "http://localhost:8000/api/v1/portfolio/ticker-table/data"
     with urllib.request.urlopen(url) as response:
         data = json.loads(response.read())
     

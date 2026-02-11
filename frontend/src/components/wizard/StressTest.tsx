@@ -95,6 +95,7 @@ export const StressTest: React.FC<StressTestProps> = ({
     duration_months: 6,
     recovery_rate: 'moderate'
   });
+  const [marketDeclineInput, setMarketDeclineInput] = useState<string | null>(null);
   const [hypotheticalResults, setHypotheticalResults] = useState<any>(null);
   const [hypotheticalLoading, setHypotheticalLoading] = useState(false);
   const [activeView, setActiveView] = useState<'overview' | 'timeline' | 'monte-carlo' | 'hypothetical'>('overview');
@@ -118,7 +119,7 @@ export const StressTest: React.FC<StressTestProps> = ({
   React.useEffect(() => {
     if (selectedPortfolio && selectedPortfolio.tickers && selectedPortfolio.tickers.length > 0) {
       // Warm cache in background (non-blocking)
-      fetch('/api/portfolio/warm-tickers', {
+      fetch('/api/v1/portfolio/warm-tickers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tickers: selectedPortfolio.tickers })
@@ -186,7 +187,7 @@ export const StressTest: React.FC<StressTestProps> = ({
     }, 500);
     
     try {
-      const response = await fetch('/api/portfolio/stress-test', {
+      const response = await fetch('/api/v1/portfolio/stress-test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -428,22 +429,46 @@ export const StressTest: React.FC<StressTestProps> = ({
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200 min-w-0">
-                      <div className="text-xs text-gray-600 mb-1">Expected Return</div>
-                      <div className="text-xl font-bold text-blue-700">
-                        {(selectedPortfolio!.metrics.expected_return * 100).toFixed(1)}%
+                    {/* Expected Return - same style as mini-lesson (StockSelection) */}
+                    <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border min-w-0">
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-200 rounded-full -translate-y-8 translate-x-8 opacity-20" />
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <TrendingUp className="h-4 w-4 text-emerald-600" />
+                          <span className="text-xs font-medium text-emerald-700">Expected Return</span>
+                        </div>
+                        <div className="text-2xl font-bold text-emerald-800 mb-0.5">
+                          {(selectedPortfolio!.metrics.expected_return * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-emerald-600">Annualized projection</div>
                       </div>
                     </div>
-                    <div className="text-center p-3 bg-amber-50 rounded-lg border border-amber-200">
-                      <div className="text-xs text-gray-600 mb-1">Risk Level</div>
-                      <div className="text-xl font-bold text-amber-700">
-                        {(selectedPortfolio!.metrics.risk * 100).toFixed(1)}%
+                    {/* Risk Level - same style as mini-lesson */}
+                    <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border min-w-0">
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-amber-200 rounded-full -translate-y-8 translate-x-8 opacity-20" />
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Shield className="h-4 w-4 text-amber-600" />
+                          <span className="text-xs font-medium text-amber-700">Risk (Volatility)</span>
+                        </div>
+                        <div className="text-2xl font-bold text-amber-800 mb-0.5">
+                          {(selectedPortfolio!.metrics.risk * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-amber-600">Volatility measure</div>
                       </div>
                     </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                      <div className="text-xs text-gray-600 mb-1">Sharpe Ratio</div>
-                      <div className="text-xl font-bold text-purple-700">
-                        {selectedPortfolio!.metrics.sharpe_ratio.toFixed(2)}
+                    {/* Sharpe Ratio - same card style, violet */}
+                    <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border min-w-0">
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-violet-200 rounded-full -translate-y-8 translate-x-8 opacity-20" />
+                      <div className="relative z-10">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <BarChart3 className="h-4 w-4 text-violet-600" />
+                          <span className="text-xs font-medium text-violet-700">Sharpe Ratio</span>
+                        </div>
+                        <div className="text-2xl font-bold text-violet-800 mb-0.5">
+                          {selectedPortfolio!.metrics.sharpe_ratio.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-violet-600">Risk-adjusted return</div>
                       </div>
                     </div>
                   </div>
@@ -744,22 +769,17 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         // We need to adjust them to start from frontend's lastValue
                                         const valueOffset = lastValue - backendNormalizedLastValue;
                                         
-                                        // First point: connect to the last actual portfolio value
-                                        // Set all projection values to lastValue to ensure smooth connection
-                                        baseData.push({
-                                          date: lastDate, // Same date as last actual point
-                                          value: lastValue, // Keep actual value for smooth connection
-                                          return: null,
-                                          aggressive: lastValue, // Start from lastValue
-                                          moderate: lastValue, // Start from lastValue
-                                          conservative: lastValue // Start from lastValue
-                                        });
+                                        // Attach trajectory to last actual point so projection lines connect smoothly (no duplicate date)
+                                        const lastIdx = baseData.length - 1;
+                                        if (lastIdx >= 0) {
+                                          baseData[lastIdx].aggressive = lastValue;
+                                          baseData[lastIdx].moderate = lastValue;
+                                          baseData[lastIdx].conservative = lastValue;
+                                        }
                                         
-                                        // Add remaining projection points
-                                        // Backend provides cumulative values from its current_value
-                                        // Convert them to frontend normalized percentage and adjust by offset
+                                        // Add future projection points only (backend trajectory_data[0] = 1 month ahead, etc.)
                                         stressTestResults.scenarios.covid19.metrics.trajectory_projections.trajectory_data.forEach((point: any, idx: number) => {
-                                          if (idx === 0) return; // Skip first point, already added
+                                          if (idx === 0) return; // First backend point = 1 month ahead; connector is last actual point
                                           
                                           const futureMonth = month + idx;
                                           const futureYear = year + Math.floor((futureMonth - 1) / 12);
@@ -1013,18 +1033,18 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={12}
+                                            r={6}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={3}
-                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 11, fontWeight: 'bold' }}
+                                            strokeWidth={2}
+                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 10, fontWeight: 'bold' }}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={12}
+                                            r={6}
                                             fill="#ef4444"
                                             stroke="#fff"
                                             strokeWidth={3}
@@ -1038,10 +1058,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <ReferenceDot 
                                       x={recoveryPeakInfo.date} 
                                       y={recoveryPeakInfo.value}
-                                      r={16}
+                                      r={8}
                                       fill="#9333ea"
                                       stroke="#fff"
-                                      strokeWidth={4}
+                                      strokeWidth={2}
                                       label={{ 
                                         value: `Recovery (${recoveryPeakInfo.value.toFixed(1)}%)`, 
                                         position: 'top', 
@@ -1454,22 +1474,17 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         // We need to adjust them to start from frontend's lastValue
                                         const valueOffset = lastValue - backendNormalizedLastValue;
                                         
-                                        // First point: connect to the last actual portfolio value
-                                        // Set all projection values to lastValue to ensure smooth connection
-                                        baseData.push({
-                                          date: lastDate, // Same date as last actual point
-                                          value: lastValue, // Keep actual value for smooth connection
-                                          return: null,
-                                          aggressive: lastValue, // Start from lastValue
-                                          moderate: lastValue, // Start from lastValue
-                                          conservative: lastValue // Start from lastValue
-                                        });
+                                        // Attach trajectory to last actual point so projection lines connect smoothly (same as COVID-19 chart)
+                                        const lastIdx = baseData.length - 1;
+                                        if (lastIdx >= 0) {
+                                          baseData[lastIdx].aggressive = lastValue;
+                                          baseData[lastIdx].moderate = lastValue;
+                                          baseData[lastIdx].conservative = lastValue;
+                                        }
                                         
-                                        // Add remaining projection points
-                                        // Backend provides cumulative values from its current_value
-                                        // Convert them to frontend normalized percentage and adjust by offset
+                                        // Add future projection points only (backend trajectory_data[0] = 1 month ahead, etc.)
                                         stressTestResults.scenarios['2008_crisis'].metrics.trajectory_projections.trajectory_data.forEach((point: any, idx: number) => {
-                                          if (idx === 0) return; // Skip first point, already added
+                                          if (idx === 0) return; // First backend point = 1 month ahead; connector is last actual point
                                           
                                           const futureMonth = month + idx;
                                           const futureYear = year + Math.floor((futureMonth - 1) / 12);
@@ -1720,18 +1735,18 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={12}
+                                            r={6}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={3}
-                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 11, fontWeight: 'bold' }}
+                                            strokeWidth={2}
+                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 10, fontWeight: 'bold' }}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={12}
+                                            r={6}
                                             fill="#ef4444"
                                             stroke="#fff"
                                             strokeWidth={3}
@@ -1745,10 +1760,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <ReferenceDot 
                                       x={recoveryPeakInfo.date} 
                                       y={recoveryPeakInfo.value}
-                                      r={16}
+                                      r={8}
                                       fill="#9333ea"
                                       stroke="#fff"
-                                      strokeWidth={4}
+                                      strokeWidth={2}
                                       label={{ 
                                         value: `Recovery (${recoveryPeakInfo.value.toFixed(1)}%)`, 
                                         position: 'top', 
@@ -2476,11 +2491,26 @@ export const StressTest: React.FC<StressTestProps> = ({
                           <div className="space-y-2">
                             <label className="text-xs text-muted-foreground">Market Decline (%)</label>
                             <input
-                              type="number"
-                              min="-80"
-                              max="0"
-                              value={hypotheticalParams.market_decline}
-                              onChange={(e) => setHypotheticalParams({...hypotheticalParams, market_decline: parseInt(e.target.value) || -30})}
+                              type="text"
+                              inputMode="numeric"
+                              value={marketDeclineInput !== null ? marketDeclineInput : hypotheticalParams.market_decline}
+                              onFocus={() => setMarketDeclineInput(String(hypotheticalParams.market_decline))}
+                              onBlur={() => {
+                                const raw = marketDeclineInput;
+                                setMarketDeclineInput(null);
+                                const num = raw !== null ? parseInt(raw, 10) : hypotheticalParams.market_decline;
+                                if (!isNaN(num) && num >= -80 && num <= 0) {
+                                  setHypotheticalParams(prev => ({...prev, market_decline: num}));
+                                }
+                              }}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setMarketDeclineInput(raw);
+                                const num = raw === '' || raw === '-' ? null : parseInt(raw, 10);
+                                if (num !== null && !isNaN(num) && num >= -80 && num <= 0) {
+                                  setHypotheticalParams(prev => ({...prev, market_decline: num}));
+                                }
+                              }}
                               className="w-full px-3 py-2 border rounded-md text-sm"
                             />
                           </div>
@@ -2521,7 +2551,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           setError(null);
                           try {
                             // Use what-if endpoint with scenario_type for backward compatibility
-                            const response = await fetch('/api/portfolio/what-if-scenario', {
+                            const response = await fetch('/api/v1/portfolio/what-if-scenario', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({

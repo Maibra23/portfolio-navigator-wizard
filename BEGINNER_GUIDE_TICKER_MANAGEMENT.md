@@ -53,7 +53,7 @@ A **ticker** is a stock symbol (like `AAPL` for Apple, `MSFT` for Microsoft). Yo
 **Option A: Using your web browser** (Easiest)
 1. Open this URL in your browser:
    ```
-   https://your-backend-url.railway.app/api/portfolio/warm-cache
+   https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
    ```
 2. You'll see a loading screen
 3. Wait ~90 minutes (yes, it takes a while!)
@@ -64,7 +64,7 @@ A **ticker** is a stock symbol (like `AAPL` for Apple, `MSFT` for Microsoft). Yo
 # Open Terminal (Mac) or Command Prompt (Windows)
 
 # Copy this command (replace YOUR-URL with your actual backend URL)
-curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
 
 # Press Enter and wait ~90 minutes
 ```
@@ -77,7 +77,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
 
 **How to know it's done:**
 - You'll receive a Slack notification (if configured)
-- Or check status: `https://your-backend-url.railway.app/api/portfolio/cache-status`
+- Or check status: `https://your-backend-url.railway.app/api/v1/portfolio/cache-status`
 
 ---
 
@@ -87,7 +87,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
 
 **Using Browser:**
 ```
-https://your-backend-url.railway.app/api/portfolio/cache-status
+https://your-backend-url.railway.app/api/v1/portfolio/cache-status
 ```
 
 **What you'll see:**
@@ -187,12 +187,12 @@ Your app automatically:
 
 **Browser:**
 ```
-https://your-backend-url.railway.app/api/portfolio/cache/refresh-expiring?days_threshold=7
+https://your-backend-url.railway.app/api/v1/portfolio/cache/refresh-expiring?days_threshold=7
 ```
 
 **Terminal:**
 ```bash
-curl -X POST "https://your-backend-url.railway.app/api/portfolio/cache/refresh-expiring?days_threshold=7"
+curl -X POST "https://your-backend-url.railway.app/api/v1/portfolio/cache/refresh-expiring?days_threshold=7"
 ```
 
 **Time:** ~5-20 minutes (only refreshes what's needed)
@@ -205,12 +205,12 @@ curl -X POST "https://your-backend-url.railway.app/api/portfolio/cache/refresh-e
 
 **Browser:**
 ```
-https://your-backend-url.railway.app/api/portfolio/ticker-table/smart-refresh
+https://your-backend-url.railway.app/api/v1/portfolio/ticker-table/smart-refresh
 ```
 
 **Terminal:**
 ```bash
-curl -X POST https://your-backend-url.railway.app/api/portfolio/ticker-table/smart-refresh
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/ticker-table/smart-refresh
 ```
 
 **Time:** ~10-20 minutes
@@ -224,7 +224,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/ticker-table/sma
 
 **Terminal only** (requires JSON):
 ```bash
-curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-tickers \
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{
     "tickers": ["AAPL", "MSFT", "GOOGL", "TSLA"]
@@ -243,7 +243,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-tickers \
 
 **Browser:**
 ```
-https://your-backend-url.railway.app/api/portfolio/warm-cache
+https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
 ```
 
 **Time:** ~90 minutes
@@ -267,7 +267,7 @@ https://your-backend-url.railway.app/api/portfolio/warm-cache
 ### Monthly: Optional Smart Refresh (10 minutes)
 ```bash
 # First day of month (optional):
-curl -X POST https://your-backend-url.railway.app/api/portfolio/ticker-table/smart-refresh
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/ticker-table/smart-refresh
 
 # This gets the latest month's data
 # Not required if auto-refresh is working
@@ -287,13 +287,13 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/ticker-table/sma
 **What to do:**
 ```bash
 # Warm the cache (takes 90 minutes)
-curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
 
 # Go grab coffee ☕
 # Come back in 90 minutes
 
 # Check it worked:
-curl https://your-backend-url.railway.app/api/portfolio/cache-status
+curl https://your-backend-url.railway.app/api/v1/portfolio/cache-status
 # Should show: "total_tickers": 1432
 ```
 
@@ -310,7 +310,7 @@ Option A: Do nothing
   - Zero work for you
 
 Option B: Refresh early (proactive)
-  curl -X POST "https://your-backend-url.railway.app/api/portfolio/cache/refresh-expiring?days_threshold=7"
+  curl -X POST "https://your-backend-url.railway.app/api/v1/portfolio/cache/refresh-expiring?days_threshold=7"
   - Takes 10-15 minutes
   - Prevents future critical alerts
 ```
@@ -326,18 +326,18 @@ Option B: Refresh early (proactive)
 **What to do:**
 1. **Check if auto-refresh worked:**
    ```bash
-   curl https://your-backend-url.railway.app/api/portfolio/cache/ttl-status
+   curl https://your-backend-url.railway.app/api/v1/portfolio/cache/ttl-status
    ```
 
 2. **If still critical, manually trigger:**
    ```bash
-   curl -X POST "https://your-backend-url.railway.app/api/portfolio/cache/refresh-expiring?days_threshold=1"
+   curl -X POST "https://your-backend-url.railway.app/api/v1/portfolio/cache/refresh-expiring?days_threshold=1"
    ```
 
 3. **Verify it worked:**
    ```bash
    # Wait 5-10 minutes, then check again
-   curl https://your-backend-url.railway.app/api/portfolio/cache/ttl-status
+   curl https://your-backend-url.railway.app/api/v1/portfolio/cache/ttl-status
    # Critical count should be 0
    ```
 
@@ -351,7 +351,7 @@ Option B: Refresh early (proactive)
 ```bash
 # Example: AAPL and MSFT showing old data
 
-curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-tickers \
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{"tickers": ["AAPL", "MSFT"]}'
 
@@ -368,7 +368,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-tickers \
 # First, add them to your master ticker list (backend code)
 # Then warm just those new tickers:
 
-curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-tickers \
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{
     "tickers": ["NVDA", "AMD", "INTC", "QCOM", "MU", "TSM", "ASML", "AVGO", "TXN", "ADI"]
@@ -387,7 +387,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-tickers \
 **What to do:**
 ```bash
 # Re-warm the entire cache
-curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
 
 # Wait 90 minutes
 # Cache will be fully populated again
@@ -434,7 +434,7 @@ curl -X POST https://your-backend-url.railway.app/api/portfolio/warm-cache
 ### Check Current Cache Status
 ```bash
 # How many tickers are cached?
-curl https://your-backend-url.railway.app/api/portfolio/cache-status
+curl https://your-backend-url.railway.app/api/v1/portfolio/cache-status
 
 # Example output:
 {
@@ -447,7 +447,7 @@ curl https://your-backend-url.railway.app/api/portfolio/cache-status
 ### Check TTL (Time Until Expiration)
 ```bash
 # Which tickers are expiring soon?
-curl "https://your-backend-url.railway.app/api/portfolio/cache/expiring-list?days_threshold=7"
+curl "https://your-backend-url.railway.app/api/v1/portfolio/cache/expiring-list?days_threshold=7"
 
 # Example output:
 {
@@ -460,7 +460,7 @@ curl "https://your-backend-url.railway.app/api/portfolio/cache/expiring-list?day
 ### Check TTL Report (Human Readable)
 ```bash
 # Get a detailed text report
-curl https://your-backend-url.railway.app/api/portfolio/cache/ttl-report
+curl https://your-backend-url.railway.app/api/v1/portfolio/cache/ttl-report
 
 # Example output:
 REDIS TTL MONITORING REPORT
@@ -588,16 +588,16 @@ BACKEND_URL="https://your-backend-url.railway.app"
 curl "$BACKEND_URL/health"
 
 # Check cache status
-curl "$BACKEND_URL/api/portfolio/cache-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache-status"
 
 # Check what's expiring soon
-curl "$BACKEND_URL/api/portfolio/cache/expiring-list?days_threshold=7"
+curl "$BACKEND_URL/api/v1/portfolio/cache/expiring-list?days_threshold=7"
 
 # Emergency: Refresh critical tickers
-curl -X POST "$BACKEND_URL/api/portfolio/cache/refresh-expiring?days_threshold=1"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/cache/refresh-expiring?days_threshold=1"
 
 # Emergency: Full re-warm (takes 90 mins)
-curl -X POST "$BACKEND_URL/api/portfolio/warm-cache"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-cache"
 ```
 
 ---

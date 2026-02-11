@@ -1,9 +1,81 @@
-import React from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { BookOpen, Calculator, TrendingUp } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { BookOpen, Calculator, TrendingUp, Plus, X } from 'lucide-react';
 
-export const TaxEducationPanel: React.FC = () => {
+const DEFAULT_CAPITAL = 400000;
+const DEFAULT_RETURNS_PCT = [1, 3, 5, 7, 10];
+const MAX_RETURN_ROWS = 5;
+
+function iskTaxForYear(capital: number, taxYear: 2025 | 2026): number {
+  const taxFree = taxYear === 2025 ? 150000 : 300000;
+  const schablon = taxYear === 2025 ? 0.0296 : 0.0355;
+  const taxable = Math.max(0, capital - taxFree);
+  return Math.round(taxable * schablon * 0.30);
+}
+
+type BestAccount = 'ISK' | 'KF' | 'AF';
+
+function buildIskAfTableRows(capital: number, taxYear: 2025 | 2026, returnPcts: number[]) {
+  const iskTax = iskTaxForYear(capital, taxYear);
+  const kfTax = iskTax; // KF uses same calculation as ISK
+  const sorted = [...returnPcts].filter((p) => p > 0 && p <= 100).sort((a, b) => a - b);
+  return sorted.map((pct) => {
+    const gain = (capital * pct) / 100;
+    const afTax = Math.round(gain * 0.30);
+    const bestTax = Math.min(iskTax, kfTax, afTax);
+    const worstTax = Math.max(iskTax, kfTax, afTax);
+    const savings = worstTax - bestTax;
+    const bestAccount: BestAccount = afTax <= bestTax ? 'AF' : 'ISK'; // ISK/KF tie, so we use ISK when schablon wins
+    return { pct, gain, iskTax, kfTax, afTax, savings, bestAccount };
+  });
+}
+
+export interface TaxEducationPanelProps {
+  /** Pre-fill capital in the ISK vs AF table (e.g. user's portfolio capital). */
+  initialCapital?: number;
+  /** Pre-fill tax year in the ISK vs AF table. */
+  initialTaxYear?: 2025 | 2026;
+}
+
+export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
+  initialCapital,
+  initialTaxYear = 2026,
+}) => {
+  const [tableCapital, setTableCapital] = useState<number>(initialCapital ?? DEFAULT_CAPITAL);
+  const [tableTaxYear, setTableTaxYear] = useState<2025 | 2026>(initialTaxYear);
+  const [returnPcts, setReturnPcts] = useState<number[]>(DEFAULT_RETURNS_PCT);
+  const [customReturnInput, setCustomReturnInput] = useState<string>('');
+
+  useEffect(() => {
+    if (initialCapital != null && initialCapital > 0) setTableCapital(initialCapital);
+  }, [initialCapital]);
+  useEffect(() => {
+    setTableTaxYear(initialTaxYear);
+  }, [initialTaxYear]);
+
+  const rows = useMemo(
+    () => buildIskAfTableRows(tableCapital, tableTaxYear, returnPcts),
+    [tableCapital, tableTaxYear, returnPcts],
+  );
+
+  const addReturn = () => {
+    if (returnPcts.length >= MAX_RETURN_ROWS) return;
+    const val = parseFloat(customReturnInput.replace(',', '.'));
+    if (!Number.isNaN(val) && val > 0 && val <= 100 && !returnPcts.includes(val)) {
+      setReturnPcts((prev) => [...prev, val].sort((a, b) => a - b));
+      setCustomReturnInput('');
+    }
+  };
+
+  const atMaxReturnRows = returnPcts.length >= MAX_RETURN_ROWS;
+
+  const removeReturn = (pct: number) => {
+    setReturnPcts((prev) => prev.filter((p) => p !== pct));
+  };
   return (
     <Card className="bg-muted border border-border">
       <CardHeader>
@@ -255,6 +327,135 @@ export const TaxEducationPanel: React.FC = () => {
                     If your capital is below 300k and you select 2026, you'll see <strong>significantly lower or zero tax</strong> in the projection!
                   </p>
                 </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Collapsible: Tax cost ISK vs. AF – interactive */}
+          <AccordionItem value="isk-af-table" className="bg-card rounded-lg border border-border px-4">
+            <AccordionTrigger className="text-sm font-semibold hover:no-underline">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-bold text-slate-700">ISK vs AF</span>
+                </div>
+                Tax cost: ISK vs. AF account ({tableCapital.toLocaleString('sv-SE')} SEK)
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="text-sm space-y-2 pt-2">
+              <p className="text-[11px] text-muted-foreground">
+                ISK/KF: fixed rate; AF: 30% of gains. Change capital, tax year or return to update. Max {MAX_RETURN_ROWS} return rows.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground">Capital (SEK)</label>
+                  <Input
+                    type="number"
+                    min={10000}
+                    max={10000000}
+                    step={10000}
+                    value={tableCapital}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(v) && v >= 0) setTableCapital(v);
+                    }}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground">Tax year</label>
+                  <select
+                    className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    value={tableTaxYear}
+                    onChange={(e) => setTableTaxYear(parseInt(e.target.value, 10) as 2025 | 2026)}
+                  >
+                    <option value={2025}>2025 (150k tax-free)</option>
+                    <option value={2026}>2026 (300k tax-free)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-medium text-foreground">Return rows (%):</span>
+                <div className="flex flex-wrap gap-1">
+                  {returnPcts.map((pct) => (
+                    <span
+                      key={pct}
+                      className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[11px]"
+                    >
+                      {pct}%
+                      <button
+                        type="button"
+                        onClick={() => removeReturn(pct)}
+                        className="rounded p-0.5 hover:bg-muted-foreground/20"
+                        aria-label={`Remove ${pct}%`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-1 items-center">
+                  <Input
+                    type="number"
+                    min={0.1}
+                    max={100}
+                    step={0.5}
+                    placeholder="e.g. 4"
+                    value={customReturnInput}
+                    onChange={(e) => setCustomReturnInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addReturn())}
+                    className="h-7 w-16 text-[11px]"
+                    disabled={atMaxReturnRows}
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={addReturn} className="h-7 px-1.5 gap-0.5 text-[11px]" disabled={atMaxReturnRows}>
+                    <Plus className="h-2.5 w-2.5" />
+                    Add
+                  </Button>
+                </div>
+                {atMaxReturnRows && <span className="text-[10px] text-muted-foreground">Max {MAX_RETURN_ROWS} rows. Remove one to add another.</span>}
+              </div>
+              <div className="overflow-x-auto rounded-md border border-border">
+                <table className="w-full text-[11px] border-collapse">
+                  <caption className="sr-only">
+                    Tax cost ISK vs. KF vs. AF at different returns, {tableCapital.toLocaleString('sv-SE')} SEK
+                  </caption>
+                  <thead>
+                    <tr className="bg-muted border-b border-border">
+                      <th className="text-left p-1.5 font-semibold">Return (%)</th>
+                      <th className="text-right p-1.5 font-semibold">Gain (SEK)</th>
+                      <th className="text-right p-1.5 font-semibold">ISK (fixed)</th>
+                      <th className="text-right p-1.5 font-semibold">KF (fixed)</th>
+                      <th className="text-right p-1.5 font-semibold">AF (30%)</th>
+                      <th className="text-right p-1.5 font-semibold">Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, i) => {
+                      const tooltipText = `ISK: ${row.iskTax.toLocaleString('sv-SE')} SEK · KF: ${row.kfTax.toLocaleString('sv-SE')} SEK · AF: ${row.afTax.toLocaleString('sv-SE')} SEK. Best: ${row.bestAccount}. Save ${row.savings.toLocaleString('sv-SE')} SEK vs highest.`;
+                      const savingsColor = row.bestAccount === 'AF' ? 'text-amber-700 bg-amber-100' : 'text-green-700 bg-green-100';
+                      return (
+                        <tr key={`${row.pct}-${i}`} className={i % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
+                          <td className="p-1.5">{row.pct === 7 ? '7% (Avg)' : `${row.pct}%`}</td>
+                          <td className="p-1.5 text-right">{row.gain.toLocaleString('sv-SE')} SEK</td>
+                          <td className="p-1.5 text-right">{row.iskTax.toLocaleString('sv-SE')} SEK</td>
+                          <td className="p-1.5 text-right">{row.kfTax.toLocaleString('sv-SE')} SEK</td>
+                          <td className="p-1.5 text-right">{row.afTax.toLocaleString('sv-SE')} SEK</td>
+                          <td className="p-1.5 text-right">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={`inline-block rounded px-1 font-medium ${row.savings === 0 ? 'text-muted-foreground' : savingsColor}`}>
+                                  {row.savings === 0 ? '0 SEK' : `+ ${row.savings.toLocaleString('sv-SE')} SEK`}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-xs text-xs p-2">
+                                {tooltipText}
+                              </TooltipContent>
+                            </Tooltip>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </AccordionContent>
           </AccordionItem>

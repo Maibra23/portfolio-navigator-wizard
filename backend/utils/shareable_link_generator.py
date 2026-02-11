@@ -30,11 +30,13 @@ class ShareableLinkGenerator:
         """
         if redis_client is None:
             try:
-                self.redis_client = redis.Redis(
-                    host='localhost',
-                    port=6379,
-                    db=0,
-                    decode_responses=True
+                import os
+                redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+                self.redis_client = redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5
                 )
                 self.redis_client.ping()
                 logger.info("✅ Redis connection established for shareable links")

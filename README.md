@@ -156,7 +156,7 @@ http://localhost:8000                                    # Backend API
 http://localhost:8000/docs                               # Swagger API docs
 http://localhost:8000/redoc                              # ReDoc API docs
 http://localhost:8000/health                             # Health check
-http://localhost:8000/api/portfolio/cache-status         # Cache status
+http://localhost:8000/api/v1/portfolio/cache-status         # Cache status
 http://localhost:8000/api/enhanced-portfolio/status      # Portfolio status
 ```
 
@@ -314,7 +314,7 @@ Once both servers are running, you can access:
   - Alternative API documentation format
   - Better for reading and learning
 
-- **Cache Status**: [http://localhost:8000/api/portfolio/cache-status](http://localhost:8000/api/portfolio/cache-status)
+- **Cache Status**: [http://localhost:8000/api/v1/portfolio/cache-status](http://localhost:8000/api/v1/portfolio/cache-status)
   - Redis cache health and statistics
   - View cache hit rates and memory usage
 
@@ -858,7 +858,7 @@ pip list --outdated                # Check for updates
 
 **Check cache status:**
 ```bash
-curl http://localhost:8000/api/portfolio/cache-status
+curl http://localhost:8000/api/v1/portfolio/cache-status
 ```
 
 **Clear cache and restart:**
@@ -870,7 +870,7 @@ make dev
 
 **Warm cache manually:**
 ```bash
-curl -X POST http://localhost:8000/api/portfolio/warm-cache
+curl -X POST http://localhost:8000/api/v1/portfolio/warm-cache
 ```
 
 ### Regenerating Portfolios
@@ -1379,7 +1379,7 @@ curl http://localhost:8000/health
 
 **Redis Health Check:**
 ```bash
-curl http://localhost:8000/api/portfolio/cache-status
+curl http://localhost:8000/api/v1/portfolio/cache-status
 ```
 
 **Monitor Logs:**
@@ -1456,45 +1456,45 @@ The backend provides auto-generated interactive API documentation:
 
 **Portfolio Analytics:**
 ```bash
-POST /api/portfolio/calculate-metrics
+POST /api/v1/portfolio/calculate-metrics
 # Calculate real-time portfolio metrics
 # Body: { "tickers": ["AAPL", "GOOGL"], "weights": [0.6, 0.4] }
 
-POST /api/portfolio/optimization/triple
+POST /api/v1/portfolio/optimization/triple
 # Triple optimization analysis
 # Body: { "tickers": [...], "weights": [...], "risk_profile": "moderate" }
 ```
 
 **Stock Search:**
 ```bash
-GET /api/portfolio/search-tickers?q=apple
+GET /api/v1/portfolio/search-tickers?q=apple
 # Search tickers with autocomplete
 
-GET /api/portfolio/ticker-info/AAPL
+GET /api/v1/portfolio/ticker-info/AAPL
 # Get detailed ticker information
 
-GET /api/portfolio/ticker-price-history/AAPL?period=1y
+GET /api/v1/portfolio/ticker-price-history/AAPL?period=1y
 # Get historical price data
 ```
 
 **Portfolio Recommendations:**
 ```bash
-GET /api/portfolio/top-pick/moderate
+GET /api/v1/portfolio/top-pick/moderate
 # Get pre-computed top portfolio for risk profile
 
-GET /api/portfolio/recommendations?risk_profile=moderate&count=5
+GET /api/v1/portfolio/recommendations?risk_profile=moderate&count=5
 # Get multiple portfolio recommendations
 ```
 
 **Cache Management:**
 ```bash
-GET /api/portfolio/cache-status
+GET /api/v1/portfolio/cache-status
 # Check cache health and statistics
 
-POST /api/portfolio/warm-cache
+POST /api/v1/portfolio/warm-cache
 # Warm cache with fresh data
 
-GET /api/portfolio/available-tickers
+GET /api/v1/portfolio/available-tickers
 # List all indexed tickers
 ```
 

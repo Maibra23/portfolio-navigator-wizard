@@ -17,7 +17,7 @@ import json
 import time
 from datetime import datetime
 
-API_BASE = "http://localhost:8000/api/portfolio"
+API_BASE = "http://localhost:8000/api/v1/portfolio"
 
 def print_section(title: str):
     print(f"\n{'='*80}")

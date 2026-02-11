@@ -82,7 +82,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/portfolio/ticker-universe')
+    fetch('/api/v1/portfolio/ticker-universe')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -114,8 +114,8 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       
       // Build search URL with optional risk profile filter
       const searchUrl = fullUniverse 
-        ? `/api/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=20`
-        : `/api/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=20&risk_profile=${riskProfile}`;
+        ? `/api/v1/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=20`
+        : `/api/v1/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=20&risk_profile=${riskProfile}`;
 
       const response = await fetch(searchUrl);
       
@@ -247,7 +247,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
 
     setIsLoadingMetrics(true);
     try {
-      const response = await fetch('/api/portfolio/calculate-metrics', {
+      const response = await fetch('/api/v1/portfolio/calculate-metrics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

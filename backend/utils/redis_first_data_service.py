@@ -15,6 +15,13 @@ from functools import lru_cache
 from .timestamp_utils import normalize_timestamp
 from .logging_utils import get_job_logger
 
+try:
+    from redis.asyncio import Redis as AsyncRedis
+    _ASYNC_REDIS_AVAILABLE = True
+except ImportError:
+    AsyncRedis = None
+    _ASYNC_REDIS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 smart_refresh_logger = get_job_logger("smart_refresh")
 full_refresh_logger = get_job_logger("full_refresh")
@@ -40,6 +47,7 @@ class RedisFirstDataService:
             redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
 
         self.redis_client = self._init_redis_from_url(redis_url)
+        self._async_client: Optional[Any] = self._init_async_redis_from_url(redis_url)
         self._enhanced_data_fetcher = None  # Lazy initialization
         self._ticker_list = None  # Cached ticker list
 
@@ -47,7 +55,7 @@ class RedisFirstDataService:
         self.CACHE_TTL_DAYS = 28
         self.CACHE_TTL_HOURS = self.CACHE_TTL_DAYS * 24
 
-        logger.info("✅ Redis-First Data Service initialized")
+        logger.info("Redis-First Data Service initialized")
 
     def _init_redis_from_url(self, redis_url: str) -> Optional[redis.Redis]:
         """Initialize Redis connection from URL (supports TLS)"""
@@ -88,12 +96,67 @@ class RedisFirstDataService:
             return r
 
         except redis.ConnectionError as e:
-            logger.warning(f"❌ Redis connection failed: {e}")
+            logger.warning("Redis connection failed: %s", e)
             return None
         except Exception as e:
-            logger.warning(f"❌ Redis unavailable: {e}")
+            logger.warning("Redis unavailable: %s", e)
             return None
-    
+
+    def _init_async_redis_from_url(self, redis_url: str) -> Optional[Any]:
+        """Initialize async Redis connection from URL (for non-blocking I/O in async handlers)."""
+        if not _ASYNC_REDIS_AVAILABLE:
+            return None
+        try:
+            import ssl
+            from urllib.parse import urlparse
+            parsed = urlparse(redis_url)
+            use_ssl = parsed.scheme == "rediss"
+            if use_ssl:
+                client = AsyncRedis.from_url(
+                    redis_url,
+                    decode_responses=False,
+                    ssl_cert_reqs=ssl.CERT_REQUIRED,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+            else:
+                client = AsyncRedis.from_url(
+                    redis_url,
+                    decode_responses=False,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+            return client
+        except Exception as e:
+            logger.warning("Async Redis init failed: %s", e)
+            return None
+
+    async def ping_async(self) -> bool:
+        """Async Redis ping for health checks."""
+        if self._async_client is None:
+            return False
+        try:
+            await self._async_client.ping()
+            return True
+        except Exception:
+            return False
+
+    async def get_cache_status_async(self) -> Optional[Dict[str, Any]]:
+        """Async cache status for use in async route handlers."""
+        if self._async_client is None:
+            return None
+        try:
+            info = await self._async_client.info("memory")
+            keys = await self._async_client.dbsize()
+            return {
+                "redis_connected": True,
+                "used_memory": info.get("used_memory_human", "?"),
+                "keys": keys,
+            }
+        except Exception as e:
+            logger.debug("get_cache_status_async failed: %s", e)
+            return None
+
     @property
     def enhanced_data_fetcher(self):
         """Lazy initialization of EnhancedDataFetcher"""

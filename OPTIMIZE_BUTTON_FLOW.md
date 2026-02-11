@@ -7,7 +7,7 @@ This document describes how the Optimize button works on the Portfolio Optimizat
 ## 1. Concise End-to-End Picture
 
 1. User is on the Portfolio Optimization step with a built portfolio and a selected risk profile.
-2. User clicks **Optimize** → frontend calls `POST /api/portfolio/optimization/triple` with tickers, actual weights, and risk profile.
+2. User clicks **Optimize** → frontend calls `POST /api/v1/portfolio/optimization/triple` with tickers, actual weights, and risk profile.
 3. Backend: (a) computes current portfolio metrics, (b) runs weights-only optimization (same tickers, max Sharpe), (c) runs market exploration (new ticker set, max Sharpe with risk cap from profile), (d) decides recommendation, (e) builds comparison and returns triple response.
 4. Frontend stores the triple result, fills efficient frontier / random / CML from the response, updates chart and comparison table, and switches to the Analysis tab.
 5. Risk profile sets the **maximum volatility** for the market path and drives **which of the three portfolios is recommended**; the math (max Sharpe, frontier, CML) is the same for all profiles.
@@ -17,7 +17,7 @@ This document describes how the Optimize button works on the Portfolio Optimizat
 ## 2. User Interaction
 
 - **Where**: Wizard step "Portfolio Optimization" (Optimization tab). The Optimize button is in that tab.
-- **What happens on click**: `runOptimization()` runs: validates tickers (≥2) and risk profile, sets loading/clears error, POSTs to `/api/portfolio/optimization/triple` with payload below, then on success updates state (triple results, frontier, random, CML, optimized portfolio) and switches to Analysis tab; on error shows a user-friendly message.
+- **What happens on click**: `runOptimization()` runs: validates tickers (≥2) and risk profile, sets loading/clears error, POSTs to `/api/v1/portfolio/optimization/triple` with payload below, then on success updates state (triple results, frontier, random, CML, optimized portfolio) and switches to Analysis tab; on error shows a user-friendly message.
 - **Risk profile**: Passed in the request; used on the backend to cap max volatility (market path), size the market basket, and choose the recommended portfolio (current / weights / market).
 
 ---
@@ -58,7 +58,7 @@ Safeguards: return capped at 50%, risk floored at 8%, Sharpe capped at 2.5.
 ### 5.1 Frontend
 
 - **Entry**: User clicks Optimize → `runOptimization()` in `PortfolioOptimization.tsx`.
-- **Request**: POST `/api/portfolio/optimization/triple` with:
+- **Request**: POST `/api/v1/portfolio/optimization/triple` with:
   - `user_tickers`, `user_weights` (allocation/100 per symbol)
   - `risk_profile`, `optimization_type: 'max_sharpe'`
   - `include_efficient_frontier: true`, `include_random_portfolios: true`
@@ -69,7 +69,7 @@ Safeguards: return capped at 50%, risk floored at 8%, Sharpe capped at 2.5.
 
 ### 5.2 Backend
 
-- **Endpoint**: `POST /api/portfolio/optimization/triple` → `optimize_triple_portfolio` in `backend/routers/portfolio.py`.
+- **Endpoint**: `POST /api/v1/portfolio/optimization/triple` → `optimize_triple_portfolio` in `backend/routers/portfolio.py`.
 - **Steps**:
   1. **Current portfolio**: Try Redis for precomputed metrics for same tickers+weights; else `compute_portfolio_metrics_with_weights(tickers, weights, optimizer)`.
   2. **Weights-only**: `optimize_weights_only(user_tickers, risk_profile, optimizer, optimization_type)` — same tickers, max_sharpe (or min_volatility), no risk cap. Then generate efficient frontier, inefficient frontier, random portfolios, CML for that universe.
@@ -101,11 +101,11 @@ Safeguards: return capped at 50%, risk floored at 8%, Sharpe capped at 2.5.
 
 | File | Symbol / region | What it does |
 |------|------------------|---------------|
-| `frontend/src/components/wizard/PortfolioOptimization.tsx` | `runOptimization` (approx. 1893–2118) | Validates tickers and risk profile; builds `currentWeights`; POSTs to `/api/portfolio/optimization/triple` with request payload; 60s timeout; on success: sets triple results, MVO result, optimized allocations, efficient/inefficient frontier, random portfolios, success, then switches to Analysis tab; on error: parses and sets user-facing error. |
+| `frontend/src/components/wizard/PortfolioOptimization.tsx` | `runOptimization` (approx. 1893–2118) | Validates tickers and risk profile; builds `currentWeights`; POSTs to `/api/v1/portfolio/optimization/triple` with request payload; 60s timeout; on success: sets triple results, MVO result, optimized allocations, efficient/inefficient frontier, random portfolios, success, then switches to Analysis tab; on error: parses and sets user-facing error. |
 | Same file | Request payload (approx. 1928–1941) | `user_tickers`, `user_weights`, `risk_profile`, `optimization_type: 'max_sharpe'`, frontier/random flags and counts, `use_combined_strategy`, `attempt_market_exploration`. |
 | Same file | State after success (approx. 2070–2195) | `setTripleOptimizationResults`, `setMvoResults`, `setOptimizedPortfolio`, `setOptimizationResults`, `setEfficientFrontier`, `setInefficientFrontier`, `setRandomPortfolios` from triple response; frontier source = market_optimized_portfolio or weights_optimized_portfolio. |
 | Same file | `portfolioPointsWithJitter` (approx. 664–709) | Builds chart points for Current, Weights-Optimized, Market-Optimized from `tripleOptimizationResults` and applies jitter for overlapping points. |
-| `frontend/src/components/wizard/FinalizePortfolio.tsx` | `handleOptimize` (approx. 118–170) | Same pattern: POST to `/api/portfolio/optimization/triple` with similar payload; on success calls `updateOptimizedPortfolio(data)` and `markTabComplete('optimize')`. Used on the Finalize step’s Optimize tab. |
+| `frontend/src/components/wizard/FinalizePortfolio.tsx` | `handleOptimize` (approx. 118–170) | Same pattern: POST to `/api/v1/portfolio/optimization/triple` with similar payload; on success calls `updateOptimizedPortfolio(data)` and `markTabComplete('optimize')`. Used on the Finalize step’s Optimize tab. |
 | `frontend/src/components/wizard/EfficientFrontierChart.tsx` | Component | Renders risk–return chart: efficient frontier, inefficient frontier, random portfolios, CML, and portfolio points (current, weights-optimized, market-optimized). |
 | `frontend/src/components/wizard/PortfolioComparisonTable.tsx` | Component | Renders comparison table (Current | Weights-Opt | Market-Opt), shows recommendation from `optimization_metadata.recommendation`, displays metrics and optional Monte Carlo/quality. |
 
@@ -149,7 +149,7 @@ Safeguards: return capped at 50%, risk floored at 8%, Sharpe capped at 2.5.
 
 ### 7.5 API Contract
 
-- **Request**: `POST /api/portfolio/optimization/triple`  
+- **Request**: `POST /api/v1/portfolio/optimization/triple`  
   Body: `TripleOptimizationRequest` (user_tickers, user_weights, risk_profile, optimization_type, frontier/random options, use_combined_strategy, attempt_market_exploration).
 - **Response**: `TripleOptimizationResponse`: current_portfolio (tickers, weights, metrics), weights_optimized_portfolio (optimized_portfolio + efficient_frontier, inefficient_frontier, random_portfolios, capital_market_line, metadata), market_optimized_portfolio (same shape, optional), comparison (weights_vs_current, market_vs_current, best_sharpe, optional monte_carlo/quality_scores), optimization_metadata (recommendation, processing_time_seconds, etc.).
 

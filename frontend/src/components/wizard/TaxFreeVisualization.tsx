@@ -67,7 +67,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
             {taxFreeAmount > 0 && (
               <div
                 style={{ width: `${taxFreePercentage}%` }}
-                className="absolute left-0 top-0 h-full bg-moderate flex items-center justify-center transition-all duration-300"
+                className="absolute left-0 top-0 h-full bg-green-600 flex items-center justify-center transition-all duration-300"
               >
                 {taxFreePercentage > 20 && (
                   <div className="text-white text-xs font-bold px-2 text-center">
@@ -80,7 +80,7 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
             {taxableAmount > 0 && (
               <div
                 style={{ width: `${taxablePercentage}%`, left: `${taxFreePercentage}%` }}
-                className="absolute top-0 h-full bg-aggressive flex items-center justify-center transition-all duration-300"
+                className="absolute top-0 h-full bg-amber-600 flex items-center justify-center transition-all duration-300"
               >
                 {taxablePercentage > 20 && (
                   <div className="text-white text-xs font-bold px-2 text-center">

@@ -470,7 +470,7 @@ def email_notification_callback(level: str, message: str, data: Dict):
         Timestamp: {data.get('timestamp', 'N/A')}
 
         Please refresh the cache using:
-        POST /api/portfolio/cache/warm
+        POST /api/v1/portfolio/cache/warm
         """
 
         # Send email (implement your email service here)

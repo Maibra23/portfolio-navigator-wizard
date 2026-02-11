@@ -36,6 +36,8 @@ import { TaxComparisonChart } from './TaxComparisonChart';
 import { TaxFreeVisualization } from './TaxFreeVisualization';
 import { WhatIfCalculator } from './WhatIfCalculator';
 import { SmartRecommendations } from './SmartRecommendations';
+import { TaxSummaryCard } from './TaxSummaryCard';
+import { TotalCostsCard } from './TotalCostsCard';
 
 interface FinalizePortfolioProps {
   onComplete: () => void;
@@ -184,7 +186,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         attempt_market_exploration: true,
       };
 
-      const response = await fetch('/api/portfolio/optimization/triple', {
+      const response = await fetch('/api/v1/portfolio/optimization/triple', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -281,22 +283,24 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       setIsLoadingTax(true);
       const calculateTax = async () => {
         try {
+          const expectedReturn = displayMetrics?.expectedReturn ?? portfolioMetrics?.expectedReturn ?? 0.08;
           const requestBody: any = {
             accountType: state.taxSettings.accountType,
-            taxYear: state.taxSettings.taxYear
+            taxYear: state.taxSettings.taxYear,
+            expectedReturn
           };
 
           if (state.taxSettings.accountType === 'ISK' || state.taxSettings.accountType === 'KF') {
             requestBody.portfolioValue = capital;
           } else {
             // AF account - estimate based on expected return
-            const estimatedGains = capital * (portfolioMetrics?.expectedReturn || 0.1);
+            const estimatedGains = capital * expectedReturn;
             requestBody.realizedGains = estimatedGains;
             requestBody.dividends = 0;
             requestBody.fundHoldings = 0;
           }
 
-          const response = await fetch('/api/portfolio/tax/calculate', {
+          const response = await fetch('/api/v1/portfolio/tax/calculate', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -322,7 +326,46 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     } else {
       setTaxCalculation(null);
     }
-  }, [state.taxSettings.accountType, state.taxSettings.taxYear, capital, portfolioMetrics]);
+  }, [state.taxSettings.accountType, state.taxSettings.taxYear, capital, portfolioMetrics, displayMetrics?.expectedReturn]);
+
+  // Fetch 3-account tax comparison once (for chart and export); avoids duplicate calls from TaxComparisonChart
+  useEffect(() => {
+    if (capital <= 0 || !state.taxSettings.taxYear) {
+      setTaxComparisonData(null);
+      return;
+    }
+    const expectedRet = displayMetrics?.expectedReturn ?? portfolioMetrics?.expectedReturn ?? 0.08;
+    const accountTypes = ['ISK', 'KF', 'AF'];
+    const promises = accountTypes.map(async (accountType) => {
+      const requestBody: any = { accountType, taxYear: state.taxSettings.taxYear, expectedReturn: expectedRet };
+      if (accountType === 'ISK' || accountType === 'KF') {
+        requestBody.portfolioValue = capital;
+      } else {
+        requestBody.realizedGains = capital * expectedRet;
+        requestBody.dividends = 0;
+        requestBody.fundHoldings = 0;
+      }
+      const response = await fetch('/api/v1/portfolio/tax/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      if (!response.ok) return null;
+      const result = await response.json();
+      return {
+        accountType,
+        annualTax: result.annualTax || 0,
+        effectiveRate: result.effectiveTaxRate || 0,
+        displayName: accountType,
+        afterTaxReturn: result.afterTaxReturn,
+        taxFreeLevel: result.taxFreeLevel,
+        capitalUnderlag: result.capitalUnderlag,
+      };
+    });
+    Promise.all(promises).then((results) => {
+      setTaxComparisonData(results.filter((r): r is NonNullable<typeof r> => r !== null));
+    }).catch(() => setTaxComparisonData(null));
+  }, [capital, state.taxSettings.taxYear, displayMetrics?.expectedReturn, portfolioMetrics?.expectedReturn]);
 
   // Calculate transaction costs when courtage class changes
   useEffect(() => {
@@ -342,7 +385,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             };
           });
 
-          const response = await fetch('/api/portfolio/transaction-costs/estimate', {
+          const response = await fetch('/api/v1/portfolio/transaction-costs/estimate', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -395,7 +438,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
           requestBody.fundHoldings = 0;
         }
 
-        const response = await fetch('/api/portfolio/tax/calculate', {
+        const response = await fetch('/api/v1/portfolio/tax/calculate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
@@ -451,8 +494,10 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       sharpeRatio: displayMetrics.sharpeRatio
     } : null;
 
-    // Fetch tax comparison data for export
-    const taxComparison = await fetchTaxComparisonForExport();
+    // Use already-fetched comparison when available to avoid duplicate API calls
+    const taxComparison = (taxComparisonData && taxComparisonData.length >= 3)
+      ? taxComparisonData
+      : await fetchTaxComparisonForExport();
 
     // Calculate tax-free visualization data
     const taxFreeLevel = state.taxSettings.taxYear === 2025 ? 150000 : 300000;
@@ -548,7 +593,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     setExportingFormat('pdf');
     try {
       const exportRequest = await buildExportRequest();
-      const pdfResponse = await fetch('/api/portfolio/export/pdf', {
+      const pdfResponse = await fetch('/api/v1/portfolio/export/pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exportRequest),
@@ -578,7 +623,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     setExportingFormat('csv');
     try {
       const exportRequest = await buildExportRequest();
-      const csvResponse = await fetch('/api/portfolio/export/csv', {
+      const csvResponse = await fetch('/api/v1/portfolio/export/csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1131,7 +1176,14 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         {/* Tab 4: Tax, Cost & Summary */}
         <TabsContent value="tax-cost" className="space-y-4 mt-3">
           {/* Educational Panel */}
-          <TaxEducationPanel />
+          <TaxEducationPanel
+            initialCapital={capital}
+            initialTaxYear={state.taxSettings.taxYear}
+          />
+
+          <p className="text-sm text-muted-foreground rounded-lg border border-border bg-muted/20 px-3 py-2">
+            <strong className="text-foreground">Key takeaway:</strong> For growth portfolios, ISK/KF is often better above the tax-free level when your expected return is higher than the schablonränta (~3–4%). Choose AF if you plan to buy and hold with little rebalancing.
+          </p>
 
           {/* Smart Recommendations */}
           {state.taxSettings.accountType && portfolioMetrics && (
@@ -1228,6 +1280,22 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 </div>
               </div>
 
+              {/* Total cost of ownership: tax + annual rebalancing */}
+              {state.taxSettings.accountType && (taxCalculation != null || transactionCosts != null) && (
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                  <p className="text-sm font-medium text-foreground">
+                    Estimated annual burden (tax + rebalancing):{' '}
+                    <span className="font-semibold">
+                      {((taxCalculation?.annualTax ?? 0) + (transactionCosts?.annualRebalancingCost ?? 0)).toLocaleString('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{' '}
+                      SEK
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Tax and courtage for rebalancing are applied each year in the 5-year projection.
+                  </p>
+                </div>
+              )}
+
               {/* Tax Comparison Chart */}
               {state.taxSettings.accountType && portfolioMetrics && (
                 <TaxComparisonChart
@@ -1235,6 +1303,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   taxYear={state.taxSettings.taxYear}
                   expectedReturn={displayMetrics?.expectedReturn || portfolioMetrics.expectedReturn}
                   selectedAccountType={state.taxSettings.accountType}
+                  comparisonData={taxComparisonData}
                 />
               )}
 
@@ -1259,190 +1328,20 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
               {/* Section: Tax Summary */}
               {state.taxSettings.accountType && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-1.5">
-                      Tax Summary
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Tax summary info"><Info className="h-3.5 w-3.5" /></span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-sm p-3">
-                          <p className="text-xs">This summary shows how your chosen account type and tax year determine your estimated annual tax. The same tax logic is applied each year in the 5-year projection, so lower tax here means higher projected growth.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingTax ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Calculating tax...
-                      </div>
-                    ) : taxCalculation ? (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              Account Type
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex cursor-help" aria-label="Account type info"><Info className="h-3 w-3" /></span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
-                                  ISK/KF: tax on imputed income. AF: tax on gains, dividends, and fund holdings. This choice drives the 5-year projection.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <div className="font-medium">{taxCalculation.accountType}</div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              Tax Year
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex cursor-help" aria-label="Tax year info"><Info className="h-3 w-3" /></span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
-                                  Different tax-free levels and schablonränta per year; affects annual tax and projection.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <div className="font-medium">{taxCalculation.taxYear}</div>
-                          </div>
-                          {taxCalculation.capitalUnderlag !== undefined && taxCalculation.capitalUnderlag !== null && (
-                            <div>
-                              <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                Capital Underlag
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-flex cursor-help" aria-label="Capital underlag info"><Info className="h-3 w-3" /></span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-xs p-2 text-xs">
-                                    Average capital used as tax base (ISK/KF). Tax-free amount is deducted first; remainder × schablonränta × 30% = annual tax. Used each year in the 5-year projection.
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                              <div className="font-medium">{taxCalculation.capitalUnderlag.toLocaleString('sv-SE')} SEK</div>
-                            </div>
-                          )}
-                          {taxCalculation.taxFreeLevel !== undefined && taxCalculation.taxFreeLevel !== null && (
-                            <div>
-                              <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                Tax-Free Level
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-flex cursor-help" aria-label="Tax-free level info"><Info className="h-3 w-3" /></span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-xs p-2 text-xs">
-                                    Amount of capital not subject to tax (ISK/KF). 2025: 150,000 SEK; 2026: 300,000 SEK. Only the part above this is taxed.
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                              <div className="font-medium">{taxCalculation.taxFreeLevel.toLocaleString('sv-SE')} SEK</div>
-                            </div>
-                          )}
-                          <div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              Annual Tax
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex cursor-help" aria-label="Annual tax info"><Info className="h-3 w-3" /></span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
-                                  Estimated tax for this year. This amount is subtracted from portfolio growth each year in the 5-year projection.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <div className="font-medium text-lg">{(taxCalculation.annualTax || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              Effective Tax Rate
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex cursor-help" aria-label="Effective tax rate info"><Info className="h-3 w-3" /></span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-xs p-2 text-xs">
-                                  Annual tax as a percentage of your capital. Shows how much of your portfolio is effectively taxed each year (ISK/KF).
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <div className="font-medium">{formatPercent((taxCalculation.effectiveTaxRate ?? 0) / 100)}</div>
-                          </div>
-                        </div>
-                        {taxCalculation.afterTaxReturn !== undefined && portfolioMetrics && (
-                          <div className="pt-3 border-t">
-                            <div className="text-sm text-muted-foreground">After-Tax Return</div>
-                            <div className="font-medium text-lg">{formatPercent(taxCalculation.afterTaxReturn)}</div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No tax calculation available</div>
-                    )}
-                  </CardContent>
-                </Card>
+                <TaxSummaryCard
+                  taxCalculation={taxCalculation}
+                  isLoading={isLoadingTax}
+                  portfolioMetrics={portfolioMetrics}
+                  capital={capital}
+                />
               )}
 
-              {/* Section: Total & Ongoing Costs (no cost-optimization suggestion panel) */}
+              {/* Section: Total & Ongoing Costs */}
               {state.taxSettings.courtagClass && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-1.5">
-                      Total & Ongoing Costs
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Costs info"><Info className="h-3.5 w-3.5" /></span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-sm p-3">
-                          <p className="text-xs">Setup cost = courtage for initial purchases. Annual rebalancing = courtage for 4 rebalances per year. These costs are included in the 5-year projection and reduce net growth.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingCosts ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Calculating costs...
-                      </div>
-                    ) : transactionCosts ? (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              Courtage Class
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex cursor-help" aria-label="Courtage class info"><Info className="h-3 w-3" /></span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-sm p-2 text-xs">
-                                  Start: 50k SEK or 500 trades free. Mini: 1 SEK or 0.25%. Small: 39 SEK or 0.15%. Medium: 69 SEK or 0.069%. Fast Pris: 99 SEK fixed. Per-order fees × number of orders = setup and rebalancing costs used in the 5-year projection.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                            <div className="font-medium">{transactionCosts.courtageClass}</div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground">Setup Cost</div>
-                            <div className="font-medium">{(transactionCosts.setupCost || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground">Annual Rebalancing</div>
-                            <div className="font-medium">{(transactionCosts.annualRebalancingCost || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground">Total First Year</div>
-                            <div className="font-medium text-lg">{(transactionCosts.totalFirstYearCost || 0).toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK</div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No cost calculation available</div>
-                    )}
-                  </CardContent>
-                </Card>
+                <TotalCostsCard
+                  transactionCosts={transactionCosts}
+                  isLoading={isLoadingCosts}
+                />
               )}
 
               {/* 5-Year Projection: use the portfolio selected in Optimize (Current / Weights-Optimized / Market-Optimized) */}

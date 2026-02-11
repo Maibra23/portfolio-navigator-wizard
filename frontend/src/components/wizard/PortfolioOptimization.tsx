@@ -1641,7 +1641,7 @@ export const PortfolioOptimization = ({
     }
     
     try {
-      const response = await fetch('/api/portfolio/calculate-metrics', {
+      const response = await fetch('/api/v1/portfolio/calculate-metrics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1948,7 +1948,7 @@ export const PortfolioOptimization = ({
       
       let response: Response;
       try {
-        response = await fetch('/api/portfolio/optimization/triple', {
+        response = await fetch('/api/v1/portfolio/optimization/triple', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

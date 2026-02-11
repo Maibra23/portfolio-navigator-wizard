@@ -38,8 +38,8 @@ MAX_WORKERS = 1  # Single worker to avoid concurrent rate limit issues
 RATE_LIMIT_DELAY = 4  # Increased delay between batches for better rate limit compliance
 REQUEST_DELAY = (1.3, 4.0)  # Random delay between 1.3-4 seconds (user requested)
 
-# Alpha Vantage configuration
-ALPHA_VANTAGE_API_KEY = "YE41R5X7TRKQECRR"
+# Alpha Vantage configuration (env override for production)
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY") or os.getenv("ALPHA_VANTAGE_FALLBACK_KEY") or "demo"
 ALPHA_VANTAGE_RATE_LIMIT = 5  # requests per minute for free tier
 ALPHA_VANTAGE_DELAY = 60 / ALPHA_VANTAGE_RATE_LIMIT  # seconds between requests
 
@@ -193,9 +193,10 @@ class EnhancedDataFetcher:
             return False
 
     def _init_redis(self):
-        """Initialize Redis connection with better error handling"""
+        """Initialize Redis connection from REDIS_URL (production-safe) or localhost fallback"""
         try:
-            r = redis.Redis(host='localhost', port=6379, decode_responses=False)
+            redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+            r = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=5, socket_timeout=5)
             r.ping()
             logger.info("✅ Redis connection established")
             return r

@@ -33,10 +33,10 @@ All 8 pre-deployment tasks are now complete:
 
 ### 4. ✅ TTL Monitoring Endpoints
 **File**: `backend/routers/portfolio.py`
-- `GET /api/portfolio/cache/ttl-status` - JSON status
-- `GET /api/portfolio/cache/ttl-report` - Human-readable report
-- `POST /api/portfolio/cache/refresh-expiring` - Auto-refresh
-- `GET /api/portfolio/cache/expiring-list` - Get expiring tickers
+- `GET /api/v1/portfolio/cache/ttl-status` - JSON status
+- `GET /api/v1/portfolio/cache/ttl-report` - Human-readable report
+- `POST /api/v1/portfolio/cache/refresh-expiring` - Auto-refresh
+- `GET /api/v1/portfolio/cache/expiring-list` - Get expiring tickers
 
 ### 5. ✅ Frontend API Config
 **File**: `frontend/src/config/api.ts`
@@ -140,13 +140,13 @@ curl -H "Origin: http://localhost:8080" \
 
 ```bash
 # Test TTL status endpoint
-curl http://localhost:8000/api/portfolio/cache/ttl-status
+curl http://localhost:8000/api/v1/portfolio/cache/ttl-status
 
 # Test TTL report endpoint
-curl http://localhost:8000/api/portfolio/cache/ttl-report
+curl http://localhost:8000/api/v1/portfolio/cache/ttl-report
 
 # Test expiring list endpoint
-curl http://localhost:8000/api/portfolio/cache/expiring-list?days_threshold=7
+curl http://localhost:8000/api/v1/portfolio/cache/expiring-list?days_threshold=7
 ```
 
 **Expected**: All return 200 OK with JSON responses
@@ -159,7 +159,7 @@ curl http://localhost:8000/api/portfolio/cache/expiring-list?days_threshold=7
 # Test rate limiting (should block after 10 requests)
 for i in {1..12}; do
   echo "Request $i:"
-  curl http://localhost:8000/api/portfolio/cache/ttl-status
+  curl http://localhost:8000/api/v1/portfolio/cache/ttl-status
   sleep 1
 done
 ```
@@ -189,7 +189,7 @@ export TTL_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 python -m uvicorn main:app --reload
 
 # Trigger a manual TTL check (will send Slack message)
-curl http://localhost:8000/api/portfolio/cache/ttl-status
+curl http://localhost:8000/api/v1/portfolio/cache/ttl-status
 ```
 
 **Expected**: Slack message appears in your channel
@@ -342,10 +342,10 @@ Now that code is ready, follow these steps:
 BACKEND_URL="https://your-backend.up.railway.app"
 
 # Start full cache warming
-curl -X POST "$BACKEND_URL/api/portfolio/warm-cache"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-cache"
 
 # Monitor progress (every 5 minutes)
-watch -n 300 "curl $BACKEND_URL/api/portfolio/cache-status"
+watch -n 300 "curl $BACKEND_URL/api/v1/portfolio/cache-status"
 ```
 
 ### Step 7: Verify Deployment (5 minutes)
@@ -357,7 +357,7 @@ BACKEND_URL="https://your-backend.up.railway.app"
 curl $BACKEND_URL/health
 
 # TTL status
-curl $BACKEND_URL/api/portfolio/cache/ttl-status
+curl $BACKEND_URL/api/v1/portfolio/cache/ttl-status
 
 # Test frontend
 # Open https://your-frontend.up.railway.app in browser
@@ -400,7 +400,7 @@ Check your `#redis-alerts` channel.
 
 ```bash
 # Trigger TTL check (sends Slack message)
-curl https://your-backend.up.railway.app/api/portfolio/cache/ttl-status
+curl https://your-backend.up.railway.app/api/v1/portfolio/cache/ttl-status
 ```
 
 Check Slack channel for message like:
@@ -431,10 +431,10 @@ Warning (<7 days): 0 tickers
 BACKEND_URL="https://your-backend.up.railway.app"
 
 # Check cache status
-curl $BACKEND_URL/api/portfolio/cache-status
+curl $BACKEND_URL/api/v1/portfolio/cache-status
 
 # Check TTL report
-curl $BACKEND_URL/api/portfolio/cache/ttl-report
+curl $BACKEND_URL/api/v1/portfolio/cache/ttl-report
 
 # Check Railway usage
 # Go to Railway dashboard → Usage

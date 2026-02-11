@@ -48,7 +48,7 @@ Your application has a sophisticated ticker data management system with multiple
 
 ### 1. Warm Cache (Initial Population)
 
-**Endpoint**: `POST /api/portfolio/warm-cache`
+**Endpoint**: `POST /api/v1/portfolio/warm-cache`
 
 **Purpose**: Populate empty cache with all tickers
 
@@ -62,10 +62,10 @@ Your application has a sophisticated ticker data management system with multiple
 **Example**:
 ```bash
 # Local
-curl -X POST http://localhost:8000/api/portfolio/warm-cache
+curl -X POST http://localhost:8000/api/v1/portfolio/warm-cache
 
 # Production (Railway)
-curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
+curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-cache
 ```
 
 **What it does**:
@@ -90,7 +90,7 @@ curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
 
 ### 2. Warm Specific Tickers
 
-**Endpoint**: `POST /api/portfolio/warm-tickers`
+**Endpoint**: `POST /api/v1/portfolio/warm-tickers`
 
 **Purpose**: Warm specific tickers only
 
@@ -103,7 +103,7 @@ curl -X POST https://your-backend.railway.app/api/portfolio/warm-cache
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8000/api/portfolio/warm-tickers \
+curl -X POST http://localhost:8000/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{
     "tickers": ["AAPL", "MSFT", "GOOGL", "TSLA", "AMZN"]
@@ -124,7 +124,7 @@ curl -X POST http://localhost:8000/api/portfolio/warm-tickers \
 
 ### 3. Refresh Expiring Tickers (TTL-Based)
 
-**Endpoint**: `POST /api/portfolio/cache/refresh-expiring?days_threshold=7`
+**Endpoint**: `POST /api/v1/portfolio/cache/refresh-expiring?days_threshold=7`
 
 **Purpose**: Auto-refresh tickers expiring soon
 
@@ -138,10 +138,10 @@ curl -X POST http://localhost:8000/api/portfolio/warm-tickers \
 **Example**:
 ```bash
 # Refresh tickers expiring within 7 days
-curl -X POST "http://localhost:8000/api/portfolio/cache/refresh-expiring?days_threshold=7"
+curl -X POST "http://localhost:8000/api/v1/portfolio/cache/refresh-expiring?days_threshold=7"
 
 # Refresh critical tickers only (< 1 day)
-curl -X POST "http://localhost:8000/api/portfolio/cache/refresh-expiring?days_threshold=1"
+curl -X POST "http://localhost:8000/api/v1/portfolio/cache/refresh-expiring?days_threshold=1"
 ```
 
 **Output**:
@@ -166,7 +166,7 @@ curl -X POST "http://localhost:8000/api/portfolio/cache/refresh-expiring?days_th
 
 ### 4. Smart Monthly Refresh
 
-**Endpoint**: `POST /api/portfolio/ticker-table/smart-refresh`
+**Endpoint**: `POST /api/v1/portfolio/ticker-table/smart-refresh`
 
 **Purpose**: Efficiently update only new monthly data
 
@@ -178,10 +178,10 @@ curl -X POST "http://localhost:8000/api/portfolio/cache/refresh-expiring?days_th
 **Example**:
 ```bash
 # Refresh all tickers (smart - only new months)
-curl -X POST http://localhost:8000/api/portfolio/ticker-table/smart-refresh
+curl -X POST http://localhost:8000/api/v1/portfolio/ticker-table/smart-refresh
 
 # Refresh specific tickers
-curl -X POST http://localhost:8000/api/portfolio/ticker-table/smart-refresh \
+curl -X POST http://localhost:8000/api/v1/portfolio/ticker-table/smart-refresh \
   -H "Content-Type: application/json" \
   -d '{"tickers": ["AAPL", "MSFT"]}'
 ```
@@ -206,7 +206,7 @@ curl -X POST http://localhost:8000/api/portfolio/ticker-table/smart-refresh \
 
 ### 5. Force Refresh Expired Data
 
-**Endpoint**: `POST /api/portfolio/ticker-table/refresh`
+**Endpoint**: `POST /api/v1/portfolio/ticker-table/refresh`
 
 **Purpose**: Force refresh of expired ticker data
 
@@ -217,7 +217,7 @@ curl -X POST http://localhost:8000/api/portfolio/ticker-table/smart-refresh \
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8000/api/portfolio/ticker-table/refresh
+curl -X POST http://localhost:8000/api/v1/portfolio/ticker-table/refresh
 ```
 
 **Output**:
@@ -236,7 +236,7 @@ curl -X POST http://localhost:8000/api/portfolio/ticker-table/refresh
 
 ### 6. Refresh Master Ticker List
 
-**Endpoint**: `POST /api/portfolio/tickers/refresh`
+**Endpoint**: `POST /api/v1/portfolio/tickers/refresh`
 
 **Purpose**: Reload master ticker list from Redis
 
@@ -247,14 +247,14 @@ curl -X POST http://localhost:8000/api/portfolio/ticker-table/refresh
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8000/api/portfolio/tickers/refresh
+curl -X POST http://localhost:8000/api/v1/portfolio/tickers/refresh
 ```
 
 ---
 
 ### 7. Get Expiring Tickers List
 
-**Endpoint**: `GET /api/portfolio/cache/expiring-list?days_threshold=7`
+**Endpoint**: `GET /api/v1/portfolio/cache/expiring-list?days_threshold=7`
 
 **Purpose**: Check which tickers need refreshing
 
@@ -265,7 +265,7 @@ curl -X POST http://localhost:8000/api/portfolio/tickers/refresh
 
 **Example**:
 ```bash
-curl "http://localhost:8000/api/portfolio/cache/expiring-list?days_threshold=7"
+curl "http://localhost:8000/api/v1/portfolio/cache/expiring-list?days_threshold=7"
 ```
 
 **Output**:
@@ -291,18 +291,18 @@ curl "http://localhost:8000/api/portfolio/cache/expiring-list?days_threshold=7"
 BACKEND_URL="https://your-backend.railway.app"
 
 # Step 1: Verify cache is empty
-curl "$BACKEND_URL/api/portfolio/cache-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache-status"
 # Output: { "total_tickers": 0 }
 
 # Step 2: Start full cache warming
-curl -X POST "$BACKEND_URL/api/portfolio/warm-cache"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-cache"
 
 # Step 3: Monitor progress (every 5 minutes)
-watch -n 300 "curl $BACKEND_URL/api/portfolio/cache-status"
+watch -n 300 "curl $BACKEND_URL/api/v1/portfolio/cache-status"
 # Watch total_tickers increase: 0 → 100 → 500 → 1000 → 1432
 
 # Step 4: Verify completion
-curl "$BACKEND_URL/api/portfolio/cache/ttl-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 # All tickers should have "healthy" TTL (~28 days)
 ```
 
@@ -331,13 +331,13 @@ Nothing to do!
 BACKEND_URL="https://your-backend.railway.app"
 
 # Day 1 of month: Check status
-curl "$BACKEND_URL/api/portfolio/cache/ttl-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 
 # If tickers expiring soon, do smart refresh
-curl -X POST "$BACKEND_URL/api/portfolio/ticker-table/smart-refresh"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/ticker-table/smart-refresh"
 
 # Verify
-curl "$BACKEND_URL/api/portfolio/cache-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache-status"
 ```
 
 ---
@@ -352,13 +352,13 @@ BACKEND_URL="https://your-backend.railway.app"
 # Scenario: Some tickers showing stale data
 
 # Step 1: Check which tickers are expired
-curl "$BACKEND_URL/api/portfolio/cache/expiring-list?days_threshold=0"
+curl "$BACKEND_URL/api/v1/portfolio/cache/expiring-list?days_threshold=0"
 
 # Step 2: Refresh only expired tickers
-curl -X POST "$BACKEND_URL/api/portfolio/cache/refresh-expiring?days_threshold=1"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/cache/refresh-expiring?days_threshold=1"
 
 # Step 3: Verify fix
-curl "$BACKEND_URL/api/portfolio/cache/ttl-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 ```
 
 ---
@@ -371,14 +371,14 @@ curl "$BACKEND_URL/api/portfolio/cache/ttl-status"
 BACKEND_URL="https://your-backend.railway.app"
 
 # Add 5 new tickers to cache
-curl -X POST "$BACKEND_URL/api/portfolio/warm-tickers" \
+curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-tickers" \
   -H "Content-Type: application/json" \
   -d '{
     "tickers": ["NVDA", "AMD", "INTC", "QCOM", "MU"]
   }'
 
 # Verify they're cached
-curl "$BACKEND_URL/api/portfolio/cache-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache-status"
 ```
 
 ---
@@ -391,10 +391,10 @@ curl "$BACKEND_URL/api/portfolio/cache-status"
 BACKEND_URL="https://your-backend.railway.app"
 
 # Check overall health
-curl "$BACKEND_URL/api/portfolio/cache/ttl-report"
+curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-report"
 
 # If warnings, refresh expiring
-curl -X POST "$BACKEND_URL/api/portfolio/cache/refresh-expiring?days_threshold=7"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/cache/refresh-expiring?days_threshold=7"
 ```
 
 ---
@@ -415,7 +415,7 @@ curl -X POST "$BACKEND_URL/api/portfolio/cache/refresh-expiring?days_threshold=7
 BACKEND_URL="https://your-backend.railway.app"
 
 # Trigger cache warming
-curl -X POST "$BACKEND_URL/api/portfolio/warm-cache"
+curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-cache"
 
 # Go grab coffee ☕
 # Background task fetches all 1,432 tickers
@@ -425,7 +425,7 @@ curl -X POST "$BACKEND_URL/api/portfolio/warm-cache"
 ```bash
 # Check Slack for TTL status notification
 # Or manually check:
-curl "$BACKEND_URL/api/portfolio/cache/ttl-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 
 # Should show:
 # {
@@ -511,7 +511,7 @@ jobs:
     steps:
       - name: Smart Monthly Refresh
         run: |
-          curl -X POST "${{ secrets.BACKEND_URL }}/api/portfolio/ticker-table/smart-refresh"
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/portfolio/ticker-table/smart-refresh"
 ```
 
 **Pros**:
@@ -662,12 +662,12 @@ Portfolio Navigator Wizard | Redis TTL Monitoring System
 
 **Check**:
 ```bash
-curl "$BACKEND_URL/api/portfolio/cache/expiring-list?days_threshold=0"
+curl "$BACKEND_URL/api/v1/portfolio/cache/expiring-list?days_threshold=0"
 ```
 
 **Fix**:
 ```bash
-curl -X POST "$BACKEND_URL/api/portfolio/warm-tickers" \
+curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-tickers" \
   -H "Content-Type: application/json" \
   -d '{"tickers": ["FAILED_TICKER_1", "FAILED_TICKER_2"]}'
 ```
@@ -696,7 +696,7 @@ curl -X POST "$BACKEND_URL/api/portfolio/warm-tickers" \
 
 **Test**:
 ```bash
-curl "$BACKEND_URL/api/portfolio/cache/ttl-status"
+curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 # Should trigger notification
 ```
 

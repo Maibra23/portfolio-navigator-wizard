@@ -45,7 +45,7 @@ The Optimize button triggers `runOptimization`, which:
   - `num_random_portfolios`: 300.
   - `use_combined_strategy`: `true` (weights‑first + market exploration).
   - `attempt_market_exploration`: `true`.
-- Sends `POST /api/portfolio/optimization/triple` with a **60s timeout**.
+- Sends `POST /api/v1/portfolio/optimization/triple` with a **60s timeout**.
 
 If the call fails, `runOptimization`:
 - Maps backend errors to user‑friendly messages (e.g. timeout, connectivity problems, volatility constraints, bad requests).
@@ -65,7 +65,7 @@ If it succeeds, the frontend:
 
 ## 2. Backend optimization logic (triple optimization)
 
-Endpoint: `POST /api/portfolio/optimization/triple` in `backend/routers/portfolio.py`.
+Endpoint: `POST /api/v1/portfolio/optimization/triple` in `backend/routers/portfolio.py`.
 
 ### 2.1 High‑level steps
 

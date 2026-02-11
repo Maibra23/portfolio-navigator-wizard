@@ -83,9 +83,9 @@ help:
 	@echo "  Backend API: http://localhost:8000"
 	@echo "  API Docs: http://localhost:8000/docs"
 	@echo "  Health Check: http://localhost:8000/health"
-	@echo "  Consolidated: http://localhost:8000/api/portfolio/consolidated-table"
-	@echo "  Enhanced Table API: http://localhost:8000/api/portfolio/ticker-table/enhanced"
-	@echo "  Enhanced Search: http://localhost:8000/api/portfolio/search-tickers?q=AAPL"
+	@echo "  Consolidated: http://localhost:8000/api/v1/portfolio/consolidated-table"
+	@echo "  Enhanced Table API: http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
+	@echo "  Enhanced Search: http://localhost:8000/api/v1/portfolio/search-tickers?q=AAPL"
 	@echo ""
 	@echo "🎯 NEW FEATURES HIGHLIGHT:"
 	@echo "=================================================="
@@ -180,7 +180,7 @@ full-dev: check-cache stop
 	fi
 	@echo "🔥 Warming mini-lesson assets cache..."
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		if curl -s http://localhost:8000/api/portfolio/mini-lesson/assets > /dev/null 2>&1; then \
+		if curl -s http://localhost:8000/api/v1/portfolio/mini-lesson/assets > /dev/null 2>&1; then \
 			echo "✅ Mini-lesson cache warmed!"; \
 		else \
 			echo "⚠️ Failed to warm mini-lesson cache (endpoint returned error)"; \
@@ -444,7 +444,7 @@ consolidated-view: check-cache stop
 	fi
 	@echo ""
 	@echo "🔄 Step 5: Opening consolidated table..."
-	@open "http://localhost:8000/api/portfolio/consolidated-table"
+	@open "http://localhost:8000/api/v1/portfolio/consolidated-table"
 	@echo "✅ Consolidated table opened in browser!"
 
 # 🚀 ENHANCED: Start enhanced ticker table system (FAST startup with lazy stock selection)
@@ -482,13 +482,13 @@ enhanced: check-cache
 	@echo "🎉 ENHANCED TICKER TABLE SYSTEM IS NOW RUNNING!"
 	@echo "=================================================="
 	@echo "📊 Main Backend: http://localhost:8000"
-	@echo "📊 Enhanced Table: http://localhost:8000/api/portfolio/ticker-table/enhanced"
+	@echo "📊 Enhanced Table: http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
 	@echo ""
 	@echo "🔄 Step 4: Opening enhanced table in browser..."
 	@sleep 2
-	@open "http://localhost:8000/api/portfolio/ticker-table/enhanced"
+	@open "http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
 	@echo "✅ Enhanced table opened in browser!"
 	@echo ""
 	@echo "🎯 ENHANCED SYSTEM READY!"
@@ -522,13 +522,13 @@ enhanced-quick: check-cache
 	@echo "🔄 Step 3: Opening enhanced table in browser..."
 	@echo "⏳ Waiting 5 seconds for server to initialize..."
 	@sleep 5
-	@open "http://localhost:8000/api/portfolio/ticker-table/enhanced"
+	@open "http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
 	@echo "✅ Enhanced table opened in browser!"
 	@echo ""
 	@echo "🎯 ENHANCED SYSTEM STARTING!"
 	@echo "=================================================="
 	@echo "📊 Main Backend: http://localhost:8000"
-	@echo "📊 Enhanced Table: http://localhost:8000/api/portfolio/ticker-table/enhanced"
+	@echo "📊 Enhanced Table: http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
 	@echo "💡 To stop server: make stop"
@@ -540,7 +540,7 @@ enhanced-quick: check-cache
 enhanced-table:
 	@echo "📊 Opening Enhanced Ticker Table..."
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		open "http://localhost:8000/api/portfolio/ticker-table/enhanced"; \
+		open "http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"; \
 		echo "✅ Enhanced table opened in browser"; \
 	else \
 		echo "❌ Backend server not running. Start it with: make enhanced"; \
@@ -578,19 +578,19 @@ enhanced-complete: check-cache
 	done
 	@echo ""
 	@echo "🔄 Step 3: Starting auto-refresh service..."
-	@curl -X POST http://localhost:8000/api/portfolio/ticker-table/start-auto-refresh > /dev/null 2>&1 || echo "⚠️ Auto-refresh service not available yet"
+	@curl -X POST http://localhost:8000/api/v1/portfolio/ticker-table/start-auto-refresh > /dev/null 2>&1 || echo "⚠️ Auto-refresh service not available yet"
 	@echo ""
 	@echo "🎉 COMPLETE ENHANCED SYSTEM IS NOW RUNNING!"
 	@echo "=================================================="
 	@echo "📊 Main Backend: http://localhost:8000"
-	@echo "📊 Enhanced Table: http://localhost:8000/api/portfolio/ticker-table/enhanced"
-	@echo "📊 Recommendation Tab: http://localhost:8000/api/portfolio/ticker-table/enhanced-html"
+	@echo "📊 Enhanced Table: http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
+	@echo "📊 Recommendation Tab: http://localhost:8000/api/v1/portfolio/ticker-table/enhanced-html"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
 	@echo ""
 	@echo "🔄 Step 4: Opening enhanced table and recommendation tab..."
 	@sleep 3
-	@open "http://localhost:8000/api/portfolio/ticker-table/enhanced-html"
+	@open "http://localhost:8000/api/v1/portfolio/ticker-table/enhanced-html"
 	@echo "✅ Enhanced table opened in browser!"
 	@echo ""
 	@echo "🎯 COMPLETE ENHANCED SYSTEM READY!"
@@ -653,7 +653,7 @@ corruption-scan:
 start-auto-refresh:
 	@echo "🔄 Starting Auto-Refresh Service..."
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		curl -X POST http://localhost:8000/api/portfolio/ticker-table/start-auto-refresh; \
+		curl -X POST http://localhost:8000/api/v1/portfolio/ticker-table/start-auto-refresh; \
 		echo ""; \
 		echo "✅ Auto-refresh service started!"; \
 		echo "💡 Service will now monitor TTL and refresh data automatically"; \
@@ -665,7 +665,7 @@ start-auto-refresh:
 stop-auto-refresh:
 	@echo "🛑 Stopping Auto-Refresh Service..."
 	@if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
-		curl -X POST http://localhost:8000/api/portfolio/ticker-table/stop-auto-refresh; \
+		curl -X POST http://localhost:8000/api/v1/portfolio/ticker-table/stop-auto-refresh; \
 		echo ""; \
 		echo "✅ Auto-refresh service stopped!"; \
 	else \
@@ -693,8 +693,8 @@ backend-enhanced: check-cache
 	@echo "🎯 ENHANCED BACKEND SERVER STARTING!"
 	@echo "=================================================="
 	@echo "📊 Main Backend: http://localhost:8000"
-	@echo "📊 Enhanced Table: http://localhost:8000/api/portfolio/ticker-table/enhanced"
-	@echo "🔍 Enhanced Search: http://localhost:8000/api/portfolio/search-tickers?q=AAPL"
+	@echo "📊 Enhanced Table: http://localhost:8000/api/v1/portfolio/ticker-table/enhanced"
+	@echo "🔍 Enhanced Search: http://localhost:8000/api/v1/portfolio/search-tickers?q=AAPL"
 	@echo "📚 API Docs: http://localhost:8000/docs"
 	@echo "=================================================="
 	@echo "💡 To stop server: make stop"
@@ -793,7 +793,7 @@ regenerate-portfolios:
 		echo "✅ Backend server is running"; \
 		echo ""; \
 		echo "🔄 Triggering portfolio regeneration..."; \
-		curl -X POST -H "Content-Type: application/json" http://localhost:8000/api/portfolio/regenerate 2>/dev/null | python3 -m json.tool || echo "⚠️ Response parsing failed"; \
+		curl -X POST -H "Content-Type: application/json" http://localhost:8000/api/v1/portfolio/regenerate 2>/dev/null | python3 -m json.tool || echo "⚠️ Response parsing failed"; \
 		echo ""; \
 		echo "✅ Portfolio regeneration completed!"; \
 		echo ""; \
@@ -837,7 +837,7 @@ regenerate-profile:
 		echo "✅ Backend server is running"; \
 		echo ""; \
 		echo "🔄 Generating 12 portfolios for $(PROFILE)..."; \
-		curl -X POST -H "Content-Type: application/json" "http://localhost:8000/api/portfolio/regenerate?risk_profile=$(PROFILE)" 2>/dev/null | python3 -m json.tool || echo "⚠️ Response parsing failed"; \
+		curl -X POST -H "Content-Type: application/json" "http://localhost:8000/api/v1/portfolio/regenerate?risk_profile=$(PROFILE)" 2>/dev/null | python3 -m json.tool || echo "⚠️ Response parsing failed"; \
 		echo ""; \
 		echo "✅ Portfolio regeneration completed for $(PROFILE)!"; \
 		echo ""; \

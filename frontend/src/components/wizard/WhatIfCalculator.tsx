@@ -55,7 +55,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
             requestBody.fundHoldings = 0;
           }
 
-          const response = await fetch('/api/portfolio/tax/calculate', {
+          const response = await fetch('/api/v1/portfolio/tax/calculate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),

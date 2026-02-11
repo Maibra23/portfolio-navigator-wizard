@@ -9,7 +9,7 @@ import json
 import time
 from typing import Dict, List, Any
 
-BASE_URL = "http://localhost:8000/api/portfolio"
+BASE_URL = "http://localhost:8000/api/v1/portfolio"
 
 def print_section(title: str):
     """Print a formatted section header"""

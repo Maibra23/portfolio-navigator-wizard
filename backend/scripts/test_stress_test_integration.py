@@ -18,7 +18,7 @@ from datetime import datetime
 
 # Test configuration
 BASE_URL = "http://localhost:8000"
-API_BASE = f"{BASE_URL}/api/portfolio"
+API_BASE = f"{BASE_URL}/api/v1/portfolio"
 
 # Test portfolios - will be fetched from optimization endpoint
 TEST_PORTFOLIOS = {}

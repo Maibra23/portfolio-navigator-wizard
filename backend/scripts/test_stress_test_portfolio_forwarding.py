@@ -73,7 +73,7 @@ def test_stress_test_endpoint(portfolio: Dict[str, Any], portfolio_source: str =
     try:
         # Make API request
         response = requests.post(
-            f"{BASE_URL}/api/portfolio/stress-test",
+            f"{BASE_URL}/api/v1/portfolio/stress-test",
             json=payload,
             headers={'Content-Type': 'application/json'},
             timeout=120  # 2 minute timeout for stress tests

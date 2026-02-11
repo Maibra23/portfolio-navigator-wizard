@@ -288,36 +288,47 @@ class StressTestAnalyzer:
             data_start = time.time()
             ticker_prices = {}
             data_availability = {}
-            
+
+            # First pass: get current cache and collect tickers that need fuller history
+            ticker_data_map = {}
+            need_refresh = []
+            req_start = start_date
+            fetcher = getattr(self.data_service, 'enhanced_data_fetcher', None)
+
             for ticker in tickers:
                 ticker_start = time.time()
                 ticker_data = self.data_service.get_monthly_data(ticker)
                 ticker_time = time.time() - ticker_start
-                if ticker_time > 0.5:  # Log slow data retrievals
+                if ticker_time > 0.5:
                     logger.debug(f"⏱️ {ticker} data retrieved in {ticker_time:.3f}s")
+                ticker_data_map[ticker] = ticker_data
 
-                # If cached data exists but does not reach far enough back for the requested window,
-                # try fetching fuller history via EnhancedDataFetcher (without deleting anything from Redis).
+                if not fetcher:
+                    continue
                 try:
-                    req_start = start_date  # 'YYYY-MM-DD'
                     td_dates = ticker_data.get('dates') if isinstance(ticker_data, dict) else None
                     if td_dates and isinstance(td_dates, list):
                         cached_min_date = min(td_dates) if td_dates else None
                         if cached_min_date and cached_min_date > req_start:
-                            fetcher = getattr(self.data_service, 'enhanced_data_fetcher', None)
-                            if fetcher:
-                                logger.info(
-                                    f"🔄 {ticker}: Cached history starts at {cached_min_date}, "
-                                    f"but scenario needs {req_start}. Fetching fuller history..."
-                                )
-                                # Force a targeted refetch (overwrites cached ticker_data:prices:* for this ticker)
-                                # so that older stress-test windows (e.g. 2008) can be modeled accurately.
-                                fetcher.refresh_specific_tickers([ticker])
-                                refreshed = self.data_service.get_monthly_data(ticker)
-                                if refreshed and isinstance(refreshed, dict) and refreshed.get('prices') and refreshed.get('dates'):
-                                    ticker_data = refreshed
+                            need_refresh.append(ticker)
+                except Exception:
+                    pass
+
+            # Batch refresh: one call for all tickers that need fuller history (smoother than per-ticker)
+            if need_refresh:
+                try:
+                    logger.info(
+                        f"🔄 Batch refreshing {len(need_refresh)} tickers for scenario window from {req_start}: "
+                        f"{', '.join(need_refresh)}"
+                    )
+                    fetcher.refresh_specific_tickers(need_refresh)
+                    for ticker in need_refresh:
+                        ticker_data_map[ticker] = self.data_service.get_monthly_data(ticker)
                 except Exception as e:
-                    logger.debug(f"⚠️ {ticker}: Could not refresh fuller history: {e}")
+                    logger.debug(f"⚠️ Batch refresh failed: {e}")
+
+            for ticker in tickers:
+                ticker_data = ticker_data_map.get(ticker)
 
                 if ticker_data and ticker_data.get('prices'):
                     prices = ticker_data['prices']

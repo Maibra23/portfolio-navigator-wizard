@@ -80,7 +80,7 @@ echo "Test 3: TTL Monitoring Endpoints"
 echo "================================================================"
 
 echo "Testing GET /cache/ttl-status..."
-ttl_status=$(curl -s http://localhost:8000/api/portfolio/cache/ttl-status)
+ttl_status=$(curl -s http://localhost:8000/api/v1/portfolio/cache/ttl-status)
 if echo "$ttl_status" | grep -q "success"; then
     echo -e "${GREEN}✅ PASS: TTL status endpoint works${NC}"
 else
@@ -89,7 +89,7 @@ fi
 echo ""
 
 echo "Testing GET /cache/ttl-report..."
-ttl_report=$(curl -s http://localhost:8000/api/portfolio/cache/ttl-report)
+ttl_report=$(curl -s http://localhost:8000/api/v1/portfolio/cache/ttl-report)
 if echo "$ttl_report" | grep -q "success"; then
     echo -e "${GREEN}✅ PASS: TTL report endpoint works${NC}"
 else
@@ -98,7 +98,7 @@ fi
 echo ""
 
 echo "Testing GET /cache/expiring-list..."
-expiring_list=$(curl -s "http://localhost:8000/api/portfolio/cache/expiring-list?days_threshold=7")
+expiring_list=$(curl -s "http://localhost:8000/api/v1/portfolio/cache/expiring-list?days_threshold=7")
 if echo "$expiring_list" | grep -q "success"; then
     echo -e "${GREEN}✅ PASS: Expiring list endpoint works${NC}"
     echo "Sample response:"
@@ -116,7 +116,7 @@ echo "Sending 12 requests to test rate limiting (limit: 10/minute)..."
 
 rate_limit_hit=false
 for i in {1..12}; do
-    response=$(curl -s -w "\n%{http_code}" http://localhost:8000/api/portfolio/cache/ttl-status)
+    response=$(curl -s -w "\n%{http_code}" http://localhost:8000/api/v1/portfolio/cache/ttl-status)
     http_code=$(echo "$response" | tail -1)
 
     if [ "$http_code" == "429" ]; then
@@ -168,7 +168,7 @@ echo ""
 echo "================================================================"
 echo "Test 6: Cache Status"
 echo "================================================================"
-cache_status=$(curl -s http://localhost:8000/api/portfolio/cache-status)
+cache_status=$(curl -s http://localhost:8000/api/v1/portfolio/cache-status)
 echo "$cache_status" | python3 -m json.tool 2>/dev/null || echo "$cache_status"
 echo ""
 echo -e "${GREEN}✅ PASS: Cache status retrieved${NC}"
@@ -183,7 +183,7 @@ if [ -n "$TTL_SLACK_WEBHOOK_URL" ] && [ "$TTL_SLACK_NOTIFICATIONS" == "true" ]; 
     echo "Slack notifications configured, testing..."
     echo "Triggering TTL check (should send Slack notification)..."
 
-    ttl_check=$(curl -s http://localhost:8000/api/portfolio/cache/ttl-status)
+    ttl_check=$(curl -s http://localhost:8000/api/v1/portfolio/cache/ttl-status)
 
     echo ""
     echo -e "${BLUE}📱 Check your Slack channel for the notification!${NC}"

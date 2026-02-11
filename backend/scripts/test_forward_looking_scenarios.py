@@ -7,7 +7,7 @@ import requests
 import sys
 from typing import Any, Dict, Tuple
 
-API_BASE = "http://127.0.0.1:8000/api/portfolio"
+API_BASE = "http://127.0.0.1:8000/api/v1/portfolio"
 
 # Portfolio used for all tests (must exist in cache for sector impact)
 PORTFOLIO = {

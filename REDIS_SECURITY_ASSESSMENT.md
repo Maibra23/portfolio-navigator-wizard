@@ -190,20 +190,20 @@ redis-cli --scan --pattern "ticker_data:*" | \
 **Step 2: Cloud Population After Deployment**
 ```bash
 # After backend is deployed, call warm-cache endpoint
-curl -X POST https://your-backend.onrender.com/api/portfolio/warm-tickers \
+curl -X POST https://your-backend.onrender.com/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d '{
     "tickers": ["AAPL", "MSFT", "GOOGL", ...1432 tickers...]
   }'
 
 # Or use the full warm-cache endpoint
-curl -X POST https://your-backend.onrender.com/api/portfolio/warm-cache
+curl -X POST https://your-backend.onrender.com/api/v1/portfolio/warm-cache
 ```
 
 **Step 3: Verify Population**
 ```bash
 # Check cache status
-curl https://your-backend.onrender.com/api/portfolio/cache-status
+curl https://your-backend.onrender.com/api/v1/portfolio/cache-status
 
 # Should show:
 # {
@@ -228,7 +228,7 @@ curl https://your-backend.onrender.com/api/portfolio/cache-status
 
 ```bash
 # Example: Tier 1 only
-curl -X POST https://your-backend.onrender.com/api/portfolio/warm-tickers \
+curl -X POST https://your-backend.onrender.com/api/v1/portfolio/warm-tickers \
   -H "Content-Type: application/json" \
   -d @tier1_tickers.json
 ```
@@ -497,13 +497,13 @@ def refresh_expiring_tickers(days_threshold: int = 7):
 **Usage:**
 ```bash
 # Check TTL status
-curl https://your-backend.onrender.com/api/portfolio/cache/ttl-status
+curl https://your-backend.onrender.com/api/v1/portfolio/cache/ttl-status
 
 # Get detailed report
-curl https://your-backend.onrender.com/api/portfolio/cache/ttl-report
+curl https://your-backend.onrender.com/api/v1/portfolio/cache/ttl-report
 
 # Refresh tickers expiring within 7 days
-curl -X POST https://your-backend.onrender.com/api/portfolio/cache/refresh-expiring?days_threshold=7
+curl -X POST https://your-backend.onrender.com/api/v1/portfolio/cache/refresh-expiring?days_threshold=7
 ```
 
 ---
@@ -1088,7 +1088,7 @@ REDIS_SOCKET_TIMEOUT=5
 **Option A: Periodic Exports (Recommended for free tier)**
 ```bash
 # Daily cron job to export critical data
-0 2 * * * curl -X POST https://your-backend.com/api/portfolio/cache/export
+0 2 * * * curl -X POST https://your-backend.com/api/v1/portfolio/cache/export
 ```
 
 **Option B: Redis Persistence (Paid tier)**
@@ -1123,7 +1123,7 @@ with open(f'redis_backup_{datetime.now().strftime("%Y%m%d")}.json', 'w') as f:
 **Scenario 1: Redis Data Loss**
 1. Cache is empty - application still works (fetches from APIs)
 2. Performance degraded (slower responses)
-3. Trigger cache warming: `POST /api/portfolio/cache/warm`
+3. Trigger cache warming: `POST /api/v1/portfolio/cache/warm`
 4. Estimated recovery time: 1-2 hours (full population)
 
 **Scenario 2: Redis Service Down**
@@ -1165,9 +1165,9 @@ with open(f'redis_backup_{datetime.now().strftime("%Y%m%d")}.json', 'w') as f:
    - Set up uptime monitoring
 
 5. **Add API Endpoints for TTL Monitoring**
-   - `/api/portfolio/cache/ttl-status`
-   - `/api/portfolio/cache/ttl-report`
-   - `/api/portfolio/cache/refresh-expiring`
+   - `/api/v1/portfolio/cache/ttl-status`
+   - `/api/v1/portfolio/cache/ttl-report`
+   - `/api/v1/portfolio/cache/refresh-expiring`
 
 ### Important (First Week After Deployment) 🟡
 

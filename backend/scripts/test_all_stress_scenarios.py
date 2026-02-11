@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 BASE_URL = "http://localhost:8000"
-API_BASE = f"{BASE_URL}/api/portfolio"
+API_BASE = f"{BASE_URL}/api/v1/portfolio"
 
 class Colors:
     GREEN = '\033[92m'

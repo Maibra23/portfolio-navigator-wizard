@@ -87,11 +87,11 @@ def test_optimization_endpoint():
     
     # Call endpoint
     print(f"\n🚀 Calling optimization endpoint...")
-    print(f"   Endpoint: http://localhost:8000/api/portfolio/optimization/triple")
+    print(f"   Endpoint: http://localhost:8000/api/v1/portfolio/optimization/triple")
     
     try:
         response = requests.post(
-            "http://localhost:8000/api/portfolio/optimization/triple",
+            "http://localhost:8000/api/v1/portfolio/optimization/triple",
             json=request_data,
             timeout=60
         )

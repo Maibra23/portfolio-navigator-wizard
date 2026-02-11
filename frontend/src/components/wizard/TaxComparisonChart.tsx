@@ -9,6 +9,8 @@ interface TaxComparisonChartProps {
   taxYear: 2025 | 2026;
   expectedReturn: number;
   selectedAccountType?: string;
+  /** When provided, chart uses this instead of fetching (avoids duplicate API calls). */
+  comparisonData?: { accountType: string; annualTax: number; effectiveRate: number; displayName?: string }[] | null;
 }
 
 interface TaxComparisonData {
@@ -22,13 +24,26 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
   capital,
   taxYear,
   expectedReturn,
-  selectedAccountType
+  selectedAccountType,
+  comparisonData: comparisonDataProp
 }) => {
   const [data, setData] = useState<TaxComparisonData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (comparisonDataProp && comparisonDataProp.length > 0) {
+      setData(comparisonDataProp.map((r) => ({
+        accountType: r.accountType,
+        annualTax: r.annualTax,
+        effectiveRate: r.effectiveRate,
+        displayName: r.displayName ?? r.accountType,
+      })));
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const fetchComparisons = async () => {
       if (capital <= 0) {
         setData([]);
@@ -39,43 +54,30 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       setError(null);
 
       try {
-        // Fetch tax calculations for all three account types
         const accountTypes = ['ISK', 'KF', 'AF'];
         const promises = accountTypes.map(async (accountType) => {
-          const requestBody: any = {
-            accountType,
-            taxYear
-          };
-
+          const requestBody: any = { accountType, taxYear };
           if (accountType === 'ISK' || accountType === 'KF') {
             requestBody.portfolioValue = capital;
           } else {
-            // AF - estimate based on expected return
-            const estimatedGains = capital * expectedReturn;
-            requestBody.realizedGains = estimatedGains;
+            requestBody.realizedGains = capital * expectedReturn;
             requestBody.dividends = 0;
             requestBody.fundHoldings = 0;
           }
-
-          const response = await fetch('/api/portfolio/tax/calculate', {
+          const response = await fetch('/api/v1/portfolio/tax/calculate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
           });
-
-          if (!response.ok) {
-            throw new Error(`Failed to calculate tax for ${accountType}`);
-          }
-
+          if (!response.ok) throw new Error(`Failed to calculate tax for ${accountType}`);
           const result = await response.json();
           return {
             accountType,
             annualTax: result.annualTax || 0,
             effectiveRate: result.effectiveTaxRate || 0,
-            displayName: accountType
+            displayName: accountType,
           };
         });
-
         const results = await Promise.all(promises);
         setData(results);
       } catch (err: any) {
@@ -87,7 +89,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
     };
 
     fetchComparisons();
-  }, [capital, taxYear, expectedReturn]);
+  }, [capital, taxYear, expectedReturn, comparisonDataProp]);
 
   if (loading) {
     return (

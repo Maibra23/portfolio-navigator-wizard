@@ -232,11 +232,8 @@ export const PortfolioWizard = () => {
 
       <div className="max-w-4xl mx-auto px-4 py-4">
         <div className="mb-3">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
+          <div className="flex items-center justify-center gap-2 mb-1.5">
             <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground font-semibold text-xs">
-                {currentStep + 1}
-              </div>
               <h2 className="text-base font-semibold text-foreground">
                 {STEPS[currentStep].title}
               </h2>
