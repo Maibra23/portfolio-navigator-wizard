@@ -741,27 +741,55 @@ class RedisFirstDataService:
             metrics_keys = self.redis_client.keys("ticker_data:metrics:*")
 
             tickers = self.list_cached_tickers()
+            n_prices = len(price_keys)
+            n_sector = len(sector_keys)
+            n_metrics = len(metrics_keys)
+            n_joined = len(tickers)
             coverage = {
-                'prices': len(price_keys),
-                'sector': len(sector_keys),
-                'metrics': len(metrics_keys),
-                'joined_tickers': len(tickers)
+                'prices': n_prices,
+                'sector': n_sector,
+                'metrics': n_metrics,
+                'joined_tickers': n_joined,
             }
 
-            # TTL sampling for quick freshness view (sample 5 symbols if available)
+            # TTL sampling: seconds and human-readable days (expected TTL = CACHE_TTL_DAYS)
             sample = tickers[:5]
             ttl_sample = []
+            expected_ttl_s = self.CACHE_TTL_DAYS * 24 * 3600
             for t in sample:
                 pk = f"ticker_data:prices:{t}"
                 sk = f"ticker_data:sector:{t}"
                 pt = self.redis_client.ttl(pk)
                 st = self.redis_client.ttl(sk)
-                ttl_sample.append({'ticker': t, 'prices_ttl_s': pt, 'sector_ttl_s': st})
+                # Redis TTL: seconds until expiry; -1 = no expire; -2 = key missing
+                pt_days = round(pt / 86400.0, 1) if pt > 0 else (None if pt == -1 else 0)
+                st_days = round(st / 86400.0, 1) if st > 0 else (None if st == -1 else 0)
+                ttl_sample.append({
+                    'ticker': t,
+                    'prices_ttl_s': pt,
+                    'sector_ttl_s': st,
+                    'prices_ttl_days': pt_days,
+                    'sector_ttl_days': st_days,
+                })
 
+            # One-line summary for display (expected TTL = 28 days)
+            missing_metrics = max(0, n_joined - n_metrics)
+            def _ttl_str(d):
+                return f"{d}d" if d is not None else "n/a"
+            ttl_summary = (
+                f"TTL sample (expected {self.CACHE_TTL_DAYS}d): "
+                + ", ".join(
+                    f"{s['ticker']} p={_ttl_str(s['prices_ttl_days'])} s={_ttl_str(s['sector_ttl_days'])}"
+                    for s in ttl_sample[:3]
+                )
+            )
             return {
                 'redis': 'available',
                 'coverage': coverage,
                 'ttl_sample': ttl_sample,
+                'expected_ttl_days': self.CACHE_TTL_DAYS,
+                'missing_metrics': missing_metrics,
+                'ttl_summary': ttl_summary,
                 'timestamp': datetime.now().isoformat()
             }
         except Exception as e:

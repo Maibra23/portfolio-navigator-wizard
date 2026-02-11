@@ -4,7 +4,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { BookOpen, Calculator, TrendingUp, Plus, X } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { BookOpen, Calculator, TrendingUp, Plus, X, ChevronDown, ChevronRight } from 'lucide-react';
 
 const DEFAULT_CAPITAL = 400000;
 const DEFAULT_RETURNS_PCT = [1, 3, 5, 7, 10];
@@ -457,6 +458,34 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {/* Collapsible: concise math using table capital and highest return */}
+              {rows.length > 0 && (() => {
+                const taxFreeLevel = tableTaxYear === 2025 ? 150000 : 300000;
+                const schablonPct = tableTaxYear === 2025 ? 2.96 : 3.55;
+                const taxableCapital = Math.max(0, tableCapital - taxFreeLevel);
+                const imputedIncome = Math.round(taxableCapital * (schablonPct / 100));
+                const iskTax = iskTaxForYear(tableCapital, tableTaxYear);
+                const maxReturnPct = Math.max(...returnPcts);
+                const gainAtMax = (tableCapital * maxReturnPct) / 100;
+                const afTaxAtMax = Math.round(gainAtMax * 0.30);
+                return (
+                  <Collapsible className="group mt-2 rounded-md border border-border">
+                    <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-medium hover:bg-muted/50">
+                      <span>How the math works (capital {tableCapital.toLocaleString('sv-SE')} SEK, highest return {maxReturnPct}%)</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="border-t border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground space-y-2">
+                        <p className="font-medium text-foreground">Reference: Capital = {tableCapital.toLocaleString('sv-SE')} SEK, Tax year {tableTaxYear} (tax-free {taxFreeLevel.toLocaleString('sv-SE')} SEK), highest return in table = {maxReturnPct}%.</p>
+                        <p><strong>ISK / KF (fixed):</strong> Taxable = {tableCapital.toLocaleString('sv-SE')} − {taxFreeLevel.toLocaleString('sv-SE')} = {taxableCapital.toLocaleString('sv-SE')} SEK. Imputed income = {taxableCapital.toLocaleString('sv-SE')} × {schablonPct}% = {imputedIncome.toLocaleString('sv-SE')} SEK. Tax = {imputedIncome.toLocaleString('sv-SE')} × 30% = <strong>{iskTax.toLocaleString('sv-SE')} SEK</strong> (same every row).</p>
+                        <p><strong>AF at {maxReturnPct}%:</strong> Gain = {tableCapital.toLocaleString('sv-SE')} × {maxReturnPct}% = {gainAtMax.toLocaleString('sv-SE')} SEK. Tax = 30% × {gainAtMax.toLocaleString('sv-SE')} = <strong>{afTaxAtMax.toLocaleString('sv-SE')} SEK</strong>.</p>
+                        <p><strong>Savings:</strong> For each row, savings = highest tax − lowest tax (the amount you save by choosing the best account).</p>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })()}
             </AccordionContent>
           </AccordionItem>
         </Accordion>

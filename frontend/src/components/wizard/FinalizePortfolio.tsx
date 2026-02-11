@@ -773,15 +773,24 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               )}
 
               {/* Continue to Optimize: enabled only after user presses Done and validation passes */}
-              <Button
-                onClick={() => handleTabChange('optimize')}
-                disabled={!builderDone || !canNavigateToTab('optimize', state, activeTab)}
-                className="w-full mt-4"
-                size="lg"
-              >
-                Continue
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-block w-full">
+                    <Button
+                      onClick={() => handleTabChange('optimize')}
+                      disabled={!builderDone || !canNavigateToTab('optimize', state, activeTab)}
+                      className="w-full mt-4"
+                      size="lg"
+                    >
+                      Continue
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-sm p-2">
+                  {!builderDone ? 'Press the Done button above to confirm your portfolio, then you can continue to Optimize.' : 'Continue to the Optimize tab.'}
+                </TooltipContent>
+              </Tooltip>
             </CardContent>
           </Card>
         </TabsContent>
@@ -873,25 +882,24 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 </CardContent>
               </Card>
 
-              {/* Optimize Button */}
-              <Button
-                onClick={handleOptimize}
-                disabled={isOptimizing || state.constructedPortfolio.length === 0}
-                className="w-full"
-                size="lg"
-              >
-                {isOptimizing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Optimizing...
-                  </>
-                ) : (
-                  <>
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Optimize
-                  </>
-                )}
-              </Button>
+              {/* Optimize Button: disappears as soon as clicked to avoid double-submit */}
+              {!isOptimizing && (
+                <Button
+                  onClick={handleOptimize}
+                  disabled={state.constructedPortfolio.length === 0}
+                  className="w-full"
+                  size="lg"
+                >
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Optimize
+                </Button>
+              )}
+              {isOptimizing && (
+                <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Optimizing...
+                </div>
+              )}
 
               {optimizationError && (
                 <Alert variant="destructive">
