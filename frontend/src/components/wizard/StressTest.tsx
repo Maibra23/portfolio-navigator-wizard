@@ -101,6 +101,10 @@ export const StressTest: React.FC<StressTestProps> = ({
   const [hypotheticalLoading, setHypotheticalLoading] = useState(false);
   const [activeView, setActiveView] = useState<'overview' | 'timeline' | 'monte-carlo' | 'hypothetical'>('overview');
   const [selectedTimelineEvent, setSelectedTimelineEvent] = useState<any>(null);
+  // Toggle states for Monte Carlo percentile lines
+  const [visiblePercentiles, setVisiblePercentiles] = useState({
+    p5: true, p25: true, p50: true, p75: true, p95: true,
+  });
   // Toggle states for Interactive Timeline legend
   const [visibleEventTypes, setVisibleEventTypes] = useState<{
     crisis: boolean;
@@ -942,20 +946,20 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={3}
+                                            r={5}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={1}
+                                            strokeWidth={2}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={3}
+                                            r={5}
                                             fill="#ef4444"
                                             stroke="#fff"
-                                            strokeWidth={3}
+                                            strokeWidth={2}
                                           />
                                         )}
                                       </>
@@ -965,10 +969,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <ReferenceDot 
                                       x={recoveryPeakInfo.date} 
                                       y={recoveryPeakInfo.value}
-                                      r={8}
+                                      r={5}
                                       fill="#9333ea"
                                       stroke="#fff"
-                                      strokeWidth={1}
+                                      strokeWidth={2}
                                     />
                                   )}
                                       </ComposedChart>
@@ -1627,20 +1631,20 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={3}
+                                            r={5}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={1}
+                                            strokeWidth={2}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={3}
+                                            r={5}
                                             fill="#ef4444"
                                             stroke="#fff"
-                                            strokeWidth={3}
+                                            strokeWidth={2}
                                           />
                                         )}
                                       </>
@@ -1650,10 +1654,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <ReferenceDot 
                                       x={recoveryPeakInfo.date} 
                                       y={recoveryPeakInfo.value}
-                                      r={8}
+                                      r={5}
                                       fill="#9333ea"
                                       stroke="#fff"
-                                      strokeWidth={1}
+                                      strokeWidth={2}
                                     />
                                   )}
                                       </ComposedChart>
@@ -1920,6 +1924,37 @@ export const StressTest: React.FC<StressTestProps> = ({
                          stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.histogram_data.length > 0 && (
                           <div className="space-y-2">
                             <div className="text-sm font-medium">Return Distribution</div>
+                            {/* Interactive Percentile Legend */}
+                            {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.percentiles && (
+                              <div className="flex flex-wrap gap-2 justify-center py-2 border rounded-lg bg-muted/30 px-3">
+                                <span className="text-xs text-muted-foreground self-center mr-1">Percentiles:</span>
+                                {([
+                                  { key: 'p5' as const, label: '5th', color: '#ef4444' },
+                                  { key: 'p25' as const, label: '25th', color: '#f97316' },
+                                  { key: 'p50' as const, label: '50th', color: '#3b82f6' },
+                                  { key: 'p75' as const, label: '75th', color: '#22c55e' },
+                                  { key: 'p95' as const, label: '95th', color: '#9333ea' },
+                                ] as const).map((p) => {
+                                  const val = stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.percentiles[p.key];
+                                  return (
+                                    <button
+                                      key={p.key}
+                                      onClick={() => setVisiblePercentiles(prev => ({ ...prev, [p.key]: !prev[p.key] }))}
+                                      className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
+                                        visiblePercentiles[p.key]
+                                          ? 'border-border bg-card hover:bg-accent text-foreground'
+                                          : 'border-border bg-muted/50 text-muted-foreground opacity-50'
+                                      }`}
+                                      title={visiblePercentiles[p.key] ? `Hide ${p.label} percentile` : `Show ${p.label} percentile`}
+                                    >
+                                      <div className="w-3 h-0.5" style={{ backgroundColor: p.color, opacity: visiblePercentiles[p.key] ? 1 : 0.3 }} />
+                                      <span className="font-medium">{p.label}</span>
+                                      <span className="text-muted-foreground">({(val * 100).toFixed(1)}%)</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                             <div className="h-64 w-full">
                               <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart
@@ -1966,6 +2001,30 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     strokeWidth={2}
                                     fill="url(#colorGradient-blue-stress)"
                                   />
+                                  {/* Percentile Reference Lines */}
+                                  {(() => {
+                                    const mc = stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo;
+                                    if (!mc.percentiles) return null;
+                                    const lines = [
+                                      { key: 'p5' as const, value: mc.percentiles.p5, color: '#ef4444', label: 'P5' },
+                                      { key: 'p25' as const, value: mc.percentiles.p25, color: '#f97316', label: 'P25' },
+                                      { key: 'p50' as const, value: mc.percentiles.p50, color: '#3b82f6', label: 'P50' },
+                                      { key: 'p75' as const, value: mc.percentiles.p75, color: '#22c55e', label: 'P75' },
+                                      { key: 'p95' as const, value: mc.percentiles.p95, color: '#9333ea', label: 'P95' },
+                                    ];
+                                    return lines.map((line) =>
+                                      visiblePercentiles[line.key] ? (
+                                        <ReferenceLine
+                                          key={line.key}
+                                          x={line.value * 100}
+                                          stroke={line.color}
+                                          strokeWidth={1.5}
+                                          strokeDasharray="4 3"
+                                          label={{ value: line.label, position: 'top', fill: line.color, fontSize: 10, fontWeight: 600 }}
+                                        />
+                                      ) : null
+                                    );
+                                  })()}
                                 </AreaChart>
                               </ResponsiveContainer>
                             </div>
