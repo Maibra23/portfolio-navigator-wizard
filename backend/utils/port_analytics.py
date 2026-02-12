@@ -1993,7 +1993,8 @@ class PortfolioAnalytics:
                                    expected_return: float, 
                                    risk: float, 
                                    num_simulations: int = 10000,
-                                   time_horizon_years: float = 1.0) -> Dict[str, Any]:
+                                   time_horizon_years: float = 1.0,
+                                   seed: Optional[int] = None) -> Dict[str, Any]:
         """
         Run Monte Carlo simulation to generate return distribution
         
@@ -2002,6 +2003,7 @@ class PortfolioAnalytics:
             risk: Annual volatility/risk (e.g., 0.20 for 20%)
             num_simulations: Number of simulations to run (default 10,000)
             time_horizon_years: Investment time horizon in years (default 1 year)
+            seed: Optional RNG seed for reproducible results; None for non-deterministic.
             
         Returns:
             Dict with simulation results including:
@@ -2017,12 +2019,16 @@ class PortfolioAnalytics:
             # For simplicity, assuming returns follow normal distribution
             # In practice, could use log-normal or more sophisticated models
             
+            # Guard against zero or negative volatility (would make normal degenerate)
+            risk_effective = max(float(risk), 0.01) if risk is not None else 0.01
+            
             # Annualized parameters adjusted for time horizon
             adjusted_return = expected_return * time_horizon_years
-            adjusted_risk = risk * np.sqrt(time_horizon_years)
+            adjusted_risk = risk_effective * np.sqrt(time_horizon_years)
             
-            # Generate simulated returns
-            np.random.seed(None)  # Use random seed for variety
+            # Generate simulated returns (optional seed for reproducibility)
+            if seed is not None:
+                np.random.seed(seed)
             simulated_returns = np.random.normal(adjusted_return, adjusted_risk, num_simulations)
             
             # Calculate percentiles
@@ -2083,7 +2089,8 @@ class PortfolioAnalytics:
                     'expected_return': expected_return,
                     'risk': risk,
                     'num_simulations': num_simulations,
-                    'time_horizon_years': time_horizon_years
+                    'time_horizon_years': time_horizon_years,
+                    'seed': seed
                 }
             }
             
@@ -2133,7 +2140,7 @@ class PortfolioAnalytics:
             'histogram_data': [],
             'statistics': {'mean': 0.10, 'std': 0.15, 'min': -0.30, 'max': 0.50, 'median': 0.10},
             'probability_statements': ['Unable to calculate probabilities'],
-            'parameters': {'expected_return': 0.10, 'risk': 0.15, 'num_simulations': 0, 'time_horizon_years': 1.0}
+            'parameters': {'expected_return': 0.10, 'risk': 0.15, 'num_simulations': 0, 'time_horizon_years': 1.0, 'seed': None}
         }
 
     # ==================== NEW: Quality Score Metrics ====================

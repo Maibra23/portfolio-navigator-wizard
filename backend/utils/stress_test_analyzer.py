@@ -1664,8 +1664,8 @@ class StressTestAnalyzer:
                 lookback_months=6,  # Standard lookback for shorter crises
             )
             
-            # Volatility calculations
-            crisis_returns = portfolio_data['monthly_returns'][:3]  # First 3 months
+            # Volatility calculations: use full crisis window for stability (3 months is too few for reliable std)
+            crisis_returns = portfolio_data['monthly_returns']
             if len(crisis_returns) > 1:
                 volatility_during_crisis = float(np.std(crisis_returns) * np.sqrt(12))
             else:
@@ -1695,20 +1695,18 @@ class StressTestAnalyzer:
                 market_returns=None  # Could add market index returns later
             )
             
-            # Monte Carlo Simulation for crisis period
+            # Monte Carlo Simulation for crisis period (illustrative; uses in-sample crisis mean/vol, not a forecast)
             monte_carlo = None
             try:
                 op_start = time.time()
                 logger.info(f"⏱️ Running Monte Carlo simulation (5,000 iterations)...")
                 from utils.port_analytics import PortfolioAnalytics
                 analytics = PortfolioAnalytics()
-                # Use crisis volatility and expected return for Monte Carlo
                 crisis_expected_return = float(np.mean(portfolio_data['monthly_returns']) * 12) if len(portfolio_data['monthly_returns']) > 0 else 0.0
-                # Reduced from 10,000 to 5,000 for better performance (still statistically significant)
                 monte_carlo = analytics.run_monte_carlo_simulation(
                     expected_return=crisis_expected_return,
                     risk=volatility_during_crisis,
-                    num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+                    num_simulations=5000,
                     time_horizon_years=1.0
                 )
                 logger.info(f"⏱️ Monte Carlo completed in {time.time() - op_start:.3f}s")

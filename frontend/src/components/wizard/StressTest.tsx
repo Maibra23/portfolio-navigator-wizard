@@ -23,6 +23,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Shield, 
@@ -41,7 +42,9 @@ import {
   Check,
   Download,
   Calendar,
-  FileText
+  FileText,
+  BookOpen,
+  ChevronDown
 } from 'lucide-react';
 import { ScenarioSelector, type ScenarioId } from './ScenarioSelector';
 import { ResilienceScore } from './ResilienceScore';
@@ -2067,7 +2070,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   <YAxis
                                     tick={{ fontSize: 10 }}
                                     tickFormatter={(value) => `${value.toFixed(0)}%`}
-                                    label={{ value: 'Probability Density', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
+                                    label={{ value: 'Frequency (%)', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
                                   />
                                   <Tooltip
                                     formatter={(value: number) => [`${value.toFixed(1)}%`, 'Frequency']}
@@ -2087,6 +2090,11 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 </AreaChart>
                               </ResponsiveContainer>
                             </div>
+                            {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.parameters && (
+                              <p className="text-xs text-muted-foreground">
+                                Assumptions: expected return {(stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.parameters.expected_return * 100).toFixed(1)}%, volatility {(stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.parameters.risk * 100).toFixed(1)}%, {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.parameters.time_horizon_years === 1 ? '1 year' : `${stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.parameters.time_horizon_years} years`}, {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.parameters.num_simulations?.toLocaleString() ?? '5,000'} simulations.
+                              </p>
+                            )}
                           </div>
                         )}
                         
@@ -2125,6 +2133,32 @@ export const StressTest: React.FC<StressTestProps> = ({
                             </div>
                           </div>
                         )}
+                        {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo && (
+                          <p className="text-xs text-muted-foreground">Based on a simplified normal-distribution model; real returns can have fatter tails.</p>
+                        )}
+                        {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo && (() => {
+                          const mc = stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo;
+                          const n = mc.parameters?.num_simulations ?? 5000;
+                          const horizon = mc.parameters?.time_horizon_years === 1 ? '1-year' : `${mc.parameters?.time_horizon_years}-year`;
+                          const capital = stressTestResults.portfolio_summary?.capital ?? 500000;
+                          const p5 = mc.percentiles?.p5 ?? -0.15;
+                          const exampleLoss = Math.round(capital * Math.abs(Math.min(0, p5)));
+                          return (
+                            <Collapsible className="group mt-2 rounded-md border border-border">
+                              <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium hover:bg-muted/50">
+                                <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> How to read this</span>
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                              </CollapsibleTrigger>
+                              <CollapsibleContent>
+                                <div className="border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
+                                  <p><strong className="text-foreground">What this simulation shows:</strong> The chart shows a range of possible {horizon} returns based on {n.toLocaleString()} simulations, using the assumed expected return and volatility. Outcomes are hypothetical, not forecasts.</p>
+                                  <p><strong className="text-foreground">How to interpret:</strong> Each area is the share of simulations in that return range. The 5th percentile is worse than 5% of outcomes; the 95th is better than 95%. These illustrate uncertainty under the model.</p>
+                                  <p><strong className="text-foreground">Example:</strong> If your portfolio is {capital.toLocaleString('sv-SE')} SEK and the 5th percentile is {(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of {exampleLoss.toLocaleString('sv-SE')} SEK or more over the period.</p>
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
+                          );
+                        })()}
                         
                         {/* Probability Statements */}
                         {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.probability_statements && (
@@ -2667,7 +2701,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <YAxis
                                       tick={{ fontSize: 10 }}
                                       tickFormatter={(value) => `${value.toFixed(0)}%`}
-                                      label={{ value: 'Probability Density', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
+                                      label={{ value: 'Frequency (%)', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
                                     />
                                     <Tooltip
                                       formatter={(value: number) => [`${value.toFixed(1)}%`, 'Frequency']}
@@ -2687,11 +2721,30 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   </AreaChart>
                                 </ResponsiveContainer>
                               </div>
+                              {hypotheticalResults.monte_carlo.parameters && (
+                                <p className="text-xs text-muted-foreground">
+                                  Assumptions: expected return {(hypotheticalResults.monte_carlo.parameters.expected_return * 100).toFixed(1)}%, volatility {(hypotheticalResults.monte_carlo.parameters.risk * 100).toFixed(1)}%, {hypotheticalResults.monte_carlo.parameters.time_horizon_years === 1 ? '1 year' : `${hypotheticalResults.monte_carlo.parameters.time_horizon_years} years`}, {hypotheticalResults.monte_carlo.parameters.num_simulations?.toLocaleString() ?? '5,000'} simulations.
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground">Based on a simplified normal-distribution model; real returns can have fatter tails.</p>
+                              <Collapsible className="group mt-2 rounded-md border border-border">
+                                <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium hover:bg-muted/50">
+                                  <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> How to read this</span>
+                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <div className="border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
+                                    <p><strong className="text-foreground">What this simulation shows:</strong> The chart shows possible outcomes for this scenario based on the assumed decline and volatility. Outcomes are hypothetical, not forecasts.</p>
+                                    <p><strong className="text-foreground">How to interpret:</strong> Each area is the share of simulations in that return range. The 5th percentile is worse than 5% of outcomes. These illustrate uncertainty under the model.</p>
+                                    <p><strong className="text-foreground">Example:</strong> If your portfolio is 500,000 SEK and the 5th percentile is {(hypotheticalResults.monte_carlo.percentiles?.p5 != null ? hypotheticalResults.monte_carlo.percentiles.p5 * 100 : -15).toFixed(1)}%, in about 1 in 20 runs you could see a loss of {Math.round(500000 * Math.abs(Math.min(0, hypotheticalResults.monte_carlo.percentiles?.p5 ?? -0.15))).toLocaleString('sv-SE')} SEK or more.</p>
+                                  </div>
+                                </CollapsibleContent>
+                              </Collapsible>
                             </div>
                           )}
                           
                           {/* Sector Impact Analysis */}
-                          {hypotheticalResults.sector_impact && Object.keys(hypotheticalResults.sector_impact).length > 0 && (
+                            {hypotheticalResults.sector_impact && Object.keys(hypotheticalResults.sector_impact).length > 0 && (
                             <div className="space-y-2 w-full">
                               <div className="text-sm font-medium">Sector Impact Analysis</div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">

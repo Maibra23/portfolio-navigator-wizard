@@ -20,6 +20,8 @@ import {
   TrendingDown,
   Eye,
   EyeOff,
+  BookOpen,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,6 +35,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // ---------------------------------------------------------------------------
 // Types (aligned with PortfolioOptimization / triple optimization API)
@@ -525,26 +528,31 @@ export const MonteCarloCard = ({
           Monte Carlo Risk Analysis
         </CardTitle>
         <p className="text-sm text-gray-500">
-          {selectedMonteCarlo.parameters?.num_simulations?.toLocaleString() || '10,000'} simulations projecting 1-year return distribution
+          {selectedMonteCarlo.parameters?.num_simulations?.toLocaleString() || '10,000'} simulations projecting {(selectedMonteCarlo.parameters?.time_horizon_years ?? 1) === 1 ? '1-year' : `${selectedMonteCarlo.parameters?.time_horizon_years} year`} return distribution
         </p>
+        {selectedMonteCarlo.parameters && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Assumptions: expected return {(selectedMonteCarlo.parameters.expected_return * 100).toFixed(1)}%, volatility {(selectedMonteCarlo.parameters.risk * 100).toFixed(1)}%
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-red-50 border border-red-200">
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle className="h-4 w-4 text-red-600" />
-              <span className="text-xs font-medium text-red-700">Value at Risk (95%)</span>
+              <span className="text-xs font-medium text-red-700">5th percentile return (worst 5%)</span>
             </div>
             <div className="text-2xl font-bold text-red-800">{(var95 * 100).toFixed(1)}%</div>
-            <div className="text-xs text-red-600 mt-1">Worst case scenario</div>
+            <div className="text-xs text-red-600 mt-1">Worst 5% of simulated outcomes</div>
           </div>
           <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-medium text-blue-700">Expected Return</span>
+              <span className="text-xs font-medium text-blue-700">Median return (50th percentile)</span>
             </div>
             <div className="text-2xl font-bold text-blue-800">{(expectedReturn * 100).toFixed(1)}%</div>
-            <div className="text-xs text-blue-600 mt-1">Median (50th percentile)</div>
+            <div className="text-xs text-blue-600 mt-1">Center of simulated outcomes</div>
           </div>
           <div className="p-4 rounded-lg bg-green-50 border border-green-200">
             <div className="flex items-center gap-2 mb-2">
@@ -587,7 +595,7 @@ export const MonteCarloCard = ({
                 <YAxis
                   tick={{ fontSize: 10 }}
                   tickFormatter={(value: number) => `${value.toFixed(0)}%`}
-                  label={{ value: 'Probability Density', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
+                  label={{ value: 'Frequency (%)', angle: -90, position: 'insideLeft', offset: 5, fontSize: 11 }}
                 />
                 <RechartsTooltip
                   formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
@@ -649,6 +657,20 @@ export const MonteCarloCard = ({
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          <p className="text-xs text-muted-foreground">Based on a simplified normal-distribution model; real returns can have fatter tails.</p>
+          <Collapsible className="group mt-2 rounded-md border border-border">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium hover:bg-muted/50">
+              <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> How to read this</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
+                <p><strong className="text-foreground">What this simulation shows:</strong> The chart shows a range of possible {(selectedMonteCarlo.parameters?.time_horizon_years === 1 ? '1-year' : `${selectedMonteCarlo.parameters?.time_horizon_years}-year`)} returns based on {(selectedMonteCarlo.parameters?.num_simulations ?? 10000).toLocaleString()} simulations. Outcomes are hypothetical, not forecasts.</p>
+                <p><strong className="text-foreground">How to interpret:</strong> Each area is the share of simulations in that return range. The 5th percentile is worse than 5% of outcomes. These illustrate uncertainty under the model.</p>
+                <p><strong className="text-foreground">Example:</strong> If your portfolio is 500,000 SEK and the 5th percentile is {((selectedMonteCarlo.percentiles?.p5 ?? -0.15) * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of {Math.round(500000 * Math.abs(Math.min(0, selectedMonteCarlo.percentiles?.p5 ?? -0.15))).toLocaleString('sv-SE')} SEK or more.</p>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
         {isTriple && (
@@ -768,7 +790,7 @@ export const MonteCarloCard = ({
                   <span className="font-semibold">{((selectedMonteCarlo.percentiles?.p75 ?? 0) * 100).toFixed(1)}%</span>
                 </p>
                 <p>
-                  • Value at Risk (95% confidence): <span className="font-semibold">{(var95 * 100).toFixed(1)}%</span> maximum expected loss
+                  • 5th percentile return (worst 5% of outcomes): <span className="font-semibold">{(var95 * 100).toFixed(1)}%</span>
                 </p>
               </div>
             </div>
