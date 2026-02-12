@@ -39,3 +39,5 @@ backend/.env.example
 backend/.server.pid
 frontend/bun.lockb
 
+# Cloned tool repos
+everything-claude-code/
