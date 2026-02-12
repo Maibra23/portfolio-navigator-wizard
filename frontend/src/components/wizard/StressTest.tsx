@@ -1022,36 +1022,26 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       troughValue = ((trough.value || 0) * normalizationFactor) * 100;
                                     }
                                     
-                                    // Detect if peak and trough are visually close (within 5% on the chart)
-                                    const valueDiff = Math.abs(peakValue - troughValue);
-                                    const isOverlapping = valueDiff < 5.0;
-                                    
-                                    // Adjust label positions to avoid overlap
-                                    const peakLabelPos = isOverlapping ? 'topRight' : 'top';
-                                    const troughLabelPos = isOverlapping ? 'bottomLeft' : 'bottom';
-                                    
                                     return (
                                       <>
                                         {peak && (
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={6}
+                                            r={3}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={2}
-                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 10, fontWeight: 'bold' }}
+                                            strokeWidth={1}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={6}
+                                            r={3}
                                             fill="#ef4444"
                                             stroke="#fff"
                                             strokeWidth={3}
-                                            label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: troughLabelPos, fill: '#ef4444', fontSize: 11, fontWeight: 'bold' }}
                                           />
                                         )}
                                       </>
@@ -1064,15 +1054,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       r={8}
                                       fill="#9333ea"
                                       stroke="#fff"
-                                      strokeWidth={2}
-                                      label={{ 
-                                        value: `Recovery (${recoveryPeakInfo.value.toFixed(1)}%)`, 
-                                        position: 'top', 
-                                        fill: '#9333ea', 
-                                        fontSize: 12, 
-                                        fontWeight: 'bold',
-                                        offset: 10
-                                      }}
+                                      strokeWidth={1}
                                     />
                                   )}
                                       </ComposedChart>
@@ -1725,35 +1707,26 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     }
                                     
                                     // Detect if peak and trough are visually close (within 5% on the chart)
-                                    const valueDiff = Math.abs(peakValue - troughValue);
-                                    const isOverlapping = valueDiff < 5.0;
-                                    
-                                    // Adjust label positions to avoid overlap
-                                    const peakLabelPos = isOverlapping ? 'topRight' : 'top';
-                                    const troughLabelPos = isOverlapping ? 'bottomLeft' : 'bottom';
-                                    
                                     return (
                                       <>
                                         {peak && (
                                           <ReferenceDot 
                                             x={peakDate} 
                                             y={peakValue}
-                                            r={6}
+                                            r={3}
                                             fill="#22c55e"
                                             stroke="#fff"
-                                            strokeWidth={2}
-                                            label={{ value: 'Peak (100%)', position: peakLabelPos, fill: '#22c55e', fontSize: 10, fontWeight: 'bold' }}
+                                            strokeWidth={1}
                                           />
                                         )}
                                         {trough && (
                                           <ReferenceDot 
                                             x={troughDate} 
                                             y={troughValue}
-                                            r={6}
+                                            r={3}
                                             fill="#ef4444"
                                             stroke="#fff"
                                             strokeWidth={3}
-                                            label={{ value: `Trough (${troughValue.toFixed(1)}%)`, position: troughLabelPos, fill: '#ef4444', fontSize: 11, fontWeight: 'bold' }}
                                           />
                                         )}
                                       </>
@@ -1766,15 +1739,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       r={8}
                                       fill="#9333ea"
                                       stroke="#fff"
-                                      strokeWidth={2}
-                                      label={{ 
-                                        value: `Recovery (${recoveryPeakInfo.value.toFixed(1)}%)`, 
-                                        position: 'top', 
-                                        fill: '#9333ea', 
-                                        fontSize: 12, 
-                                        fontWeight: 'bold',
-                                        offset: 10
-                                      }}
+                                      strokeWidth={1}
                                     />
                                   )}
                                       </ComposedChart>
