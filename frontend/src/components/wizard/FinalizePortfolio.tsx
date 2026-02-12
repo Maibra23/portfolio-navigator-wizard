@@ -35,7 +35,6 @@ import { TaxEducationPanel } from './TaxEducationPanel';
 import { TaxComparisonChart } from './TaxComparisonChart';
 import { TaxFreeVisualization } from './TaxFreeVisualization';
 import { WhatIfCalculator } from './WhatIfCalculator';
-import { SmartRecommendations } from './SmartRecommendations';
 import { TaxSummaryCard } from './TaxSummaryCard';
 import { TotalCostsCard } from './TotalCostsCard';
 
@@ -78,7 +77,6 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   const [portfolioName, setPortfolioName] = useState('My Investment Portfolio');
   const [selectedPortfolioType, setSelectedPortfolioType] = useState<'current' | 'weights' | 'market'>('current');
   const [taxComparisonData, setTaxComparisonData] = useState<any>(null);
-  const [recommendationsData, setRecommendationsData] = useState<any>(null);
 
   // Builder "Done" pressed: user must press Done in Portfolio Builder before Continue to Optimize
   const [builderDone, setBuilderDone] = useState(false);
@@ -1193,23 +1191,6 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             initialCapital={capital}
             initialTaxYear={state.taxSettings.taxYear}
           />
-
-          <p className="text-sm text-muted-foreground rounded-lg border border-border bg-muted/20 px-3 py-2">
-            <strong className="text-foreground">Key takeaway:</strong> For growth portfolios, ISK/KF is often better above the tax-free level when your expected return is higher than the schablonränta (~3–4%). Choose AF if you plan to buy and hold with little rebalancing.
-          </p>
-
-          {/* Smart Recommendations */}
-          {state.taxSettings.accountType && portfolioMetrics && (
-            <SmartRecommendations
-              capital={capital}
-              accountType={state.taxSettings.accountType}
-              taxYear={state.taxSettings.taxYear}
-              courtagClass={state.taxSettings.courtagClass || ''}
-              expectedReturn={displayMetrics?.expectedReturn || portfolioMetrics.expectedReturn}
-              taxCalculation={taxCalculation}
-              transactionCosts={transactionCosts}
-            />
-          )}
 
           <Card>
             <CardHeader>
