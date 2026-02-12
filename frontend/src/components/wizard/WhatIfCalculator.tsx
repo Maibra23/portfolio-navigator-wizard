@@ -107,8 +107,8 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
                 <Info className="h-4 w-4" />
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-md p-3">
-              <p className="text-xs">
+            <TooltipContent side="top" className="max-w-sm">
+              <p>
                 Use the sliders to explore how different capital amounts and tax years affect your annual tax burden.
                 This helps you understand the impact of your investment decisions and tax planning opportunities.
               </p>

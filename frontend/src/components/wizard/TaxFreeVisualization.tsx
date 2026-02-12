@@ -40,17 +40,17 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
                 <Info className="h-4 w-4" />
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-md p-3">
-              <p className="text-xs mb-2">
+            <TooltipContent side="top" className="max-w-sm">
+              <p className="mb-2">
                 For ISK and KF accounts, Swedish tax law provides a <strong>tax-free level</strong> where
                 the first portion of your capital is not subject to schablonbeskattning.
               </p>
-              <p className="text-xs font-semibold mb-1">Tax-Free Levels:</p>
-              <ul className="text-xs space-y-1 list-disc ml-4">
+              <p className="font-semibold mb-1">Tax-Free Levels:</p>
+              <ul className="space-y-1 list-disc ml-4">
                 <li><strong>2025:</strong> 150,000 SEK</li>
                 <li><strong>2026:</strong> 300,000 SEK (doubled!)</li>
               </ul>
-              <p className="text-xs mt-2">
+              <p className="mt-2">
                 Only the amount <strong>above</strong> this level is subject to tax calculation.
               </p>
             </TooltipContent>

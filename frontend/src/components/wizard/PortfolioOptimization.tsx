@@ -3766,8 +3766,8 @@ export const PortfolioOptimization = ({
                                             <TooltipTrigger asChild>
                                               <span className="font-medium text-sm cursor-help" style={{ color: chartTheme.text.primary }}>Market-Opt</span>
                                             </TooltipTrigger>
-                                            <TooltipContent>
-                                              <p className="max-w-xs">Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
+                                            <TooltipContent className="max-w-xs">
+                                              <p>Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
@@ -4256,7 +4256,7 @@ export const PortfolioOptimization = ({
                                   <div className="flex justify-between items-center py-1 group relative">
                                     <div className="flex items-center gap-1">
                                       <span className="text-sm font-medium text-gray-700">Expected Return</span>
-                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                                         <div className="font-semibold mb-1">Expected Return</div>
                                         <div>The annualized return you can expect from this portfolio based on historical data. Positive values indicate potential gains, negative values indicate potential losses.</div>
                                       </div>
@@ -4269,7 +4269,7 @@ export const PortfolioOptimization = ({
                                   <div className="flex justify-between items-center py-1 group relative">
                                     <div className="flex items-center gap-1">
                                       <span className="text-sm font-medium text-gray-700">Risk (Volatility)</span>
-                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                                         <div className="font-semibold mb-1">Risk (Volatility)</div>
                                         <div>Measures the annual volatility (standard deviation) of returns. Higher risk means more price fluctuations. Lower risk is generally better, as it indicates more stable returns.</div>
                                       </div>
@@ -4282,7 +4282,7 @@ export const PortfolioOptimization = ({
                                   <div className="flex justify-between items-center py-1 group relative border-t border-gray-200 pt-2 mt-2">
                                     <div className="flex items-center gap-1">
                                       <span className="text-sm font-medium text-gray-700">Sharpe Ratio</span>
-                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                                         <div className="font-semibold mb-1">Sharpe Ratio</div>
                                         <div>Measures risk-adjusted returns. Higher values indicate better returns per unit of risk. Values above 1 are considered good, above 2 are excellent. Negative values indicate the portfolio underperforms the risk-free rate.</div>
                                       </div>
@@ -4302,7 +4302,7 @@ export const PortfolioOptimization = ({
                         <div className="p-6 rounded-lg bg-muted border border-border">
                           <div className="text-base font-semibold text-gray-700 mb-4 flex items-center gap-1 group relative">
                             Risk Profile Compliance
-                            <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                            <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                               <div className="font-semibold mb-1">Risk Profile Compliance</div>
                               <div>Checks if the portfolio's volatility (risk) stays within the maximum allowed for your selected risk profile. Each profile has a risk limit: Very-Conservative (18%), Conservative (25%), Moderate (32%), Aggressive (35%), Very-Aggressive (47%).</div>
                             </div>
@@ -4509,7 +4509,7 @@ export const PortfolioOptimization = ({
                                     <div className="flex items-center gap-2 group relative">
                                       <Icon className="h-4 w-4 text-gray-500" />
                                       <span className="text-sm font-medium text-gray-700">{factor.name}</span>
-                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                                      <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                                         <div className="font-semibold mb-1">{factor.name}</div>
                                         <div>{factor.tooltip || factor.description}</div>
                                       </div>

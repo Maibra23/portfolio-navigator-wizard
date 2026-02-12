@@ -39,8 +39,6 @@ import {
   Activity,
   AlertCircle,
   Building2,
-  Check,
-  Download,
   Calendar,
   FileText,
   BookOpen,
@@ -250,55 +248,21 @@ export const StressTest: React.FC<StressTestProps> = ({
     }
   };
   
-  const handleExportResults = () => {
-    if (!stressTestResults) return;
-    
-    // Create CSV content
-    const csvRows = [];
-    csvRows.push('Portfolio Stress Test Results');
-    csvRows.push('');
-    csvRows.push('Portfolio Summary');
-    csvRows.push(`Tickers,${stressTestResults.portfolio_summary.tickers.join(';')}`);
-    csvRows.push(`Capital,${stressTestResults.portfolio_summary.capital}`);
-    csvRows.push(`Risk Profile,${stressTestResults.portfolio_summary.risk_profile}`);
-    csvRows.push('');
-    csvRows.push('Resilience Score');
-    csvRows.push(`Score,${stressTestResults.resilience_score}`);
-    csvRows.push(`Assessment,${stressTestResults.overall_assessment}`);
-    csvRows.push('');
-    
-    // Add scenario data
-    Object.entries(stressTestResults.scenarios).forEach(([scenario, data]: [string, any]) => {
-      csvRows.push(`${data.scenario_name || scenario}`);
-      csvRows.push(`Total Return,${(data.metrics.total_return * 100).toFixed(2)}%`);
-      csvRows.push(`Max Drawdown,${(data.metrics.max_drawdown * 100).toFixed(2)}%`);
-      csvRows.push(`Recovery Months,${data.metrics.recovery_months || 'N/A'}`);
-      csvRows.push('');
-    });
-    
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `stress-test-results-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-  };
+  // Export removed - not needed for one-time stress test flow
 
 
   return (
     <div className="max-w-6xl mx-auto p-4">
       <Card>
-        <CardHeader className="text-center pb-2">
-          <CardTitle className="text-xl flex items-center justify-center gap-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
             <Shield className="h-5 w-5 text-blue-600" />
             Portfolio Stress Test
           </CardTitle>
-          <p className="text-muted-foreground text-sm mt-1">
-            Test your portfolio's resilience during historical market crises
+          <p className="text-muted-foreground text-sm">
+            {stressTestResults
+              ? 'Results from your stress test analysis'
+              : 'Select a historical crisis scenario to test your portfolio\'s resilience'}
           </p>
         </CardHeader>
         <CardContent className="p-4 pt-0 space-y-4 w-full min-w-0">
@@ -309,39 +273,6 @@ export const StressTest: React.FC<StressTestProps> = ({
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-
-          {/* Step Indicator - Progressive Disclosure */}
-          <div className="flex items-center justify-center gap-2 mb-4 pb-4 border-b">
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                selectedScenario ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
-              }`}>
-                {selectedScenario ? <Check className="h-4 w-4" /> : '1'}
-              </div>
-              <span className="text-sm font-medium">Select Scenario</span>
-            </div>
-            <ArrowRight className="h-5 w-5 text-gray-400" />
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                isLoading ? 'bg-blue-500 text-white animate-pulse' : 
-                stressTestResults ? 'bg-green-500 text-white' : 
-                'bg-gray-200 text-gray-600'
-              }`}>
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 
-                 stressTestResults ? <Check className="h-4 w-4" /> : '2'}
-              </div>
-              <span className="text-sm font-medium">Run Test</span>
-            </div>
-            <ArrowRight className="h-5 w-5 text-gray-400" />
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                stressTestResults ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
-              }`}>
-                {stressTestResults ? <Check className="h-4 w-4" /> : '3'}
-              </div>
-              <span className="text-sm font-medium">Review Results</span>
-            </div>
-          </div>
 
           {/* Scenario Selection */}
           {!stressTestResults && (
@@ -370,23 +301,6 @@ export const StressTest: React.FC<StressTestProps> = ({
           {/* Results Display */}
           {stressTestResults && (
             <div className="space-y-6">
-              {/* Action Bar */}
-              <div className="flex items-center justify-between pb-4 border-b">
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportResults}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export Results
-                  </Button>
-                </div>
-                <Badge variant="outline" className="text-sm">
-                  Processing Time: {stressTestResults.processing_time_seconds}s
-                </Badge>
-              </div>
-              
               {/* View Tabs */}
               <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)}>
                 <TabsList className="grid w-full grid-cols-4">
@@ -504,7 +418,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-red-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-xs">
                                 Total return over the entire crisis period (from start to end date). Positive values indicate portfolio growth despite the crisis.
                               </TooltipContent>
                             </UITooltip>
@@ -519,13 +433,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-orange-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-sm">
                                 <div className="font-semibold mb-1">Maximum Drawdown</div>
                                 <div className="mb-2">Maximum decline from pre-crisis peak to crisis trough.</div>
                                 <div className="mb-1"><strong>Calculation:</strong> (Trough Value - Peak Value) / Peak Value</div>
                                 <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start (or max before crisis)</div>
                                 <div className="mb-1"><strong>Trough:</strong> Minimum value during crisis period</div>
-                                <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
+                                <div className="text-muted-foreground italic mt-2">Only shown if drawdown exceeds 3% threshold</div>
                               </TooltipContent>
                             </UITooltip>
                             <span className="text-sm font-bold text-orange-800">
@@ -539,13 +453,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-blue-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-sm">
                                 <div className="font-semibold mb-1">Recovery Time to Peak</div>
                                 <div className="mb-2">Time to recover to 100% of pre-crisis peak value (full recovery).</div>
                                 <div className="mb-1"><strong>If Recovered:</strong> Actual months from trough to peak</div>
                                 <div className="mb-1"><strong>If Not Recovered:</strong> Projected months based on current trajectory (realistic scenario)</div>
                                 <div className="mb-1"><strong>Target:</strong> 100% of peak (full recovery)</div>
-                                <div className="text-yellow-300 mt-2">Only calculated if drawdown exceeds 3% threshold</div>
+                                <div className="text-muted-foreground italic mt-2">Only calculated if drawdown exceeds 3% threshold</div>
                               </TooltipContent>
                             </UITooltip>
                             <span className="text-sm font-bold text-blue-800">
@@ -565,7 +479,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-purple-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-xs">
                                 V-shaped: Quick recovery (&lt;6 months). U-shaped: Moderate recovery (6-12 months). L-shaped: Slow or no recovery (&gt;12 months).
                               </TooltipContent>
                             </UITooltip>
@@ -584,13 +498,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-amber-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-sm">
                                   <div className="font-semibold mb-1">Recovery Needed</div>
                                   <div className="mb-2">Percentage increase needed to restore portfolio to pre-crisis peak value.</div>
                                   <div className="mb-1"><strong>Calculation:</strong> ((Peak Value - Current Value) / Peak Value) × 100</div>
                                   <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start</div>
                                   <div className="mb-1"><strong>Current:</strong> Latest portfolio value</div>
-                                  <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
+                                  <div className="text-muted-foreground italic mt-2">Only shown if drawdown exceeds 3% threshold</div>
                                 </TooltipContent>
                               </UITooltip>
                               <span className="text-sm font-bold text-amber-800">
@@ -609,21 +523,21 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-80 p-4 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-sm">
                                   <div className="font-semibold mb-2">Trajectory Projections</div>
                                   <div className="mb-3">Forward-looking scenarios showing potential portfolio recovery paths based on current trends.</div>
 
                                   <div className="mb-2"><strong>📈 Projection Types:</strong></div>
-                                  <div className="mb-1 text-green-400"><strong>Positive Values:</strong> Portfolio trending upward - expected growth</div>
+                                  <div className="mb-1 text-green-600"><strong>Positive Values:</strong> Portfolio trending upward - expected growth</div>
                                   <div className="mb-1 text-red-400"><strong>Negative Values:</strong> Portfolio trending downward - potential continued decline</div>
-                                  <div className="mb-3 text-gray-300">⚠️ Negative projections indicate the portfolio may lose value at this annualized rate if current trends continue</div>
+                                  <div className="mb-3 text-muted-foreground">⚠️ Negative projections indicate the portfolio may lose value at this annualized rate if current trends continue</div>
 
                                   <div className="mb-2"><strong>🎯 Scenarios:</strong></div>
-                                  <div className="mb-1"><strong className="text-green-400">Aggressive (A):</strong> Best-case recovery (fastest)</div>
-                                  <div className="mb-1"><strong className="text-blue-400">Moderate (M):</strong> Realistic scenario (typical)</div>
-                                  <div className="mb-1"><strong className="text-orange-400">Conservative (C):</strong> Worst-case recovery (slowest)</div>
+                                  <div className="mb-1"><strong className="text-green-600">Aggressive (A):</strong> Best-case recovery (fastest)</div>
+                                  <div className="mb-1"><strong className="text-blue-600">Moderate (M):</strong> Realistic scenario (typical)</div>
+                                  <div className="mb-1"><strong className="text-orange-600">Conservative (C):</strong> Worst-case recovery (slowest)</div>
 
-                                  <div className="text-yellow-300 mt-3 border-t border-gray-600 pt-2">
+                                  <div className="text-muted-foreground italic mt-3 border-t border-border pt-2">
                                     <strong>💡 Insight:</strong> Use these projections to understand risk and plan rebalancing. Negative trends may signal need for portfolio adjustments.
                                   </div>
                                 </TooltipContent>
@@ -1073,10 +987,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <span className="font-medium">Peak ({stressTestResults.scenarios.covid19.peaks_troughs.peak.date?.substring(0, 7) || 'N/A'})</span>
                                         </div>
                                       </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                      <TooltipContent className="max-w-sm">
                                         <div className="font-semibold mb-1">Pre-Crisis Peak</div>
                                         <div className="mb-2">The highest portfolio value before the crisis started. This represents your portfolio's value at its best point before market conditions deteriorated.</div>
-                                        <div className="text-yellow-300 mt-2">Used as baseline for calculating drawdown and recovery metrics.</div>
+                                        <div className="text-muted-foreground italic mt-2">Used as baseline for calculating drawdown and recovery metrics.</div>
                                       </TooltipContent>
                                     </UITooltip>
                                   )}
@@ -1088,10 +1002,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <span className="font-medium">Trough ({stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(0, 7) || 'N/A'})</span>
                                         </div>
                                       </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                      <TooltipContent className="max-w-sm">
                                         <div className="font-semibold mb-1">Crisis Trough</div>
                                         <div className="mb-2">The lowest portfolio value during the crisis period. This is the worst point your portfolio reached when market conditions were at their most adverse.</div>
-                                        <div className="text-yellow-300 mt-2">The difference between Peak and Trough determines your Maximum Drawdown.</div>
+                                        <div className="text-muted-foreground italic mt-2">The difference between Peak and Trough determines your Maximum Drawdown.</div>
                                       </TooltipContent>
                                     </UITooltip>
                                   )}
@@ -1103,10 +1017,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <span className="font-medium">Recovery Peak ({stressTestResults.scenarios.covid19.peaks_troughs.recovery_peak.date?.substring(0, 7) || 'N/A'})</span>
                                         </div>
                                       </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                      <TooltipContent className="max-w-sm">
                                         <div className="font-semibold mb-1">Recovery Peak</div>
                                         <div className="mb-2">The highest portfolio value after the crisis trough, indicating full recovery. This shows when your portfolio returned to or exceeded its pre-crisis peak value.</div>
-                                        <div className="text-yellow-300 mt-2">Recovery Time is measured from Trough to Recovery Peak.</div>
+                                        <div className="text-muted-foreground italic mt-2">Recovery Time is measured from Trough to Recovery Peak.</div>
                                       </TooltipContent>
                                     </UITooltip>
                                   )}
@@ -1180,7 +1094,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-red-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-xs">
                                 Total return over the entire crisis period (from start to end date). Positive values indicate portfolio growth despite the crisis.
                               </TooltipContent>
                             </UITooltip>
@@ -1195,13 +1109,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-orange-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-sm">
                                 <div className="font-semibold mb-1">Maximum Drawdown</div>
                                 <div className="mb-2">Maximum decline from pre-crisis peak to crisis trough.</div>
                                 <div className="mb-1"><strong>Calculation:</strong> (Trough Value - Peak Value) / Peak Value</div>
                                 <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start (or max before crisis)</div>
                                 <div className="mb-1"><strong>Trough:</strong> Minimum value during crisis period</div>
-                                <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
+                                <div className="text-muted-foreground italic mt-2">Only shown if drawdown exceeds 3% threshold</div>
                               </TooltipContent>
                             </UITooltip>
                             <span className="text-sm font-bold text-orange-800">
@@ -1215,13 +1129,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-blue-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-sm">
                                 <div className="font-semibold mb-1">Recovery Time to Peak</div>
                                 <div className="mb-2">Time to recover to 100% of pre-crisis peak value (full recovery).</div>
                                 <div className="mb-1"><strong>If Recovered:</strong> Actual months from trough to peak</div>
                                 <div className="mb-1"><strong>If Not Recovered:</strong> Projected months based on current trajectory (realistic scenario)</div>
                                 <div className="mb-1"><strong>Target:</strong> 100% of peak (full recovery)</div>
-                                <div className="text-yellow-300 mt-2">Only calculated if drawdown exceeds 3% threshold</div>
+                                <div className="text-muted-foreground italic mt-2">Only calculated if drawdown exceeds 3% threshold</div>
                               </TooltipContent>
                             </UITooltip>
                             <span className="text-sm font-bold text-blue-800">
@@ -1241,7 +1155,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <TooltipTrigger asChild>
                                 <Info className="h-3 w-3 text-purple-500 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent className="w-48 p-2 bg-gray-900 text-white text-xs border-0">
+                              <TooltipContent className="max-w-xs">
                                 V-shaped: Quick recovery (&lt;6 months). U-shaped: Moderate recovery (6-12 months). L-shaped: Slow or no recovery (&gt;12 months).
                               </TooltipContent>
                             </UITooltip>
@@ -1260,13 +1174,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-amber-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-sm">
                                   <div className="font-semibold mb-1">Recovery Needed</div>
                                   <div className="mb-2">Percentage increase needed to restore portfolio to pre-crisis peak value.</div>
                                   <div className="mb-1"><strong>Calculation:</strong> ((Peak Value - Current Value) / Peak Value) × 100</div>
                                   <div className="mb-1"><strong>Peak:</strong> Portfolio value at crisis start</div>
                                   <div className="mb-1"><strong>Current:</strong> Latest portfolio value</div>
-                                  <div className="text-yellow-300 mt-2">Only shown if drawdown exceeds 3% threshold</div>
+                                  <div className="text-muted-foreground italic mt-2">Only shown if drawdown exceeds 3% threshold</div>
                                 </TooltipContent>
                               </UITooltip>
                               <span className="text-sm font-bold text-amber-800">
@@ -1285,21 +1199,21 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-80 p-4 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-sm">
                                   <div className="font-semibold mb-2">Trajectory Projections</div>
                                   <div className="mb-3">Forward-looking scenarios showing potential portfolio recovery paths based on current trends.</div>
 
                                   <div className="mb-2"><strong>📈 Projection Types:</strong></div>
-                                  <div className="mb-1 text-green-400"><strong>Positive Values:</strong> Portfolio trending upward - expected growth</div>
+                                  <div className="mb-1 text-green-600"><strong>Positive Values:</strong> Portfolio trending upward - expected growth</div>
                                   <div className="mb-1 text-red-400"><strong>Negative Values:</strong> Portfolio trending downward - potential continued decline</div>
-                                  <div className="mb-3 text-gray-300">⚠️ Negative projections indicate the portfolio may lose value at this annualized rate if current trends continue</div>
+                                  <div className="mb-3 text-muted-foreground">⚠️ Negative projections indicate the portfolio may lose value at this annualized rate if current trends continue</div>
 
                                   <div className="mb-2"><strong>🎯 Scenarios:</strong></div>
-                                  <div className="mb-1"><strong className="text-green-400">Aggressive (A):</strong> Best-case recovery (fastest)</div>
-                                  <div className="mb-1"><strong className="text-blue-400">Moderate (M):</strong> Realistic scenario (typical)</div>
-                                  <div className="mb-1"><strong className="text-orange-400">Conservative (C):</strong> Worst-case recovery (slowest)</div>
+                                  <div className="mb-1"><strong className="text-green-600">Aggressive (A):</strong> Best-case recovery (fastest)</div>
+                                  <div className="mb-1"><strong className="text-blue-600">Moderate (M):</strong> Realistic scenario (typical)</div>
+                                  <div className="mb-1"><strong className="text-orange-600">Conservative (C):</strong> Worst-case recovery (slowest)</div>
 
-                                  <div className="text-yellow-300 mt-3 border-t border-gray-600 pt-2">
+                                  <div className="text-muted-foreground italic mt-3 border-t border-border pt-2">
                                     <strong>💡 Insight:</strong> Use these projections to understand risk and plan rebalancing. Negative trends may signal need for portfolio adjustments.
                                   </div>
                                 </TooltipContent>
@@ -1758,10 +1672,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <span className="font-medium">Peak ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.peak.date?.substring(0, 7) || 'N/A'})</span>
                                         </div>
                                       </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                      <TooltipContent className="max-w-sm">
                                         <div className="font-semibold mb-1">Pre-Crisis Peak</div>
                                         <div className="mb-2">The highest portfolio value before the crisis started. This represents your portfolio's value at its best point before market conditions deteriorated.</div>
-                                        <div className="text-yellow-300 mt-2">Used as baseline for calculating drawdown and recovery metrics.</div>
+                                        <div className="text-muted-foreground italic mt-2">Used as baseline for calculating drawdown and recovery metrics.</div>
                                       </TooltipContent>
                                     </UITooltip>
                                   )}
@@ -1773,10 +1687,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <span className="font-medium">Trough ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.trough.date?.substring(0, 7) || 'N/A'})</span>
                                         </div>
                                       </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                      <TooltipContent className="max-w-sm">
                                         <div className="font-semibold mb-1">Crisis Trough</div>
                                         <div className="mb-2">The lowest portfolio value during the crisis period. This is the worst point your portfolio reached when market conditions were at their most adverse.</div>
-                                        <div className="text-yellow-300 mt-2">The difference between Peak and Trough determines your Maximum Drawdown.</div>
+                                        <div className="text-muted-foreground italic mt-2">The difference between Peak and Trough determines your Maximum Drawdown.</div>
                                       </TooltipContent>
                                     </UITooltip>
                                   )}
@@ -1788,10 +1702,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <span className="font-medium">Recovery Peak ({stressTestResults.scenarios['2008_crisis'].peaks_troughs.recovery_peak.date?.substring(0, 7) || 'N/A'})</span>
                                         </div>
                                       </TooltipTrigger>
-                                      <TooltipContent className="w-64 p-3 bg-gray-900 text-white text-xs border-0">
+                                      <TooltipContent className="max-w-sm">
                                         <div className="font-semibold mb-1">Recovery Peak</div>
                                         <div className="mb-2">The highest portfolio value after the crisis trough, indicating full recovery. This shows when your portfolio returned to or exceeded its pre-crisis peak value.</div>
-                                        <div className="text-yellow-300 mt-2">Recovery Time is measured from Trough to Recovery Peak.</div>
+                                        <div className="text-muted-foreground italic mt-2">Recovery Time is measured from Trough to Recovery Peak.</div>
                                       </TooltipContent>
                                     </UITooltip>
                                   )}
@@ -1903,7 +1817,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-red-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-56 p-2 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-xs">
                                   Value at Risk: The maximum expected loss at 95% confidence level. Represents the 5% worst-case scenario return.
                                 </TooltipContent>
                               </UITooltip>
@@ -1920,7 +1834,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-orange-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-56 p-2 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-xs">
                                   Conditional Value at Risk: Expected loss beyond VaR threshold. Average of losses in the worst 5% of scenarios.
                                 </TooltipContent>
                               </UITooltip>
@@ -1937,7 +1851,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-blue-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-56 p-2 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-xs">
                                   Beta measures portfolio sensitivity to market movements. 1.0 = moves with market, &gt;1.0 = more volatile, &lt;1.0 = less volatile.
                                 </TooltipContent>
                               </UITooltip>
@@ -1954,7 +1868,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-purple-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-56 p-2 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-xs">
                                   Probability of extreme losses beyond 2 standard deviations. Higher percentage indicates greater risk of severe losses.
                                 </TooltipContent>
                               </UITooltip>
@@ -1971,7 +1885,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="w-56 p-2 bg-gray-900 text-white text-xs border-0">
+                                <TooltipContent className="max-w-xs">
                                   Downside Deviation: Standard deviation of negative returns only. Measures volatility of losses, ignoring gains.
                                 </TooltipContent>
                               </UITooltip>
@@ -2108,14 +2022,28 @@ export const StressTest: React.FC<StressTestProps> = ({
                           const capital = stressTestResults.portfolio_summary?.capital ?? 500000;
                           const p5 = mc.percentiles?.p5 ?? -0.15;
                           const exampleLoss = Math.round(capital * Math.abs(Math.min(0, p5)));
+                          const statements = mc.probability_statements || [];
                           return (
                             <Collapsible className="group mt-2 rounded-md border border-border">
                               <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium hover:bg-muted/50">
-                                <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> How to read this</span>
+                                <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> Results Interpretation</span>
                                 <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                               </CollapsibleTrigger>
                               <CollapsibleContent>
-                                <div className="border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
+                                <div className="border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-3">
+                                  {statements.length > 0 && (
+                                    <div>
+                                      <p className="font-medium text-foreground mb-1">Key Insights</p>
+                                      <ul className="space-y-1">
+                                        {statements.map((stmt: string, idx: number) => (
+                                          <li key={idx} className="flex items-start gap-2">
+                                            <CheckCircle className="h-3.5 w-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                            <span>{stmt}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
                                   <p><strong className="text-foreground">What this simulation shows:</strong> The chart shows a range of possible {horizon} returns based on {n.toLocaleString()} simulations, using the assumed expected return and volatility. Outcomes are hypothetical, not forecasts.</p>
                                   <p><strong className="text-foreground">How to interpret:</strong> Each area is the share of simulations in that return range. The 5th percentile is worse than 5% of outcomes; the 95th is better than 95%. These illustrate uncertainty under the model.</p>
                                   <p><strong className="text-foreground">Example:</strong> If your portfolio is {capital.toLocaleString('sv-SE')} SEK and the 5th percentile is {(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of {exampleLoss.toLocaleString('sv-SE')} SEK or more over the period.</p>
@@ -2124,21 +2052,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                             </Collapsible>
                           );
                         })()}
-                        
-                        {/* Probability Statements */}
-                        {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.probability_statements && (
-                          <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-                            <div className="text-sm font-semibold mb-2">Key Insights</div>
-                            <ul className="space-y-1 text-sm">
-                              {stressTestResults.scenarios[selectedScenario || 'covid19'].monte_carlo.probability_statements.map((stmt: string, idx: number) => (
-                                <li key={idx} className="flex items-start gap-2">
-                                  <CheckCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                                  <span>{stmt}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
                       </CardContent>
                     </Card>
                   ) : (
@@ -2209,15 +2122,15 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                         nearbyEvent.type === 'policy' ? '#3b82f6' : 
                                                         nearbyEvent.type === 'recovery' ? '#22c55e' : '#f59e0b';
                                       return (
-                                        <div className="bg-gray-900 text-white p-3 rounded-lg shadow-lg border border-gray-700 text-xs">
+                                        <div className="bg-popover text-popover-foreground p-3 rounded-md shadow-md border text-xs">
                                           <div className="font-semibold mb-1" style={{ color: eventColor }}>
                                             {nearbyEvent.event}
                                           </div>
-                                          <div className="text-gray-300">
+                                          <div className="text-muted-foreground">
                                             Date: {nearbyEvent.date}
                                           </div>
-                                          <div className="mt-2 pt-2 border-t border-gray-700">
-                                            <div className="text-gray-300">
+                                          <div className="mt-2 pt-2 border-t border-border">
+                                            <div className="text-muted-foreground">
                                               Portfolio Value: {payload[0]?.value ? `${Number(payload[0].value).toFixed(1)}%` : 'N/A'}
                                             </div>
                                           </div>
@@ -2227,9 +2140,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     
                                     // Default tooltip for portfolio value
                                     return (
-                                      <div className="bg-gray-900 text-white p-2 rounded-lg shadow-lg text-xs">
+                                      <div className="bg-popover text-popover-foreground p-2 rounded-md shadow-md border text-xs">
                                         <div className="font-semibold mb-1">Month: {label}</div>
-                                        <div className="text-gray-300">
+                                        <div className="text-muted-foreground">
                                           Portfolio Value: {payload[0]?.value ? `${Number(payload[0].value).toFixed(1)}%` : 'N/A'}
                                         </div>
                                       </div>
@@ -2694,7 +2607,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <p className="text-xs text-muted-foreground">Based on a simplified normal-distribution model; real returns can have fatter tails.</p>
                               <Collapsible className="group mt-2 rounded-md border border-border">
                                 <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium hover:bg-muted/50">
-                                  <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> How to read this</span>
+                                  <span className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> Results Interpretation</span>
                                   <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                                 </CollapsibleTrigger>
                                 <CollapsibleContent>
@@ -2741,24 +2654,13 @@ export const StressTest: React.FC<StressTestProps> = ({
               <ArrowLeft className="mr-2 h-4 w-4" />
               Previous
             </Button>
-            <div className="flex gap-2">
-              {stressTestResults && (
-                <Button variant="outline" onClick={() => {
-                  setStressTestResults(null);
-                  setSelectedScenario('covid19');
-                  setError(null);
-                }}>
-                  Run Again
-                </Button>
-              )}
-              <Button 
-                onClick={onNext}
-                className="bg-primary hover:bg-primary/90"
-              >
-                {stressTestResults ? 'Complete & Proceed' : 'Skip Stress Test'}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
+            <Button 
+              onClick={onNext}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {stressTestResults ? 'Complete & Proceed' : 'Skip Stress Test'}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
           </div>
         </CardContent>
       </Card>

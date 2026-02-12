@@ -125,8 +125,8 @@ export const PortfolioComparisonTable: React.FC<PortfolioComparisonTableProps> =
                         <TooltipTrigger asChild>
                           <span className="font-medium text-sm cursor-help" style={{ color: chartTheme.text.primary }}>Market-Opt</span>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
+                        <TooltipContent className="max-w-xs">
+                          <p>Explores the entire market to find the best stocks and allocations, potentially replacing some of your current holdings for better risk-adjusted returns.</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

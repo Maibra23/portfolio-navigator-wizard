@@ -93,7 +93,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
             )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="font-medium">
+        <TooltipContent side="bottom" className="max-w-xs font-medium">
           <div className="flex items-center gap-2">
             <Palette className="h-4 w-4" />
             <span>{tooltipText}</span>

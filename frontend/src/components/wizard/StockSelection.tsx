@@ -1823,32 +1823,32 @@ export const StockSelection = ({
                               </div>
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent className="max-w-sm p-4 bg-slate-900 text-white border-0 shadow-xl rounded-lg">
+                          <TooltipContent className="max-w-sm">
                             <div className="space-y-3">
-                              <div className="font-semibold text-base border-b border-slate-700 pb-2 text-center">
+                              <div className="font-semibold text-base border-b border-border pb-2 text-center">
                                 Asset Pair Analysis
                               </div>
                               
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-blue-300">{pair.ticker1}</span>
-                                  <span className="text-xs opacity-75">vs</span>
-                                  <span className="text-sm font-medium text-amber-300">{pair.ticker2}</span>
+                                  <span className="text-sm font-medium text-blue-600">{pair.ticker1}</span>
+                                  <span className="text-xs text-muted-foreground">vs</span>
+                                  <span className="text-sm font-medium text-amber-600">{pair.ticker2}</span>
                                 </div>
                                 
-                                <div className="text-xs opacity-90 text-center">
+                                <div className="text-xs text-muted-foreground text-center">
                                   {pair.description}
                                 </div>
                               </div>
                               
-                              <div className="bg-slate-800 rounded p-2">
-                                <div className="text-xs font-medium text-slate-300 mb-1">Educational Focus:</div>
-                                <div className="text-sm opacity-90">
+                              <div className="bg-muted rounded p-2">
+                                <div className="text-xs font-medium text-muted-foreground mb-1">Educational Focus:</div>
+                                <div className="text-sm">
                                   {pair.educational_focus}
                                 </div>
                               </div>
                               
-                              <div className="text-xs opacity-75 pt-2 border-t border-slate-700 space-y-1">
+                              <div className="text-xs text-muted-foreground pt-2 border-t border-border space-y-1">
                                 <div className="flex justify-between">
                                   <span className="font-medium">{pair.ticker1}:</span>
                                   <span className="text-right max-w-[120px] truncate">{pair.name1}</span>

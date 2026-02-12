@@ -217,9 +217,9 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                 <Info className="h-4 w-4" />
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-md p-4">
+            <TooltipContent side="top" className="max-w-sm">
               <p className="font-semibold mb-2">How This Projection Works</p>
-              <div className="space-y-2 text-xs">
+              <div className="space-y-2">
                 <p><strong>Three Scenarios:</strong></p>
                 <ul className="list-disc ml-4 space-y-1">
                   <li><span className="text-green-600 font-semibold">Optimistic:</span> Expected return + 50% of risk (upside scenario)</li>

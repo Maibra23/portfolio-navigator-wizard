@@ -39,7 +39,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
             <TooltipTrigger asChild>
               <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Tax summary info"><Info className="h-3.5 w-3.5" /></span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-sm p-3">
+            <TooltipContent side="top" className="max-w-sm">
               <p className="text-xs">This summary shows how your chosen account type and tax year determine your estimated annual tax. The same tax logic is applied each year in the 5-year projection, so lower tax here means higher projected growth.</p>
             </TooltipContent>
           </Tooltip>
@@ -61,7 +61,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                     <TooltipTrigger asChild>
                       <span className="inline-flex cursor-help" aria-label="Account type info"><Info className="h-3 w-3" /></span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                    <TooltipContent side="top" className="max-w-xs">
                       ISK/KF: tax on imputed income. AF: tax on gains, dividends, and fund holdings. This choice drives the 5-year projection.
                     </TooltipContent>
                   </Tooltip>
@@ -75,7 +75,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                     <TooltipTrigger asChild>
                       <span className="inline-flex cursor-help" aria-label="Tax year info"><Info className="h-3 w-3" /></span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                    <TooltipContent side="top" className="max-w-xs">
                       Different tax-free levels and schablonränta per year; affects annual tax and projection.
                     </TooltipContent>
                   </Tooltip>
@@ -90,7 +90,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                       <TooltipTrigger asChild>
                         <span className="inline-flex cursor-help" aria-label="Capital underlag info"><Info className="h-3 w-3" /></span>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                      <TooltipContent side="top" className="max-w-xs">
                         Average capital used as tax base (ISK/KF). Tax-free amount is deducted first; remainder × schablonränta × 30% = annual tax. Used each year in the 5-year projection.
                       </TooltipContent>
                     </Tooltip>
@@ -106,7 +106,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                       <TooltipTrigger asChild>
                         <span className="inline-flex cursor-help" aria-label="Tax-free level info"><Info className="h-3 w-3" /></span>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                      <TooltipContent side="top" className="max-w-xs">
                         Amount of capital not subject to tax (ISK/KF). 2025: 150,000 SEK; 2026: 300,000 SEK. Only the part above this is taxed.
                       </TooltipContent>
                     </Tooltip>
@@ -121,7 +121,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                     <TooltipTrigger asChild>
                       <span className="inline-flex cursor-help" aria-label="Annual tax info"><Info className="h-3 w-3" /></span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                    <TooltipContent side="top" className="max-w-xs">
                       Estimated tax for this year. This amount is subtracted from portfolio growth each year in the 5-year projection.
                     </TooltipContent>
                   </Tooltip>
@@ -135,7 +135,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                     <TooltipTrigger asChild>
                       <span className="inline-flex cursor-help" aria-label="Effective tax rate info"><Info className="h-3 w-3" /></span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs p-2 text-xs">
+                    <TooltipContent side="top" className="max-w-xs">
                       Annual tax as a percentage of your capital. Shows how much of your portfolio is effectively taxed each year (ISK/KF).
                     </TooltipContent>
                   </Tooltip>

@@ -789,7 +789,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                     </Button>
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-sm p-2">
+                <TooltipContent side="top" className="max-w-sm">
                   {!builderDone ? 'Press the Done button above to confirm your portfolio, then you can continue to Optimize.' : 'Continue to the Optimize tab.'}
                 </TooltipContent>
               </Tooltip>
@@ -1244,7 +1244,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       <TooltipTrigger asChild>
                         <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Tax year info"><Info className="h-3.5 w-3.5" /></span>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-sm p-3">
+                      <TooltipContent side="top" className="max-w-sm">
                         <p className="font-medium mb-1">Tax rates by year (ISK/KF)</p>
                         <p className="text-xs mb-1"><strong>2025:</strong> Tax-free level 150,000 SEK; schablonränta 2.96%; effective rate about 0.89% on capital above the free amount.</p>
                         <p className="text-xs"> <strong>2026:</strong> Tax-free level 300,000 SEK; schablonränta 3.55%; effective rate about 1.07%. Choosing 2026 lowers tax if your capital is under 300k and changes the 5-year projection.</p>
@@ -1267,7 +1267,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       <TooltipTrigger asChild>
                         <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Courtage class info"><Info className="h-3.5 w-3.5" /></span>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-sm p-3">
+                      <TooltipContent side="top" className="max-w-sm">
                         <p className="font-medium mb-1">Avanza courtage (transaction fees) – how it is calculated</p>
                         <p className="text-xs mb-1"><strong>Start:</strong> Up to 50,000 SEK or 500 free trades; after that 0 SEK per trade.</p>
                         <p className="text-xs mb-1"><strong>Mini:</strong> 1 SEK or 0.25% per order (whichever is higher; orders up to 400 SEK = 1 SEK).</p>

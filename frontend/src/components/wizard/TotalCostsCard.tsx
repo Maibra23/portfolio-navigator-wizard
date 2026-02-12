@@ -21,7 +21,7 @@ export const TotalCostsCard: React.FC<TotalCostsCardProps> = ({
             <TooltipTrigger asChild>
               <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground" aria-label="Costs info"><Info className="h-3.5 w-3.5" /></span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-sm p-3">
+            <TooltipContent side="top" className="max-w-sm">
               <p className="text-xs">Setup cost = courtage for initial purchases. Annual rebalancing = courtage for 4 rebalances per year. These costs are included in the 5-year projection and reduce net growth.</p>
             </TooltipContent>
           </Tooltip>
@@ -43,7 +43,7 @@ export const TotalCostsCard: React.FC<TotalCostsCardProps> = ({
                     <TooltipTrigger asChild>
                       <span className="inline-flex cursor-help" aria-label="Courtage class info"><Info className="h-3 w-3" /></span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-sm p-2 text-xs">
+                    <TooltipContent side="top" className="max-w-sm">
                       Start: 50k SEK or 500 trades free. Mini: 1 SEK or 0.25%. Small: 39 SEK or 0.15%. Medium: 69 SEK or 0.069%. Fast Pris: 99 SEK fixed. Per-order fees × number of orders = setup and rebalancing costs used in the 5-year projection.
                     </TooltipContent>
                   </Tooltip>

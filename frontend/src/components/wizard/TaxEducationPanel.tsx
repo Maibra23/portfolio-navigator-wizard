@@ -447,7 +447,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
                                   {row.savings === 0 ? '0 SEK' : `+ ${row.savings.toLocaleString('sv-SE')} SEK`}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-xs text-xs p-2">
+                              <TooltipContent side="top" className="max-w-xs">
                                 {tooltipText}
                               </TooltipContent>
                             </Tooltip>

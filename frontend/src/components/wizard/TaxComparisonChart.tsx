@@ -161,13 +161,13 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
                 <Info className="h-4 w-4" />
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-md p-3">
-              <p className="text-xs mb-2">
+            <TooltipContent side="top" className="max-w-sm">
+              <p className="mb-2">
                 This chart compares the estimated annual tax you would pay under each account type,
                 based on your capital of {capital.toLocaleString('sv-SE')} SEK and tax year {taxYear}.
               </p>
-              <p className="text-xs font-semibold mb-1">Calculation Methods:</p>
-              <ul className="text-xs space-y-1 list-disc ml-4">
+              <p className="font-semibold mb-1">Calculation Methods:</p>
+              <ul className="space-y-1 list-disc ml-4">
                 <li><strong>ISK/KF:</strong> Schablonbeskattning on capital above tax-free level</li>
                 <li><strong>AF:</strong> 30% tax on estimated realized gains (based on {(expectedReturn * 100).toFixed(1)}% expected return)</li>
               </ul>
