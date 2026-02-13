@@ -9249,6 +9249,15 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
                         'returnValue': 0.08,  # Default return
                         'sector': sector
                     })
+                else:
+                    # No price and no sector: still show ticker so frontend does not report "insufficient data"
+                    ticker_points.append({
+                        'label': 'Selected Portfolio',
+                        'symbol': ticker,
+                        'risk': 0.15,
+                        'returnValue': 0.08,
+                        'sector': 'Unknown'
+                    })
 
             # Add tickers from benchmark portfolios
             benchmark_index = 0
@@ -9368,6 +9377,15 @@ async def build_scatter_data(request: ScatterDataRequest) -> ScatterDataResponse
                             'risk': 0.15,  # Default risk
                             'returnValue': 0.08,  # Default return
                             'sector': sector
+                        })
+                    else:
+                        # No price and no sector: still show ticker for consistency
+                        ticker_points.append({
+                            'label': benchmark_label,
+                            'symbol': ticker,
+                            'risk': 0.15,
+                            'returnValue': 0.08,
+                            'sector': 'Unknown'
                         })
 
             logger.info(f"Built {len(ticker_points)} ticker points for visualization")

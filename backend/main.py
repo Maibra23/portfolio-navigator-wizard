@@ -881,7 +881,7 @@ async def lifespan(app: FastAPI):
                                 max_volatility=5.0,
                                 min_return=None,
                                 max_return=10.0,
-                                sectors=None
+                                sectors_list=None
                             )
                             # Store full result (same key, 7d TTL)
                             result_to_cache = {
@@ -1105,12 +1105,11 @@ if enable_https_redirect:
     app.add_middleware(HTTPSRedirectMiddleware)
     logger.info("🔒 HTTPS redirect middleware enabled")
 
-# Security headers middleware (always enabled)
+# Security headers middleware (always enabled; X-Frame-Options is always set in the middleware)
 app.add_middleware(
     SecurityHeadersMiddleware,
     enable_hsts=enable_https_redirect,  # Only enable HSTS if HTTPS is enforced
     enable_csp=True,
-    enable_frame_options=True
 )
 logger.info("🔒 Security headers middleware enabled")
 
