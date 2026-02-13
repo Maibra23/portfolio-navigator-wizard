@@ -24,6 +24,11 @@ from shared.errors import error_response, is_production
 from shared.structured_logging import set_request_id, configure_structured_logging
 from shared.metrics import REQUEST_COUNT, REQUEST_LATENCY
 
+# Import security middleware
+from middleware.rate_limiting import limiter as rate_limiter, rate_limit_exceeded_handler
+from middleware.security import SecurityHeadersMiddleware, HTTPSRedirectMiddleware
+from middleware.validation import ValidationError
+
 # Import existing routers
 from routers import portfolio, strategy_buckets
 
@@ -51,14 +56,78 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Portfolio Navigator Wizard Backend...")
     
     try:
+        # Centralized Slack notifier (single destination via webhook)
+        from utils.slack_notifier import SlackMessage, send_slack
+
+        def send_slack_notification(title: str, message: str, severity: str = "INFO", fields: dict | None = None,
+                                    throttle_key: str | None = None, min_interval_seconds: int = 0):
+            send_slack(
+                SlackMessage(title=title, message=message, severity=severity, fields=fields),
+                throttle_key=throttle_key,
+                min_interval_seconds=min_interval_seconds,
+            )
+
         # Initialize Redis-first data service (fast, no external API calls)
         global redis_first_data_service
         from utils.redis_first_data_service import RedisFirstDataService
         redis_first_data_service = RedisFirstDataService()
-        
+
         # No waiting needed - Redis-first service is instant
         logger.info("✅ Redis-first data service initialized")
-        
+
+        # Initialize Redis metrics collector for Prometheus
+        if redis_first_data_service.redis_client:
+            from utils.redis_metrics import init_redis_metrics_collector
+            redis_metrics = init_redis_metrics_collector(redis_first_data_service.redis_client)
+            logger.info("✅ Redis metrics collector initialized")
+
+        # Initialize backend metrics (Prometheus)
+        from utils.anonymous_analytics import init_backend_metrics
+        backend_metrics = init_backend_metrics(redis_client=redis_first_data_service.redis_client)
+        app.state.backend_metrics = backend_metrics
+        logger.info("✅ Backend metrics initialized (Prometheus)")
+
+        # -----------------------------------------------------------------
+        # Cold-start detection: container restart with empty Redis
+        # -----------------------------------------------------------------
+        is_cold_start = False
+        if redis_first_data_service.redis_client:
+            try:
+                db_size = redis_first_data_service.redis_client.dbsize()
+                price_key_count = len(redis_first_data_service.redis_client.keys("ticker_data:prices:*"))
+                portfolio_key_count = len(redis_first_data_service.redis_client.keys("portfolio_bucket:*"))
+
+                if db_size == 0 or (price_key_count == 0 and portfolio_key_count == 0):
+                    is_cold_start = True
+                    logger.warning("=" * 80)
+                    logger.warning("🧊 COLD START DETECTED - Redis is empty")
+                    logger.warning(f"   db_size={db_size}, price_keys={price_key_count}, portfolio_keys={portfolio_key_count}")
+                    logger.warning("   This typically happens after a container restart without Redis persistence.")
+                    logger.warning("   All caches will be regenerated automatically in the background.")
+                    logger.warning("=" * 80)
+
+                    send_slack_notification(
+                        title="Cold start detected - Redis empty",
+                        severity="CRITICAL",
+                        message=(
+                            "Container restarted and Redis has no data. "
+                            "Full cache warm-up is starting automatically. "
+                            "Users may experience slower responses for the next 5-15 minutes "
+                            "while portfolios and ticker data are regenerated."
+                        ),
+                        fields={
+                            "db_size": str(db_size),
+                            "price_keys": str(price_key_count),
+                            "portfolio_keys": str(portfolio_key_count),
+                        },
+                        throttle_key="cold_start",
+                        min_interval_seconds=60,
+                    )
+                else:
+                    logger.info(f"✅ Warm start - Redis has {db_size} keys ({price_key_count} prices, {portfolio_key_count} portfolios)")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not check Redis state for cold-start detection: {e}")
+
         # Check ticker status and show warnings (NO automatic fetching)
         logger.info("🔍 Checking ticker data status in Redis...")
         try:
@@ -189,7 +258,7 @@ async def lifespan(app: FastAPI):
                     cache_exists = True
                     logger.info("✅ Eligible tickers cache already exists")
             
-            if not cache_exists:
+            if not cache_exists or is_cold_start:
                 # Schedule background pre-computation
                 logger.warning("⚠️  No eligible tickers cache - scheduling background pre-computation")
                 logger.info("⏱️  Background pre-computation will take ~3-4 minutes; API stays responsive")
@@ -261,7 +330,7 @@ async def lifespan(app: FastAPI):
                         if _rds.redis_client:
                             _rds.redis_client.setex(
                                 cache_key,
-                                604800,  # 1 week TTL (604800 seconds)
+                                604800,  # 7 days TTL - background regeneration handles refresh before expiry
                                 json.dumps(result_to_cache)
                             )
                         
@@ -275,7 +344,23 @@ async def lifespan(app: FastAPI):
                         logger.info(f"   ⚡ Performance: {len(all_tickers)/elapsed:.2f} tickers/sec")
                         logger.info("="*80)
                         logger.info("✅ Eligible tickers endpoint is now ready for instant responses!")
-                        
+
+                        send_slack_notification(
+                            title="Eligible tickers cache ready",
+                            severity="SUCCESS",
+                            message=(
+                                f"Pre-computation finished in {elapsed:.1f}s. "
+                                f"{total_eligible} eligible tickers cached (7-day TTL)."
+                            ),
+                            fields={
+                                "total_eligible": str(total_eligible),
+                                "full_overlap": str(overlap_groups['full']),
+                                "partial_overlap": str(overlap_groups['partial']),
+                            },
+                            throttle_key="eligible_tickers:ready",
+                            min_interval_seconds=120,
+                        )
+
                     except Exception as e:
                         logger.error(f"❌ Background eligible tickers pre-computation failed: {e}")
                         import traceback
@@ -309,6 +394,11 @@ async def lifespan(app: FastAPI):
             
             logger.info(f"📊 Total portfolios in Redis: {total_portfolios}/60")
         
+            # On cold start, force ALL profiles into generation queue
+            if is_cold_start and not profiles_needing_generation:
+                profiles_needing_generation = list(risk_profiles)
+                logger.warning("🧊 Cold start: forcing regeneration of all risk profile portfolios")
+
             # Schedule background generation for missing portfolios (non-blocking)
             if profiles_needing_generation:
                 logger.warning(f"⚠️ Missing portfolios detected for {len(profiles_needing_generation)} profiles")
@@ -427,7 +517,26 @@ async def lifespan(app: FastAPI):
                         logger.info("="*80)
                         logger.info("✅ Portfolio recommendations are now ready!")
                         logger.info("="*80)
-                        
+
+                        # Slack notification on completion (especially useful after cold start)
+                        send_slack_notification(
+                            title="Portfolio generation completed",
+                            severity="SUCCESS",
+                            message=(
+                                f"Background generation finished in {overall_elapsed:.1f}s. "
+                                f"Generated {overall_stats['total_portfolios_generated']} portfolios "
+                                f"for {overall_stats['profiles_successful']}/{overall_stats['profiles_processed']} profiles."
+                            ),
+                            fields={
+                                "profiles_processed": str(overall_stats['profiles_processed']),
+                                "portfolios_stored": str(overall_stats['total_portfolios_stored']),
+                                "errors": str(len(overall_stats['errors'])),
+                                "duration_seconds": f"{overall_elapsed:.1f}",
+                            },
+                            throttle_key="portfolio_gen:complete",
+                            min_interval_seconds=120,
+                        )
+
                     except Exception as e:
                         overall_stats['end_time'] = datetime.now().isoformat()
                         overall_stats['total_processing_time_seconds'] = round(time.time() - overall_start, 3)
@@ -505,6 +614,46 @@ async def lifespan(app: FastAPI):
 
                     # Auto-refresh if critical or expired
                     if categories.get('critical', 0) > 0 or categories.get('expired', 0) > 0:
+                        pre_notice_seconds = int(os.getenv("CACHE_REGEN_PRENOTICE_SECONDS", "7200"))
+
+                        # If anything is already expired, refresh immediately (cannot pre-notify 2 hours ahead).
+                        if categories.get("expired", 0) > 0:
+                            send_slack_notification(
+                                title="Ticker cache auto-refresh starting (expired)",
+                                severity="CRITICAL",
+                                message=(
+                                    "Expired ticker cache detected. Starting auto-refresh immediately "
+                                    "(2-hour pre-notice not possible when already expired)."
+                                ),
+                                fields={
+                                    "expired": str(categories.get("expired", 0)),
+                                    "critical": str(categories.get("critical", 0)),
+                                    "warning": str(categories.get("warning", 0)),
+                                    "healthy": str(categories.get("healthy", 0)),
+                                },
+                                throttle_key="ticker_refresh:expired_start",
+                                min_interval_seconds=600,
+                            )
+                        else:
+                            # Only critical (not expired): schedule with 2-hour pre-notice
+                            send_slack_notification(
+                                title="Ticker cache auto-refresh scheduled",
+                                severity="WARNING",
+                                message=(
+                                    f"Critical ticker cache detected. Auto-refresh will run in ~{pre_notice_seconds//3600}h "
+                                    f"to keep users from hitting cache gaps."
+                                ),
+                                fields={
+                                    "expired": str(categories.get("expired", 0)),
+                                    "critical": str(categories.get("critical", 0)),
+                                    "warning": str(categories.get("warning", 0)),
+                                    "healthy": str(categories.get("healthy", 0)),
+                                },
+                                throttle_key="ticker_refresh:scheduled",
+                                min_interval_seconds=600,
+                            )
+                            await asyncio.sleep(pre_notice_seconds)
+
                         logger.warning("🔄 Auto-refreshing critical/expired tickers...")
                         try:
                             result = monitor.refresh_expiring_tickers(
@@ -514,12 +663,26 @@ async def lifespan(app: FastAPI):
                             logger.info(
                                 f"✅ Auto-refresh complete: {result['refreshed']}/{result['total_expiring']} tickers"
                             )
+                            send_slack_notification(
+                                title="Ticker cache auto-refresh completed",
+                                severity="SUCCESS",
+                                message=f"Refreshed {result['refreshed']}/{result['total_expiring']} tickers.",
+                                throttle_key="ticker_refresh:completed",
+                                min_interval_seconds=300,
+                            )
                         except Exception as e:
                             logger.error(f"❌ Auto-refresh failed: {e}")
+                            send_slack_notification(
+                                title="Ticker cache auto-refresh failed",
+                                severity="CRITICAL",
+                                message=f"Auto-refresh failed: {e}",
+                                throttle_key="ticker_refresh:failed",
+                                min_interval_seconds=300,
+                            )
 
-                    # Wait 24 hours before next check
-                    logger.info("⏰ Next TTL check in 24 hours")
-                    await asyncio.sleep(86400)  # 24 hours
+                    # Wait 6 hours before next check (enables 2h pre-notice scheduling)
+                    logger.info("⏰ Next TTL check in 6 hours")
+                    await asyncio.sleep(21600)  # 6 hours
 
                 except Exception as e:
                     logger.error(f"❌ TTL monitoring error: {e}")
@@ -529,6 +692,307 @@ async def lifespan(app: FastAPI):
         # Start TTL monitoring task
         logger.info("🔍 Starting TTL monitoring background task...")
         asyncio.create_task(ttl_monitoring_task())
+
+        # ---------------------------------------------------------------------
+        # Proactive cache regeneration supervisor (app-level caches)
+        # - Schedules regeneration 2 hours in advance (Slack pre-notify)
+        # - Regenerates in background while old cache is still valid
+        # ---------------------------------------------------------------------
+        async def cache_regeneration_supervisor():
+            """
+            Proactively refresh critical app caches so users never wait:
+              - portfolio_bucket:* (recommendations)
+              - strategy_portfolios:* (strategy comparisons)
+              - optimization:eligible_tickers:* (default eligible-tickers cache)
+
+            Behavior:
+              - If missing/expired: regenerate immediately (background) + Slack alert
+              - If expiring within SCHEDULE_THRESHOLD: notify now, regenerate after PRENOTICE_SECONDS
+              - Deduplicates schedules to avoid repeated regenerations
+            """
+            # Delay start slightly to avoid competing with initial startup warmups
+            await asyncio.sleep(600)
+
+            prenotice_seconds = int(os.getenv("CACHE_REGEN_PRENOTICE_SECONDS", "7200"))  # default 2h
+            schedule_threshold_seconds = int(os.getenv("CACHE_REGEN_SCHEDULE_THRESHOLD_SECONDS", "28800"))  # default 8h
+            loop_seconds = int(os.getenv("CACHE_REGEN_LOOP_SECONDS", "1800"))  # default 30m
+
+            scheduled: dict[str, float] = {}  # job_name -> unix timestamp when job will run
+
+            def _now_ts() -> float:
+                return time.time()
+
+            def _fmt_seconds(s: int | None) -> str:
+                if s is None:
+                    return "unknown"
+                if s <= 0:
+                    return "expired/missing"
+                h = s // 3600
+                m = (s % 3600) // 60
+                return f"{h}h {m}m"
+
+            async def _schedule(job_name: str, run_coro_factory, ttl_seconds: int | None):
+                now = _now_ts()
+                already = scheduled.get(job_name)
+                if already and already > now:
+                    return
+
+                run_at = now + prenotice_seconds
+                scheduled[job_name] = run_at
+
+                send_slack_notification(
+                    title="Cache regeneration scheduled",
+                    severity="WARNING",
+                    message=f"{job_name} will regenerate in ~{prenotice_seconds//3600} hours (proactive refresh).",
+                    fields={"current_ttl": _fmt_seconds(ttl_seconds), "run_at": datetime.fromtimestamp(run_at).isoformat(timespec="seconds")},
+                )
+
+                async def _runner():
+                    try:
+                        await asyncio.sleep(max(0, run_at - _now_ts()))
+                        send_slack_notification(
+                            title="Cache regeneration starting",
+                            severity="INFO",
+                            message=f"Starting regeneration for {job_name}.",
+                        )
+                        await run_coro_factory()
+                        send_slack_notification(
+                            title="Cache regeneration completed",
+                            severity="SUCCESS",
+                            message=f"Regeneration completed for {job_name}.",
+                        )
+                    except Exception as e:
+                        send_slack_notification(
+                            title="Cache regeneration failed",
+                            severity="CRITICAL",
+                            message=f"{job_name} regeneration failed: {e}",
+                        )
+                    finally:
+                        # Clear schedule once attempted
+                        scheduled.pop(job_name, None)
+
+                asyncio.create_task(_runner())
+
+            logger.info("🧠 Cache regeneration supervisor started")
+
+            while True:
+                try:
+                    if not redis_first_data_service or not redis_first_data_service.redis_client:
+                        await asyncio.sleep(loop_seconds)
+                        continue
+
+                    r = redis_first_data_service.redis_client
+
+                    # 1) Portfolio buckets (recommendations)
+                    risk_profiles = ['very-conservative', 'conservative', 'moderate', 'aggressive', 'very-aggressive']
+                    for rp in risk_profiles:
+                        ttl_info = redis_manager.get_portfolio_ttl_info(rp) if redis_manager else None
+                        ttl_s = int(ttl_info.get("ttl_seconds")) if ttl_info and ttl_info.get("ttl_seconds") else None
+                        job_name = f"portfolio recommendations ({rp})"
+
+                        async def _regen_portfolios_for(risk_profile=rp):
+                            from routers.portfolio import _ensure_missing_portfolios_generated
+                            await asyncio.to_thread(_ensure_missing_portfolios_generated, risk_profile)
+
+                        if ttl_s is None or ttl_s <= 0:
+                            send_slack_notification(
+                                title="Portfolio cache missing/expired",
+                                severity="WARNING",
+                                message=f"{job_name} missing/expired. Regenerating immediately in background.",
+                                fields={"current_ttl": _fmt_seconds(ttl_s)},
+                            )
+                            asyncio.create_task(_regen_portfolios_for())
+                        elif ttl_s <= prenotice_seconds:
+                            # Too close to expiry to wait 2h; refresh now
+                            send_slack_notification(
+                                title="Portfolio cache expiring soon",
+                                severity="WARNING",
+                                message=f"{job_name} expires in {_fmt_seconds(ttl_s)}. Regenerating immediately (cannot wait 2h).",
+                                fields={"current_ttl": _fmt_seconds(ttl_s)},
+                            )
+                            asyncio.create_task(_regen_portfolios_for())
+                        elif ttl_s <= schedule_threshold_seconds:
+                            await _schedule(job_name, lambda: _regen_portfolios_for(), ttl_s)
+
+                    # 2) Strategy portfolios (pure + personalized)
+                    if strategy_optimizer:
+                        status = await asyncio.to_thread(strategy_optimizer.get_cache_status_detailed)
+                        min_ttl_hours = status.get("min_ttl_hours", 0) if isinstance(status, dict) else 0
+                        min_ttl_s = int(float(min_ttl_hours) * 3600) if min_ttl_hours else 0
+                        job_name = "strategy portfolios (all)"
+
+                        async def _regen_strategies():
+                            await asyncio.to_thread(strategy_optimizer.pre_generate_all_strategy_portfolios)
+
+                        needs_generation = bool(status.get("needs_generation")) if isinstance(status, dict) else False
+
+                        if needs_generation or min_ttl_s <= 0:
+                            send_slack_notification(
+                                title="Strategy cache missing/expired",
+                                severity="WARNING",
+                                message=f"{job_name} missing/expired. Regenerating immediately in background.",
+                                fields={"current_ttl": _fmt_seconds(min_ttl_s)},
+                            )
+                            asyncio.create_task(_regen_strategies())
+                        elif min_ttl_s <= prenotice_seconds:
+                            send_slack_notification(
+                                title="Strategy cache expiring soon",
+                                severity="WARNING",
+                                message=f"{job_name} expires in {_fmt_seconds(min_ttl_s)}. Regenerating immediately (cannot wait 2h).",
+                                fields={"current_ttl": _fmt_seconds(min_ttl_s)},
+                            )
+                            asyncio.create_task(_regen_strategies())
+                        elif min_ttl_s <= schedule_threshold_seconds:
+                            await _schedule(job_name, lambda: _regen_strategies(), min_ttl_s)
+
+                    # 3) Default eligible tickers cache (optimization:eligible_tickers:{hash})
+                    try:
+                        default_cache_params = {
+                            'min_data_points': 30,
+                            'filter_negative_returns': True,
+                            'min_volatility': None,
+                            'max_volatility': 5.0,
+                            'min_return': None,
+                            'max_return': 10.0,
+                            'sectors': None
+                        }
+                        import json
+                        import hashlib
+                        cache_key_str = json.dumps(default_cache_params, sort_keys=True)
+                        cache_hash = hashlib.md5(cache_key_str.encode()).hexdigest()
+                        cache_key = f"optimization:eligible_tickers:{cache_hash}"
+
+                        ttl_s = r.ttl(cache_key) if r.exists(cache_key) else 0
+                        job_name = "eligible tickers cache (default)"
+
+                        async def _regen_eligible():
+                            from routers.portfolio import _compute_eligible_tickers_internal
+                            from utils.redis_first_data_service import redis_first_data_service as _rds
+                            start_time = time.time()
+                            all_tickers = _rds.all_tickers or _rds.list_cached_tickers()
+                            if not all_tickers:
+                                raise RuntimeError("No tickers available for eligible-tickers regeneration")
+                            eligible_tickers, filtered_stats = await asyncio.to_thread(
+                                _compute_eligible_tickers_internal,
+                                all_tickers,
+                                min_data_points=30,
+                                filter_negative_returns=True,
+                                min_volatility=None,
+                                max_volatility=5.0,
+                                min_return=None,
+                                max_return=10.0,
+                                sectors=None
+                            )
+                            # Store full result (same key, 7d TTL)
+                            result_to_cache = {
+                                "eligible_tickers": eligible_tickers,
+                                "summary": filtered_stats
+                            }
+                            _rds.redis_client.setex(cache_key, 604800, json.dumps(result_to_cache))
+                            logger.info(f"✅ Eligible tickers cache regenerated in {time.time()-start_time:.1f}s")
+
+                        if ttl_s <= 0:
+                            send_slack_notification(
+                                title="Eligible tickers cache missing/expired",
+                                severity="WARNING",
+                                message=f"{job_name} missing/expired. Regenerating immediately in background.",
+                                fields={"current_ttl": _fmt_seconds(ttl_s)},
+                            )
+                            asyncio.create_task(_regen_eligible())
+                        elif ttl_s <= prenotice_seconds:
+                            send_slack_notification(
+                                title="Eligible tickers cache expiring soon",
+                                severity="WARNING",
+                                message=f"{job_name} expires in {_fmt_seconds(ttl_s)}. Regenerating immediately (cannot wait 2h).",
+                                fields={"current_ttl": _fmt_seconds(ttl_s)},
+                            )
+                            asyncio.create_task(_regen_eligible())
+                        elif ttl_s <= schedule_threshold_seconds:
+                            await _schedule(job_name, lambda: _regen_eligible(), int(ttl_s))
+                    except Exception as e:
+                        logger.debug(f"Eligible tickers supervisor check failed: {e}")
+
+                except Exception as e:
+                    logger.error(f"❌ Cache regeneration supervisor error: {e}")
+
+                await asyncio.sleep(loop_seconds)
+
+        logger.info("🧠 Starting cache regeneration supervisor...")
+        asyncio.create_task(cache_regeneration_supervisor())
+
+        # ---------------------------------------------------------------------
+        # Redis connectivity watchdog (Slack-only, single destination)
+        # ---------------------------------------------------------------------
+        async def redis_health_watchdog():
+            await asyncio.sleep(120)
+            if not redis_first_data_service or not redis_first_data_service.redis_client:
+                send_slack_notification(
+                    title="Redis not connected at startup",
+                    severity="CRITICAL",
+                    message="Redis client is not available. Cache regeneration and TTL monitoring may not function.",
+                    throttle_key="redis_watchdog:startup_missing",
+                    min_interval_seconds=1800,
+                )
+                return
+
+            r = redis_first_data_service.redis_client
+            was_up = True
+            consecutive_failures = 0
+
+            while True:
+                try:
+                    ok = bool(r.ping())
+                except Exception:
+                    ok = False
+
+                if ok:
+                    consecutive_failures = 0
+                    if not was_up:
+                        was_up = True
+                        send_slack_notification(
+                            title="Redis connectivity restored",
+                            severity="SUCCESS",
+                            message="Redis ping succeeded again. Cache operations should be healthy.",
+                            throttle_key="redis_watchdog:restored",
+                            min_interval_seconds=300,
+                        )
+                else:
+                    consecutive_failures += 1
+                    # only alert if it's not a transient blip
+                    if was_up and consecutive_failures >= 3:
+                        was_up = False
+                        send_slack_notification(
+                            title="Redis connectivity lost",
+                            severity="CRITICAL",
+                            message="Redis ping has failed 3 consecutive checks. Users may see degraded performance or cache misses.",
+                            throttle_key="redis_watchdog:lost",
+                            min_interval_seconds=600,
+                        )
+
+                await asyncio.sleep(60)
+
+        logger.info("🩺 Starting Redis health watchdog...")
+        asyncio.create_task(redis_health_watchdog())
+
+        # ---------------------------------------------------------------------
+        # Redis metrics updater for Prometheus
+        # ---------------------------------------------------------------------
+        async def redis_metrics_updater():
+            """Update Redis metrics for Prometheus every 30 seconds"""
+            await asyncio.sleep(30)  # Wait for initialization
+
+            from utils.redis_metrics import update_redis_metrics
+
+            while True:
+                try:
+                    update_redis_metrics()
+                except Exception as e:
+                    logger.error(f"❌ Redis metrics update error: {e}")
+
+                await asyncio.sleep(30)  # Update every 30 seconds
+
+        logger.info("📊 Starting Redis metrics updater...")
+        asyncio.create_task(redis_metrics_updater())
 
         # Yield control back to FastAPI
         yield
@@ -541,9 +1005,6 @@ async def lifespan(app: FastAPI):
         # Shutdown
         logger.info("🛑 Shutting down Portfolio Navigator Wizard Backend...")
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
-
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="Portfolio Navigator Wizard - Enhanced Backend",
@@ -552,9 +1013,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add rate limiter to app
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Add rate limiter to app (using imported rate_limiter from middleware)
+app.state.limiter = rate_limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Add validation error handler
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    """Handle validation errors with proper error response"""
+    return JSONResponse(
+        status_code=400,
+        content=error_response(
+            code="VALIDATION_ERROR",
+            message=str(exc),
+            request_id=getattr(request.state, "request_id", "unknown")
+        )
+    )
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -569,7 +1043,76 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class Slack5xxMiddleware(BaseHTTPMiddleware):
+    """
+    Slack-only notification for 5xx responses (rate limited).
+    Uses the single-destination Slack webhook configured for TTL notifications.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        from utils.slack_notifier import SlackMessage, send_slack
+
+        path = request.url.path
+        # Avoid spamming for health/metrics endpoints
+        if path in ("/healthz", "/health", "/metrics"):
+            return await call_next(request)
+
+        try:
+            response = await call_next(request)
+            if response.status_code >= 500:
+                rid = getattr(request.state, "request_id", "unknown")
+                send_slack(
+                    SlackMessage(
+                        title="HTTP 5xx detected",
+                        severity="CRITICAL",
+                        message=f"Request returned {response.status_code}.",
+                        fields={
+                            "method": request.method,
+                            "path": path,
+                            "request_id": rid,
+                        },
+                    ),
+                    throttle_key=f"http5xx:{request.method}:{path}:{response.status_code}",
+                    min_interval_seconds=300,
+                )
+            return response
+        except Exception as e:
+            rid = getattr(request.state, "request_id", "unknown")
+            send_slack(
+                SlackMessage(
+                    title="Unhandled exception in request",
+                    severity="CRITICAL",
+                    message=f"Unhandled exception while processing request: {e}",
+                    fields={
+                        "method": request.method,
+                        "path": path,
+                        "request_id": rid,
+                    },
+                ),
+                throttle_key=f"httpex:{request.method}:{path}:{type(e).__name__}",
+                min_interval_seconds=300,
+            )
+            raise
+
+
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(Slack5xxMiddleware)
+
+# Add security middleware
+# Note: HTTPS redirect disabled in development, enabled via environment variable
+enable_https_redirect = os.getenv("ENABLE_HTTPS_REDIRECT", "false").lower() == "true"
+if enable_https_redirect:
+    app.add_middleware(HTTPSRedirectMiddleware)
+    logger.info("🔒 HTTPS redirect middleware enabled")
+
+# Security headers middleware (always enabled)
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    enable_hsts=enable_https_redirect,  # Only enable HSTS if HTTPS is enforced
+    enable_csp=True,
+    enable_frame_options=True
+)
+logger.info("🔒 Security headers middleware enabled")
 
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
@@ -594,26 +1137,29 @@ metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
 # Add CORS middleware with environment-based configuration
-import os
-
 # Get allowed origins from environment variable
 # Default includes localhost for development
-ALLOWED_ORIGINS = os.getenv(
+ALLOWED_ORIGINS_ENV = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:8080,http://localhost:5173,http://localhost:3000,http://127.0.0.1:8080,http://127.0.0.1:5173,http://127.0.0.1:3000"
-).split(",")
+)
 
 # Clean up origins (remove whitespace)
-ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
 
 logger.info(f"🔒 CORS configured for origins: {ALLOWED_ORIGINS}")
+
+# Restrict methods and headers in production for security
+ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+ALLOWED_HEADERS = ["Authorization", "Content-Type", "X-Request-ID", "Accept"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=ALLOWED_METHODS,
+    allow_headers=ALLOWED_HEADERS,
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # Include existing routers
@@ -719,4 +1265,5 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port) 

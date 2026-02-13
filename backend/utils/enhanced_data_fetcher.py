@@ -173,8 +173,10 @@ class EnhancedDataFetcher:
             key = f'ticker_data:prices:{ticker}'
             prices_json = json.dumps(price_dict)
             prices_compressed = gzip.compress(prices_json.encode())
-            # Unified TTL to match sector/metrics (90 days via CACHE_TTL_HOURS)
-            self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), prices_compressed)
+            # Jittered TTL to prevent cache stampede (all tickers expiring at once)
+            from .redis_first_data_service import RedisFirstDataService
+            jittered_seconds = RedisFirstDataService.jittered_ttl(CACHE_TTL_HOURS * 3600)
+            self.r.setex(key, jittered_seconds, prices_compressed)
             
             # Invalidate eligible tickers cache when new ticker data is cached
             # (Only invalidate, don't trigger refresh here to avoid excessive refreshes during batch operations)
@@ -434,7 +436,9 @@ class EnhancedDataFetcher:
             if 'sector' in data:
                 key = self._get_cache_key(ticker, 'sector')
                 sector_data = json.dumps(data['sector']).encode()
-                self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), sector_data)
+                from .redis_first_data_service import RedisFirstDataService
+                jittered_seconds = RedisFirstDataService.jittered_ttl(CACHE_TTL_HOURS * 3600)
+                self.r.setex(key, jittered_seconds, sector_data)
             
             return True
         except Exception as e:
@@ -549,10 +553,12 @@ class EnhancedDataFetcher:
                 'data_quality': 'good' if len(prices) >= 180 else 'limited'  # 15 years of monthly data
             }
             
-            # Save metrics to cache
+            # Save metrics to cache (jittered TTL to prevent stampede)
             key = self._get_cache_key(ticker, 'metrics')
             metrics_data = json.dumps(metrics).encode()
-            self.r.setex(key, timedelta(hours=CACHE_TTL_HOURS), metrics_data)
+            from .redis_first_data_service import RedisFirstDataService
+            jittered_seconds = RedisFirstDataService.jittered_ttl(CACHE_TTL_HOURS * 3600)
+            self.r.setex(key, jittered_seconds, metrics_data)
             
             logger.debug(f"✅ {ticker}: Metrics calculated and cached (return={annual_return:.4f}, volatility={annual_risk:.4f})")
             return True

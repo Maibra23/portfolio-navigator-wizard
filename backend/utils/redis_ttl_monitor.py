@@ -495,21 +495,9 @@ def slack_notification_callback(level: str, message: str, data: Dict):
         TTL_SLACK_CHANNEL=#redis-alerts (optional)
     """
     try:
-        # Check if Slack notifications are enabled
-        slack_enabled = os.getenv('TTL_SLACK_NOTIFICATIONS', 'false').lower() == 'true'
-        if not slack_enabled:
-            return
-
         # Only send for important levels
         if level not in ['CRITICAL', 'WARNING', 'EXPIRED']:
             return
-
-        webhook_url = os.getenv('TTL_SLACK_WEBHOOK_URL')
-        if not webhook_url:
-            logger.debug("TTL_SLACK_WEBHOOK_URL not configured")
-            return
-
-        import requests
 
         # Determine color based on level
         color_map = {
@@ -763,24 +751,20 @@ def slack_notification_callback(level: str, message: str, data: Dict):
         channel = os.getenv('TTL_SLACK_CHANNEL')
 
         # Build Slack payload
-        payload = {
-            "blocks": blocks,
-            "text": message  # Fallback text for notifications
-        }
+        # IMPORTANT: We send via a single-destination webhook. No per-message channel overrides.
+        from utils.slack_notifier import SlackMessage, send_slack
+        send_slack(
+            SlackMessage(
+                title=f"Redis Cache TTL Alert - {level}",
+                message=f"*{message}*",
+                severity=level,
+                blocks=blocks,
+            ),
+            throttle_key=f"ttl_monitor:{level}",
+            min_interval_seconds=60,  # prevent bursts when check runs frequently
+        )
+        logger.info(f"✅ Slack notification queued/sent: {level}")
 
-        if channel:
-            payload['channel'] = channel
-
-        # Send to Slack
-        response = requests.post(webhook_url, json=payload, timeout=10)
-        response.raise_for_status()
-
-        logger.info(f"✅ Slack notification sent: {level}")
-
-    except ImportError:
-        logger.warning("requests library not available for Slack notifications")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Slack notification request failed: {e}")
     except Exception as e:
         logger.error(f"❌ Slack notification failed: {e}")
 

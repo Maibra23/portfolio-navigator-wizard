@@ -22,7 +22,7 @@ class RedisPortfolioManager:
     
     def __init__(self, redis_client):
         self.redis_client = redis_client
-        self.PORTFOLIO_TTL_DAYS = 7  # Shorter than data TTL (28 days)
+        self.PORTFOLIO_TTL_DAYS = 7  # Background regeneration handles refresh before expiry
         self.PORTFOLIO_TTL_SECONDS = self.PORTFOLIO_TTL_DAYS * 24 * 3600
         self.PORTFOLIOS_PER_PROFILE = 12  # Backend expects 12 portfolios per risk profile
         
@@ -60,18 +60,33 @@ class RedisPortfolioManager:
                 )
                 return False
             
+            # Use conservative config for aggressive profiles (align with generator)
+            from .conservative_portfolio_generator import CONSERVATIVE_CONFIG
+            if risk_profile in CONSERVATIVE_CONFIG:
+                conservative = CONSERVATIVE_CONFIG[risk_profile]
+                return_range = conservative['return_range']
+                quality_risk_range = conservative['quality_risk_range']
+                max_ret_effective = conservative.get('max_realistic_return', return_range[1])
+            else:
+                return_range = config['return_range']
+                quality_risk_range = config['quality_risk_range']
+                max_ret_effective = return_range[1]
+            
             # Get valid ranges (these are in decimals)
-            min_ret, max_ret = config['return_range']
-            min_risk, max_risk = config['quality_risk_range']
+            min_ret, max_ret = return_range
+            min_risk, max_risk = quality_risk_range
             max_risk_variance = config.get('max_risk_variance', 0.05)
             risk_max = max_risk + max_risk_variance
             
             # Calculate violations (in percentage points)
+            # For aggressive profiles: accept returns up to max_ret_effective (relaxed upper bound)
             return_violation_pct = 0
             if ret < min_ret:
                 return_violation_pct = (min_ret - ret) * 100
+            elif ret > max_ret_effective:
+                return_violation_pct = (ret - max_ret_effective) * 100  # Hard cap
             elif ret > max_ret:
-                return_violation_pct = (ret - max_ret) * 100
+                return_violation_pct = 0  # Within relaxed upper bound
             
             risk_violation_pct = 0
             if risk < min_risk:

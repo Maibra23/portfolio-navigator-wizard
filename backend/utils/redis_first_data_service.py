@@ -5,6 +5,7 @@ Provides Redis-first data access with lazy initialization of EnhancedDataFetcher
 """
 
 import logging
+import random
 import redis
 import json
 import gzip
@@ -32,6 +33,12 @@ class RedisFirstDataService:
     EnhancedDataFetcher when external data is actually needed
     """
     
+    # --- Memory & Connection Configuration ---
+    MAX_MEMORY = "48mb"
+    MAX_MEMORY_POLICY = "volatile-lru"   # Evict least-recently-used keys that have a TTL
+    MAX_CONNECTIONS = 50                 # Connection pool ceiling
+    TTL_JITTER_PERCENT = 15             # +/- 15% random jitter on TTLs to prevent stampede
+
     def __init__(self, redis_url: str = None):
         """
         Initialize Redis-First Data Service
@@ -55,10 +62,53 @@ class RedisFirstDataService:
         self.CACHE_TTL_DAYS = 28
         self.CACHE_TTL_HOURS = self.CACHE_TTL_DAYS * 24
 
+        # Apply maxmemory and eviction policy on the connected Redis server
+        self._configure_redis_memory()
+
         logger.info("Redis-First Data Service initialized")
 
+    # ------------------------------------------------------------------ #
+    #  Memory & eviction policy configuration                            #
+    # ------------------------------------------------------------------ #
+    def _configure_redis_memory(self):
+        """
+        Set maxmemory (48 MB) and volatile-lru eviction policy on the
+        Redis server.  This runs once at startup so the limits are always
+        enforced even if the server was restarted without a config file.
+        """
+        if self.redis_client is None:
+            return
+        try:
+            self.redis_client.config_set("maxmemory", self.MAX_MEMORY)
+            self.redis_client.config_set("maxmemory-policy", self.MAX_MEMORY_POLICY)
+            logger.info(
+                f"✅ Redis memory configured: maxmemory={self.MAX_MEMORY}, "
+                f"policy={self.MAX_MEMORY_POLICY}"
+            )
+        except redis.ResponseError as e:
+            # Some managed Redis providers (e.g. Railway) may disallow CONFIG SET.
+            # In that case, rely on the provider's dashboard settings.
+            logger.warning(
+                f"⚠️  Could not set Redis memory config (managed provider may "
+                f"block CONFIG SET): {e}"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️  Redis memory configuration failed: {e}")
+
+    # ------------------------------------------------------------------ #
+    #  TTL jitter helper                                                 #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def jittered_ttl(base_seconds: int) -> int:
+        """
+        Return *base_seconds* with +/- TTL_JITTER_PERCENT random jitter.
+        Prevents cache stampede when many keys are written at the same time.
+        """
+        jitter_range = base_seconds * RedisFirstDataService.TTL_JITTER_PERCENT / 100
+        return int(base_seconds + random.uniform(-jitter_range, jitter_range))
+
     def _init_redis_from_url(self, redis_url: str) -> Optional[redis.Redis]:
-        """Initialize Redis connection from URL (supports TLS)"""
+        """Initialize Redis connection from URL (supports TLS) with connection pool."""
         try:
             import ssl
             from urllib.parse import urlparse
@@ -69,30 +119,27 @@ class RedisFirstDataService:
             # Check if TLS is required (rediss:// scheme)
             use_ssl = parsed.scheme == 'rediss'
 
-            # Railway and other cloud providers use redis:// even with TLS
-            # They handle TLS through private networking
+            # Common connection kwargs (includes pool ceiling)
+            conn_kwargs = dict(
+                decode_responses=False,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                max_connections=self.MAX_CONNECTIONS,
+                retry_on_timeout=True,
+            )
+
             if use_ssl:
-                # Use TLS connection for production
-                r = redis.from_url(
-                    redis_url,
-                    decode_responses=False,
-                    ssl_cert_reqs=ssl.CERT_REQUIRED,
-                    socket_connect_timeout=5,
-                    socket_timeout=5
-                )
-            else:
-                # Standard connection for local development or cloud private network
-                r = redis.from_url(
-                    redis_url,
-                    decode_responses=False,
-                    socket_connect_timeout=5,
-                    socket_timeout=5
-                )
+                conn_kwargs["ssl_cert_reqs"] = ssl.CERT_REQUIRED
+
+            r = redis.from_url(redis_url, **conn_kwargs)
 
             # Test connection
             r.ping()
             connection_type = 'TLS' if use_ssl else 'standard'
-            logger.info(f"✅ Redis connection established ({connection_type})")
+            logger.info(
+                f"✅ Redis connection established ({connection_type}, "
+                f"pool max_connections={self.MAX_CONNECTIONS})"
+            )
             return r
 
         except redis.ConnectionError as e:
@@ -111,21 +158,17 @@ class RedisFirstDataService:
             from urllib.parse import urlparse
             parsed = urlparse(redis_url)
             use_ssl = parsed.scheme == "rediss"
+
+            conn_kwargs = dict(
+                decode_responses=False,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                max_connections=self.MAX_CONNECTIONS,
+            )
             if use_ssl:
-                client = AsyncRedis.from_url(
-                    redis_url,
-                    decode_responses=False,
-                    ssl_cert_reqs=ssl.CERT_REQUIRED,
-                    socket_connect_timeout=5,
-                    socket_timeout=5,
-                )
-            else:
-                client = AsyncRedis.from_url(
-                    redis_url,
-                    decode_responses=False,
-                    socket_connect_timeout=5,
-                    socket_timeout=5,
-                )
+                conn_kwargs["ssl_cert_reqs"] = ssl.CERT_REQUIRED
+
+            client = AsyncRedis.from_url(redis_url, **conn_kwargs)
             return client
         except Exception as e:
             logger.warning("Async Redis init failed: %s", e)

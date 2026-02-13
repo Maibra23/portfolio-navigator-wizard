@@ -1379,7 +1379,7 @@ class StrategyPortfolioOptimizer:
             
             self.redis_manager.redis_client.setex(
                 redis_key,
-                604800,  # 1 week (7 days)
+                604800,  # 7 days TTL - background regeneration handles refresh before expiry
                 json.dumps(portfolio_data)
             )
             stored_count = len(portfolios)
@@ -1414,7 +1414,7 @@ class StrategyPortfolioOptimizer:
             
             self.redis_manager.redis_client.setex(
                 redis_key,
-                604800,  # 1 week (7 days)
+                604800,  # 7 days TTL - background regeneration handles refresh before expiry
                 json.dumps(portfolio_data)
             )
             stored_count = len(portfolios)

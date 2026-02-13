@@ -865,7 +865,7 @@ def _trigger_eligible_tickers_refresh():
             if _rds.redis_client:
                 _rds.redis_client.setex(
                     cache_key,
-                    604800,  # 1 week TTL
+                    604800,  # 7 days TTL - background regeneration handles refresh before expiry
                     json.dumps(result_to_cache)
                 )
             
@@ -1641,10 +1641,10 @@ def _get_eligible_tickers_internal(
                 
                 _rds.redis_client.setex(
                     cache_key,
-                    604800,  # 1 week TTL (604800 seconds)
+                    604800,  # 7 days TTL - background regeneration handles refresh before expiry
                     json.dumps(result_to_cache)
                 )
-                logger.info(f"✅ Cached eligible tickers list (key: {cache_key})")
+                logger.info(f"✅ Cached eligible tickers list (key: {cache_key}, TTL: 7 days)")
             except Exception as e:
                 logger.debug(f"⚠️ Failed to cache eligible tickers: {e}")
         
@@ -2063,10 +2063,10 @@ def get_ticker_metrics_batch(request: TickerMetricsRequest):
                 
                 _rds.redis_client.setex(
                     cache_key,
-                    604800,  # 1 week TTL (604800 seconds) - matches eligible tickers TTL
+                    3600,  # 1 hour TTL - ephemeral computation result
                     json.dumps(result)
                 )
-                logger.info(f"✅ Cached metrics for {len(tickers)} tickers (key: {cache_key}, TTL: 1 week)")
+                logger.info(f"✅ Cached metrics for {len(tickers)} tickers (key: {cache_key}, TTL: 1 hour)")
             except Exception as e:
                 logger.debug(f"⚠️ Failed to cache metrics: {e}")
         

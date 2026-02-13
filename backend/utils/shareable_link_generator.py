@@ -62,14 +62,15 @@ class ShareableLinkGenerator:
         return self._hash_password(password) == hashed
     
     def generate_link(self, portfolio_data: Dict, 
-                     expiry_days: int = 30,
+                     expiry_days: int = 7,
                      password: Optional[str] = None) -> str:
         """
         Generate a secure shareable link
         
         Args:
             portfolio_data: Portfolio data to share
-            expiry_days: Number of days until link expires (default: 30)
+            expiry_days: Number of days until link expires (default: 7, reduced from 30
+                        to minimize Redis memory accumulation)
             password: Optional password for link protection
             
         Returns:

@@ -1,0 +1,66 @@
+# Prometheus Configuration for Portfolio Navigator Wizard
+# Scrapes metrics from FastAPI backend
+
+global:
+  scrape_interval: 15s  # Scrape metrics every 15 seconds
+  evaluation_interval: 15s  # Evaluate recording and alerting rules every 15 seconds
+
+  external_labels:
+    monitor: 'portfolio-navigator'
+    environment: 'production'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - 'alertmanager:9093'
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - 'alert_rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # FastAPI backend metrics
+  - job_name: 'portfolio-navigator-backend'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+
+    static_configs:
+      - targets:
+          - 'backend:8000'  # Docker internal network
+        labels:
+          service: 'fastapi-backend'
+          component: 'api'
+
+    # For Railway deployment (use public URL)
+    # static_configs:
+    #   - targets:
+    #       - 'your-app.up.railway.app:443'
+    #     labels:
+    #       service: 'fastapi-backend'
+    #       component: 'api'
+    #       environment: 'production'
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets:
+          - 'localhost:9090'
+        labels:
+          service: 'prometheus'
+
+  # Redis Exporter (if using separate Redis exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets:
+  #         - 'redis-exporter:9121'
+  #       labels:
+  #         service: 'redis'
+  #         component: 'cache'
+
+# Recording rules for efficient queries
+# rule_files:
+#   - 'recording_rules.yml'

@@ -56,6 +56,7 @@ Simply click the theme toggle button (☀️/🌙) in the top-right corner on th
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Deployment](#deployment)
+- [Monitoring System](#-monitoring-system)
 
 ## 🚀 Quick Start
 
@@ -1611,6 +1612,89 @@ black .
 - [ ] Error handling implemented
 - [ ] Performance considerations addressed
 - [ ] Security vulnerabilities checked
+
+## 📡 Monitoring System
+
+This section documents the backend monitoring system: what it does, how it works, and how it integrates with the rest of the application.
+
+### Overview
+
+The monitoring system provides:
+
+- **Cold-start detection** – Detects when Redis is empty (e.g. after a container restart) and triggers full cache warm-up plus Slack alerts.
+- **TTL monitoring** – Tracks Redis cache expiration for ticker data and triggers refresh and notifications when data is critical or expired.
+- **Proactive cache regeneration** – Regenerates portfolio recommendations, strategy portfolios, and eligible-tickers cache before they expire so users rarely wait.
+- **Redis health watchdog** – Pings Redis periodically and alerts on connectivity loss or recovery.
+- **HTTP 5xx and exception alerts** – Sends Slack notifications when the API returns 5xx or when an unhandled exception occurs.
+
+All alerts go to a **single Slack destination** (channel or DM) configured via one incoming webhook. There are no per-message channel overrides.
+
+### When does cold start happen (Railway)
+
+Cold start here means: the app starts and finds **Redis empty** (no cached data). The app then runs full cache warm-up and sends a Slack alert. You get a cold start whenever the thing that holds Redis loses its data and the backend starts up.
+
+**When does the backend container restart?**  
+- **Every deploy** – You push code or click Deploy; Railway replaces the running container. So the backend process restarts at least as often as you deploy.  
+- **Platform restarts** – Railway may restart your service for maintenance or host updates (no fixed schedule; could be rare).  
+- **Crashes** – If the app or Redis process exits with an error, Railway restarts the service.  
+- **Scale-to-zero** (if enabled) – No traffic for a while can stop the service; the next request starts it again.
+
+**Backend vs Redis:**  
+- **Backend container** – Restarts on every deploy and on the cases above. Its in-memory state (e.g. Slack throttle counters) is lost each time. Cold-start **detection** runs when this process starts and checks Redis.  
+- **Redis** – If Redis is a **separate Railway service** (e.g. Redis plugin), it has its own lifecycle. Your backend can restart many times while Redis keeps running and keeps data. You see “Redis empty” (cold start) only when **Redis itself** restarts or is recreated (e.g. Redis service redeploy or platform restart).  
+- If Redis runs **inside the same container** as the backend, every time that container restarts (deploy, crash, etc.) Redis is recreated and all data is lost, so you get a cold start on every such restart.
+
+**Summary:** Cold start (empty Redis) is not on a fixed schedule. It happens whenever the Redis instance is restarted or recreated. With a separate Redis service on Railway, that is usually less often than your app deploys; with Redis in the same container, it happens on every deploy and every restart of that container.
+
+### Components
+
+**Slack Notifier (utils/slack_notifier.py)** – Central module for sending Slack messages. Exposes `SlackMessage` (title, message, severity, optional fields/blocks) and `send_slack(msg, throttle_key=None, min_interval_seconds=0)`. Throttling is in-memory per throttle_key. Only sends when `TTL_SLACK_NOTIFICATIONS=true` and `TTL_SLACK_WEBHOOK_URL` is set. The webhook defines the destination; the app does not set `channel` in the payload.
+
+**Cold-start detection (main.py lifespan)** – Runs once at startup after Redis is initialized. If `dbsize()` is 0 or there are no price/portfolio keys, sets `is_cold_start = True`, logs a warning, and sends a CRITICAL Slack notification. Forces eligible-tickers pre-computation and all five risk-profile portfolio generations to run in the background. Sends SUCCESS Slack when eligible tickers cache is ready and when portfolio generation completes.
+
+**TTL monitoring task (main.py)** – Background task; first run 5 minutes after startup, then every 6 hours. Uses `RedisTTLMonitor` from utils/redis_ttl_monitor to categorize ticker keys (expired, critical &lt; 1 day, warning &lt; 7 days, etc.). If critical or expired, sends Slack (scheduled or immediate), then calls `refresh_expiring_tickers(days_threshold=1)` to refresh ticker data. Sends Slack on completion or failure.
+
+**Redis TTL Monitor (utils/redis_ttl_monitor.py)** – `check_ttl_status()` scans ticker keys and buckets by TTL; `refresh_expiring_tickers(days_threshold, data_service)` refreshes expiring tickers via the data service. `slack_notification_callback(level, message, data)` is used by the TTL task and sends via slack_notifier with throttle. Also provides `get_detailed_redis_stats()` for key counts and memory.
+
+**Cache regeneration supervisor (main.py)** – Starts 10 minutes after startup; runs every 30 minutes (configurable). Monitors: (1) portfolio_bucket:* per risk profile via `redis_manager.get_portfolio_ttl_info()`, (2) strategy_portfolio:* via `strategy_optimizer.get_cache_status_detailed()`, (3) optimization:eligible_tickers:{hash} via Redis TTL. If cache is missing/expired, regenerates immediately and notifies. If TTL is within 8 hours, schedules regeneration in 2 hours (with “scheduled”, “starting”, “completed”/“failed” Slack messages). Uses existing app logic: `_ensure_missing_portfolios_generated`, `pre_generate_all_strategy_portfolios`, `_compute_eligible_tickers_internal`.
+
+**Redis health watchdog (main.py)** – Starts 2 minutes after startup; pings Redis every 60 seconds. Sends CRITICAL if Redis is missing at start or after 3 consecutive ping failures; sends SUCCESS when connectivity is restored. Throttled to avoid spam.
+
+**Slack5xxMiddleware (main.py)** – Runs after RequestIDMiddleware. For non-health/non-metrics requests, sends Slack CRITICAL on response status >= 500 or on unhandled exception (with method, path, request_id). Rate-limited per path and status/exception type (300s).
+
+### Integration with the rest of the system
+
+- **Startup:** Redis init → cold-start check → optional Slack + background eligible tickers + portfolio generation. Then TTL task, cache regeneration supervisor, and Redis watchdog are started as asyncio tasks.
+- **Data:** Same Redis instance is used by RedisFirstDataService, RedisPortfolioManager, StrategyPortfolioOptimizer, and TTL monitor. Regeneration reuses portfolio router and strategy optimizer functions.
+- **Slack:** All notifications go through slack_notifier to one webhook (single channel/DM). Throttle keys prevent duplicate alerts (e.g. cold_start 60s, redis_watchdog:lost 600s, http5xx 300s).
+
+### Environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| TTL_SLACK_NOTIFICATIONS | Enable Slack notifications | false |
+| TTL_SLACK_WEBHOOK_URL | Incoming webhook URL | (none) |
+| CACHE_REGEN_PRENOTICE_SECONDS | Delay before scheduled regeneration | 7200 (2h) |
+| CACHE_REGEN_SCHEDULE_THRESHOLD_SECONDS | TTL below which to schedule regeneration | 28800 (8h) |
+| CACHE_REGEN_LOOP_SECONDS | Supervisor check interval | 1800 (30m) |
+
+### Files reference
+
+- backend/utils/slack_notifier.py – Slack sender and throttling
+- backend/utils/redis_ttl_monitor.py – RedisTTLMonitor and TTL Slack callback
+- backend/main.py – Lifespan (cold-start, TTL task, supervisor, watchdog), Slack5xxMiddleware
+- backend/utils/redis_portfolio_manager.py – get_portfolio_ttl_info
+- backend/utils/strategy_portfolio_optimizer.py – get_cache_status_detailed, pre_generate_all_strategy_portfolios
+- backend/routers/portfolio.py – _ensure_missing_portfolios_generated, _compute_eligible_tickers_internal
+
+### Enabling and verifying
+
+1. Set TTL_SLACK_NOTIFICATIONS=true and TTL_SLACK_WEBHOOK_URL to your Slack incoming webhook URL (e.g. in Railway env or backend .env).
+2. Restart the backend. On a cold Redis you should see “Cold start detected - Redis empty” in Slack, then “Eligible tickers cache ready” and “Portfolio generation completed” when background jobs finish.
+3. To test 5xx: trigger an endpoint that returns 500; you should get “HTTP 5xx detected” in Slack (rate-limited).
+4. Redis down: after 3 failed pings you get “Redis connectivity lost”; when Redis is back, “Redis connectivity restored”.
+
+---
 
 ## 📊 Project Statistics
 

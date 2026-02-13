@@ -117,7 +117,7 @@ def refresh_eligible_tickers_cache():
         try:
             redis_first_data_service.redis_client.setex(
                 cache_key,
-                604800,  # 1 week TTL (604800 seconds)
+                604800,  # 7 days TTL - background regeneration handles refresh before expiry
                 json.dumps(result_to_cache)
             )
             print(f"   ✅ Cache stored successfully!")

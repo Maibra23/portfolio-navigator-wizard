@@ -1,0 +1,150 @@
+# Prometheus Alert Rules for Portfolio Navigator Wizard
+# Alerts for high error rates, slow responses, and Redis issues
+
+groups:
+  - name: api_alerts
+    interval: 30s
+    rules:
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes (threshold: 5%)"
+          impact: "Users are experiencing server errors"
+          action: "Check backend logs and Slack notifications for error details"
+
+      # Slow API responses
+      - alert: SlowAPIResponses
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (method, path, le)
+          ) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API responses are slow (P95 > 5s)"
+          description: "95th percentile latency is {{ $value }}s for {{ $labels.path }}"
+          impact: "Users experiencing slow portfolio optimizations"
+          action: "Check Redis cache hit rate and external API performance"
+
+      # Very slow portfolio optimizations
+      - alert: VerySlowOptimizations
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(portfolio_optimization_duration_seconds_bucket[5m])) by (strategy, le)
+          ) > 10.0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Portfolio optimizations taking too long"
+          description: "95th percentile optimization time is {{ $value }}s for {{ $labels.strategy }}"
+          impact: "Poor user experience, potential timeouts"
+          action: "Check if eligible tickers cache is stale or optimizer has issues"
+
+  - name: redis_alerts
+    interval: 30s
+    rules:
+      # Redis memory pressure
+      - alert: RedisMemoryPressure
+        expr: redis_memory_usage_bytes > 250000000  # 250MB (threshold: 250MB of 256MB limit)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage approaching limit"
+          description: "Redis is using {{ $value | humanize1024 }}B (limit: 256MB)"
+          impact: "Risk of evictions and cache thrashing"
+          action: "Check for memory leaks or increase maxmemory limit"
+
+      # Redis memory critical
+      - alert: RedisMemoryCritical
+        expr: redis_memory_usage_bytes > 268000000  # 268MB (exceeded 256MB limit)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis memory limit exceeded"
+          description: "Redis is using {{ $value | humanize1024 }}B (limit: 256MB)"
+          impact: "Evictions occurring, degraded performance"
+          action: "URGENT: Clear old caches or increase memory limit"
+
+      # Low cache hit rate
+      - alert: LowCacheHitRate
+        expr: redis_cache_hit_rate{cache_type="all"} < 0.7
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis cache hit rate is low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 70%)"
+          impact: "Increased load on external APIs (Yahoo Finance, Alpha Vantage)"
+          action: "Check if caches are expiring too quickly or TTLs are too short"
+
+      # High Redis eviction rate
+      - alert: HighRedisEvictionRate
+        expr: rate(redis_evicted_keys_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis is evicting keys frequently"
+          description: "Evicting {{ $value }} keys per second"
+          impact: "Cache thrashing, poor performance"
+          action: "Increase Redis memory or reduce cache TTLs"
+
+  - name: business_alerts
+    interval: 60s
+    rules:
+      # No portfolio optimizations (service might be down)
+      - alert: NoOptimizationsPerformed
+        expr: |
+          rate(portfolio_optimizations_total[10m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No portfolio optimizations in last 15 minutes"
+          description: "Zero optimizations detected - service may be down or no traffic"
+          impact: "Possible service outage or zero user activity"
+          action: "Check if service is running and accessible"
+
+      # Spike in optimizations (possible DDoS or viral traffic)
+      - alert: OptimizationSpike
+        expr: |
+          rate(portfolio_optimizations_total[5m])
+          >
+          4 * avg_over_time(rate(portfolio_optimizations_total[5m])[1h:5m])
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Unusual spike in portfolio optimizations"
+          description: "Optimization rate is 4x normal ({{ $value }} ops/sec)"
+          impact: "Possible viral traffic or DDoS attack"
+          action: "Monitor for abuse patterns and check rate limits"
+
+  - name: availability_alerts
+    interval: 30s
+    rules:
+      # Service down
+      - alert: BackendDown
+        expr: up{job="portfolio-navigator-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend service is down"
+          description: "Cannot scrape metrics from {{ $labels.instance }}"
+          impact: "Complete service outage - no users can access the app"
+          action: "URGENT: Check Railway logs and container status"
