@@ -111,7 +111,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
     <Card className="border border-border bg-muted/30">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Calculator className="h-4 w-4 text-blue-600" />
+          <Calculator className="h-4 w-4 text-primary" />
           Tax Impact Calculator
           <Tooltip>
             <TooltipTrigger asChild>
@@ -142,7 +142,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium">Capital</label>
-              <span className="text-xs font-semibold text-blue-700">
+              <span className="text-xs font-semibold text-primary">
                 {simulatedCapital.toLocaleString("sv-SE")} SEK
               </span>
             </div>
@@ -200,14 +200,14 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
                     key={result.accountType}
                     className={`rounded-md border px-2 py-2 text-center ${
                       isLowest
-                        ? "border-green-500 bg-green-50"
+                        ? "border-accent bg-accent/10"
                         : "border-border bg-card"
                     }`}
                   >
                     <p className="text-[10px] font-bold">
                       {result.accountType}
                     </p>
-                    <p className="text-sm font-bold text-red-600">
+                    <p className="text-sm font-bold text-destructive">
                       {result.annualTax.toLocaleString("sv-SE", {
                         maximumFractionDigits: 0,
                       })}{" "}
@@ -239,7 +239,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
             </p>
             {(simulatedCapital !== initialCapital ||
               simulatedTaxYear !== initialTaxYear) && (
-              <p className="text-[10px] text-amber-700">
+              <p className="text-[10px] text-muted-foreground">
                 Simulated. Your settings:{" "}
                 {initialCapital.toLocaleString("sv-SE")} SEK, {initialTaxYear}.
               </p>

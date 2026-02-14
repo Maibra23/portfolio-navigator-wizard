@@ -15,6 +15,8 @@ interface TaxSummaryCardProps {
   capital?: number;
   /** When true, render only inner content (no Card wrapper). */
   noCard?: boolean;
+  /** When true, show only annual tax and effective rate in one line (for hero). */
+  compact?: boolean;
 }
 
 const MARGINAL_CAPITAL = 50000;
@@ -40,6 +42,7 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
   portfolioMetrics,
   capital,
   noCard = false,
+  compact = false,
 }) => {
   const content = (
     <>
@@ -47,6 +50,30 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Calculating tax...
+        </div>
+      ) : taxCalculation && compact ? (
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-sm text-muted-foreground">
+            Your annual tax:
+          </span>
+          <span className="font-semibold text-lg">
+            {(taxCalculation.annualTax || 0).toLocaleString("sv-SE", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}{" "}
+            SEK
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-xs text-muted-foreground cursor-help">
+                ({formatPercent((taxCalculation.effectiveTaxRate ?? 0) / 100)}{" "}
+                eff.)
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              Effective rate: annual tax as % of your capital (ISK/KF).
+            </TooltipContent>
+          </Tooltip>
         </div>
       ) : taxCalculation ? (
         <div className="space-y-3">
@@ -193,41 +220,6 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
               </div>
             </div>
           </div>
-          {taxCalculation.afterTaxReturn !== undefined && portfolioMetrics && (
-            <div className="pt-3 border-t">
-              <div className="text-sm text-muted-foreground flex items-center gap-1">
-                After-Tax Return
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="inline-flex cursor-help"
-                      aria-label="After-tax return info"
-                    >
-                      <Info className="h-3 w-3" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-sm">
-                    <p className="font-semibold mb-1">What it means</p>
-                    <p className="mb-2">
-                      Your portfolio’s expected return after subtracting the
-                      estimated tax you pay each year. It’s the growth rate you
-                      effectively keep.
-                    </p>
-                    <p className="font-semibold mb-1">Example</p>
-                    <p>
-                      If your portfolio’s expected return is 8% and tax costs
-                      you about 0.5% of your capital per year, your after-tax
-                      return is roughly 7.5%. The higher the tax, the lower the
-                      after-tax return.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <div className="font-medium text-lg">
-                {formatPercent(taxCalculation.afterTaxReturn)}
-              </div>
-            </div>
-          )}
           {(taxCalculation.accountType === "ISK" ||
             taxCalculation.accountType === "KF") &&
             capital != null &&
@@ -285,8 +277,8 @@ export const TaxSummaryCard: React.FC<TaxSummaryCardProps> = ({
                 You have 500,000 SEK in an ISK and tax year 2026 (tax-free level
                 300,000 SEK). Your tax base is 500,000 SEK; the part above
                 300,000 is taxed at the imputed rate. Your annual tax and
-                after-tax return below reflect that. In an AF account, tax would
-                be on realized gains and dividends instead.
+                effective rate reflect that. In an AF account, tax would be on
+                realized gains and dividends instead.
               </p>
             </TooltipContent>
           </Tooltip>

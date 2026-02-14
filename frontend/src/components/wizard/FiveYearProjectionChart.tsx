@@ -457,7 +457,7 @@ export const FiveYearProjectionChart: React.FC<
                 stroke="#22c55e"
                 strokeWidth={2.5}
                 dot={false}
-                activeDot={{ r: 5 }}
+                activeDot={false}
               />
               <Line
                 type="monotone"
@@ -466,7 +466,7 @@ export const FiveYearProjectionChart: React.FC<
                 stroke="#3b82f6"
                 strokeWidth={3}
                 dot={false}
-                activeDot={{ r: 5 }}
+                activeDot={false}
               />
               <Line
                 type="monotone"
@@ -474,15 +474,22 @@ export const FiveYearProjectionChart: React.FC<
                 name="Pessimistic"
                 stroke="#ef4444"
                 strokeWidth={2.5}
-                dot={{ r: 4, fill: "#ef4444" }}
-                activeDot={{ r: 6 }}
+                dot={false}
+                activeDot={false}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Additional context */}
-        <div className="text-xs text-muted-foreground space-y-1 border-t pt-3">
+        {/* Explanatory text and note */}
+        <div className="text-xs text-muted-foreground space-y-2 border-t pt-3">
+          <p>
+            This chart shows how your portfolio could grow over five years in
+            three scenarios (optimistic, base, pessimistic) after taxes and
+            costs. The lines illustrate net value over time, not guaranteed
+            outcomes—use them to compare the impact of different return
+            assumptions and to see how AF tax and courtage affect growth.
+          </p>
           <p>
             <strong>Note:</strong> All projections include:
           </p>

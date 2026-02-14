@@ -3088,8 +3088,8 @@ export const PortfolioOptimization = ({
                 </p>
               </div>
 
-              {/* Current Portfolio Summary - hidden once efficient frontier is available */}
-              {!(efficientFrontier.length > 0) && (
+              {/* Current Portfolio Summary - hidden as soon as efficient frontier graph is shown (Analysis tab) or frontier data exists */}
+              {activeTab !== "analysis" && efficientFrontier.length === 0 && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">

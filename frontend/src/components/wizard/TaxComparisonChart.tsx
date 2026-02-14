@@ -17,6 +17,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useTheme } from "@/hooks/useTheme";
+import { getChartTheme, getVisualizationPalette } from "@/utils/chartThemes";
 
 interface TaxComparisonChartProps {
   capital: number;
@@ -51,6 +53,9 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
   comparisonData: comparisonDataProp,
   noCard = false,
 }) => {
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
+  const palette = getVisualizationPalette(theme);
   const [data, setData] = useState<TaxComparisonData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +188,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       <div className="bg-popover text-popover-foreground border border-border rounded-lg shadow-lg p-3 space-y-1">
         <p className="font-semibold text-sm">{data.displayName}</p>
         <p className="text-xs text-muted-foreground">Annual Tax</p>
-        <p className="font-bold text-red-600">
+        <p className="font-bold text-destructive">
           {data.annualTax.toLocaleString("sv-SE", { maximumFractionDigits: 0 })}{" "}
           SEK
         </p>
@@ -205,14 +210,14 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
               key={item.accountType}
               className={`rounded-md border px-2 py-2 text-center ${
                 isSelected
-                  ? "border-blue-500 bg-blue-50"
+                  ? "border-primary bg-primary/10"
                   : isLowest
-                    ? "border-green-500 bg-green-50"
+                    ? "border-accent bg-accent/10"
                     : "border-border bg-muted/30"
               }`}
             >
               <p className="text-[10px] font-bold">{item.displayName}</p>
-              <p className="text-sm font-bold text-red-600">
+              <p className="text-sm font-bold text-destructive">
                 {item.annualTax.toLocaleString("sv-SE", {
                   maximumFractionDigits: 0,
                 })}{" "}
@@ -233,7 +238,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
             data={data}
             margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
             <XAxis
               dataKey="displayName"
               tick={{ fontSize: 12 }}
@@ -267,7 +272,11 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
                   <Cell
                     key={`cell-${index}`}
                     fill={
-                      isLowest ? "#22c55e" : isSelected ? "#3b82f6" : "#ef4444"
+                      isLowest
+                        ? palette[0]
+                        : isSelected
+                          ? palette[2]
+                          : palette[1]
                     }
                   />
                 );
@@ -279,11 +288,11 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
 
       {/* Insights */}
       {savingsAmount > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs font-semibold text-amber-900 mb-1">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3">
+          <p className="text-xs font-semibold text-foreground mb-1">
             Potential Tax Savings
           </p>
-          <p className="text-xs text-amber-800">
+          <p className="text-xs text-muted-foreground">
             By switching from <strong>{selectedAccountType}</strong> to the
             lowest-tax option, you could save approximately{" "}
             <strong>
@@ -305,11 +314,11 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       )}
 
       {lowestTax === 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-          <p className="text-xs font-semibold text-green-900 mb-1">
+        <div className="bg-accent/10 border border-accent/30 rounded-lg p-3">
+          <p className="text-xs font-semibold text-foreground mb-1">
             Tax-Free Investing
           </p>
-          <p className="text-xs text-green-800">
+          <p className="text-xs text-muted-foreground">
             With your capital of {capital.toLocaleString("sv-SE")} SEK and tax
             year {taxYear}, you're below the tax-free level for ISK/KF accounts.
             This means <strong>zero tax</strong> on your investments!

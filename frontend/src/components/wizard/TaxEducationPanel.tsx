@@ -106,7 +106,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
       <TabsList className="grid w-full grid-cols-3 h-9">
         <TabsTrigger value="isk-kf" className="text-xs">
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center text-[9px] font-bold text-green-700">
+            <span className="w-5 h-5 bg-accent/20 rounded-full flex items-center justify-center text-[9px] font-bold text-foreground">
               ISK
             </span>
             ISK / KF
@@ -114,7 +114,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
         </TabsTrigger>
         <TabsTrigger value="af" className="text-xs">
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-5 h-5 bg-purple-100 rounded-full flex items-center justify-center text-[9px] font-bold text-purple-700">
+            <span className="w-5 h-5 bg-primary/20 rounded-full flex items-center justify-center text-[9px] font-bold text-foreground">
               AF
             </span>
             AF
@@ -131,12 +131,12 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
       {/* ── ISK / KF Tab ── */}
       <TabsContent value="isk-kf" className="mt-3 space-y-3">
         {/* Glossary */}
-        <div className="bg-blue-50/60 border border-blue-200/60 rounded-lg p-3 text-xs space-y-1.5">
-          <div className="flex items-center gap-1.5 font-semibold text-blue-900">
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 text-xs space-y-1.5">
+          <div className="flex items-center gap-1.5 font-semibold text-foreground">
             <Info className="h-3.5 w-3.5" />
             Key terms
           </div>
-          <ul className="space-y-1 text-blue-800">
+          <ul className="space-y-1 text-muted-foreground">
             <li>
               <strong>Schablonrantan</strong> (standard interest rate) -- Set
               annually by the government: statslanerantan + 1 pp. For{" "}
@@ -158,7 +158,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
 
         {/* ISK description */}
         <div className="bg-card rounded-lg border border-border p-3 space-y-2">
-          <p className="text-xs font-semibold text-green-800">
+          <p className="text-xs font-semibold text-foreground">
             ISK (Investeringssparkonto) -- Investment Savings Account
           </p>
           <p className="text-xs text-muted-foreground">
@@ -168,7 +168,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <p className="font-medium text-green-700 mb-0.5">Advantages</p>
+              <p className="font-medium text-foreground mb-0.5">Advantages</p>
               <ul className="list-disc ml-4 space-y-0.5 text-muted-foreground">
                 <li>Simple, predictable taxation</li>
                 <li>No transaction tracking needed</li>
@@ -179,7 +179,9 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
               </ul>
             </div>
             <div>
-              <p className="font-medium text-red-700 mb-0.5">Disadvantages</p>
+              <p className="font-medium text-destructive mb-0.5">
+                Disadvantages
+              </p>
               <ul className="list-disc ml-4 space-y-0.5 text-muted-foreground">
                 <li>Pay tax even on losses</li>
                 <li>Cannot deduct losses against other income</li>
@@ -190,7 +192,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
 
         {/* KF note */}
         <div className="bg-card rounded-lg border border-border p-3 space-y-1">
-          <p className="text-xs font-semibold text-blue-800">
+          <p className="text-xs font-semibold text-foreground">
             KF (Kapitalforsakring) -- Capital Insurance
           </p>
           <p className="text-xs text-muted-foreground">
@@ -213,7 +215,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
       {/* ── AF Tab ── */}
       <TabsContent value="af" className="mt-3 space-y-3">
         <div className="bg-card rounded-lg border border-border p-3 space-y-2">
-          <p className="text-xs font-semibold text-purple-800">
+          <p className="text-xs font-semibold text-foreground">
             AF (Aktie- och Fondkonto) -- Stock & Fund Account
           </p>
           <p className="text-xs text-muted-foreground">
@@ -223,7 +225,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <p className="font-medium text-green-700 mb-0.5">Advantages</p>
+              <p className="font-medium text-foreground mb-0.5">Advantages</p>
               <ul className="list-disc ml-4 space-y-0.5 text-muted-foreground">
                 <li>Tax only on realized gains</li>
                 <li>No tax while holding long-term</li>
@@ -232,7 +234,9 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
               </ul>
             </div>
             <div>
-              <p className="font-medium text-red-700 mb-0.5">Disadvantages</p>
+              <p className="font-medium text-destructive mb-0.5">
+                Disadvantages
+              </p>
               <ul className="list-disc ml-4 space-y-0.5 text-muted-foreground">
                 <li>Must track every transaction</li>
                 <li>30% on dividends (withheld automatically)</li>
@@ -243,11 +247,11 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
           </div>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px]">
-          <p className="font-semibold text-amber-900 mb-0.5">
+        <div className="bg-muted/50 border border-border rounded-lg p-2.5 text-[11px]">
+          <p className="font-semibold text-foreground mb-0.5">
             Note for this wizard
           </p>
-          <p className="text-amber-800">
+          <p className="text-muted-foreground">
             Our projections assume quarterly rebalancing, which generates
             taxable events each quarter in AF accounts. Tax is estimated from
             expected annual returns.
@@ -384,12 +388,12 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
               {rows.map((row, i) => {
                 const savingsColor =
                   row.bestAccount === "AF"
-                    ? "text-amber-700 bg-amber-100"
-                    : "text-green-700 bg-green-100";
+                    ? "text-destructive bg-destructive/10"
+                    : "text-foreground bg-accent/10";
                 const bestBadgeColor =
                   row.bestAccount === "AF"
-                    ? "text-purple-700 bg-purple-100"
-                    : "text-green-700 bg-green-100";
+                    ? "text-primary bg-primary/10"
+                    : "text-foreground bg-accent/10";
                 return (
                   <tr
                     key={`${row.pct}-${i}`}
@@ -512,7 +516,7 @@ export const TaxEducationPanel: React.FC<TaxEducationPanelProps> = ({
     <Card className="bg-muted border border-border">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
-          <BookOpen className="h-5 w-5 text-blue-600" />
+          <BookOpen className="h-5 w-5 text-primary" />
           Swedish Investment Taxation
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-0.5">

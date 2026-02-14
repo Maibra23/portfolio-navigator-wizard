@@ -56,6 +56,13 @@ import { TaxFreeVisualization } from "./TaxFreeVisualization";
 import { WhatIfCalculator } from "./WhatIfCalculator";
 import { TaxSummaryCard } from "./TaxSummaryCard";
 import { TotalCostsCard } from "./TotalCostsCard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface FinalizePortfolioProps {
   onComplete: () => void;
@@ -142,6 +149,26 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     }
     return portfolioMetrics;
   }, [state.optimizedPortfolio, portfolioMetrics, selectedPortfolioType]);
+
+  // Actionable insight line for tax tab (derived from comparison data)
+  const taxInsightLine = useMemo(() => {
+    const data = taxComparisonData;
+    if (!data?.length || !state.taxSettings.accountType) return null;
+    const low = Math.min(
+      ...data.map((d: { annualTax: number }) => d.annualTax),
+    );
+    const cur = data.find(
+      (d: { accountType: string }) =>
+        d.accountType === state.taxSettings.accountType,
+    );
+    const best = data.find((d: { annualTax: number }) => d.annualTax === low);
+    if (cur && best && cur.annualTax > low) {
+      const savings = cur.annualTax - low;
+      return `${best.accountType} saves you ${savings.toLocaleString("sv-SE", { maximumFractionDigits: 0 })} SEK/year vs ${cur.accountType}.`;
+    }
+    if (low === 0) return "You're in the tax-free zone for ISK/KF.";
+    return null;
+  }, [taxComparisonData, state.taxSettings.accountType]);
 
   // Validate current tab
   useEffect(() => {
@@ -1577,15 +1604,17 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             </CollapsibleContent>
           </Collapsible>
 
+          {/* Tax settings: account type, comparison, and optional what-if */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
                 <Calculator className="h-5 w-5" />
-                Tax, Cost & Summary
+                Tax settings
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Set account type and tax year; see tax by account, costs, and
-                5-year projection.
+                Set account type, tax year, and courtage for your report and
+                projections. Optionally compare how tax changes with different
+                capital or tax year below.
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1593,18 +1622,25 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Account Type</label>
-                  <select
-                    className="w-full p-2 border rounded-md"
+                  <Select
                     value={state.taxSettings.accountType || ""}
-                    onChange={(e) =>
-                      updateTaxSettings({ accountType: e.target.value as any })
+                    onValueChange={(value) =>
+                      updateTaxSettings({ accountType: value as any })
                     }
                   >
-                    <option value="">Select account type</option>
-                    <option value="ISK">ISK (Investeringssparkonto)</option>
-                    <option value="KF">KF (Kapitalförsäkring)</option>
-                    <option value="AF">AF (Aktie- och Fondkonto)</option>
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select account type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ISK">
+                        ISK (Investeringssparkonto)
+                      </SelectItem>
+                      <SelectItem value="KF">KF (Kapitalförsäkring)</SelectItem>
+                      <SelectItem value="AF">
+                        AF (Aktie- och Fondkonto)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium flex items-center gap-1.5">
@@ -1637,18 +1673,22 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       </TooltipContent>
                     </Tooltip>
                   </label>
-                  <select
-                    className="w-full p-2 border rounded-md"
-                    value={state.taxSettings.taxYear}
-                    onChange={(e) =>
+                  <Select
+                    value={String(state.taxSettings.taxYear)}
+                    onValueChange={(value) =>
                       updateTaxSettings({
-                        taxYear: parseInt(e.target.value) as 2025 | 2026,
+                        taxYear: parseInt(value, 10) as 2025 | 2026,
                       })
                     }
                   >
-                    <option value="2025">2025</option>
-                    <option value="2026">2026</option>
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Tax year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2025">2025</SelectItem>
+                      <SelectItem value="2026">2026</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium flex items-center gap-1.5">
@@ -1693,77 +1733,113 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       </TooltipContent>
                     </Tooltip>
                   </label>
-                  <select
-                    className="w-full p-2 border rounded-md"
+                  <Select
                     value={state.taxSettings.courtagClass || ""}
-                    onChange={(e) =>
-                      updateTaxSettings({ courtagClass: e.target.value })
+                    onValueChange={(value) =>
+                      updateTaxSettings({ courtagClass: value })
                     }
                   >
-                    <option value="">Select courtage class</option>
-                    <option value="start">Start</option>
-                    <option value="mini">Mini</option>
-                    <option value="small">Small</option>
-                    <option value="medium">Medium</option>
-                    <option value="fastPris">Fast Pris</option>
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select courtage class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="start">Start</SelectItem>
+                      <SelectItem value="mini">Mini</SelectItem>
+                      <SelectItem value="small">Small</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="fastPris">Fast Pris</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              {/* Tax & costs at a glance: one subsection with Your selection, Transaction costs, Compare account types */}
-              <div className="space-y-4">
-                <p className="text-sm font-semibold text-foreground">
-                  Tax & costs at a glance
+              {/* Comparison chart (hero) */}
+              {state.taxSettings.accountType && portfolioMetrics && (
+                <TaxComparisonChart
+                  capital={capital}
+                  taxYear={state.taxSettings.taxYear}
+                  expectedReturn={
+                    displayMetrics?.expectedReturn ||
+                    portfolioMetrics.expectedReturn
+                  }
+                  selectedAccountType={state.taxSettings.accountType}
+                  comparisonData={taxComparisonData}
+                  noCard
+                />
+              )}
+
+              {/* Your annual tax (one line) */}
+              {state.taxSettings.accountType && (
+                <TaxSummaryCard
+                  taxCalculation={taxCalculation}
+                  isLoading={isLoadingTax}
+                  portfolioMetrics={portfolioMetrics}
+                  capital={capital}
+                  noCard
+                  compact
+                />
+              )}
+
+              {/* Actionable insight */}
+              {taxInsightLine && (
+                <p className="text-sm text-muted-foreground">
+                  {taxInsightLine}
                 </p>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {state.taxSettings.accountType && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Your selection
-                      </p>
-                      <TaxSummaryCard
-                        taxCalculation={taxCalculation}
-                        isLoading={isLoadingTax}
-                        portfolioMetrics={portfolioMetrics}
-                        capital={capital}
-                        noCard
-                      />
-                    </div>
-                  )}
-                  {state.taxSettings.courtagClass && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Transaction costs
-                      </p>
-                      <TotalCostsCard
-                        transactionCosts={transactionCosts}
-                        isLoading={isLoadingCosts}
-                        noCard
-                      />
-                    </div>
-                  )}
-                  {state.taxSettings.accountType && portfolioMetrics && (
-                    <div className="space-y-2 lg:col-span-1">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Compare account types
-                      </p>
-                      <TaxComparisonChart
-                        capital={capital}
-                        taxYear={state.taxSettings.taxYear}
+              )}
+
+              {/* Optional: compare tax by capital and year (same card) */}
+              {state.taxSettings.accountType && portfolioMetrics && (
+                <div className="border-t pt-4 space-y-2">
+                  <Collapsible className="rounded-lg border border-border bg-muted/30">
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Calculator className="h-3.5 w-3.5" />
+                          Compare tax by capital and year
+                        </span>
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <WhatIfCalculator
+                        initialCapital={capital}
+                        initialTaxYear={state.taxSettings.taxYear}
                         expectedReturn={
                           displayMetrics?.expectedReturn ||
                           portfolioMetrics.expectedReturn
                         }
-                        selectedAccountType={state.taxSettings.accountType}
-                        comparisonData={taxComparisonData}
-                        noCard
                       />
-                    </div>
-                  )}
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
-              </div>
+              )}
+            </CardContent>
+          </Card>
 
-              {/* Tax-Free Visualization (only for ISK/KF) */}
+          {/* Secondary: Transaction costs and Tax-Free */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Costs</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Setup and tax-free breakdown
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {state.taxSettings.courtagClass && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Transaction costs (setup)
+                  </p>
+                  <TotalCostsCard
+                    transactionCosts={transactionCosts}
+                    isLoading={isLoadingCosts}
+                    noCard
+                  />
+                </div>
+              )}
               {state.taxSettings.accountType &&
                 taxCalculation &&
                 (state.taxSettings.accountType === "ISK" ||
@@ -1778,89 +1854,10 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                     taxYear={state.taxSettings.taxYear}
                   />
                 )}
-
-              {/* What-If Calculator */}
-              {state.taxSettings.accountType && portfolioMetrics && (
-                <WhatIfCalculator
-                  initialCapital={capital}
-                  initialTaxYear={state.taxSettings.taxYear}
-                  expectedReturn={
-                    displayMetrics?.expectedReturn ||
-                    portfolioMetrics.expectedReturn
-                  }
-                />
-              )}
-
-              <div className="mt-6 mb-4">
-                <label className="text-sm font-medium mb-1.5 block">
-                  Portfolio Name (for report)
-                </label>
-                <Input
-                  value={portfolioName}
-                  onChange={(e) => setPortfolioName(e.target.value)}
-                  placeholder="Enter portfolio name..."
-                  className="max-w-md"
-                />
-              </div>
-
-              {/* Export options: PDF and CSV (ZIP) */}
-              <p className="text-sm text-muted-foreground mb-2">
-                Export your report:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  onClick={handleExportPdf}
-                  variant="outline"
-                  className="w-full"
-                  size="lg"
-                  disabled={!state.taxSettings.accountType || isExporting}
-                >
-                  {isExporting && exportingFormat === "pdf" ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Exporting PDF...
-                    </>
-                  ) : (
-                    <>
-                      <FileText className="mr-2 h-4 w-4" />
-                      Download PDF report
-                    </>
-                  )}
-                </Button>
-                <Button
-                  onClick={handleExportCsv}
-                  variant="outline"
-                  className="w-full"
-                  size="lg"
-                  disabled={!state.taxSettings.accountType || isExporting}
-                >
-                  {isExporting && exportingFormat === "csv" ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Exporting CSV...
-                    </>
-                  ) : (
-                    <>
-                      <FileArchive className="mr-2 h-4 w-4" />
-                      Download CSV (ZIP)
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {validationErrors["tax-cost"] &&
-                validationErrors["tax-cost"].length > 0 && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      {validationErrors["tax-cost"][0]}
-                    </AlertDescription>
-                  </Alert>
-                )}
             </CardContent>
           </Card>
 
-          {/* 5-Year Projection: separate card */}
+          {/* 5-Year Projection: single card from component */}
           {(() => {
             const opt = state.optimizedPortfolio;
             const currentWeights =
@@ -1902,28 +1899,87 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             // selectedPortfolioType === 'current' or no optimized data: use currentWeights, currentReturn, currentRisk (already set)
 
             return (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4" />
-                    5-Year Projection (Tax & Cost Adjusted)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <FiveYearProjectionChart
-                    weights={projectionWeights}
-                    capital={capital}
-                    accountType={state.taxSettings.accountType}
-                    taxYear={state.taxSettings.taxYear}
-                    courtageClass={state.taxSettings.courtagClass}
-                    expectedReturn={projectionExpectedReturn}
-                    risk={projectionRisk}
-                    rebalancingFrequency="quarterly"
-                  />
-                </CardContent>
-              </Card>
+              <FiveYearProjectionChart
+                weights={projectionWeights}
+                capital={capital}
+                accountType={state.taxSettings.accountType}
+                taxYear={state.taxSettings.taxYear}
+                courtageClass={state.taxSettings.courtagClass}
+                expectedReturn={projectionExpectedReturn}
+                risk={projectionRisk}
+                rebalancingFrequency="quarterly"
+              />
             );
           })()}
+
+          {/* Portfolio name and export: after 5-year projection */}
+          <div className="space-y-4">
+            <div className="mb-4">
+              <label className="text-sm font-medium mb-1.5 block">
+                Portfolio Name (for report)
+              </label>
+              <Input
+                value={portfolioName}
+                onChange={(e) => setPortfolioName(e.target.value)}
+                placeholder="Enter portfolio name..."
+                className="max-w-md"
+              />
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-2">
+              Export your report:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Button
+                onClick={handleExportPdf}
+                variant="outline"
+                className="w-full"
+                size="lg"
+                disabled={!state.taxSettings.accountType || isExporting}
+              >
+                {isExporting && exportingFormat === "pdf" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Exporting PDF...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download PDF report
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleExportCsv}
+                variant="outline"
+                className="w-full"
+                size="lg"
+                disabled={!state.taxSettings.accountType || isExporting}
+              >
+                {isExporting && exportingFormat === "csv" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Exporting CSV...
+                  </>
+                ) : (
+                  <>
+                    <FileArchive className="mr-2 h-4 w-4" />
+                    Download CSV (ZIP)
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {validationErrors["tax-cost"] &&
+              validationErrors["tax-cost"].length > 0 && (
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    {validationErrors["tax-cost"][0]}
+                  </AlertDescription>
+                </Alert>
+              )}
+          </div>
         </TabsContent>
       </Tabs>
 
