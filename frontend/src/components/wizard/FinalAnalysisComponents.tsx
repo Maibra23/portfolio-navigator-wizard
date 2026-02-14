@@ -893,6 +893,32 @@ export const MonteCarloCard = ({
                   The 5th percentile is worse than 5% of outcomes. These
                   illustrate uncertainty under the model.
                 </p>
+                {isTriple && (
+                  <>
+                    <p>
+                      <strong className="text-foreground">
+                        Why the distributions differ:
+                      </strong>{" "}
+                      Each portfolio has a different mix of expected return and
+                      risk (volatility). Current Portfolio uses your actual
+                      holdings; Weights-Optimized adjusts weights within your
+                      chosen assets; Market-Optimized uses a different asset
+                      mix. A curve shifted right means higher expected return; a
+                      wider curve means more volatility and a wider range of
+                      outcomes.
+                    </p>
+                    <p>
+                      <strong className="text-foreground">
+                        How to compare them:
+                      </strong>{" "}
+                      Compare the 5th percentile (downside) and the median to
+                      see trade-offs: one portfolio may have higher average
+                      return but worse downside, or the opposite. Use this to
+                      see whether optimization improves expected return, reduces
+                      risk, or both, relative to your current portfolio.
+                    </p>
+                  </>
+                )}
                 <p>
                   <strong className="text-foreground">Example:</strong> If your
                   portfolio is 500,000 SEK and the 5th percentile is{" "}

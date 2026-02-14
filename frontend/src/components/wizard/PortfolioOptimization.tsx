@@ -3088,99 +3088,101 @@ export const PortfolioOptimization = ({
                 </p>
               </div>
 
-              {/* Current Portfolio Summary */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">
-                    Current Portfolio Summary
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {currentPortfolio?.length || 0} assets selected
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-0">
-                  {currentPortfolio && currentPortfolio.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-2">
-                      {currentPortfolio.map((stock, index) => (
-                        <div
-                          key={stock.symbol}
-                          className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-medium text-blue-600">
-                                {index + 1}
-                              </span>
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-medium text-sm">
-                                {stock.symbol}
+              {/* Current Portfolio Summary - hidden once efficient frontier is available */}
+              {!(efficientFrontier.length > 0) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      Current Portfolio Summary
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {currentPortfolio?.length || 0} assets selected
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-0">
+                    {currentPortfolio && currentPortfolio.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        {currentPortfolio.map((stock, index) => (
+                          <div
+                            key={stock.symbol}
+                            className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-medium text-blue-600">
+                                  {index + 1}
+                                </span>
                               </div>
-                              <div className="text-xs text-muted-foreground truncate">
-                                {stock.name || "Stock"}
+                              <div className="min-w-0">
+                                <div className="font-medium text-sm">
+                                  {stock.symbol}
+                                </div>
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {stock.name || "Stock"}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="font-semibold text-sm">
+                                {stock.allocation}%
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {capital
+                                  ? (
+                                      (stock.allocation / 100) *
+                                      capital
+                                    ).toLocaleString()
+                                  : "0"}{" "}
+                                SEK
                               </div>
                             </div>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="font-semibold text-sm">
-                              {stock.allocation}%
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {capital
-                                ? (
-                                    (stock.allocation / 100) *
-                                    capital
-                                  ).toLocaleString()
-                                : "0"}{" "}
-                              SEK
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No portfolio selected</p>
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No portfolio selected</p>
+                      </div>
+                    )}
 
-                  {currentMetrics && (
-                    <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                        <div className="text-xl font-bold text-emerald-700">
-                          {((currentMetrics.expectedReturn || 0) * 100).toFixed(
-                            1,
-                          )}
-                          %
+                    {currentMetrics && (
+                      <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
+                        <div className="text-center p-3 bg-muted rounded-lg border border-border">
+                          <div className="text-xl font-bold text-emerald-700">
+                            {(
+                              (currentMetrics.expectedReturn || 0) * 100
+                            ).toFixed(1)}
+                            %
+                          </div>
+                          <div className="text-xs text-emerald-600 mt-0.5">
+                            Expected Return
+                          </div>
                         </div>
-                        <div className="text-xs text-emerald-600 mt-0.5">
-                          Expected Return
+                        <div className="text-center p-3 bg-muted rounded-lg border border-border">
+                          <div className="text-xl font-bold text-amber-700">
+                            {((currentMetrics.risk || 0) * 100).toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-amber-600 mt-0.5">
+                            Risk Level
+                          </div>
+                        </div>
+                        <div className="text-center p-3 bg-muted rounded-lg border border-border">
+                          <div className="text-xl font-bold text-purple-700">
+                            {(currentMetrics.diversificationScore || 0).toFixed(
+                              0,
+                            )}
+                            %
+                          </div>
+                          <div className="text-xs text-purple-600 mt-0.5">
+                            Diversification
+                          </div>
                         </div>
                       </div>
-                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                        <div className="text-xl font-bold text-amber-700">
-                          {((currentMetrics.risk || 0) * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-amber-600 mt-0.5">
-                          Risk Level
-                        </div>
-                      </div>
-                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                        <div className="text-xl font-bold text-purple-700">
-                          {(currentMetrics.diversificationScore || 0).toFixed(
-                            0,
-                          )}
-                          %
-                        </div>
-                        <div className="text-xs text-purple-600 mt-0.5">
-                          Diversification
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             {/* Optimization Tab */}
@@ -7476,6 +7478,38 @@ export const PortfolioOptimization = ({
                                       worse than 5% of outcomes. These
                                       illustrate uncertainty under the model.
                                     </p>
+                                    {tripleOptimizationResults && (
+                                      <>
+                                        <p>
+                                          <strong className="text-foreground">
+                                            Why the distributions differ:
+                                          </strong>{" "}
+                                          Each portfolio has a different mix of
+                                          expected return and risk (volatility).
+                                          Current Portfolio uses your actual
+                                          holdings; Weights-Optimized adjusts
+                                          weights within your chosen assets;
+                                          Market-Optimized uses a different
+                                          asset mix. A curve shifted right means
+                                          higher expected return; a wider curve
+                                          means more volatility and a wider
+                                          range of outcomes.
+                                        </p>
+                                        <p>
+                                          <strong className="text-foreground">
+                                            How to compare them:
+                                          </strong>{" "}
+                                          Compare the 5th percentile (downside)
+                                          and the median to see trade-offs: one
+                                          portfolio may have higher average
+                                          return but worse downside, or the
+                                          opposite. Use this to see whether
+                                          optimization improves expected return,
+                                          reduces risk, or both, relative to
+                                          your current portfolio.
+                                        </p>
+                                      </>
+                                    )}
                                     <p>
                                       <strong className="text-foreground">
                                         Example:

@@ -822,6 +822,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <div className="text-sm font-medium text-center">
                                   Portfolio Value Over Time
                                 </div>
+                                <div className="text-xs text-muted-foreground text-center">
+                                  Value indexed to 100 at scenario start (crisis
+                                  and recovery window)
+                                </div>
                                 <div className="h-64 w-full -ml-4">
                                   <ResponsiveContainer
                                     width="100%"
@@ -884,18 +888,30 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       }
 
                                       if (recoveryIndex !== -1) {
-                                        // Portfolio recovered - show 3-6 months after recovery, or up to recovery peak, or up to 24 months total
-                                        const endIndex = Math.min(
-                                          recoveryIndex + 3, // 3 months after recovery
+                                        // Portfolio recovered - show 3 months after recovery, or up to recovery peak, or up to 24 months total.
+                                        // Use at least 12 months when available so the chart doesn't look half-empty.
+                                        const minMonths = 12;
+                                        const rawEndIndex = Math.min(
+                                          recoveryIndex + 3,
                                           recoveryPeakIndex !== -1
                                             ? recoveryPeakIndex + 1
-                                            : baseData.length - 1, // Include recovery peak if it exists
-                                          baseData.length - 1, // Don't exceed available data
-                                          24, // Maximum 24 months total for chart readability
+                                            : baseData.length - 1,
+                                          baseData.length - 1,
+                                          24,
+                                        );
+                                        const endIndex = Math.max(
+                                          rawEndIndex,
+                                          Math.min(
+                                            minMonths - 1,
+                                            baseData.length - 1,
+                                          ),
                                         );
                                         baseData = baseData.slice(
                                           0,
-                                          endIndex + 1,
+                                          Math.min(
+                                            endIndex + 1,
+                                            baseData.length,
+                                          ),
                                         );
                                       } else {
                                         // No recovery found - limit to reasonable length anyway, but include recovery peak if it exists
@@ -1272,11 +1288,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                 name === "Moderate" ||
                                                 name === "Conservative"
                                               ) {
-                                                // This is a trajectory projection line
-                                                const isNegative = value < 0;
-                                                const insight = isNegative
-                                                  ? `⚠️ Projected ${Math.abs(value).toFixed(1)}% annual decline - consider rebalancing`
-                                                  : `📈 Projected ${value.toFixed(1)}% annual growth`;
+                                                // Trajectory value = portfolio value as % of scenario start (Y-axis), not annualized return
                                                 return [
                                                   `${value.toFixed(1)}%`,
                                                   `${name} Trajectory`,
@@ -1320,8 +1332,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                         entry.name as string;
 
                                                       if (isTrajectory) {
-                                                        const isNegative =
-                                                          value < 0;
+                                                        const belowPeak =
+                                                          value < 100;
                                                         return (
                                                           <div
                                                             key={index}
@@ -1340,7 +1352,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                                 Trajectory:
                                                               </span>
                                                               <span
-                                                                className={`font-bold ${isNegative ? "text-red-600" : "text-green-600"}`}
+                                                                className={`font-bold ${belowPeak ? "text-amber-600" : "text-green-600"}`}
                                                               >
                                                                 {value.toFixed(
                                                                   1,
@@ -1348,12 +1360,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                                 %
                                                               </span>
                                                             </div>
-                                                            <div
-                                                              className={`text-xs mt-1 ${isNegative ? "text-red-500" : "text-green-500"}`}
-                                                            >
-                                                              {isNegative
-                                                                ? `⚠️ Projected ${Math.abs(value).toFixed(1)}% annual decline - consider rebalancing`
-                                                                : `📈 Projected ${value.toFixed(1)}% annual growth`}
+                                                            <div className="text-xs mt-1 text-muted-foreground">
+                                                              Projected
+                                                              portfolio value at
+                                                              this date (100% =
+                                                              scenario start).
+                                                              {belowPeak
+                                                                ? " Below peak."
+                                                                : " At or above peak."}
                                                             </div>
                                                           </div>
                                                         );
@@ -1659,6 +1673,60 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 )}
                               </div>
                             )}
+
+                          {/* Understanding this section - explanatory text like Monte Carlo */}
+                          <Collapsible className="rounded-lg border border-border bg-muted/30">
+                            <CollapsibleTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
+                              >
+                                <span className="flex items-center gap-2">
+                                  <BookOpen className="h-3.5 w-3.5" />
+                                  Understanding this section
+                                </span>
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                              </button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-2">
+                                <p>
+                                  <strong className="text-foreground">
+                                    What this section shows:
+                                  </strong>{" "}
+                                  How your current portfolio would have behaved
+                                  during the 2020 COVID-19 crash: total return
+                                  over the period, maximum drawdown (peak to
+                                  trough), recovery time and pattern, and a
+                                  month-by-month value chart. Values are
+                                  normalized so the start of the scenario (e.g.
+                                  Jan 2020) equals 100%.
+                                </p>
+                                <p>
+                                  <strong className="text-foreground">
+                                    What the chart is for:
+                                  </strong>{" "}
+                                  The &quot;Portfolio Value Over Time&quot;
+                                  chart shows the crisis and recovery window
+                                  only. When recovery was quick, the chart may
+                                  show only part of the full width (the rest is
+                                  intentionally empty) so you focus on the
+                                  drawdown and rebound, not long flat periods
+                                  after recovery.
+                                </p>
+                                <p>
+                                  <strong className="text-foreground">
+                                    Limitations:
+                                  </strong>{" "}
+                                  This is a single historical scenario, not a
+                                  forecast. Past performance does not guarantee
+                                  future results. The Monte Carlo tab
+                                  illustrates a range of possible outcomes under
+                                  assumed volatility.
+                                </p>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
 
                           {/* Sector Impact */}
                           {stressTestResults.scenarios.covid19.sector_impact &&
@@ -2570,8 +2638,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                 name === "Moderate" ||
                                                 name === "Conservative"
                                               ) {
-                                                // This is a trajectory projection line
-                                                const isNegative = value < 0;
+                                                // Trajectory value = portfolio value as % of scenario start (Y-axis), not annualized return
                                                 return [
                                                   `${value.toFixed(1)}%`,
                                                   `${name} Trajectory`,
@@ -2615,8 +2682,8 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                         entry.name as string;
 
                                                       if (isTrajectory) {
-                                                        const isNegative =
-                                                          value < 0;
+                                                        const belowPeak =
+                                                          value < 100;
                                                         return (
                                                           <div
                                                             key={index}
@@ -2635,7 +2702,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                                 Trajectory:
                                                               </span>
                                                               <span
-                                                                className={`font-bold ${isNegative ? "text-red-600" : "text-green-600"}`}
+                                                                className={`font-bold ${belowPeak ? "text-amber-600" : "text-green-600"}`}
                                                               >
                                                                 {value.toFixed(
                                                                   1,
@@ -2643,12 +2710,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                                                 %
                                                               </span>
                                                             </div>
-                                                            <div
-                                                              className={`text-xs mt-1 ${isNegative ? "text-red-500" : "text-green-500"}`}
-                                                            >
-                                                              {isNegative
-                                                                ? `⚠️ Projected ${Math.abs(value).toFixed(1)}% annual decline - consider rebalancing`
-                                                                : `📈 Projected ${value.toFixed(1)}% annual growth`}
+                                                            <div className="text-xs mt-1 text-muted-foreground">
+                                                              Projected
+                                                              portfolio value at
+                                                              this date (100% =
+                                                              scenario start).
+                                                              {belowPeak
+                                                                ? " Below peak."
+                                                                : " At or above peak."}
                                                             </div>
                                                           </div>
                                                         );

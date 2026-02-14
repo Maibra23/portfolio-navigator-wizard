@@ -1,8 +1,12 @@
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, TrendingUp, Info } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Progress } from '@/components/ui/progress';
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Shield, TrendingUp, Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 
 interface TaxFreeVisualizationProps {
   capital: number;
@@ -15,10 +19,10 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
   capital,
   taxFreeLevel,
   accountType,
-  taxYear
+  taxYear,
 }) => {
   // Only show for ISK/KF
-  if (accountType !== 'ISK' && accountType !== 'KF') {
+  if (accountType !== "ISK" && accountType !== "KF") {
     return null;
   }
 
@@ -29,41 +33,44 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
   const isTaxFree = taxableAmount === 0;
 
   return (
-    <Card className={isTaxFree ? 'border-green-300 bg-green-50' : 'border-amber-200 bg-amber-50'}>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Shield className={`h-4 w-4 ${isTaxFree ? 'text-green-600' : 'text-amber-600'}`} />
+    <Card
+      className={`rounded-lg ${isTaxFree ? "border-green-300 bg-green-50" : "border-amber-200 bg-amber-50"}`}
+    >
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Shield
+            className={`h-3.5 w-3.5 ${isTaxFree ? "text-green-600" : "text-amber-600"}`}
+          />
           Your Capital vs. Tax-Free Level
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex cursor-help text-muted-foreground hover:text-foreground">
-                <Info className="h-4 w-4" />
+                <Info className="h-3.5 w-3.5" />
               </span>
             </TooltipTrigger>
             <TooltipContent side="top" className="max-w-sm">
-              <p className="mb-2">
-                For ISK and KF accounts, Swedish tax law provides a <strong>tax-free level</strong> where
-                the first portion of your capital is not subject to schablonbeskattning.
+              <p className="font-semibold mb-1">Why this section</p>
+              <p className="mb-2 text-xs">
+                Shows how much of your capital is below the tax-free level (no
+                tax) vs above (taxed). Lets you see at a glance if you are in
+                the zero-tax zone.
               </p>
-              <p className="font-semibold mb-1">Tax-Free Levels:</p>
-              <ul className="space-y-1 list-disc ml-4">
-                <li><strong>2025:</strong> 150,000 SEK</li>
-                <li><strong>2026:</strong> 300,000 SEK (doubled!)</li>
-              </ul>
-              <p className="mt-2">
-                Only the amount <strong>above</strong> this level is subject to tax calculation.
+              <p className="text-xs mb-1">
+                ISK/KF: first portion of capital is exempt; only the amount
+                above the level is subject to schablonbeskattning. 2025: 150,000
+                SEK; 2026: 300,000 SEK.
               </p>
             </TooltipContent>
           </Tooltip>
         </CardTitle>
-        <p className="text-xs text-muted-foreground mt-1">
-          {accountType} account • Tax year {taxYear}
+        <p className="text-[10px] text-muted-foreground">
+          {accountType} • Tax year {taxYear}
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 pt-0">
         {/* Visual bar representation */}
-        <div className="space-y-2">
-          <div className="relative h-16 bg-muted rounded-lg overflow-hidden border-2 border-border">
+        <div className="space-y-1.5">
+          <div className="relative h-10 bg-muted rounded-md overflow-hidden border border-border">
             {taxFreeAmount > 0 && (
               <div
                 style={{ width: `${taxFreePercentage}%` }}
@@ -79,7 +86,10 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
             )}
             {taxableAmount > 0 && (
               <div
-                style={{ width: `${taxablePercentage}%`, left: `${taxFreePercentage}%` }}
+                style={{
+                  width: `${taxablePercentage}%`,
+                  left: `${taxFreePercentage}%`,
+                }}
                 className="absolute top-0 h-full bg-amber-600 flex items-center justify-center transition-all duration-300"
               >
                 {taxablePercentage > 20 && (
@@ -103,34 +113,54 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
           <div className="bg-card rounded-lg border-2 border-border p-3">
             <div className="flex items-center gap-2 mb-1">
               <Shield className="h-4 w-4 text-green-600" />
-              <p className="text-xs font-semibold text-green-700">Tax-Free Portion</p>
+              <p className="text-xs font-semibold text-green-700">
+                Tax-Free Portion
+              </p>
             </div>
             <p className="text-lg font-bold text-green-700">
-              {taxFreeAmount.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
+              {taxFreeAmount.toLocaleString("sv-SE", {
+                maximumFractionDigits: 0,
+              })}{" "}
+              SEK
             </p>
             <p className="text-xs text-green-600 mt-0.5">
               {taxFreePercentage.toFixed(1)}% of your capital
             </p>
             <p className="text-[10px] text-muted-foreground mt-1">
-              Up to {taxFreeLevel.toLocaleString('sv-SE')} SEK limit
+              Up to {taxFreeLevel.toLocaleString("sv-SE")} SEK limit
             </p>
           </div>
 
-          <div className={`rounded-lg border-2 p-3 ${taxableAmount > 0 ? 'bg-card border-destructive/50' : 'bg-muted/30 border-border'}`}>
+          <div
+            className={`rounded-lg border-2 p-3 ${taxableAmount > 0 ? "bg-card border-destructive/50" : "bg-muted/30 border-border"}`}
+          >
             <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className={`h-4 w-4 ${taxableAmount > 0 ? 'text-red-600' : 'text-gray-400'}`} />
-              <p className={`text-xs font-semibold ${taxableAmount > 0 ? 'text-red-700' : 'text-gray-500'}`}>
+              <TrendingUp
+                className={`h-4 w-4 ${taxableAmount > 0 ? "text-red-600" : "text-gray-400"}`}
+              />
+              <p
+                className={`text-xs font-semibold ${taxableAmount > 0 ? "text-red-700" : "text-gray-500"}`}
+              >
                 Taxable Portion
               </p>
             </div>
-            <p className={`text-lg font-bold ${taxableAmount > 0 ? 'text-red-700' : 'text-gray-500'}`}>
-              {taxableAmount.toLocaleString('sv-SE', { maximumFractionDigits: 0 })} SEK
+            <p
+              className={`text-lg font-bold ${taxableAmount > 0 ? "text-red-700" : "text-gray-500"}`}
+            >
+              {taxableAmount.toLocaleString("sv-SE", {
+                maximumFractionDigits: 0,
+              })}{" "}
+              SEK
             </p>
-            <p className={`text-xs mt-0.5 ${taxableAmount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+            <p
+              className={`text-xs mt-0.5 ${taxableAmount > 0 ? "text-red-600" : "text-gray-500"}`}
+            >
               {taxablePercentage.toFixed(1)}% of your capital
             </p>
             <p className="text-[10px] text-muted-foreground mt-1">
-              {taxableAmount > 0 ? 'Subject to schablonbeskattning' : 'No taxable amount'}
+              {taxableAmount > 0
+                ? "Subject to schablonbeskattning"
+                : "No taxable amount"}
             </p>
           </div>
         </div>
@@ -145,9 +175,11 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
                   Your entire portfolio is tax-free!
                 </p>
                 <p className="text-xs text-green-800">
-                  Since your capital ({capital.toLocaleString('sv-SE')} SEK) is below the {taxYear} tax-free level
-                  ({taxFreeLevel.toLocaleString('sv-SE')} SEK), you won't pay any tax on this {accountType} account.
-                  This is a great opportunity for tax-free growth!
+                  Since your capital ({capital.toLocaleString("sv-SE")} SEK) is
+                  below the {taxYear} tax-free level (
+                  {taxFreeLevel.toLocaleString("sv-SE")} SEK), you won't pay any
+                  tax on this {accountType} account. This is a great opportunity
+                  for tax-free growth!
                 </p>
               </div>
             </div>
@@ -163,9 +195,13 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
                   2026 Tax-Free Level Increase
                 </p>
                 <p className="text-xs text-blue-800">
-                  In 2026, the tax-free level increases to 300,000 SEK. With your current capital
-                  of {capital.toLocaleString('sv-SE')} SEK, switching to tax year 2026 could
-                  {capital <= 300000 ? ' eliminate' : ' significantly reduce'} your tax burden!
+                  In 2026, the tax-free level increases to 300,000 SEK. With
+                  your current capital of {capital.toLocaleString("sv-SE")} SEK,
+                  switching to tax year 2026 could
+                  {capital <= 300000
+                    ? " eliminate"
+                    : " significantly reduce"}{" "}
+                  your tax burden!
                 </p>
               </div>
             </div>
@@ -181,8 +217,12 @@ export const TaxFreeVisualization: React.FC<TaxFreeVisualizationProps> = ({
                   How Your Tax is Calculated
                 </p>
                 <p className="text-xs text-amber-800">
-                  Only the <strong className="text-red-700">{taxableAmount.toLocaleString('sv-SE')} SEK</strong> above
-                  the tax-free level is used to calculate your annual tax. The formula: Taxable amount × Schablonränta × 30%.
+                  Only the{" "}
+                  <strong className="text-red-700">
+                    {taxableAmount.toLocaleString("sv-SE")} SEK
+                  </strong>{" "}
+                  above the tax-free level is used to calculate your annual tax.
+                  The formula: Taxable amount × Schablonränta × 30%.
                 </p>
               </div>
             </div>

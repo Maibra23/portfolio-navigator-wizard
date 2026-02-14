@@ -113,7 +113,7 @@ class CSVExportGenerator:
         # Tax details (snake_case and camelCase)
         capital_underlag = self._get(tax_data, 'capital_underlag', 'capitalUnderlag')
         if capital_underlag is not None:
-            writer.writerow(['Capital Underlag', self._format_number(float(capital_underlag)), ''])
+            writer.writerow(['Tax Base (Capital)', self._format_number(float(capital_underlag)), ''])
         
         tax_free = self._get(tax_data, 'tax_free_level', 'taxFreeLevel')
         if tax_free is not None:
@@ -456,7 +456,7 @@ class CSVExportGenerator:
             'Effective Rate (%)',
             'After-Tax Return (%)',
             'Tax-Free Level (SEK)',
-            'Capital Underlag (SEK)',
+            'Tax Base (Capital) (SEK)',
             'Current Selection'
         ])
 

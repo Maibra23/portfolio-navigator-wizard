@@ -863,10 +863,19 @@ class StrategyPortfolioOptimizer:
                 if w <= 0 or not symbol:
                     continue
                 
-                # FIRST: Try to use cached metrics (expected_return) - more stable
+                # FIRST: Try to use cached metrics (expected_return or annualized_return) - more stable
                 metrics = self.data_service._load_from_cache(symbol, 'metrics') if hasattr(self.data_service, '_load_from_cache') else None
-                if metrics and isinstance(metrics, dict) and 'annualized_return' in metrics:
-                    annual_ret = float(metrics.get('annualized_return', 0.10))
+                if metrics and isinstance(metrics, dict):
+                    # Prefer expected_return (stored as decimal); fallback to annualized_return (may be % or decimal)
+                    raw_ret = metrics.get('expected_return')
+                    if raw_ret is None:
+                        raw_ret = metrics.get('annualized_return', 0.10)
+                    annual_ret = float(raw_ret)
+                    # Normalize: cache may store percentage (e.g. 29.14) or decimal (0.2914)
+                    if abs(annual_ret) > 1.0:
+                        annual_ret = annual_ret / 100.0
+                    # Clamp to realistic range (0% to 100%) to avoid outliers
+                    annual_ret = max(0.0, min(1.0, annual_ret))
                     # Keep only assets with strictly positive expected returns
                     if annual_ret > 0:
                         weights.append(w)
@@ -892,7 +901,8 @@ class StrategyPortfolioOptimizer:
                         annual_ret = float((s.iloc[-1] / s.iloc[-12]) - 1)
                     else:
                         annual_ret = float(((s.iloc[-1] / s.iloc[0]) - 1) * (12 / len(s)))
-                    
+                    # Clamp to realistic range (0% to 100%) to avoid outliers from bad data
+                    annual_ret = max(0.0, min(1.0, annual_ret))
                     # Keep only assets with strictly positive calculated returns
                     if annual_ret > 0:
                         weights.append(w)
@@ -914,7 +924,8 @@ class StrategyPortfolioOptimizer:
             if portfolio_return <= 0:
                 logger.warning(f"⚠️ Portfolio has non-positive return after filtering ({portfolio_return:.2%}), using 10% fallback")
                 return 0.10
-            
+            # Final clamp to realistic max (90%) so stored metrics are never unrealistic
+            portfolio_return = min(portfolio_return, 0.90)
             return float(portfolio_return)
         except Exception as e:
             logger.error(f"❌ Error calculating expected return: {e}")
@@ -1183,7 +1194,11 @@ class StrategyPortfolioOptimizer:
                     # Use cached metrics primarily (faster than loading prices)
                     if cached_metrics:
                         volatility = cached_metrics.get('risk', 0.2)
-                        annual_return = cached_metrics.get('annualized_return', 0.1)
+                        annual_return = float(cached_metrics.get('annualized_return', 0.1))
+                        # Normalize: cache may store percentage (e.g. 29.14) or decimal (0.2914)
+                        if abs(annual_return) > 1.0:
+                            annual_return = annual_return / 100.0
+                        annual_return = max(0.0, min(1.0, annual_return))
                         current_price = cached_metrics.get('current_price', 0)
                     else:
                         # Only load prices if no metrics available
