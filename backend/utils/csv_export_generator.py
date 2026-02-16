@@ -86,16 +86,10 @@ class CSVExportGenerator:
                 return d[k]
         return None
 
-    def generate_tax_analysis_csv(self, tax_data: Dict) -> str:
+    def generate_tax_analysis_csv(self, tax_data: Dict, tax_free_data: Optional[Dict] = None) -> str:
         """
-        Generate tax_analysis.csv.
-        Accepts both snake_case and camelCase keys (e.g. annual_tax or annualTax).
-        
-        Args:
-            tax_data: Tax calculation data
-            
-        Returns:
-            CSV content as string
+        Generate tax_analysis.csv (same content as PDF Section 4 + 4b Tax-Free Breakdown).
+        Accepts both snake_case and camelCase keys.
         """
         output = StringIO()
         writer = csv.writer(output)
@@ -148,40 +142,55 @@ class CSVExportGenerator:
         if total_tax is not None:
             writer.writerow(['Total Tax (AF)', self._format_number(float(total_tax)), ''])
         
+        # 4b. Tax-Free Breakdown (same as PDF)
+        if tax_free_data:
+            writer.writerow(['', '', ''])
+            writer.writerow(['Tax-Free Breakdown (4b)', '', ''])
+            tax_free_level = self._get(tax_free_data, 'tax_free_level', 'taxFreeLevel')
+            tax_free_amt = self._get(tax_free_data, 'tax_free_amount', 'taxFreeAmount')
+            taxable_amt = self._get(tax_free_data, 'taxable_amount', 'taxableAmount')
+            tax_free_pct = self._get(tax_free_data, 'tax_free_percentage', 'taxFreePercentage')
+            taxable_pct = self._get(tax_free_data, 'taxable_percentage', 'taxablePercentage')
+            is_tax_free = self._get(tax_free_data, 'is_tax_free', 'isTaxFree')
+            if tax_free_level is not None:
+                writer.writerow(['Tax-Free Level (year)', self._format_number(float(tax_free_level)), ''])
+            if tax_free_amt is not None:
+                writer.writerow(['Tax-Free Amount', self._format_number(float(tax_free_amt)), self._format_number(float(tax_free_pct), decimals=2) + '%' if tax_free_pct is not None else ''])
+            if taxable_amt is not None:
+                writer.writerow(['Taxable Amount', self._format_number(float(taxable_amt)), self._format_number(float(taxable_pct), decimals=2) + '%' if taxable_pct is not None else ''])
+            if is_tax_free is not None:
+                writer.writerow(['Portfolio Below Tax-Free', 'Yes' if is_tax_free else 'No', ''])
+        
         return output.getvalue()
     
-    def generate_transaction_costs_csv(self, cost_data: Dict) -> str:
+    def generate_transaction_costs_csv(self, cost_data: Dict, portfolio_value: Optional[float] = None) -> str:
         """
-        Generate transaction_costs.csv.
-        Accepts both snake_case and camelCase keys (e.g. setup_cost or setupCost).
-        
-        Args:
-            cost_data: Transaction cost data
-            
-        Returns:
-            CSV content as string
+        Generate transaction_costs.csv (same content as PDF: Component, Value, Impact %).
+        Accepts both snake_case and camelCase keys. When portfolio_value is set, adds Impact column as in PDF.
         """
         output = StringIO()
         writer = csv.writer(output)
         
-        # Header
-        writer.writerow(['Cost Component', 'Value (SEK)', 'Details'])
+        # Header: match PDF (Component, Value, Impact)
+        writer.writerow(['Cost Component', 'Value (SEK)', 'Impact'])
         
         courtage_class = self._get(cost_data, 'courtage_class', 'courtageClass') or 'N/A'
-        writer.writerow(['Courtage Class', str(courtage_class), ''])
-        writer.writerow(['', '', ''])  # Empty row
+        writer.writerow(['Courtage Class', str(courtage_class), 'Fee tier'])
+        writer.writerow(['', '', ''])
         
-        # Setup costs
         setup_cost = self._get(cost_data, 'setup_cost', 'setupCost')
         if setup_cost is not None:
-            writer.writerow(['Setup Cost', self._format_number(float(setup_cost)), ''])
+            impact = ''
+            if portfolio_value and float(portfolio_value) > 0:
+                pct = float(setup_cost) / portfolio_value * 100
+                impact = f'{pct:.2f}% (one-time)'
+            writer.writerow(['Setup Cost', self._format_number(float(setup_cost)), impact])
         
         setup_breakdown = self._get(cost_data, 'setup_breakdown', 'setupBreakdown')
         if setup_breakdown is not None:
-            writer.writerow(['', '', ''])  # Empty row
+            writer.writerow(['', '', ''])
             writer.writerow(['Setup Breakdown', '', ''])
             writer.writerow(['Ticker', 'Shares', 'Value (SEK)', 'Courtage (SEK)'])
-            
             for item in (setup_breakdown if isinstance(setup_breakdown, list) else []):
                 writer.writerow([
                     item.get('ticker', ''),
@@ -190,12 +199,15 @@ class CSVExportGenerator:
                     self._format_number(item.get('courtage', 0))
                 ])
         
-        writer.writerow(['', '', ''])  # Empty row
+        writer.writerow(['', '', ''])
         
-        # Rebalancing costs (snake_case and camelCase)
         annual_rebal = self._get(cost_data, 'annual_rebalancing_cost', 'annualRebalancingCost')
         if annual_rebal is not None:
-            writer.writerow(['Annual Rebalancing Cost', self._format_number(float(annual_rebal)), ''])
+            impact = ''
+            if portfolio_value and float(portfolio_value) > 0:
+                pct = float(annual_rebal) / portfolio_value * 100
+                impact = f'{pct:.2f}%/year'
+            writer.writerow(['Annual Rebalancing Cost', self._format_number(float(annual_rebal)), impact])
         per_rebal = self._get(cost_data, 'per_rebalance_cost', 'perRebalanceCost')
         if per_rebal is not None:
             writer.writerow(['Per Rebalance Cost', self._format_number(float(per_rebal)), ''])
@@ -204,7 +216,11 @@ class CSVExportGenerator:
             writer.writerow(['Rebalancing Frequency', str(rebal_freq), ''])
         total_first = self._get(cost_data, 'total_first_year_cost', 'totalFirstYearCost')
         if total_first is not None:
-            writer.writerow(['Total First Year Cost', self._format_number(float(total_first)), ''])
+            impact = ''
+            if portfolio_value and float(portfolio_value) > 0:
+                pct = float(total_first) / portfolio_value * 100
+                impact = f'{pct:.2f}% drag'
+            writer.writerow(['Total First Year Cost', self._format_number(float(total_first)), impact])
         
         return output.getvalue()
     
@@ -217,70 +233,101 @@ class CSVExportGenerator:
             return v * 100
         return v
 
+    def _risk_rating_diversification(self, score: float) -> str:
+        """Same logic as PDF Risk Analysis section."""
+        if score is None:
+            return ''
+        s = float(score)
+        return "Excellent" if s >= 80 else "Good" if s >= 60 else "Moderate" if s >= 40 else "Low"
+
+    def _risk_rating_sharpe(self, sharpe: float) -> str:
+        """Same logic as PDF Risk Analysis section."""
+        if sharpe is None:
+            return ''
+        s = float(sharpe)
+        return "Excellent" if s >= 1.5 else "Good" if s >= 1.0 else "Fair" if s >= 0.5 else "Low"
+
+    def _risk_rating_volatility(self, risk_val: Any) -> str:
+        """Same logic as PDF Risk Analysis section (risk_pct)."""
+        if risk_val is None:
+            return ''
+        v = float(risk_val)
+        risk_pct = v * 100 if 0 < abs(v) <= 1 else v
+        return "Low" if risk_pct < 10 else "Moderate" if risk_pct < 20 else "High" if risk_pct < 30 else "Very High"
+
     def generate_portfolio_metrics_csv(self, metrics: Dict) -> str:
         """
-        Generate portfolio_metrics.csv.
-        Accepts both camelCase and snake_case (e.g. expectedReturn or expected_return).
-        Values in (0,1] are treated as decimals and shown as percentages (e.g. 0.12 -> 12).
-        
-        Args:
-            metrics: Portfolio metrics data
-            
-        Returns:
-            CSV content as string
+        Generate portfolio_metrics.csv (same content as PDF Risk Analysis section).
+        Accepts both camelCase and snake_case. Includes Value and Rating columns to match PDF.
         """
         output = StringIO()
         writer = csv.writer(output)
         
-        # Header
-        writer.writerow(['Metric', 'Value'])
+        # Header: Metric, Value, Rating (PDF section 9)
+        writer.writerow(['Metric', 'Value', 'Rating'])
         
-        # Metrics (camelCase and snake_case)
-        exp_ret = self._get(metrics, 'expectedReturn', 'expected_return')
-        if exp_ret is not None:
-            pct = self._pct_for_csv(exp_ret)
-            writer.writerow(['Expected Return (%)', self._format_number(pct if pct is not None else exp_ret, decimals=2)])
+        # Diversification (value + rating)
+        div_score = self._get(metrics, 'diversificationScore', 'diversification_score')
+        if div_score is not None:
+            writer.writerow([
+                'Diversification',
+                self._format_number(float(div_score), decimals=0),
+                self._risk_rating_diversification(div_score),
+            ])
         
+        # Sharpe Ratio (value + rating)
+        sharpe = self._get(metrics, 'sharpeRatio', 'sharpe_ratio')
+        if sharpe is not None:
+            writer.writerow([
+                'Sharpe Ratio',
+                self._format_number(float(sharpe), decimals=3),
+                self._risk_rating_sharpe(sharpe),
+            ])
+        
+        # Volatility (value + rating)
         risk_val = self._get(metrics, 'risk', 'risk')
         if risk_val is not None:
             pct = self._pct_for_csv(risk_val)
-            writer.writerow(['Risk / Volatility (%)', self._format_number(pct if pct is not None else risk_val, decimals=2)])
+            disp = pct if pct is not None else risk_val
+            writer.writerow([
+                'Volatility (%)',
+                self._format_number(disp, decimals=2),
+                self._risk_rating_volatility(risk_val),
+            ])
         
-        sharpe = self._get(metrics, 'sharpeRatio', 'sharpe_ratio')
-        if sharpe is not None:
-            writer.writerow(['Sharpe Ratio', self._format_number(float(sharpe), decimals=3)])
+        # Expected Return
+        exp_ret = self._get(metrics, 'expectedReturn', 'expected_return')
+        if exp_ret is not None:
+            pct = self._pct_for_csv(exp_ret)
+            writer.writerow(['Expected Return (%)', self._format_number(pct if pct is not None else exp_ret, decimals=2), ''])
         
-        div_score = self._get(metrics, 'diversificationScore', 'diversification_score')
-        if div_score is not None:
-            writer.writerow(['Diversification Score', self._format_number(float(div_score), decimals=2)])
-        
+        # Other metrics (no rating in PDF)
         total_alloc = self._get(metrics, 'totalAllocation', 'total_allocation')
         if total_alloc is not None:
-            writer.writerow(['Total Allocation', self._format_number(float(total_alloc) * 100, decimals=2)])
+            writer.writerow(['Total Allocation (%)', self._format_number(float(total_alloc) * 100, decimals=2), ''])
         
         stock_count = self._get(metrics, 'stockCount', 'stock_count')
         if stock_count is not None:
-            writer.writerow(['Stock Count', str(stock_count)])
+            writer.writerow(['Stock Count', str(stock_count), ''])
         
-        # Tax-adjusted metrics
         gross = self._get(metrics, 'grossExpectedReturn', 'gross_expected_return')
         if gross is not None:
             pct = self._pct_for_csv(gross)
-            writer.writerow(['Gross Expected Return (%)', self._format_number(pct if pct is not None else gross, decimals=2)])
+            writer.writerow(['Gross Expected Return (%)', self._format_number(pct if pct is not None else gross, decimals=2), ''])
         
         tax_impact = self._get(metrics, 'annualTaxImpact', 'annual_tax_impact')
         if tax_impact is not None:
-            writer.writerow(['Annual Tax Impact (SEK)', self._format_number(float(tax_impact))])
+            writer.writerow(['Annual Tax Impact (SEK)', self._format_number(float(tax_impact)), ''])
         
         after_tax = self._get(metrics, 'afterTaxReturn', 'after_tax_return')
         if after_tax is not None:
             pct = self._pct_for_csv(after_tax)
-            writer.writerow(['After-Tax Return (%)', self._format_number(pct if pct is not None else after_tax, decimals=2)])
+            writer.writerow(['After-Tax Return (%)', self._format_number(pct if pct is not None else after_tax, decimals=2), ''])
         
         net_ret = self._get(metrics, 'netExpectedReturn', 'net_expected_return')
         if net_ret is not None:
             pct = self._pct_for_csv(net_ret)
-            writer.writerow(['Net Expected Return (%)', self._format_number(pct if pct is not None else net_ret, decimals=2)])
+            writer.writerow(['Net Expected Return (%)', self._format_number(pct if pct is not None else net_ret, decimals=2), ''])
         
         return output.getvalue()
     
@@ -297,41 +344,51 @@ class CSVExportGenerator:
         output = StringIO()
         writer = csv.writer(output)
         
-        # Summary row
-        writer.writerow(['Resilience Score', self._format_number(stress_data.get('resilience_score'), decimals=0)])
-        writer.writerow(['Overall Assessment', str(stress_data.get('overall_assessment', 'N/A'))])
+        # Summary row (same as PDF: Resilience Score + label)
+        resilience = stress_data.get('resilience_score')
+        writer.writerow(['Resilience Score', self._format_number(resilience, decimals=0) if resilience is not None else '', ''])
+        if resilience is not None:
+            label = "Excellent" if resilience >= 80 else "Good" if resilience >= 60 else "Fair" if resilience >= 40 else "Weak"
+            writer.writerow(['Resilience Label', label, ''])
+        writer.writerow(['Overall Assessment', str(stress_data.get('overall_assessment', 'N/A')), ''])
         writer.writerow([])
         
-        # Header
-        writer.writerow(['Scenario', 'Total Return (%)', 'Max Drawdown (%)', 'Recovery Months', 'Details'])
+        # Header: include Portfolio Impact (%) to match PDF Crisis Impact chart
+        writer.writerow(['Scenario', 'Portfolio Impact (%)', 'Total Return (%)', 'Max Drawdown (%)', 'Recovery Months', 'Details'])
         
         scenarios = stress_data.get('scenarios') or stress_data.get('scenario_results') or {}
         if isinstance(scenarios, dict):
             for scenario_name, scenario_obj in scenarios.items():
-                metrics = (scenario_obj or {}).get('metrics', {})
+                obj = scenario_obj or {}
+                impact = obj.get('portfolio_impact') or obj.get('impact')
+                impact_pct = (float(impact) * 100) if impact is not None else ''
+                metrics = obj.get('metrics', {})
                 total_return = (metrics.get('total_return') or 0) * 100
                 max_dd = (metrics.get('max_drawdown') or 0) * 100
                 recovery = metrics.get('recovery_months') or metrics.get('trajectory_projections', {}).get('moderate_months') or ''
                 recovery_str = f"{recovery}" if recovery != '' else 'N/A'
                 writer.writerow([
                     scenario_name,
+                    self._format_number(impact_pct, decimals=2) if impact_pct != '' else '',
                     self._format_number(total_return, decimals=2),
                     self._format_number(max_dd, decimals=2),
                     recovery_str,
-                    (scenario_obj or {}).get('period', {}).get('start', '') or ''
+                    obj.get('period', {}).get('start', '') or ''
                 ])
         else:
             for scenario in (scenarios or []):
                 scenario_name = scenario.get('name', 'Unknown')
-                portfolio_value = scenario.get('portfolioValue', 0.0)
+                impact = scenario.get('portfolio_impact') or scenario.get('impact')
+                impact_pct = (float(impact) * 100) if impact is not None else ''
                 return_pct = scenario.get('return', 0.0)
                 details = scenario.get('details', '')
                 writer.writerow([
                     scenario_name,
+                    self._format_number(impact_pct, decimals=2) if impact_pct != '' else '',
                     self._format_number(return_pct, decimals=2),
-                    self._format_number(portfolio_value, decimals=0),
+                    '',
+                    '',
                     details,
-                    ''
                 ])
         
         return output.getvalue()
@@ -398,30 +455,73 @@ class CSVExportGenerator:
         return output.getvalue()
 
     def generate_monte_carlo_csv(self, opt_results: Dict) -> str:
-        """Generate monte_carlo_summary.csv from optimizationResults.comparison.monte_carlo."""
+        """Generate monte_carlo_summary.csv from optimizationResults.comparison.monte_carlo (same content as PDF/UI).
+        Backend returns percentiles as p5, p50, p95 under mc['percentiles']; also supports percentile_5/50/95."""
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(['Portfolio', 'Percentile 5%', 'Percentile 50%', 'Percentile 95%'])
+        # Header: match PDF/UI labels (5th = worst 5%, 50th = median, 95th = best case)
+        writer.writerow([
+            'Portfolio',
+            '5th Percentile (Worst 5%) (%)',
+            '25th Percentile (%)',
+            'Median (50th Percentile) (%)',
+            '75th Percentile (%)',
+            '95th Percentile (Best Case) (%)',
+            'Probability Positive Return (%)',
+            'Prob. Loss >10% (%)',
+            'Prob. Loss >20% (%)',
+            'Simulations',
+            'Time Horizon (Years)',
+            'Expected Return (Input) (%)',
+            'Volatility (Input) (%)',
+        ])
         comparison = opt_results.get('comparison') or {}
         monte_carlo = comparison.get('monte_carlo') or {}
         for key, mc in monte_carlo.items():
             if mc and isinstance(mc, dict):
-                p5 = mc.get('percentile_5') or mc.get('percentile5')
-                p50 = mc.get('percentile_50') or mc.get('percentile50')
-                p95 = mc.get('percentile_95') or mc.get('percentile95')
+                percentiles = mc.get('percentiles') or {}
+                # Backend uses p5, p50, p95; also support legacy percentile_5 etc.
+                def _pct(val, default=None):
+                    if val is not None:
+                        v = float(val)
+                        return self._format_number(v * 100 if -1 <= v <= 1 and v != 0 else v, decimals=2)
+                    return default or ''
+                p5 = percentiles.get('p5') if percentiles else (mc.get('percentile_5') or mc.get('percentile5'))
+                p25 = percentiles.get('p25') if percentiles else None
+                p50 = percentiles.get('p50') if percentiles else (mc.get('percentile_50') or mc.get('percentile50'))
+                p75 = percentiles.get('p75') if percentiles else None
+                p95 = percentiles.get('p95') if percentiles else (mc.get('percentile_95') or mc.get('percentile95'))
+                prob_pos = mc.get('probability_positive')
+                loss_thresh = mc.get('probability_loss_thresholds') or {}
+                prob_10 = loss_thresh.get('loss_10pct')
+                prob_20 = loss_thresh.get('loss_20pct')
+                params = mc.get('parameters') or {}
+                n_sim = params.get('num_simulations', '')
+                horizon = params.get('time_horizon_years', '')
+                exp_ret = params.get('expected_return')
+                risk_in = params.get('risk')
                 writer.writerow([
                     key.replace('_', ' ').title(),
-                    p5 if p5 is not None else '',
-                    p50 if p50 is not None else '',
-                    p95 if p95 is not None else ''
+                    _pct(p5, ''),
+                    _pct(p25, ''),
+                    _pct(p50, ''),
+                    _pct(p75, ''),
+                    _pct(p95, ''),
+                    self._format_number(float(prob_pos), decimals=2) if prob_pos is not None else '',
+                    self._format_number(float(prob_10), decimals=2) if prob_10 is not None else '',
+                    self._format_number(float(prob_20), decimals=2) if prob_20 is not None else '',
+                    str(n_sim) if n_sim != '' else '',
+                    str(horizon) if horizon != '' else '',
+                    _pct(exp_ret, ''),
+                    _pct(risk_in, ''),
                 ])
         return output.getvalue()
 
     def generate_five_year_projection_csv(self, proj: Dict) -> str:
-        """Generate five_year_projection.csv (same content as PDF section 9). proj: {years, optimistic, base, pessimistic}."""
+        """Generate five_year_projection.csv (same content as PDF 5-Year Projection section: table + growth summary)."""
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(['Year', 'Optimistic (SEK)', 'Base (SEK)', 'Pessimistic (SEK)'])
+        writer.writerow(['Year', 'Optimistic (SEK)', 'Base Case (SEK)', 'Pessimistic (SEK)'])
         years = proj.get('years') or []
         optimistic = proj.get('optimistic') or []
         base = proj.get('base') or []
@@ -433,6 +533,20 @@ class CSVExportGenerator:
                 self._format_number(base[i], decimals=0) if i < len(base) else '',
                 self._format_number(pessimistic[i], decimals=0) if i < len(pessimistic) else ''
             ])
+        # Growth summary (same as PDF: "Base: +X% | Pessimistic: +Y% (5yr net)")
+        initial = proj.get('initial_capital') or (base[0] if base else None)
+        if initial and base and pessimistic and len(base) > 0 and len(pessimistic) > 0:
+            writer.writerow([])
+            writer.writerow(['Summary (5-year net growth)', '', '', ''])
+            final_base = base[-1]
+            final_pess = pessimistic[-1]
+            base_growth = ((final_base / initial) - 1) * 100 if initial else 0
+            pess_growth = ((final_pess / initial) - 1) * 100 if initial else 0
+            writer.writerow(['Initial Capital (SEK)', self._format_number(initial, decimals=0), '', ''])
+            writer.writerow(['Final Base Case (SEK)', self._format_number(final_base, decimals=0), '', ''])
+            writer.writerow(['Final Pessimistic (SEK)', self._format_number(final_pess, decimals=0), '', ''])
+            writer.writerow(['Base Case Growth (%)', self._format_number(base_growth, decimals=2), '', ''])
+            writer.writerow(['Pessimistic Growth (%)', self._format_number(pess_growth, decimals=2), '', ''])
         return output.getvalue()
 
     def generate_tax_comparison_csv(self, tax_comparison: List[Dict], current_account_type: str = None) -> str:

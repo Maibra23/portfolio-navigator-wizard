@@ -3088,7 +3088,9 @@ export const PortfolioOptimization = ({
                 </p>
               </div>
 
-              {/* Current Portfolio Summary - hidden as soon as efficient frontier graph is shown (Analysis tab) or frontier data exists */}
+              {/* Current Portfolio Summary - hidden when Analysis tab is active OR when efficient frontier data exists after Optimize.
+                  Visibility depends on efficientFrontier state being set from API (triple response market/weights efficient_frontier).
+                  If this section does not disappear after running Optimize, the API may not be returning efficient_frontier, or it may be empty. */}
               {activeTab !== "analysis" && efficientFrontier.length === 0 && (
                 <Card>
                   <CardHeader className="pb-3">
@@ -3720,6 +3722,33 @@ export const PortfolioOptimization = ({
 
                   {/* Legend and Optimize Button */}
                   <div className="px-6 pb-6 space-y-4">
+                    {/* Why run Optimize and what to expect */}
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                      <p className="text-sm font-medium text-foreground">
+                        Why run Optimize?
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Optimization finds a mix of weights (or a broader
+                        market-based portfolio) that aims for better
+                        risk-adjusted return than your current selection—for
+                        example higher expected return for similar risk, or
+                        lower risk for similar return. It uses your risk profile
+                        and the same theory behind the efficient frontier you
+                        see in the Analysis tab.
+                      </p>
+                      <p className="text-sm font-medium text-foreground mt-2">
+                        What to expect
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        After you press Optimize, the app runs the analysis
+                        (usually a few seconds). You will be taken to the
+                        Analysis tab, where you can compare the efficient
+                        frontier, your current portfolio, and the optimized
+                        portfolios (weights-only and, if available,
+                        market-optimized). You can then pick a portfolio to
+                        apply or explore recommendations.
+                      </p>
+                    </div>
                     {/* Info: Always optimizes from market tickers */}
                     <div className="flex items-center justify-center gap-2 p-3 bg-blue-50/50 rounded-lg border border-blue-200">
                       <Info className="h-4 w-4 text-blue-600" />
@@ -7525,26 +7554,99 @@ export const PortfolioOptimization = ({
                                       <strong className="text-foreground">
                                         Example:
                                       </strong>{" "}
-                                      If your portfolio is 500,000 SEK and the
-                                      5th percentile is{" "}
-                                      {(
-                                        (selectedMonteCarlo.percentiles?.p5 ??
-                                          -0.15) * 100
-                                      ).toFixed(1)}
-                                      %, in about 1 in 20 runs you could see a
-                                      loss of{" "}
-                                      {Math.round(
-                                        500000 *
-                                          Math.abs(
-                                            Math.min(
-                                              0,
-                                              selectedMonteCarlo.percentiles
-                                                ?.p5 ?? -0.15,
-                                            ),
-                                          ),
-                                      ).toLocaleString("sv-SE")}{" "}
-                                      SEK or more.
+                                      Using 500,000 SEK and the 5th percentile
+                                      (worst 5% of outcomes) for each portfolio:
                                     </p>
+                                    {tripleOptimizationResults &&
+                                    tripleOptimizationResults?.comparison
+                                      ?.monte_carlo
+                                      ? (() => {
+                                          const mc = tripleOptimizationResults
+                                            .comparison.monte_carlo as {
+                                            current?: {
+                                              percentiles?: { p5?: number };
+                                            };
+                                            weights?: {
+                                              percentiles?: { p5?: number };
+                                            };
+                                            market?: {
+                                              percentiles?: { p5?: number };
+                                            } | null;
+                                          };
+                                          const cap = 500000;
+                                          const rows: Array<{
+                                            label: string;
+                                            p5: number;
+                                          }> = [];
+                                          if (
+                                            mc.current?.percentiles?.p5 !==
+                                            undefined
+                                          )
+                                            rows.push({
+                                              label: "Current portfolio",
+                                              p5: mc.current.percentiles.p5,
+                                            });
+                                          if (
+                                            mc.weights?.percentiles?.p5 !==
+                                            undefined
+                                          )
+                                            rows.push({
+                                              label: "Weights-Optimized",
+                                              p5: mc.weights.percentiles.p5,
+                                            });
+                                          if (
+                                            mc.market?.percentiles?.p5 !==
+                                            undefined
+                                          )
+                                            rows.push({
+                                              label: "Market-Optimized",
+                                              p5: mc.market.percentiles.p5,
+                                            });
+                                          if (rows.length === 0) {
+                                            const p5 =
+                                              selectedMonteCarlo.percentiles
+                                                ?.p5 ?? -0.15;
+                                            const isLoss = p5 < 0;
+                                            return (
+                                              <p>
+                                                {isLoss
+                                                  ? `With 5th percentile ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                                                  : `With 5th percentile ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                                              </p>
+                                            );
+                                          }
+                                          return (
+                                            <ul className="list-disc list-inside space-y-1 mt-1">
+                                              {rows.map(({ label, p5 }) => {
+                                                const isLoss = p5 < 0;
+                                                return (
+                                                  <li key={label}>
+                                                    <strong className="text-foreground">
+                                                      {label}:
+                                                    </strong>{" "}
+                                                    {isLoss
+                                                      ? `5th percentile ${(p5 * 100).toFixed(1)}%. In about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                                                      : `5th percentile ${(p5 * 100).toFixed(1)}%. In the worst 5% of outcomes you would still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                                                  </li>
+                                                );
+                                              })}
+                                            </ul>
+                                          );
+                                        })()
+                                      : (() => {
+                                          const p5 =
+                                            selectedMonteCarlo.percentiles
+                                              ?.p5 ?? -0.15;
+                                          const isLoss = p5 < 0;
+                                          const cap = 500000;
+                                          return (
+                                            <p>
+                                              {isLoss
+                                                ? `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                                                : `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                                            </p>
+                                          );
+                                        })()}
                                   </div>
                                 </CollapsibleContent>
                               </Collapsible>

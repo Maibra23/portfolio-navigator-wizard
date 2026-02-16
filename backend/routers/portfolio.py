@@ -10534,7 +10534,10 @@ async def export_csv(request: CSVExportRequest):
             })
 
         if "tax" in request.includeFiles and request.taxData:
-            tax_csv = csv_generator.generate_tax_analysis_csv(request.taxData)
+            tax_csv = csv_generator.generate_tax_analysis_csv(
+                request.taxData,
+                tax_free_data=request.taxFreeData,
+            )
             files.append({
                 "filename": "tax_analysis.csv",
                 "content": base64.b64encode(tax_csv.encode('utf-8')).decode('utf-8'),
@@ -10542,7 +10545,10 @@ async def export_csv(request: CSVExportRequest):
             })
         
         if "costs" in request.includeFiles and request.costData:
-            costs_csv = csv_generator.generate_transaction_costs_csv(request.costData)
+            costs_csv = csv_generator.generate_transaction_costs_csv(
+                request.costData,
+                portfolio_value=request.portfolioValue,
+            )
             files.append({
                 "filename": "transaction_costs.csv",
                 "content": base64.b64encode(costs_csv.encode('utf-8')).decode('utf-8'),
