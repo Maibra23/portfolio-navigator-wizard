@@ -150,9 +150,7 @@ def main() -> int:
         return 1
 
     print(f"{Fore.GREEN}Summary:{Style.RESET_ALL}")
-    print(f"  Cached: {result['cached']}")
-    print(f"  Failures: {result['failures']}")
-    print(f"  Time: {result['time_seconds']}s")
+    print(f"  Items cached: {result['cached']}, Failures: {result['failures']}, Time taken: {result['time_seconds']}s")
     return 0 if result["failures"] == 0 else 1
 
 
