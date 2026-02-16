@@ -3358,85 +3358,91 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <div className="text-sm font-medium">
                                 Return Distribution
                               </div>
-                              {/* Interactive Percentile Legend */}
+                              {/* Compact percentile toggles; click to show that percentile on the distribution */}
                               {stressTestResults.scenarios[
                                 selectedScenario || "covid19"
                               ].monte_carlo.percentiles && (
-                                <div className="flex flex-wrap gap-2 justify-center py-2 border rounded-lg bg-muted/30 px-3">
-                                  <span className="text-xs text-muted-foreground self-center mr-1">
-                                    Percentiles:
-                                  </span>
-                                  {(
-                                    [
-                                      {
-                                        key: "p5" as const,
-                                        label: "5th",
-                                        color: "#ef4444",
-                                      },
-                                      {
-                                        key: "p25" as const,
-                                        label: "25th",
-                                        color: "#f97316",
-                                      },
-                                      {
-                                        key: "p50" as const,
-                                        label: "50th",
-                                        color: "#3b82f6",
-                                      },
-                                      {
-                                        key: "p75" as const,
-                                        label: "75th",
-                                        color: "#22c55e",
-                                      },
-                                      {
-                                        key: "p95" as const,
-                                        label: "95th",
-                                        color: "#9333ea",
-                                      },
-                                    ] as const
-                                  ).map((p) => {
-                                    const val =
-                                      stressTestResults.scenarios[
-                                        selectedScenario || "covid19"
-                                      ].monte_carlo.percentiles[p.key];
-                                    return (
-                                      <button
-                                        key={p.key}
-                                        onClick={() =>
-                                          setVisiblePercentiles((prev) => ({
-                                            ...prev,
-                                            [p.key]: !prev[p.key],
-                                          }))
-                                        }
-                                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
-                                          visiblePercentiles[p.key]
-                                            ? "border-border bg-card hover:bg-accent text-foreground"
-                                            : "border-border bg-muted/50 text-muted-foreground opacity-50"
-                                        }`}
-                                        title={
-                                          visiblePercentiles[p.key]
-                                            ? `Hide ${p.label} percentile`
-                                            : `Show ${p.label} percentile`
-                                        }
-                                      >
-                                        <div
-                                          className="w-3 h-0.5"
-                                          style={{
-                                            backgroundColor: p.color,
-                                            opacity: visiblePercentiles[p.key]
-                                              ? 1
-                                              : 0.3,
-                                          }}
-                                        />
-                                        <span className="font-medium">
-                                          {p.label}
-                                        </span>
-                                        <span className="text-muted-foreground">
-                                          ({(val * 100).toFixed(1)}%)
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
+                                <div className="space-y-1">
+                                  <p className="text-xs text-muted-foreground text-center">
+                                    Click a percentile to show it on the
+                                    distribution chart
+                                  </p>
+                                  <div className="flex flex-wrap gap-2 justify-center py-2 border rounded-lg bg-muted/30 px-3">
+                                    <span className="text-xs text-muted-foreground self-center mr-1">
+                                      Percentiles:
+                                    </span>
+                                    {(
+                                      [
+                                        {
+                                          key: "p5" as const,
+                                          label: "5th",
+                                          color: "#ef4444",
+                                        },
+                                        {
+                                          key: "p25" as const,
+                                          label: "25th",
+                                          color: "#f97316",
+                                        },
+                                        {
+                                          key: "p50" as const,
+                                          label: "50th",
+                                          color: "#3b82f6",
+                                        },
+                                        {
+                                          key: "p75" as const,
+                                          label: "75th",
+                                          color: "#22c55e",
+                                        },
+                                        {
+                                          key: "p95" as const,
+                                          label: "95th",
+                                          color: "#9333ea",
+                                        },
+                                      ] as const
+                                    ).map((p) => {
+                                      const val =
+                                        stressTestResults.scenarios[
+                                          selectedScenario || "covid19"
+                                        ].monte_carlo.percentiles[p.key];
+                                      return (
+                                        <button
+                                          key={p.key}
+                                          onClick={() =>
+                                            setVisiblePercentiles((prev) => ({
+                                              ...prev,
+                                              [p.key]: !prev[p.key],
+                                            }))
+                                          }
+                                          className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
+                                            visiblePercentiles[p.key]
+                                              ? "border-border bg-card hover:bg-accent text-foreground"
+                                              : "border-border bg-muted/50 text-muted-foreground opacity-50"
+                                          }`}
+                                          title={
+                                            visiblePercentiles[p.key]
+                                              ? `Hide ${p.label} percentile`
+                                              : `Show ${p.label} percentile`
+                                          }
+                                        >
+                                          <div
+                                            className="w-3 h-0.5"
+                                            style={{
+                                              backgroundColor: p.color,
+                                              opacity: visiblePercentiles[p.key]
+                                                ? 1
+                                                : 0.3,
+                                            }}
+                                          />
+                                          <span className="font-medium">
+                                            {p.label}
+                                          </span>
+                                          <span className="text-muted-foreground">
+                                            ({(val * 100).toFixed(1)}%)
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               )}
                               <div className="h-64 w-full">

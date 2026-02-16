@@ -7478,6 +7478,17 @@ export const PortfolioOptimization = ({
                                       worse than 5% of outcomes. These
                                       illustrate uncertainty under the model.
                                     </p>
+                                    <p>
+                                      <strong className="text-foreground">
+                                        What the 5th percentile means for you:
+                                      </strong>{" "}
+                                      It is a plausible bad outcome—in about 1
+                                      in 20 similar years you could see a return
+                                      this low or worse. Use it to check whether
+                                      you could still meet your goals or absorb
+                                      the loss without changing your plans, not
+                                      as a prediction of what will happen.
+                                    </p>
                                     {tripleOptimizationResults && (
                                       <>
                                         <p>
@@ -7647,274 +7658,180 @@ export const PortfolioOptimization = ({
                                   );
                                 })()}
 
-                              {/* Return Scenarios - Show for each visible portfolio */}
+                              {/* Return Scenarios - Compact percentile toggles; click to show that percentile for all portfolio distributions */}
                               <div className="text-sm font-medium text-gray-700">
                                 Return Scenarios
                               </div>
                               <div className="text-xs text-gray-500 mb-2">
-                                Click a scenario to highlight it in the
-                                distribution chart
+                                Click a percentile to show it for all portfolio
+                                distributions in the chart
                               </div>
-                              <div className="space-y-3">
-                                {tripleOptimizationResults
-                                  ? (() => {
-                                      const tripleMonteCarlo =
-                                        monteCarloData as {
-                                          current: MonteCarloResult;
-                                          weights: MonteCarloResult;
-                                          market?: MonteCarloResult | null;
-                                        };
-                                      const scenarios = [
-                                        {
-                                          label: "Worst Case (5th percentile)",
-                                          key: "p5",
+                              <div className="flex flex-wrap gap-2 justify-center py-2 border rounded-lg bg-muted/30 px-3">
+                                {(
+                                  [
+                                    {
+                                      key: "p5" as const,
+                                      label: "5th",
+                                      color: "#ef4444",
+                                    },
+                                    {
+                                      key: "p25" as const,
+                                      label: "25th",
+                                      color: "#f59e0b",
+                                    },
+                                    {
+                                      key: "p50" as const,
+                                      label: "50th",
+                                      color: "#3b82f6",
+                                    },
+                                    {
+                                      key: "p75" as const,
+                                      label: "75th",
+                                      color: "#22c55e",
+                                    },
+                                    {
+                                      key: "p95" as const,
+                                      label: "95th",
+                                      color: "#10b981",
+                                    },
+                                  ] as const
+                                ).map((p) => {
+                                  const isSelected =
+                                    selectedReturnScenario === p.key;
+                                  return (
+                                    <button
+                                      key={p.key}
+                                      onClick={() =>
+                                        setSelectedReturnScenario(
+                                          isSelected ? null : p.key,
+                                        )
+                                      }
+                                      className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
+                                        isSelected
+                                          ? "border-blue-400 bg-blue-50 text-foreground"
+                                          : "border-border bg-muted/50 text-muted-foreground hover:bg-muted opacity-70 hover:opacity-100"
+                                      }`}
+                                      title={
+                                        isSelected
+                                          ? `Hide ${p.label} percentile`
+                                          : `Show ${p.label} percentile for all portfolios`
+                                      }
+                                    >
+                                      <div
+                                        className="w-3 h-0.5"
+                                        style={{
+                                          backgroundColor: p.color,
+                                          opacity: isSelected ? 1 : 0.5,
+                                        }}
+                                      />
+                                      <span className="font-medium">
+                                        {p.label}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {selectedReturnScenario &&
+                                (() => {
+                                  const scenarioKey = selectedReturnScenario as
+                                    | "p5"
+                                    | "p25"
+                                    | "p50"
+                                    | "p75"
+                                    | "p95";
+                                  if (tripleOptimizationResults) {
+                                    const tripleMonteCarlo = monteCarloData as {
+                                      current: MonteCarloResult;
+                                      weights: MonteCarloResult;
+                                      market?: MonteCarloResult | null;
+                                    };
+                                    const parts: Array<{
+                                      label: string;
+                                      value: number;
+                                      color: string;
+                                    }> = [];
+                                    if (returnScenarioVisibility.current) {
+                                      const v =
+                                        tripleMonteCarlo.current.percentiles?.[
+                                          scenarioKey
+                                        ];
+                                      if (v !== undefined)
+                                        parts.push({
+                                          label: "Current",
+                                          value: v,
                                           color: "#ef4444",
-                                        },
-                                        {
-                                          label:
-                                            "Pessimistic (25th percentile)",
-                                          key: "p25",
-                                          color: "#f59e0b",
-                                        },
-                                        {
-                                          label: "Expected (50th percentile)",
-                                          key: "p50",
+                                        });
+                                    }
+                                    if (returnScenarioVisibility.weights) {
+                                      const v =
+                                        tripleMonteCarlo.weights.percentiles?.[
+                                          scenarioKey
+                                        ];
+                                      if (v !== undefined)
+                                        parts.push({
+                                          label: "Weights-Opt",
+                                          value: v,
                                           color: "#3b82f6",
-                                        },
-                                        {
-                                          label: "Optimistic (75th percentile)",
-                                          key: "p75",
+                                        });
+                                    }
+                                    if (
+                                      returnScenarioVisibility.market &&
+                                      tripleMonteCarlo.market
+                                    ) {
+                                      const v =
+                                        tripleMonteCarlo.market.percentiles?.[
+                                          scenarioKey
+                                        ];
+                                      if (v !== undefined)
+                                        parts.push({
+                                          label: "Market-Opt",
+                                          value: v,
                                           color: "#22c55e",
-                                        },
-                                        {
-                                          label: "Best Case (95th percentile)",
-                                          key: "p95",
-                                          color: "#10b981",
-                                        },
-                                      ];
-
-                                      return scenarios.map((scenario) => {
-                                        const isSelected =
-                                          selectedReturnScenario ===
-                                          scenario.key;
-                                        const portfolioData: Array<{
-                                          label: string;
-                                          value: number;
-                                          color: string;
-                                          visible: boolean;
-                                        }> = [];
-
-                                        if (returnScenarioVisibility.current) {
-                                          portfolioData.push({
-                                            label: "Current",
-                                            value:
-                                              tripleMonteCarlo.current
-                                                .percentiles?.[
-                                                scenario.key as keyof typeof tripleMonteCarlo.current.percentiles
-                                              ] || 0,
-                                            color: "#ef4444",
-                                            visible: true,
-                                          });
-                                        }
-
-                                        if (returnScenarioVisibility.weights) {
-                                          portfolioData.push({
-                                            label: "Weights",
-                                            value:
-                                              tripleMonteCarlo.weights
-                                                .percentiles?.[
-                                                scenario.key as keyof typeof tripleMonteCarlo.weights.percentiles
-                                              ] || 0,
-                                            color: "#3b82f6",
-                                            visible: true,
-                                          });
-                                        }
-
-                                        if (
-                                          returnScenarioVisibility.market &&
-                                          tripleMonteCarlo.market
-                                        ) {
-                                          portfolioData.push({
-                                            label: "Market",
-                                            value:
-                                              tripleMonteCarlo.market
-                                                .percentiles?.[
-                                                scenario.key as keyof typeof tripleMonteCarlo.market.percentiles
-                                              ] || 0,
-                                            color: "#22c55e",
-                                            visible: true,
-                                          });
-                                        }
-
-                                        if (portfolioData.length === 0)
-                                          return null;
-
-                                        return (
-                                          <button
-                                            key={scenario.label}
-                                            onClick={() =>
-                                              setSelectedReturnScenario(
-                                                isSelected
-                                                  ? null
-                                                  : scenario.key,
-                                              )
-                                            }
-                                            className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
-                                              isSelected
-                                                ? "bg-blue-50 border-blue-400 shadow-md"
-                                                : "bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100"
-                                            }`}
-                                          >
-                                            <div className="flex items-center justify-between mb-2">
-                                              <div
-                                                className="text-xs font-medium"
+                                        });
+                                    }
+                                    if (parts.length === 0) return null;
+                                    return (
+                                      <div className="flex flex-wrap gap-3 justify-center text-xs mt-2 py-2 border-t border-border/50">
+                                        {parts.map(
+                                          ({ label, value, color }) => (
+                                            <span
+                                              key={label}
+                                              className="flex items-center gap-1.5"
+                                            >
+                                              <span
+                                                className="w-2 h-2 rounded-full flex-shrink-0"
                                                 style={{
-                                                  color: isSelected
-                                                    ? "#1e40af"
-                                                    : "#4b5563",
+                                                  backgroundColor: color,
                                                 }}
+                                              />
+                                              <span className="text-muted-foreground">
+                                                {label}:
+                                              </span>
+                                              <span
+                                                className="font-semibold"
+                                                style={{ color }}
                                               >
-                                                {scenario.label}
-                                              </div>
-                                              {isSelected && (
-                                                <div className="text-xs text-blue-600 font-semibold">
-                                                  Selected
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div className="flex flex-wrap gap-3">
-                                              {portfolioData.map(
-                                                (portfolio) => (
-                                                  <div
-                                                    key={portfolio.label}
-                                                    className="flex items-center gap-2"
-                                                  >
-                                                    <div
-                                                      className="w-3 h-3 rounded-full"
-                                                      style={{
-                                                        backgroundColor:
-                                                          portfolio.color,
-                                                      }}
-                                                    />
-                                                    <span className="text-xs text-gray-600">
-                                                      {portfolio.label}:
-                                                    </span>
-                                                    <span
-                                                      className="text-sm font-bold"
-                                                      style={{
-                                                        color: portfolio.color,
-                                                      }}
-                                                    >
-                                                      {(
-                                                        portfolio.value * 100
-                                                      ).toFixed(1)}
-                                                      %
-                                                    </span>
-                                                  </div>
-                                                ),
-                                              )}
-                                            </div>
-                                          </button>
-                                        );
-                                      });
-                                    })()
-                                  : // Fallback for dual optimization or single portfolio
-                                    [
-                                      {
-                                        label: "Worst Case (5th percentile)",
-                                        value:
-                                          selectedMonteCarlo.percentiles?.p5 ||
-                                          0,
-                                        color: "red",
-                                      },
-                                      {
-                                        label: "Pessimistic (25th percentile)",
-                                        value:
-                                          selectedMonteCarlo.percentiles?.p25 ||
-                                          0,
-                                        color: "orange",
-                                      },
-                                      {
-                                        label: "Expected (50th percentile)",
-                                        value:
-                                          selectedMonteCarlo.percentiles?.p50 ||
-                                          0,
-                                        color: "blue",
-                                      },
-                                      {
-                                        label: "Optimistic (75th percentile)",
-                                        value:
-                                          selectedMonteCarlo.percentiles?.p75 ||
-                                          0,
-                                        color: "green",
-                                      },
-                                      {
-                                        label: "Best Case (95th percentile)",
-                                        value:
-                                          selectedMonteCarlo.percentiles?.p95 ||
-                                          0,
-                                        color: "emerald",
-                                      },
-                                    ].map((scenario) => {
-                                      const dotColor =
-                                        scenario.color === "red"
-                                          ? "#ef4444"
-                                          : scenario.color === "orange"
-                                            ? "#f59e0b"
-                                            : scenario.color === "blue"
-                                              ? "#3b82f6"
-                                              : scenario.color === "green"
-                                                ? "#22c55e"
-                                                : "#10b981";
-                                      const scenarioKey =
-                                        scenario.label.includes("5th")
-                                          ? "p5"
-                                          : scenario.label.includes("25th")
-                                            ? "p25"
-                                            : scenario.label.includes("50th")
-                                              ? "p50"
-                                              : scenario.label.includes("75th")
-                                                ? "p75"
-                                                : "p95";
-                                      const isSelected =
-                                        selectedReturnScenario === scenarioKey;
-                                      return (
-                                        <button
-                                          key={scenario.label}
-                                          onClick={() =>
-                                            setSelectedReturnScenario(
-                                              isSelected ? null : scenarioKey,
-                                            )
-                                          }
-                                          className={`w-full flex items-center gap-3 p-2 rounded-lg border-2 transition-all ${
-                                            isSelected
-                                              ? "bg-blue-50 border-blue-400 shadow-md"
-                                              : "bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100"
-                                          }`}
-                                        >
-                                          <div
-                                            className="w-3 h-3 rounded-full"
-                                            style={{
-                                              backgroundColor: dotColor,
-                                            }}
-                                          />
-                                          <div className="flex-1 text-sm text-gray-700">
-                                            {scenario.label}
-                                          </div>
-                                          <div
-                                            className={`text-sm font-bold ${selectedColor === "red" ? "text-red-600" : selectedColor === "blue" ? "text-blue-600" : "text-green-600"}`}
-                                          >
-                                            {(scenario.value * 100).toFixed(1)}%
-                                          </div>
-                                          {isSelected && (
-                                            <div className="text-xs text-blue-600 font-semibold">
-                                              Selected
-                                            </div>
-                                          )}
-                                        </button>
-                                      );
-                                    })}
-                              </div>
+                                                {(value * 100).toFixed(1)}%
+                                              </span>
+                                            </span>
+                                          ),
+                                        )}
+                                      </div>
+                                    );
+                                  }
+                                  const v =
+                                    selectedMonteCarlo.percentiles?.[
+                                      scenarioKey
+                                    ];
+                                  if (v === undefined) return null;
+                                  return (
+                                    <div className="flex justify-center text-xs mt-2 py-2 border-t border-border/50">
+                                      <span className="font-semibold text-gray-700">
+                                        {(v * 100).toFixed(1)}%
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                             </div>
 
                             {/* Loss Probability Scenarios */}

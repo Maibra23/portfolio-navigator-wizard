@@ -644,3 +644,252 @@ class CSVExportGenerator:
                 writer.writerow(['Diversification Score', self._format_number(float(div_score), decimals=2), ''])
 
         return output.getvalue()
+
+    def generate_methodology_csv(
+        self,
+        account_type: str = None,
+        tax_year: int = None,
+        courtage_class: str = None,
+    ) -> str:
+        """
+        Generate methodology.csv explaining data sources, calculations, and assumptions.
+        This provides educational context for all other CSV files.
+
+        Args:
+            account_type: ISK, KF, or AF
+            tax_year: Tax year used
+            courtage_class: Courtage class used
+
+        Returns:
+            CSV content as string
+        """
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow(['PORTFOLIO ANALYSIS - METHODOLOGY & ASSUMPTIONS'])
+        writer.writerow([])
+        writer.writerow(['This document explains how the analysis was performed and what assumptions were made.'])
+        writer.writerow(['Use this information to interpret the data files correctly and understand their limitations.'])
+        writer.writerow([])
+
+        # Data Sources
+        writer.writerow(['=== DATA SOURCES ==='])
+        writer.writerow(['Category', 'Source', 'Notes'])
+        writer.writerow(['Historical Prices', 'Market data providers', 'Typically 3-5 years of daily returns'])
+        writer.writerow(['Expected Return', 'Weighted average of historical annualized returns', 'Based on your portfolio allocation'])
+        writer.writerow(['Risk (Volatility)', 'Portfolio variance from correlation matrix', 'Accounts for diversification effects'])
+        writer.writerow(['Tax Rates', 'Swedish Tax Agency (Skatteverket)', 'Official rates for ISK/KF/AF accounts'])
+        writer.writerow(['Transaction Costs', 'Avanza fee schedules', 'Based on selected courtage class'])
+        writer.writerow([])
+
+        # Projection Methodology
+        writer.writerow(['=== 5-YEAR PROJECTION METHODOLOGY ==='])
+        writer.writerow(['Scenario', 'Calculation', 'Use Case'])
+        writer.writerow(['Optimistic', 'Expected Return + Volatility', 'Upper bound - plan for upside potential'])
+        writer.writerow(['Base Case', 'Expected Return', 'Most likely outcome - central planning figure'])
+        writer.writerow(['Pessimistic', 'Expected Return - 50% of Volatility', 'Conservative - stress test your goals'])
+        writer.writerow([])
+        writer.writerow(['Note', 'Each year deducts annual tax and transaction costs then compounds net return'])
+        writer.writerow([])
+
+        # Tax Calculation
+        writer.writerow(['=== TAX CALCULATION ==='])
+        if account_type in ('ISK', 'KF'):
+            writer.writerow(['Account Type', account_type, 'Schablonbeskattning (flat tax on capital)'])
+            writer.writerow(['Mechanism', 'Tax on notional income regardless of actual gains', ''])
+            tax_free = '150,000 SEK' if tax_year == 2025 else '300,000 SEK'
+            schablon = '2.96%' if tax_year == 2025 else '3.55%'
+            writer.writerow(['Tax-Free Level', tax_free, f'For {tax_year}'])
+            writer.writerow(['Schablonranta', schablon, f'For {tax_year}'])
+            writer.writerow(['Effective Rate', 'Approximately 0.89-1.07% of capital above free level', ''])
+        elif account_type == 'AF':
+            writer.writerow(['Account Type', 'AF (Aktie- och Fondkonto)', 'Capital gains tax'])
+            writer.writerow(['Mechanism', '30% tax on realized gains only', 'Pay when you sell'])
+            writer.writerow(['Dividends', '30% withheld automatically', ''])
+            writer.writerow(['Note', 'Projections assume gains realized annually', 'Actual tax depends on trading activity'])
+        else:
+            writer.writerow(['Account Type', account_type or 'Not specified', ''])
+        writer.writerow([])
+
+        # Transaction Costs
+        writer.writerow(['=== TRANSACTION COSTS ==='])
+        if courtage_class:
+            writer.writerow(['Courtage Class', courtage_class.capitalize(), 'Your selected fee tier'])
+        writer.writerow(['Setup Cost', 'One-time cost to establish positions', 'Deducted in Year 1'])
+        writer.writerow(['Annual Costs', 'Ongoing trading costs', 'Deducted each year from returns'])
+        writer.writerow([])
+
+        # Limitations
+        writer.writerow(['=== IMPORTANT LIMITATIONS ==='])
+        writer.writerow(['Limitation', 'Explanation', 'Impact'])
+        writer.writerow(['Historical data not predictive', 'Past returns do not guarantee future performance', 'Actual results may differ significantly'])
+        writer.writerow(['Static Assumptions', 'Projections assume current holdings maintained', 'Trading activity will change outcomes'])
+        writer.writerow(['Tax Law Changes', 'Swedish tax rules may change', 'Future rates could differ'])
+        writer.writerow(['Correlation Stability', 'Asset correlations assumed constant', 'Diversification benefits may vary'])
+        writer.writerow(['Estimation Only', 'All figures are estimates for educational purposes', 'Not financial advice'])
+        writer.writerow([])
+
+        writer.writerow(['=== DISCLAIMER ==='])
+        writer.writerow(['This analysis is for informational and educational purposes only.'])
+        writer.writerow(['It does not constitute financial investment or tax advice.'])
+        writer.writerow(['Please consult a qualified financial advisor before making investment decisions.'])
+
+        return output.getvalue()
+
+    def generate_glossary_csv(self) -> str:
+        """
+        Generate glossary.csv with metric definitions and interpretation guidance.
+        Helps users understand what each value means and how to use it.
+
+        Returns:
+            CSV content as string
+        """
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow(['GLOSSARY - METRIC DEFINITIONS & INTERPRETATION'])
+        writer.writerow([])
+        writer.writerow(['This glossary explains the metrics used throughout the analysis files.'])
+        writer.writerow([])
+
+        # Portfolio Metrics
+        writer.writerow(['=== PORTFOLIO METRICS ==='])
+        writer.writerow(['Metric', 'Definition', 'Good/Bad', 'Decision Guidance'])
+        writer.writerow([
+            'Expected Return',
+            'Annualized average return based on historical data',
+            'Higher is better (but consider risk)',
+            'Compare to your required return rate'
+        ])
+        writer.writerow([
+            'Risk (Volatility)',
+            'Standard deviation of returns - how much values fluctuate',
+            '<15% low | 15-25% moderate | >25% high',
+            'Match to your risk tolerance; high volatility = larger swings'
+        ])
+        writer.writerow([
+            'Sharpe Ratio',
+            'Return per unit of risk (excess return / volatility)',
+            '<0.5 poor | 0.5-1.0 fair | >1.0 good | >1.5 excellent',
+            'Higher = more efficient risk-taking'
+        ])
+        writer.writerow([
+            'Diversification Score',
+            'How well risk is spread across uncorrelated assets (0-100)',
+            '<40 poor | 40-60 fair | 60-80 good | >80 excellent',
+            'Low scores indicate concentration risk'
+        ])
+        writer.writerow([])
+
+        # Tax Metrics
+        writer.writerow(['=== TAX METRICS ==='])
+        writer.writerow(['Metric', 'Definition', 'Good/Bad', 'Decision Guidance'])
+        writer.writerow([
+            'Annual Tax',
+            'Estimated yearly tax burden in SEK',
+            'Lower is better',
+            'Compare across account types to optimize'
+        ])
+        writer.writerow([
+            'Effective Tax Rate',
+            'Tax as percentage of portfolio value',
+            'Lower is better',
+            'ISK/KF typically 0-1.1%; AF varies with gains'
+        ])
+        writer.writerow([
+            'Tax-Free Level',
+            'Capital amount exempt from ISK/KF tax',
+            'N/A',
+            'Below this = zero tax; above = taxed on excess'
+        ])
+        writer.writerow([
+            'After-Tax Return',
+            'Expected return minus tax impact',
+            'Higher is better',
+            'True measure of what you keep'
+        ])
+        writer.writerow([])
+
+        # Cost Metrics
+        writer.writerow(['=== COST METRICS ==='])
+        writer.writerow(['Metric', 'Definition', 'Good/Bad', 'Decision Guidance'])
+        writer.writerow([
+            'Setup Cost',
+            'One-time trading cost to establish positions',
+            '<0.5% of capital is reasonable',
+            'Higher costs reduce initial capital'
+        ])
+        writer.writerow([
+            'Annual Costs',
+            'Ongoing trading/management costs per year',
+            '<0.5% per year is reasonable',
+            'Compounds over time; minimize where possible'
+        ])
+        writer.writerow([
+            'Courtage Class',
+            'Fee tier determining transaction costs',
+            'N/A - depends on trading volume',
+            'Higher classes = lower per-trade cost but may have minimums'
+        ])
+        writer.writerow([])
+
+        # Projection Metrics
+        writer.writerow(['=== PROJECTION SCENARIOS ==='])
+        writer.writerow(['Scenario', 'What It Means', 'Probability', 'How To Use'])
+        writer.writerow([
+            'Optimistic',
+            'Upper bound if markets outperform',
+            'Roughly 15-20% chance',
+            'Plan for upside potential; do not count on it'
+        ])
+        writer.writerow([
+            'Base Case',
+            'Most likely outcome based on history',
+            'Roughly 50-60% chance',
+            'Use for central financial planning'
+        ])
+        writer.writerow([
+            'Pessimistic',
+            'Conservative estimate for downside',
+            'Roughly 15-20% chance',
+            'Stress test goals; ensure you can handle this'
+        ])
+        writer.writerow([])
+
+        # Optimization Metrics
+        writer.writerow(['=== OPTIMIZATION TERMS ==='])
+        writer.writerow(['Term', 'Definition', 'Relevance'])
+        writer.writerow([
+            'Efficient Frontier',
+            'Curve showing optimal risk-return combinations',
+            'Portfolios below it are suboptimal'
+        ])
+        writer.writerow([
+            'Weights-Optimized',
+            'Rebalanced using same stocks with different weights',
+            'Improve without changing holdings'
+        ])
+        writer.writerow([
+            'Market-Optimized',
+            'May include new stocks for better diversification',
+            'Maximum improvement; requires new positions'
+        ])
+        writer.writerow([])
+
+        # Stress Test Terms
+        writer.writerow(['=== STRESS TEST TERMS ==='])
+        writer.writerow(['Term', 'Definition', 'Interpretation'])
+        writer.writerow([
+            'Resilience Score',
+            'Overall portfolio robustness to market stress (0-100)',
+            '>80 excellent | 60-80 good | 40-60 fair | <40 vulnerable'
+        ])
+        writer.writerow([
+            'Scenario Impact',
+            'Estimated portfolio change during historical crisis',
+            'Negative = loss; compare magnitude to your tolerance'
+        ])
+
+        return output.getvalue()

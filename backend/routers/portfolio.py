@@ -10662,6 +10662,31 @@ async def export_csv(request: CSVExportRequest):
             except Exception as e:
                 logger.warning("CSV educational summary export failed: %s", e)
 
+        # Always include methodology and glossary for user comprehension
+        try:
+            methodology_csv = csv_generator.generate_methodology_csv(
+                account_type=request.accountType,
+                tax_year=request.taxYear,
+                courtage_class=request.costData.get('courtageClass') if request.costData else None
+            )
+            files.insert(0, {  # Insert at beginning so it's read first
+                "filename": "00_METHODOLOGY.csv",
+                "content": base64.b64encode(methodology_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(methodology_csv.encode('utf-8'))
+            })
+        except Exception as e:
+            logger.warning("CSV methodology export failed: %s", e)
+
+        try:
+            glossary_csv = csv_generator.generate_glossary_csv()
+            files.insert(1, {  # Insert second so it's read after methodology
+                "filename": "01_GLOSSARY.csv",
+                "content": base64.b64encode(glossary_csv.encode('utf-8')).decode('utf-8'),
+                "size": len(glossary_csv.encode('utf-8'))
+            })
+        except Exception as e:
+            logger.warning("CSV glossary export failed: %s", e)
+
         # Include visualizations in the ZIP file
         try:
             pdf_data = {
