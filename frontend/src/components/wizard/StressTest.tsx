@@ -3877,13 +3877,27 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       <strong className="text-foreground">
                                         Example:
                                       </strong>{" "}
-                                      If your portfolio is{" "}
-                                      {capital.toLocaleString("sv-SE")} SEK and
-                                      the 5th percentile is{" "}
-                                      {(p5 * 100).toFixed(1)}%, in about 1 in 20
-                                      runs you could see a loss of{" "}
-                                      {exampleLoss.toLocaleString("sv-SE")} SEK
-                                      or more over the period.
+                                      {p5 < 0 ? (
+                                        <>
+                                          If your portfolio is{" "}
+                                          {capital.toLocaleString("sv-SE")} SEK
+                                          and the 5th percentile is{" "}
+                                          {(p5 * 100).toFixed(1)}%, in about 1
+                                          in 20 runs you could see a loss of{" "}
+                                          {exampleLoss.toLocaleString("sv-SE")}{" "}
+                                          SEK or more over the period.
+                                        </>
+                                      ) : (
+                                        <>
+                                          If your portfolio is{" "}
+                                          {capital.toLocaleString("sv-SE")} SEK
+                                          and the 5th percentile is{" "}
+                                          {(p5 * 100).toFixed(1)}%, the worst 5%
+                                          of outcomes still have a gain (no
+                                          loss); the downside is a return of{" "}
+                                          {(p5 * 100).toFixed(1)}%.
+                                        </>
+                                      )}
                                     </p>
                                   </div>
                                 </CollapsibleContent>
@@ -4863,27 +4877,38 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         <strong className="text-foreground">
                                           Example:
                                         </strong>{" "}
-                                        If your portfolio is 500,000 SEK and the
-                                        5th percentile is{" "}
-                                        {(hypotheticalResults.monte_carlo
-                                          .percentiles?.p5 != null
-                                          ? hypotheticalResults.monte_carlo
-                                              .percentiles.p5 * 100
-                                          : -15
-                                        ).toFixed(1)}
-                                        %, in about 1 in 20 runs you could see a
-                                        loss of{" "}
-                                        {Math.round(
-                                          500000 *
-                                            Math.abs(
-                                              Math.min(
-                                                0,
-                                                hypotheticalResults.monte_carlo
-                                                  .percentiles?.p5 ?? -0.15,
-                                              ),
-                                            ),
-                                        ).toLocaleString("sv-SE")}{" "}
-                                        SEK or more.
+                                        {(() => {
+                                          const p5Val =
+                                            hypotheticalResults.monte_carlo
+                                              .percentiles?.p5 ?? -0.15;
+                                          const isLoss = p5Val < 0;
+                                          const cap = 500000;
+                                          return isLoss ? (
+                                            <>
+                                              If your portfolio is{" "}
+                                              {cap.toLocaleString("sv-SE")} SEK
+                                              and the 5th percentile is{" "}
+                                              {(p5Val * 100).toFixed(1)}%, in
+                                              about 1 in 20 runs you could see a
+                                              loss of{" "}
+                                              {Math.round(
+                                                cap * Math.abs(p5Val),
+                                              ).toLocaleString("sv-SE")}{" "}
+                                              SEK or more.
+                                            </>
+                                          ) : (
+                                            <>
+                                              If your portfolio is{" "}
+                                              {cap.toLocaleString("sv-SE")} SEK
+                                              and the 5th percentile is{" "}
+                                              {(p5Val * 100).toFixed(1)}%, the
+                                              worst 5% of outcomes still have a
+                                              gain (no loss); the downside is a
+                                              return of{" "}
+                                              {(p5Val * 100).toFixed(1)}%.
+                                            </>
+                                          );
+                                        })()}
                                       </p>
                                     </div>
                                   </CollapsibleContent>

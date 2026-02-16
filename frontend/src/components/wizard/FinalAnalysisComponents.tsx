@@ -920,23 +920,79 @@ export const MonteCarloCard = ({
                   </>
                 )}
                 <p>
-                  <strong className="text-foreground">Example:</strong> If your
-                  portfolio is 500,000 SEK and the 5th percentile is{" "}
-                  {(
-                    (selectedMonteCarlo.percentiles?.p5 ?? -0.15) * 100
-                  ).toFixed(1)}
-                  %, in about 1 in 20 runs you could see a loss of{" "}
-                  {Math.round(
-                    500000 *
-                      Math.abs(
-                        Math.min(
-                          0,
-                          selectedMonteCarlo.percentiles?.p5 ?? -0.15,
-                        ),
-                      ),
-                  ).toLocaleString("sv-SE")}{" "}
-                  SEK or more.
+                  <strong className="text-foreground">Example:</strong> Using
+                  500,000 SEK and the 5th percentile (worst 5% of outcomes) for
+                  each portfolio:
                 </p>
+                {isTriple && tripleMonteCarlo
+                  ? (() => {
+                      const cap = 500000;
+                      const rows: Array<{
+                        label: string;
+                        p5: number;
+                      }> = [];
+                      if (
+                        tripleMonteCarlo.current?.percentiles?.p5 !== undefined
+                      )
+                        rows.push({
+                          label: "Current portfolio",
+                          p5: tripleMonteCarlo.current.percentiles.p5,
+                        });
+                      if (
+                        tripleMonteCarlo.weights?.percentiles?.p5 !== undefined
+                      )
+                        rows.push({
+                          label: "Weights-Optimized",
+                          p5: tripleMonteCarlo.weights.percentiles.p5,
+                        });
+                      if (
+                        tripleMonteCarlo.market?.percentiles?.p5 !== undefined
+                      )
+                        rows.push({
+                          label: "Market-Optimized",
+                          p5: tripleMonteCarlo.market.percentiles.p5,
+                        });
+                      if (rows.length === 0) {
+                        const p5 = selectedMonteCarlo.percentiles?.p5 ?? -0.15;
+                        const isLoss = p5 < 0;
+                        return (
+                          <p>
+                            {isLoss
+                              ? `With 5th percentile ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                              : `With 5th percentile ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                          </p>
+                        );
+                      }
+                      return (
+                        <ul className="list-disc list-inside space-y-1 mt-1">
+                          {rows.map(({ label, p5 }) => {
+                            const isLoss = p5 < 0;
+                            return (
+                              <li key={label}>
+                                <strong className="text-foreground">
+                                  {label}:
+                                </strong>{" "}
+                                {isLoss
+                                  ? `5th percentile ${(p5 * 100).toFixed(1)}%. In about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                                  : `5th percentile ${(p5 * 100).toFixed(1)}%. In the worst 5% of outcomes you would still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      );
+                    })()
+                  : (() => {
+                      const p5 = selectedMonteCarlo.percentiles?.p5 ?? -0.15;
+                      const isLoss = p5 < 0;
+                      const cap = 500000;
+                      return (
+                        <p>
+                          {isLoss
+                            ? `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                            : `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                        </p>
+                      );
+                    })()}
               </div>
             </CollapsibleContent>
           </Collapsible>
