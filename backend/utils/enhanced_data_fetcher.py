@@ -6,6 +6,7 @@ import time
 import threading
 import random
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import Optional, Dict, List, Any, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
@@ -729,6 +730,112 @@ class EnhancedDataFetcher:
         except Exception as e:
             logger.warning(f"⚠️ yahooquery fetch failed for {ticker}: {e}")
             return None
+
+    def _fetch_ticker_yahooquery_range(
+        self, ticker: str, start_date: datetime, end_date: datetime, include_sector: bool = True
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch ticker data for a custom date range (for incremental updates).
+        Same logic as _fetch_ticker_yahooquery but uses provided start_date and end_date.
+        """
+        try:
+            yq_ticker = YQTicker(ticker)
+            hist_data = yq_ticker.history(
+                start=start_date.strftime('%Y-%m-%d'),
+                end=end_date.strftime('%Y-%m-%d'),
+                interval='1mo',
+                adj_timezone=False
+            )
+            if hist_data is None or (isinstance(hist_data, str) and 'error' in hist_data.lower()):
+                logger.warning(f"⚠️ {ticker}: No data returned from yahooquery (range)")
+                return None
+            if isinstance(hist_data, pd.DataFrame) and hist_data.empty:
+                logger.warning(f"⚠️ {ticker}: Empty DataFrame returned (range)")
+                return None
+            if isinstance(hist_data.index, pd.MultiIndex):
+                if ticker in hist_data.index.get_level_values(0):
+                    hist_data = hist_data.xs(ticker, level=0)
+                else:
+                    logger.warning(f"⚠️ {ticker}: Ticker not found in multi-index result (range)")
+                    return None
+            if 'close' in hist_data.columns:
+                close_data = hist_data['close']
+            elif 'adjclose' in hist_data.columns:
+                close_data = hist_data['adjclose']
+            else:
+                logger.warning(f"⚠️ {ticker}: No close price column found (range)")
+                return None
+            close_data = close_data.dropna()
+            if len(close_data) < 1:
+                logger.warning(f"⚠️ {ticker}: No data points in range")
+                return None
+            sector_info = {
+                'sector': 'Unknown',
+                'industry': 'Unknown',
+                'country': 'Unknown',
+                'exchange': 'Unknown',
+                'companyName': ticker
+            }
+            if include_sector:
+                try:
+                    profile = yq_ticker.asset_profile
+                    quote_type = yq_ticker.quote_type
+                    if isinstance(profile, dict) and ticker in profile:
+                        prof_data = profile[ticker]
+                        if isinstance(prof_data, dict):
+                            sector_info['sector'] = prof_data.get('sector', 'Unknown')
+                            sector_info['industry'] = prof_data.get('industry', 'Unknown')
+                            sector_info['country'] = prof_data.get('country', 'Unknown')
+                            sector_info['companyName'] = prof_data.get('longName', prof_data.get('shortName', ticker))
+                    if isinstance(quote_type, dict) and ticker in quote_type:
+                        qt_data = quote_type[ticker]
+                        if isinstance(qt_data, dict):
+                            if sector_info['companyName'] == ticker:
+                                sector_info['companyName'] = qt_data.get('longName', qt_data.get('shortName', ticker))
+                            if sector_info['exchange'] == 'Unknown':
+                                sector_info['exchange'] = qt_data.get('exchange', 'Unknown')
+                except Exception as e:
+                    logger.debug(f"Could not fetch company info for {ticker} (range): {e}")
+            return {'prices': close_data, 'sector': sector_info}
+        except Exception as e:
+            logger.warning(f"⚠️ yahooquery fetch failed for {ticker} (range): {e}")
+            return None
+
+    def _fetch_incremental(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Incremental fetch: only fetch new months since last cached date.
+        Merges new data with cached, applies FX normalization, saves.
+        Falls back to full fetch if no cache or invalid cache.
+        """
+        cached_prices = self._load_from_cache(ticker, 'prices')
+        cached_sector = self._load_from_cache(ticker, 'sector')
+        if cached_prices is None or not isinstance(cached_prices, pd.Series) or cached_prices.empty:
+            return self._fetch_single_ticker_with_retry(ticker, force_fetch=True)
+        if cached_sector is None:
+            return self._fetch_single_ticker_with_retry(ticker, force_fetch=True)
+        if hasattr(cached_prices.index, 'tz_localize'):
+            cached_prices.index = cached_prices.index.tz_localize(None)
+        last_cached_date = cached_prices.index[-1]
+        incremental_start = datetime(last_cached_date.year, last_cached_date.month, 1) + relativedelta(months=1)
+        current_end = END_DATE if hasattr(END_DATE, 'strftime') else datetime.now().replace(day=1)
+        if incremental_start >= current_end:
+            return {'prices': cached_prices, 'sector': cached_sector}
+        new_data = self._fetch_ticker_yahooquery_range(
+            ticker, incremental_start, current_end, include_sector=False
+        )
+        if new_data is None or new_data.get('prices') is None or new_data['prices'].empty:
+            return {'prices': cached_prices, 'sector': cached_sector}
+        new_prices = new_data['prices']
+        if hasattr(new_prices.index, 'tz_localize'):
+            new_prices.index = new_prices.index.tz_localize(None)
+        merged = pd.concat([cached_prices, new_prices])
+        merged = merged[~merged.index.duplicated(keep='last')].sort_index()
+        if len(merged) < 12:
+            return {'prices': cached_prices, 'sector': cached_sector}
+        data_to_cache = {'prices': merged, 'sector': cached_sector}
+        if self._save_to_cache(ticker, data_to_cache):
+            return data_to_cache
+        return {'prices': cached_prices, 'sector': cached_sector}
 
     def _fetch_single_ticker_with_retry(self, ticker: str, force_fetch: bool = False) -> Optional[Dict[str, Any]]:
         """Fetch data for a single ticker with retry logic and rate limiting
@@ -2267,8 +2374,8 @@ class EnhancedDataFetcher:
             
             for ticker in batch:
                 try:
-                    # Fetch only new data (yfinance will automatically extend the range)
-                    data = self._fetch_single_ticker_with_retry(ticker)
+                    # Incremental fetch: only new months; full fetch if no cache
+                    data = self._fetch_incremental(ticker)
                     if data:
                         success_count += 1
                         logger.debug(f"✅ {ticker}: Monthly refresh successful")

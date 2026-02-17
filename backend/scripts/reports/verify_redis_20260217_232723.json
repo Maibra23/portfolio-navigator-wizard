@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-02-17T23:27:23.128320",
+  "master_count": 1432,
+  "cached_count": 1432,
+  "missing_tickers": [],
+  "with_meta": 1411,
+  "without_meta": 21,
+  "fully_normalized": 1409,
+  "needs_check": [
+    "BGEO.L",
+    "IPG",
+    "ROO.L",
+    "TKWY.AS",
+    "HELN.SW",
+    "SYDB.CO",
+    "SPT.L",
+    "KMB",
+    "CDNS",
+    "UBER",
+    "EA",
+    "SCMN.SW",
+    "GRG.L",
+    "ALPH.L",
+    "COLOB.CO",
+    "AGRP.L",
+    "FI",
+    "SXS.L",
+    "KURN.SW",
+    "BALN.SW",
+    "K"
+  ],
+  "non_usd_not_converted": [
+    "GCO.MC",
+    "ABB.MC"
+  ],
+  "by_stored_currency": {
+    "USD": 1409,
+    "EUR": 2
+  }
+}
