@@ -12,7 +12,7 @@ for international stock exchanges.
 import pandas as pd
 import numpy as np
 from datetime import datetime, date
-from typing import Union, Any, Optional, List, Tuple
+from typing import Union, Any, Optional, List, Tuple, Dict
 import logging
 import os
 import re
@@ -671,6 +671,58 @@ def detect_ticker_exchange(ticker: str) -> Optional[str]:
             return exchange
     
     return None
+
+
+# Exchange suffix -> (country, exchange_name, native_currency) for classification and currency audit
+SUFFIX_COUNTRY_EXCHANGE_CURRENCY: Dict[str, Tuple[str, str, str]] = {
+    '.DE': ('Germany', 'XETR (Frankfurt)', 'EUR'),
+    '.F': ('Germany', 'Frankfurt', 'EUR'),
+    '.XETR': ('Germany', 'XETR', 'EUR'),
+    '.PA': ('France', 'Euronext Paris', 'EUR'),
+    '.EPA': ('France', 'Euronext Paris', 'EUR'),
+    '.L': ('United Kingdom', 'London Stock Exchange', 'GBP'),
+    '.LSE': ('United Kingdom', 'London Stock Exchange', 'GBP'),
+    '.MI': ('Italy', 'Borsa Italiana', 'EUR'),
+    '.BIT': ('Italy', 'Borsa Italiana', 'EUR'),
+    '.AS': ('Netherlands', 'Euronext Amsterdam', 'EUR'),
+    '.AMS': ('Netherlands', 'Euronext Amsterdam', 'EUR'),
+    '.MC': ('Spain', 'Bolsa de Madrid', 'EUR'),
+    '.MCE': ('Spain', 'Bolsa de Madrid', 'EUR'),
+    '.SW': ('Switzerland', 'SIX Swiss Exchange', 'CHF'),
+    '.VX': ('Switzerland', 'SIX Swiss Exchange', 'CHF'),
+    '.S': ('Switzerland', 'SIX Swiss Exchange', 'CHF'),
+    '.OL': ('Norway', 'Oslo Børs', 'NOK'),
+    '.OSL': ('Norway', 'Oslo Børs', 'NOK'),
+    '.ST': ('Sweden', 'Stockholm Stock Exchange', 'SEK'),
+    '.SS': ('Sweden', 'Stockholm Stock Exchange', 'SEK'),
+    '.CO': ('Denmark', 'Copenhagen Stock Exchange', 'DKK'),
+    '.CPH': ('Denmark', 'Copenhagen Stock Exchange', 'DKK'),
+    '.HE': ('Finland', 'Helsinki Stock Exchange', 'EUR'),
+    '.HEL': ('Finland', 'Helsinki Stock Exchange', 'EUR'),
+    '.BR': ('Belgium', 'Euronext Brussels', 'EUR'),
+    '.LS': ('Portugal', 'Euronext Lisbon', 'EUR'),
+    '.WA': ('Poland', 'Warsaw Stock Exchange', 'PLN'),
+    '.VI': ('Austria', 'Vienna Stock Exchange', 'EUR'),
+}
+
+
+def get_ticker_country_exchange_currency(ticker: str) -> Tuple[Optional[str], Optional[str], str]:
+    """
+    Classify ticker by country, exchange, and native currency.
+    
+    Returns:
+        (country, exchange_name, native_currency). native_currency is 'USD' for US/no suffix, else from exchange.
+    """
+    if not ticker or not isinstance(ticker, str):
+        return (None, None, 'USD')
+    t = ticker.upper().strip()
+    for suffix, (country, exchange, currency) in SUFFIX_COUNTRY_EXCHANGE_CURRENCY.items():
+        if t.endswith(suffix):
+            return (country, exchange, currency)
+    # US or other: no suffix or .US
+    if '.' not in t or t.endswith('.US'):
+        return ('United States', None, 'USD')
+    return ('Other', None, 'Unknown')
 
 
 def suggest_ticker_alternatives(ticker: str) -> List[str]:

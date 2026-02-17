@@ -376,354 +376,406 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
     onDone?.();
   };
 
+  // Progress calculation for visual feedback
+  const stockProgress = (selectedStocks.length / maxStocks) * 100;
+  const allocationProgress = Math.min(totalAllocation, 100);
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Customize Your Portfolio</CardTitle>
-        <p className="text-xs text-muted-foreground mt-1">
-          {fullUniverse
-            ? tickerUniverse
-              ? `Search and select stocks from the available universe (~${tickerUniverse.count.toLocaleString()} tickers${tickerUniverse.regionLabels.length > 0 ? ` across ${tickerUniverse.regionLabels.join(", ")} exchanges` : ""})`
-              : "Search and select stocks from the available universe"
-            : "Modify the selected portfolio by adding or removing stocks and adjusting allocations"}
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-0">
-        {/* Stock Search */}
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1.5">
-              Add More Stocks
-            </label>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                placeholder="Search for stocks (e.g., AAPL, MSFT)"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                onClick={() => searchStocks(searchTerm)}
-                disabled={!searchTerm.trim() || isLoading}
-                size="sm"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Search"
-                )}
-              </Button>
+    <div className="space-y-4">
+      {/* Search Section - Clean and prominent */}
+      <Card className="border-border/60 shadow-sm overflow-hidden">
+        <CardHeader className="pb-3 bg-gradient-to-r from-muted/30 to-transparent">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-primary/10">
+                <Search className="h-4 w-4 text-primary" />
+              </div>
+              <CardTitle className="text-sm font-semibold">
+                Find Stocks
+              </CardTitle>
             </div>
+            {tickerUniverse && (
+              <Badge variant="secondary" className="text-xs font-normal">
+                {tickerUniverse.count.toLocaleString()} tickers available
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by ticker or company name (e.g., AAPL, Apple)"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 pr-4 h-10 bg-background"
+            />
+            {isLoading && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+            )}
           </div>
 
           {/* Error Display */}
           {error && (
-            <Alert variant="destructive" className="py-2">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription className="text-xs">{error}</AlertDescription>
-            </Alert>
+            <div className="mt-3 flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
           )}
 
           {/* Search Results */}
           {searchTerm.trim() && searchResults.length > 0 && (
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-2">
-              <h4 className="text-sm font-medium">Search Results:</h4>
-              {searchResults.map((stock) => (
+            <div className="mt-3 space-y-1.5 max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-300">
+              {searchResults.map((stock, index) => (
                 <div
                   key={stock.symbol}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/50 bg-muted/20 hover:bg-muted/40 hover:border-border transition-all duration-150 group"
+                  style={{ animationDelay: `${index * 30}ms` }}
                 >
-                  <div>
-                    <div className="font-medium">{stock.symbol}</div>
-                    <div className="text-sm text-gray-600">
-                      {stock.shortname}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-bold text-primary">
+                        {stock.symbol.slice(0, 2)}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm">
+                        {stock.symbol}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {stock.shortname}
+                      </div>
                     </div>
                   </div>
                   <Button
                     onClick={() => addStock(stock)}
                     size="sm"
-                    variant="outline"
+                    variant={
+                      selectedStocks.some((s) => s.symbol === stock.symbol)
+                        ? "secondary"
+                        : "default"
+                    }
                     disabled={
                       selectedStocks.some((s) => s.symbol === stock.symbol) ||
                       selectedStocks.length >= maxStocks
                     }
+                    className="h-8 px-3 text-xs"
                   >
-                    {selectedStocks.some((s) => s.symbol === stock.symbol)
-                      ? "Added"
-                      : "Add"}
+                    {selectedStocks.some((s) => s.symbol === stock.symbol) ? (
+                      <>
+                        <CheckCircle className="h-3 w-3 mr-1" /> Added
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3 w-3 mr-1" /> Add
+                      </>
+                    )}
                   </Button>
                 </div>
               ))}
             </div>
           )}
-        </div>
 
-        {/* Selected Assets Section */}
-        <div className="space-y-4">
+          {/* No results message */}
+          {searchTerm.trim() && !isLoading && searchResults.length === 0 && (
+            <div className="mt-3 text-center py-6 text-muted-foreground animate-in fade-in duration-200">
+              <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No stocks found for "{searchTerm}"</p>
+              <p className="text-xs mt-1">
+                Try a different ticker or company name
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Portfolio Summary - Visual progress indicators */}
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <h4 className="text-lg font-medium">
-              Selected Assets ({selectedStocks.length}/{maxStocks})
-            </h4>
-            <div className="text-sm text-muted-foreground">
-              Minimum {minStocks} required
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-emerald-500/10">
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+              </div>
+              <CardTitle className="text-sm font-semibold">
+                Your Portfolio
+              </CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={isValidStockCount ? "default" : "secondary"}
+                className={`text-xs ${isValidStockCount ? "bg-emerald-500/90" : ""}`}
+              >
+                {selectedStocks.length} of {minStocks}-{maxStocks} stocks
+              </Badge>
             </div>
           </div>
-
-          {/* Portfolio Overview */}
-          <div
-            className={`border rounded-lg p-3 ${totalAllocation > 100 ? "bg-red-50 border-red-200" : isValid ? "bg-green-50 border-green-200" : "bg-muted/30"}`}
-          >
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div>
-                <div className="text-xl font-bold text-primary">
-                  {selectedStocks.length}
-                </div>
-                <div className="text-xs text-muted-foreground">Stocks</div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-2">
+          {/* Progress Indicators */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Stock Selection</span>
+                <span
+                  className={`font-medium ${isValidStockCount ? "text-emerald-600" : "text-amber-600"}`}
+                >
+                  {selectedStocks.length}/{maxStocks}
+                </span>
               </div>
-              <div>
-                <div
-                  className={`text-xl font-bold ${totalAllocation > 100 ? "text-red-600" : isValid ? "text-green-600" : "text-amber-600"}`}
+              <Progress value={stockProgress} className="h-1.5" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Allocation</span>
+                <span
+                  className={`font-medium ${isValidAllocation ? "text-emerald-600" : totalAllocation > 100 ? "text-red-600" : "text-amber-600"}`}
                 >
                   {totalAllocation.toFixed(1)}%
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Total Allocation
-                </div>
+                </span>
               </div>
-              <div>
-                <div
-                  className={`text-xl font-bold ${isValid ? "text-green-600" : "text-red-600"}`}
-                >
-                  {isValid ? "✓" : "✗"}
-                </div>
-                <div className="text-xs text-muted-foreground">Status</div>
-              </div>
+              <Progress
+                value={allocationProgress}
+                className={`h-1.5 ${totalAllocation > 100 ? "[&>div]:bg-red-500" : ""}`}
+              />
             </div>
           </div>
 
-          {/* Validation Messages - only show after user has interacted */}
-          {showValidation &&
-            (searchTerm.length > 0 || selectedStocks.length > 0) && (
-              <div className="space-y-2">
-                {!isValidStockCount && selectedStocks.length > 0 && (
-                  <Alert variant="destructive" className="py-3 border-l-4">
-                    <AlertTriangle className="h-5 w-5" />
-                    <AlertDescription className="text-sm">
-                      <p className="font-semibold mb-1">
-                        Stock Count Requirement
-                      </p>
-                      {selectedStocks.length < minStocks
-                        ? `You need at least ${minStocks} stocks. Currently have ${selectedStocks.length}. Please add ${minStocks - selectedStocks.length} more stock${minStocks - selectedStocks.length > 1 ? "s" : ""}.`
-                        : `Maximum ${maxStocks} stocks allowed. Currently have ${selectedStocks.length}. Please remove ${selectedStocks.length - maxStocks} stock${selectedStocks.length - maxStocks > 1 ? "s" : ""}.`}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {isValidStockCount && !isValidAllocation && (
-                  <Alert className="py-3 border-l-4 bg-amber-50 border-amber-400">
-                    <Info className="h-5 w-5 text-amber-600" />
-                    <AlertDescription className="text-sm text-amber-800">
-                      <p className="font-semibold mb-1">
-                        Allocation Adjustment Needed
-                      </p>
-                      Total allocation is {totalAllocation.toFixed(1)}%.
-                      {totalAllocation > 100
-                        ? ` Please reduce by ${(totalAllocation - 100).toFixed(1)}% to reach 100%.`
-                        : ` Please add ${(100 - totalAllocation).toFixed(1)}% to reach 100%.`}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {isValid && (
-                  <Alert className="py-3 border-l-4 bg-green-50 border-green-400">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <AlertDescription className="text-sm text-green-800">
-                      <p className="font-semibold mb-1">Portfolio Ready</p>
-                      Perfect! You have {selectedStocks.length} stocks with{" "}
-                      {totalAllocation.toFixed(1)}% allocation. Your portfolio
-                      meets all requirements.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            )}
-        </div>
-
-        {/* Allocation Editor Toggle */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h5 className="text-sm font-medium">Allocation Editor</h5>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Manually adjust stock allocations or use equal allocation
-            </p>
-          </div>
-          <Switch
-            checked={showWeightEditor}
-            onCheckedChange={setShowWeightEditor}
-          />
-        </div>
-
-        {/* Allocation Editor */}
-        {showWeightEditor && (
-          <div className="space-y-3">
-            {selectedStocks.map((stock) => (
-              <div key={stock.symbol} className="flex items-center gap-3">
-                <div className="flex-1">
-                  <div className="font-medium">{stock.symbol}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {stock.name || stock.symbol}
+          {/* Selected Stocks List */}
+          {selectedStocks.length > 0 ? (
+            <div className="space-y-2">
+              {selectedStocks.map((stock, index) => (
+                <div
+                  key={stock.symbol}
+                  className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20 hover:bg-muted/30 transition-colors group animate-in fade-in slide-in-from-left-2 duration-200"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                      <span className="text-xs font-bold text-primary">
+                        {index + 1}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">
+                        {stock.symbol}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {stock.name || stock.symbol}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {showWeightEditor ? (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          value={stock.allocation || ""}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === "") {
+                              updateAllocation(stock.symbol, 0);
+                            } else {
+                              const numValue = parseFloat(value);
+                              if (!isNaN(numValue)) {
+                                updateAllocation(stock.symbol, numValue);
+                              }
+                            }
+                          }}
+                          onBlur={(e) => {
+                            const value = e.target.value;
+                            if (value === "" || isNaN(parseFloat(value))) {
+                              updateAllocation(stock.symbol, 0);
+                            }
+                          }}
+                          className={`w-16 h-8 text-center text-sm ${stock.allocation > 100 ? "border-red-500 bg-red-50" : ""}`}
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          placeholder="0"
+                        />
+                        <Percent className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="text-xs font-medium">
+                        {stock.allocation?.toFixed(1)}%
+                      </Badge>
+                    )}
+                    <Button
+                      onClick={() => removeStock(stock.symbol)}
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 opacity-50 group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 transition-all"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    value={stock.allocation || ""}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === "") {
-                        updateAllocation(stock.symbol, 0);
-                      } else {
-                        const numValue = parseFloat(value);
-                        if (!isNaN(numValue)) {
-                          updateAllocation(stock.symbol, numValue);
-                        }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const value = e.target.value;
-                      if (value === "" || isNaN(parseFloat(value))) {
-                        updateAllocation(stock.symbol, 0);
-                      }
-                    }}
-                    className={`w-20 text-center ${stock.allocation > 100 ? "border-red-500 bg-red-50" : ""}`}
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    placeholder="0"
-                  />
-                  <span className="text-sm text-muted-foreground">%</span>
-                </div>
-                <Button
-                  onClick={() => removeStock(stock.symbol)}
-                  size="sm"
-                  variant="destructive"
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 border border-dashed border-border/60 rounded-lg bg-muted/10 animate-in fade-in duration-300">
+              <Building2 className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">
+                No stocks selected yet
+              </p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Search above to add stocks to your portfolio
+              </p>
+            </div>
+          )}
 
-            {selectedStocks.length > 0 && (
-              <div className="flex justify-end">
+          {/* Allocation Controls */}
+          {selectedStocks.length > 0 && (
+            <div className="flex items-center justify-between pt-2 border-t border-border/30">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="weight-editor"
+                  checked={showWeightEditor}
+                  onCheckedChange={setShowWeightEditor}
+                />
+                <label
+                  htmlFor="weight-editor"
+                  className="text-xs text-muted-foreground cursor-pointer"
+                >
+                  Edit allocations manually
+                </label>
+              </div>
+              {showWeightEditor && (
                 <Button
                   onClick={applyEqualAllocation}
                   variant="outline"
                   size="sm"
+                  className="h-7 text-xs"
                 >
-                  Equal Allocation
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Equal Split
                 </Button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
 
-        {/* Performance Metrics Display */}
-        {portfolioMetrics && (
-          <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
-            <h5 className="text-xs font-medium mb-2">Performance Metrics</h5>
+          {/* Validation Status - Compact inline messages */}
+          {showValidation && selectedStocks.length > 0 && (
+            <div className="space-y-2 pt-2">
+              {!isValidStockCount && (
+                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>
+                    {selectedStocks.length < minStocks
+                      ? `Add ${minStocks - selectedStocks.length} more stock${minStocks - selectedStocks.length > 1 ? "s" : ""} (minimum ${minStocks} required)`
+                      : `Remove ${selectedStocks.length - maxStocks} stock${selectedStocks.length - maxStocks > 1 ? "s" : ""} (maximum ${maxStocks} allowed)`}
+                  </span>
+                </div>
+              )}
+
+              {isValidStockCount && !isValidAllocation && (
+                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>
+                    {totalAllocation > 100
+                      ? `Reduce allocation by ${(totalAllocation - 100).toFixed(1)}% to reach 100%`
+                      : `Add ${(100 - totalAllocation).toFixed(1)}% to complete allocation`}
+                  </span>
+                </div>
+              )}
+
+              {isValid && (
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>
+                    Portfolio ready - {selectedStocks.length} stocks, 100%
+                    allocated
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Performance Metrics Card - Shows after Done */}
+      {portfolioMetrics && (
+        <Card className="border-border/60 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-purple-500/10">
+                <TrendingUp className="h-4 w-4 text-purple-600" />
+              </div>
+              <CardTitle className="text-sm font-semibold">
+                Portfolio Metrics
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
             {isLoadingMetrics ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
+              <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Calculating metrics...
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted-foreground">
-                    Expected Return:
-                  </span>
-                  <span className="ml-2 font-medium">
-                    {(portfolioMetrics.expectedReturn * 100).toFixed(2)}%
-                  </span>
+              <div className="grid grid-cols-4 gap-3">
+                <div className="text-center p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                  <div className="text-lg font-bold text-emerald-700">
+                    {(portfolioMetrics.expectedReturn * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-xs text-emerald-600/80">
+                    Expected Return
+                  </div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Risk:</span>
-                  <span className="ml-2 font-medium">
-                    {(portfolioMetrics.risk * 100).toFixed(2)}%
-                  </span>
+                <div className="text-center p-3 rounded-lg bg-amber-50 border border-amber-100">
+                  <div className="text-lg font-bold text-amber-700">
+                    {(portfolioMetrics.risk * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-xs text-amber-600/80">Risk</div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">
-                    Diversification:
-                  </span>
-                  <span className="ml-2 font-medium">
+                <div className="text-center p-3 rounded-lg bg-blue-50 border border-blue-100">
+                  <div className="text-lg font-bold text-blue-700">
                     {portfolioMetrics.diversificationScore.toFixed(0)}%
-                  </span>
+                  </div>
+                  <div className="text-xs text-blue-600/80">
+                    Diversification
+                  </div>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Sharpe Ratio:</span>
-                  <span className="ml-2 font-medium">
+                <div className="text-center p-3 rounded-lg bg-purple-50 border border-purple-100">
+                  <div className="text-lg font-bold text-purple-700">
                     {portfolioMetrics.sharpeRatio.toFixed(2)}
-                  </span>
+                  </div>
+                  <div className="text-xs text-purple-600/80">Sharpe Ratio</div>
                 </div>
               </div>
             )}
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Done button for finalize workflow */}
-        <div className="flex justify-end pt-2">
-          <Button
-            type="button"
-            onClick={handleDone}
-            disabled={
-              !isValidStockCount ||
-              isLoadingMetrics ||
-              selectedStocks.length === 0
-            }
-          >
-            Done
-          </Button>
-        </div>
-
-        {/* Portfolio Validation Summary */}
-        {showValidation && (
-          <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
-            <h5 className="text-xs font-medium mb-2">Portfolio Validation</h5>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {minStocks} to {maxStocks} stocks
-                </span>
-                <span
-                  className={
-                    isValidStockCount
-                      ? "text-green-600 font-medium"
-                      : "text-red-600 font-medium"
-                  }
-                >
-                  {isValidStockCount ? "✓" : "✗"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  Total allocation = 100%
-                </span>
-                <span
-                  className={
-                    isValidAllocation
-                      ? "text-green-600 font-medium"
-                      : "text-red-600 font-medium"
-                  }
-                >
-                  {isValidAllocation ? "✓" : "✗"}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {/* Done Button - Prominent call to action */}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          onClick={handleDone}
+          disabled={
+            !isValidStockCount ||
+            isLoadingMetrics ||
+            selectedStocks.length === 0
+          }
+          size="lg"
+          className="px-8 bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
+        >
+          {isLoadingMetrics ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Processing...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Confirm Portfolio
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
   );
 };

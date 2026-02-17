@@ -3722,33 +3722,29 @@ export const PortfolioOptimization = ({
 
                   {/* Legend and Optimize Button */}
                   <div className="px-6 pb-6 space-y-4">
-                    {/* Why run Optimize and what to expect */}
-                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                      <p className="text-sm font-medium text-foreground">
-                        Why run Optimize?
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Optimization finds a mix of weights (or a broader
-                        market-based portfolio) that aims for better
-                        risk-adjusted return than your current selection—for
-                        example higher expected return for similar risk, or
-                        lower risk for similar return. It uses your risk profile
-                        and the same theory behind the efficient frontier you
-                        see in the Analysis tab.
-                      </p>
-                      <p className="text-sm font-medium text-foreground mt-2">
-                        What to expect
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        After you press Optimize, the app runs the analysis
-                        (usually a few seconds). You will be taken to the
-                        Analysis tab, where you can compare the efficient
-                        frontier, your current portfolio, and the optimized
-                        portfolios (weights-only and, if available,
-                        market-optimized). You can then pick a portfolio to
-                        apply or explore recommendations.
-                      </p>
-                    </div>
+                    {/* Why run Optimize and what to expect (collapsible) */}
+                    <Collapsible className="group rounded-lg border border-border bg-muted/30">
+                      <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/50 rounded-lg">
+                        <span className="text-sm font-medium text-foreground">
+                          Why run Optimize? / What to expect
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-3 pb-3 space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            Finds weights (or a market portfolio) for better
+                            risk-adjusted return using your risk profile and the
+                            efficient frontier.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Runs in a few seconds, then opens the Analysis tab
+                            to compare your portfolio with optimized options and
+                            apply or explore.
+                          </p>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                     {/* Info: Always optimizes from market tickers */}
                     <div className="flex items-center justify-center gap-2 p-3 bg-blue-50/50 rounded-lg border border-blue-200">
                       <Info className="h-4 w-4 text-blue-600" />
@@ -7029,53 +7025,183 @@ export const PortfolioOptimization = ({
                             )}
                           </CardHeader>
                           <CardContent className="space-y-6">
-                            {/* Key Statistics Grid */}
-                            <div className="grid grid-cols-3 gap-4">
-                              <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <AlertCircle className="h-4 w-4 text-red-600" />
-                                  <span className="text-xs font-medium text-red-700">
-                                    5th percentile return (worst 5%)
-                                  </span>
+                            {/* Key Statistics: comparative when triple, single when not */}
+                            {isTriple &&
+                            monteCarloData.current?.percentiles != null &&
+                            monteCarloData.weights?.percentiles != null ? (
+                              <>
+                                <div className="text-sm font-medium text-gray-700 mb-2">
+                                  Return distribution comparison (5th, 50th,
+                                  95th percentiles)
                                 </div>
-                                <div className="text-2xl font-bold text-red-800">
-                                  {(var95 * 100).toFixed(1)}%
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm border border-border rounded-lg">
+                                    <thead>
+                                      <tr className="bg-muted/50">
+                                        <th className="text-left p-2 font-medium border-b border-border rounded-tl-lg">
+                                          Percentile
+                                        </th>
+                                        <th className="text-center p-2 font-medium border-b border-border text-red-700">
+                                          Current
+                                        </th>
+                                        <th className="text-center p-2 font-medium border-b border-border text-blue-700">
+                                          Weights-Opt
+                                        </th>
+                                        {monteCarloData.market?.percentiles !=
+                                          null && (
+                                          <th className="text-center p-2 font-medium border-b border-border text-green-700 rounded-tr-lg">
+                                            Market-Opt
+                                          </th>
+                                        )}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr className="border-b border-border">
+                                        <td className="p-2 text-muted-foreground">
+                                          5th (worst 5%)
+                                        </td>
+                                        <td className="p-2 text-center font-medium text-red-800">
+                                          {(
+                                            (monteCarloData.current.percentiles
+                                              ?.p5 ?? 0) * 100
+                                          ).toFixed(1)}
+                                          %
+                                        </td>
+                                        <td className="p-2 text-center font-medium text-blue-800">
+                                          {(
+                                            (monteCarloData.weights.percentiles
+                                              ?.p5 ?? 0) * 100
+                                          ).toFixed(1)}
+                                          %
+                                        </td>
+                                        {monteCarloData.market?.percentiles !=
+                                          null && (
+                                          <td className="p-2 text-center font-medium text-green-800">
+                                            {(
+                                              (monteCarloData.market.percentiles
+                                                ?.p5 ?? 0) * 100
+                                            ).toFixed(1)}
+                                            %
+                                          </td>
+                                        )}
+                                      </tr>
+                                      <tr className="border-b border-border">
+                                        <td className="p-2 text-muted-foreground">
+                                          50th (median)
+                                        </td>
+                                        <td className="p-2 text-center font-medium text-red-800">
+                                          {(
+                                            (monteCarloData.current.percentiles
+                                              ?.p50 ?? 0) * 100
+                                          ).toFixed(1)}
+                                          %
+                                        </td>
+                                        <td className="p-2 text-center font-medium text-blue-800">
+                                          {(
+                                            (monteCarloData.weights.percentiles
+                                              ?.p50 ?? 0) * 100
+                                          ).toFixed(1)}
+                                          %
+                                        </td>
+                                        {monteCarloData.market?.percentiles !=
+                                          null && (
+                                          <td className="p-2 text-center font-medium text-green-800">
+                                            {(
+                                              (monteCarloData.market.percentiles
+                                                ?.p50 ?? 0) * 100
+                                            ).toFixed(1)}
+                                            %
+                                          </td>
+                                        )}
+                                      </tr>
+                                      <tr>
+                                        <td className="p-2 text-muted-foreground rounded-bl-lg">
+                                          95th (best 5%)
+                                        </td>
+                                        <td className="p-2 text-center font-medium text-red-800">
+                                          {(
+                                            (monteCarloData.current.percentiles
+                                              ?.p95 ?? 0) * 100
+                                          ).toFixed(1)}
+                                          %
+                                        </td>
+                                        <td className="p-2 text-center font-medium text-blue-800">
+                                          {(
+                                            (monteCarloData.weights.percentiles
+                                              ?.p95 ?? 0) * 100
+                                          ).toFixed(1)}
+                                          %
+                                        </td>
+                                        {monteCarloData.market?.percentiles !=
+                                          null && (
+                                          <td className="p-2 text-center font-medium text-green-800 rounded-br-lg">
+                                            {(
+                                              (monteCarloData.market.percentiles
+                                                ?.p95 ?? 0) * 100
+                                            ).toFixed(1)}
+                                            %
+                                          </td>
+                                        )}
+                                      </tr>
+                                    </tbody>
+                                  </table>
                                 </div>
-                                <div className="text-xs text-red-600 mt-1">
-                                  Worst 5% of simulated outcomes
+                                <p className="text-xs text-muted-foreground">
+                                  Same definitions as in the Example below: 5th
+                                  = worst 5% of outcomes, 50th = median, 95th =
+                                  best 5%. Expand &quot;How to read this&quot;
+                                  for the 500,000 SEK example for each
+                                  portfolio.
+                                </p>
+                              </>
+                            ) : (
+                              <div className="grid grid-cols-3 gap-4">
+                                <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <AlertCircle className="h-4 w-4 text-red-600" />
+                                    <span className="text-xs font-medium text-red-700">
+                                      5th percentile return (worst 5%)
+                                    </span>
+                                  </div>
+                                  <div className="text-2xl font-bold text-red-800">
+                                    {(var95 * 100).toFixed(1)}%
+                                  </div>
+                                  <div className="text-xs text-red-600 mt-1">
+                                    Worst 5% of simulated outcomes
+                                  </div>
                                 </div>
-                              </div>
 
-                              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <TrendingUp className="h-4 w-4 text-blue-600" />
-                                  <span className="text-xs font-medium text-blue-700">
-                                    Median return (50th percentile)
-                                  </span>
+                                <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <TrendingUp className="h-4 w-4 text-blue-600" />
+                                    <span className="text-xs font-medium text-blue-700">
+                                      Median return (50th percentile)
+                                    </span>
+                                  </div>
+                                  <div className="text-2xl font-bold text-blue-800">
+                                    {(expectedReturn * 100).toFixed(1)}%
+                                  </div>
+                                  <div className="text-xs text-blue-600 mt-1">
+                                    Center of simulated outcomes
+                                  </div>
                                 </div>
-                                <div className="text-2xl font-bold text-blue-800">
-                                  {(expectedReturn * 100).toFixed(1)}%
-                                </div>
-                                <div className="text-xs text-blue-600 mt-1">
-                                  Center of simulated outcomes
-                                </div>
-                              </div>
 
-                              <div className="p-4 rounded-lg bg-green-50 border border-green-200">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Activity className="h-4 w-4 text-green-600" />
-                                  <span className="text-xs font-medium text-green-700">
-                                    Best Case (95%)
-                                  </span>
-                                </div>
-                                <div className="text-2xl font-bold text-green-800">
-                                  {(bestCase * 100).toFixed(1)}%
-                                </div>
-                                <div className="text-xs text-green-600 mt-1">
-                                  Optimistic scenario
+                                <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Activity className="h-4 w-4 text-green-600" />
+                                    <span className="text-xs font-medium text-green-700">
+                                      Best Case (95%)
+                                    </span>
+                                  </div>
+                                  <div className="text-2xl font-bold text-green-800">
+                                    {(bestCase * 100).toFixed(1)}%
+                                  </div>
+                                  <div className="text-xs text-green-600 mt-1">
+                                    Optimistic scenario
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            )}
 
                             {/* Return Distribution Area Chart with Multiple Portfolios */}
                             <div className="space-y-2">

@@ -668,50 +668,163 @@ export const MonteCarloCard = ({
         )}
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <span className="text-xs font-medium text-red-700">
-                5th percentile return (worst 5%)
-              </span>
+        {/* Return distribution comparison: same standard as Analysis tab (PortfolioOptimization) */}
+        {isTriple &&
+        tripleMonteCarlo.current?.percentiles != null &&
+        tripleMonteCarlo.weights?.percentiles != null ? (
+          <>
+            <div className="text-sm font-medium text-gray-700 mb-2">
+              Return distribution comparison (5th, 50th, 95th percentiles)
             </div>
-            <div className="text-2xl font-bold text-red-800">
-              {(var95 * 100).toFixed(1)}%
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border border-border rounded-lg">
+                <thead>
+                  <tr className="bg-muted/50">
+                    <th className="text-left p-2 font-medium border-b border-border rounded-tl-lg">
+                      Percentile
+                    </th>
+                    <th className="text-center p-2 font-medium border-b border-border text-red-700">
+                      Current
+                    </th>
+                    <th className="text-center p-2 font-medium border-b border-border text-blue-700">
+                      Weights-Opt
+                    </th>
+                    {tripleMonteCarlo.market?.percentiles != null && (
+                      <th className="text-center p-2 font-medium border-b border-border text-green-700 rounded-tr-lg">
+                        Market-Opt
+                      </th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-border">
+                    <td className="p-2 text-muted-foreground">
+                      5th (worst 5%)
+                    </td>
+                    <td className="p-2 text-center font-medium text-red-800">
+                      {(
+                        (tripleMonteCarlo.current.percentiles?.p5 ?? 0) * 100
+                      ).toFixed(1)}
+                      %
+                    </td>
+                    <td className="p-2 text-center font-medium text-blue-800">
+                      {(
+                        (tripleMonteCarlo.weights.percentiles?.p5 ?? 0) * 100
+                      ).toFixed(1)}
+                      %
+                    </td>
+                    {tripleMonteCarlo.market?.percentiles != null && (
+                      <td className="p-2 text-center font-medium text-green-800">
+                        {(
+                          (tripleMonteCarlo.market.percentiles?.p5 ?? 0) * 100
+                        ).toFixed(1)}
+                        %
+                      </td>
+                    )}
+                  </tr>
+                  <tr className="border-b border-border">
+                    <td className="p-2 text-muted-foreground">50th (median)</td>
+                    <td className="p-2 text-center font-medium text-red-800">
+                      {(
+                        (tripleMonteCarlo.current.percentiles?.p50 ?? 0) * 100
+                      ).toFixed(1)}
+                      %
+                    </td>
+                    <td className="p-2 text-center font-medium text-blue-800">
+                      {(
+                        (tripleMonteCarlo.weights.percentiles?.p50 ?? 0) * 100
+                      ).toFixed(1)}
+                      %
+                    </td>
+                    {tripleMonteCarlo.market?.percentiles != null && (
+                      <td className="p-2 text-center font-medium text-green-800">
+                        {(
+                          (tripleMonteCarlo.market.percentiles?.p50 ?? 0) * 100
+                        ).toFixed(1)}
+                        %
+                      </td>
+                    )}
+                  </tr>
+                  <tr>
+                    <td className="p-2 text-muted-foreground rounded-bl-lg">
+                      95th (best 5%)
+                    </td>
+                    <td className="p-2 text-center font-medium text-red-800">
+                      {(
+                        (tripleMonteCarlo.current.percentiles?.p95 ?? 0) * 100
+                      ).toFixed(1)}
+                      %
+                    </td>
+                    <td className="p-2 text-center font-medium text-blue-800">
+                      {(
+                        (tripleMonteCarlo.weights.percentiles?.p95 ?? 0) * 100
+                      ).toFixed(1)}
+                      %
+                    </td>
+                    {tripleMonteCarlo.market?.percentiles != null && (
+                      <td className="p-2 text-center font-medium text-green-800 rounded-br-lg">
+                        {(
+                          (tripleMonteCarlo.market.percentiles?.p95 ?? 0) * 100
+                        ).toFixed(1)}
+                        %
+                      </td>
+                    )}
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <div className="text-xs text-red-600 mt-1">
-              Worst 5% of simulated outcomes
+            <p className="text-xs text-muted-foreground">
+              Same definitions as in the Example below: 5th = worst 5% of
+              outcomes, 50th = median, 95th = best 5%. Expand &quot;How to read
+              this&quot; for the 500,000 SEK example for each portfolio.
+            </p>
+          </>
+        ) : (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <span className="text-xs font-medium text-red-700">
+                  5th percentile return (worst 5%)
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-red-800">
+                {(var95 * 100).toFixed(1)}%
+              </div>
+              <div className="text-xs text-red-600 mt-1">
+                Worst 5% of simulated outcomes
+              </div>
+            </div>
+            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="h-4 w-4 text-blue-600" />
+                <span className="text-xs font-medium text-blue-700">
+                  Median return (50th percentile)
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-blue-800">
+                {(expectedReturn * 100).toFixed(1)}%
+              </div>
+              <div className="text-xs text-blue-600 mt-1">
+                Center of simulated outcomes
+              </div>
+            </div>
+            <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="h-4 w-4 text-green-600" />
+                <span className="text-xs font-medium text-green-700">
+                  Best Case (95%)
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-green-800">
+                {(bestCase * 100).toFixed(1)}%
+              </div>
+              <div className="text-xs text-green-600 mt-1">
+                Optimistic scenario
+              </div>
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-blue-600" />
-              <span className="text-xs font-medium text-blue-700">
-                Median return (50th percentile)
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-blue-800">
-              {(expectedReturn * 100).toFixed(1)}%
-            </div>
-            <div className="text-xs text-blue-600 mt-1">
-              Center of simulated outcomes
-            </div>
-          </div>
-          <div className="p-4 rounded-lg bg-green-50 border border-green-200">
-            <div className="flex items-center gap-2 mb-2">
-              <Activity className="h-4 w-4 text-green-600" />
-              <span className="text-xs font-medium text-green-700">
-                Best Case (95%)
-              </span>
-            </div>
-            <div className="text-2xl font-bold text-green-800">
-              {(bestCase * 100).toFixed(1)}%
-            </div>
-            <div className="text-xs text-green-600 mt-1">
-              Optimistic scenario
-            </div>
-          </div>
-        </div>
+        )}
 
         <div className="space-y-2">
           <div className="text-sm font-medium text-gray-700">
@@ -924,42 +1037,34 @@ export const MonteCarloCard = ({
                   500,000 SEK and the 5th percentile (worst 5% of outcomes) for
                   each portfolio:
                 </p>
-                {isTriple && tripleMonteCarlo
+                {isTriple
                   ? (() => {
-                      const cap = 500000;
-                      const rows: Array<{
+                      const rows = [
+                        {
+                          label: "Current portfolio",
+                          p5: tripleMonteCarlo.current?.percentiles?.p5,
+                        },
+                        {
+                          label: "Weights-Optimized",
+                          p5: tripleMonteCarlo.weights?.percentiles?.p5,
+                        },
+                        {
+                          label: "Market-Optimized",
+                          p5: tripleMonteCarlo.market?.percentiles?.p5,
+                        },
+                      ].filter((r) => r.p5 !== undefined) as Array<{
                         label: string;
                         p5: number;
-                      }> = [];
-                      if (
-                        tripleMonteCarlo.current?.percentiles?.p5 !== undefined
-                      )
-                        rows.push({
-                          label: "Current portfolio",
-                          p5: tripleMonteCarlo.current.percentiles.p5,
-                        });
-                      if (
-                        tripleMonteCarlo.weights?.percentiles?.p5 !== undefined
-                      )
-                        rows.push({
-                          label: "Weights-Optimized",
-                          p5: tripleMonteCarlo.weights.percentiles.p5,
-                        });
-                      if (
-                        tripleMonteCarlo.market?.percentiles?.p5 !== undefined
-                      )
-                        rows.push({
-                          label: "Market-Optimized",
-                          p5: tripleMonteCarlo.market.percentiles.p5,
-                        });
+                      }>;
                       if (rows.length === 0) {
                         const p5 = selectedMonteCarlo.percentiles?.p5 ?? -0.15;
                         const isLoss = p5 < 0;
+                        const cap = 500000;
                         return (
                           <p>
                             {isLoss
-                              ? `With 5th percentile ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
-                              : `With 5th percentile ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
+                              ? `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                              : `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
                           </p>
                         );
                       }
@@ -967,6 +1072,7 @@ export const MonteCarloCard = ({
                         <ul className="list-disc list-inside space-y-1 mt-1">
                           {rows.map(({ label, p5 }) => {
                             const isLoss = p5 < 0;
+                            const cap = 500000;
                             return (
                               <li key={label}>
                                 <strong className="text-foreground">

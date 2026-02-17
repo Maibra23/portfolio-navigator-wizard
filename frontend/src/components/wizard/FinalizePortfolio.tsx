@@ -939,605 +939,727 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
         {/* Tab 1: Portfolio Builder */}
         <TabsContent value="builder" className="space-y-4 mt-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Build Your Portfolio
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Select 3 to 4 stocks from the full universe and allocate 100% of
-                your capital
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <PortfolioBuilder
-                selectedStocks={state.constructedPortfolio}
-                onStocksUpdate={handlePortfolioUpdate}
-                onMetricsUpdate={handleMetricsUpdate}
-                onDone={() => setBuilderDone(true)}
-                riskProfile={riskProfile}
-                capital={capital}
-                minStocks={3}
-                maxStocks={4}
-                fullUniverse={true}
-                showValidation={true}
-              />
-
-              {state.constructedPortfolio.length >= 3 && builderDone && (
-                <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-                  <PortfolioAnalyticsPanel
-                    selectedStocks={state.constructedPortfolio}
-                    riskProfile={riskProfile}
-                    portfolioMetrics={portfolioMetrics}
-                  />
+          {/* Hero Header with Version B text */}
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <Card className="bg-gradient-to-br from-primary/5 via-background to-background border-primary/20 overflow-hidden">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <TrendingUp className="h-5 w-5 text-primary" />
+                      </div>
+                      Create Your Investment Portfolio
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground pl-11">
+                      Choose your stocks from US, European, and Swedish markets,
+                      then set your allocation
+                    </p>
+                  </div>
                 </div>
-              )}
+                {/* Investment Details Banner */}
+                <div className="mt-4 flex flex-wrap items-center gap-3 pl-11">
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-3 py-1 bg-emerald-50 border-emerald-200 text-emerald-700"
+                  >
+                    Investment:{" "}
+                    {capital.toLocaleString("sv-SE", {
+                      minimumFractionDigits: 0,
+                    })}{" "}
+                    SEK
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-3 py-1 bg-blue-50 border-blue-200 text-blue-700"
+                  >
+                    Risk:{" "}
+                    {riskProfile.charAt(0).toUpperCase() + riskProfile.slice(1)}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-3 py-1 bg-purple-50 border-purple-200 text-purple-700"
+                  >
+                    Available Tickers: ~1,432
+                  </Badge>
+                </div>
+              </CardHeader>
+            </Card>
+          </div>
 
-              {validationErrors.builder &&
-                validationErrors.builder.length > 0 && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      <ul className="list-disc list-inside space-y-1">
-                        {validationErrors.builder.map((error, idx) => (
-                          <li key={idx}>{error}</li>
-                        ))}
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
-                )}
+          {/* Portfolio Builder Component */}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100">
+            <PortfolioBuilder
+              selectedStocks={state.constructedPortfolio}
+              onStocksUpdate={handlePortfolioUpdate}
+              onMetricsUpdate={handleMetricsUpdate}
+              onDone={() => setBuilderDone(true)}
+              riskProfile={riskProfile}
+              capital={capital}
+              minStocks={3}
+              maxStocks={4}
+              fullUniverse={true}
+              showValidation={true}
+            />
+          </div>
 
-              {/* Continue to Optimize: enabled only after user presses Done and validation passes */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-block w-full">
-                    <Button
-                      onClick={() => handleTabChange("optimize")}
-                      disabled={
-                        !builderDone ||
-                        !canNavigateToTab("optimize", state, activeTab)
-                      }
-                      className="w-full mt-4"
-                      size="lg"
-                    >
-                      Continue
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-sm">
-                  {!builderDone
-                    ? "Press the Done button above to confirm your portfolio, then you can continue to Optimize."
-                    : "Continue to the Optimize tab."}
-                </TooltipContent>
-              </Tooltip>
-            </CardContent>
-          </Card>
+          {/* Portfolio Analytics Panel - appears after Done */}
+          {state.constructedPortfolio.length >= 3 && builderDone && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200">
+              <PortfolioAnalyticsPanel
+                selectedStocks={state.constructedPortfolio}
+                riskProfile={riskProfile}
+                portfolioMetrics={portfolioMetrics}
+              />
+            </div>
+          )}
+
+          {/* Validation Errors */}
+          {validationErrors.builder && validationErrors.builder.length > 0 && (
+            <Alert
+              variant="destructive"
+              className="animate-in fade-in shake duration-300"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <ul className="list-disc list-inside space-y-1">
+                  {validationErrors.builder.map((error, idx) => (
+                    <li key={idx}>{error}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Continue to Optimize Button */}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 delay-300">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block w-full">
+                  <Button
+                    onClick={() => handleTabChange("optimize")}
+                    disabled={
+                      !builderDone ||
+                      !canNavigateToTab("optimize", state, activeTab)
+                    }
+                    className="w-full bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
+                    size="lg"
+                  >
+                    Continue to Optimization
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-sm">
+                {!builderDone
+                  ? "Confirm your portfolio first by clicking the Confirm Portfolio button above."
+                  : "Continue to optimize your portfolio allocation."}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </TabsContent>
 
         {/* Tab 2: Optimize */}
         <TabsContent value="optimize" className="space-y-4 mt-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Portfolio Optimization
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Optimize your portfolio based on your risk profile
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Current Portfolio Summary: max 2 decimals, Continue to Final Analysis */}
-              <Card>
-                <CardHeader className="pb-3">
+          {/* Header Card with animation */}
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <Card className="bg-gradient-to-br from-blue-500/5 via-background to-background border-blue-500/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-blue-500/10">
+                    <BarChart3 className="h-5 w-5 text-blue-600" />
+                  </div>
+                  Portfolio Optimization
+                </CardTitle>
+                <p className="text-sm text-muted-foreground pl-11">
+                  Optimize your portfolio allocation to maximize risk-adjusted
+                  returns
+                </p>
+              </CardHeader>
+            </Card>
+          </div>
+
+          {/* Current Portfolio Summary Card with animation */}
+          <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-100">
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-md bg-emerald-500/10">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                  </div>
                   <CardTitle className="text-base">
                     Current Portfolio Summary
                   </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {state.constructedPortfolio.length} assets selected
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-0">
-                  {state.constructedPortfolio &&
-                  state.constructedPortfolio.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-2">
-                      {state.constructedPortfolio.map((stock, index) => (
-                        <div
-                          key={stock.symbol}
-                          className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-medium text-blue-600">
-                                {index + 1}
-                              </span>
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-medium text-sm">
-                                {stock.symbol}
-                              </div>
-                              <div className="text-xs text-muted-foreground truncate">
-                                {stock.name || "Stock"}
-                              </div>
-                            </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 pl-8">
+                  {state.constructedPortfolio.length} assets selected
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0">
+                {state.constructedPortfolio &&
+                state.constructedPortfolio.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-2">
+                    {state.constructedPortfolio.map((stock, index) => (
+                      <div
+                        key={stock.symbol}
+                        className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-medium text-blue-600">
+                              {index + 1}
+                            </span>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="font-semibold text-sm">
-                              {Number((stock.allocation || 0).toFixed(2))}%
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm">
+                              {stock.symbol}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {capital
-                                ? (
-                                    (stock.allocation / 100) *
-                                    capital
-                                  ).toLocaleString("sv-SE", {
-                                    minimumFractionDigits: 0,
-                                    maximumFractionDigits: 2,
-                                  })
-                                : "0"}{" "}
-                              SEK
+                            <div className="text-xs text-muted-foreground truncate">
+                              {stock.name || "Stock"}
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No portfolio selected</p>
-                    </div>
-                  )}
-
-                  {displayMetrics && (
-                    <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                        <div className="text-xl font-bold text-emerald-700">
-                          {formatPercent(displayMetrics.expectedReturn)}
-                        </div>
-                        <div className="text-xs text-emerald-600 mt-0.5">
-                          Expected Return
-                        </div>
-                      </div>
-                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                        <div className="text-xl font-bold text-amber-700">
-                          {formatPercent(displayMetrics.risk)}
-                        </div>
-                        <div className="text-xs text-amber-600 mt-0.5">
-                          Risk Level
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-semibold text-sm">
+                            {Number((stock.allocation || 0).toFixed(2))}%
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {capital
+                              ? (
+                                  (stock.allocation / 100) *
+                                  capital
+                                ).toLocaleString("sv-SE", {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 2,
+                                })
+                              : "0"}{" "}
+                            SEK
+                          </div>
                         </div>
                       </div>
-                      <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                        <div className="text-xl font-bold text-purple-700">
-                          {formatPercent(displayMetrics.diversificationScore)}
-                        </div>
-                        <div className="text-xs text-purple-600 mt-0.5">
-                          Diversification
-                        </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No portfolio selected</p>
+                  </div>
+                )}
+
+                {displayMetrics && (
+                  <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
+                    <div className="text-center p-3 bg-muted rounded-lg border border-border">
+                      <div className="text-xl font-bold text-emerald-700">
+                        {formatPercent(displayMetrics.expectedReturn)}
+                      </div>
+                      <div className="text-xs text-emerald-600 mt-0.5">
+                        Expected Return
                       </div>
                     </div>
-                  )}
+                    <div className="text-center p-3 bg-muted rounded-lg border border-border">
+                      <div className="text-xl font-bold text-amber-700">
+                        {formatPercent(displayMetrics.risk)}
+                      </div>
+                      <div className="text-xs text-amber-600 mt-0.5">
+                        Risk Level
+                      </div>
+                    </div>
+                    <div className="text-center p-3 bg-muted rounded-lg border border-border">
+                      <div className="text-xl font-bold text-purple-700">
+                        {formatPercent(displayMetrics.diversificationScore)}
+                      </div>
+                      <div className="text-xs text-purple-600 mt-0.5">
+                        Diversification
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-                  {/* Continue to Final Analysis (enabled when user can navigate to analysis) */}
-                  <Button
-                    onClick={() => handleTabChange("analysis")}
-                    disabled={!canNavigateToTab("analysis", state, activeTab)}
-                    className="w-full mt-4 bg-primary hover:bg-primary/90"
-                    size="lg"
-                  >
-                    Continue to Final Analysis
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Optimize Button: disappears as soon as clicked to avoid double-submit */}
-              {!isOptimizing && !optimizeButtonClicked && (
+                {/* Continue to Final Analysis (enabled when user can navigate to analysis) */}
                 <Button
-                  onClick={() => {
-                    setOptimizeButtonClicked(true);
-                    handleOptimize();
-                  }}
-                  disabled={state.constructedPortfolio.length === 0}
-                  className="w-full"
+                  onClick={() => handleTabChange("analysis")}
+                  disabled={!canNavigateToTab("analysis", state, activeTab)}
+                  className="w-full mt-4 bg-primary hover:bg-primary/90"
                   size="lg"
                 >
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  Optimize
+                  Continue to Final Analysis
+                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
-              )}
-              {(isOptimizing || optimizeButtonClicked) && (
-                <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Optimizing...
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Optimize Button with animation */}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 delay-200">
+            {!isOptimizing && !optimizeButtonClicked && (
+              <Button
+                onClick={() => {
+                  setOptimizeButtonClicked(true);
+                  handleOptimize();
+                }}
+                disabled={state.constructedPortfolio.length === 0}
+                className="w-full bg-blue-600 hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                size="lg"
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Run Optimization
+              </Button>
+            )}
+            {(isOptimizing || optimizeButtonClicked) &&
+              !state.optimizedPortfolio && (
+                <div className="flex items-center justify-center gap-3 py-6 text-sm text-muted-foreground bg-muted/30 rounded-lg border border-border/50">
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                  <span>Optimizing your portfolio...</span>
                 </div>
               )}
+          </div>
 
-              {optimizationError && (
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>{optimizationError}</AlertDescription>
+          {/* Optimization Error */}
+          {optimizationError && (
+            <Alert
+              variant="destructive"
+              className="animate-in fade-in shake duration-300"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{optimizationError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Optimization Results with staggered animations */}
+          {state.optimizedPortfolio && (
+            <div className="space-y-4">
+              {/* Success Message */}
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                <Alert className="bg-emerald-50 border-emerald-200">
+                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                  <AlertDescription className="text-emerald-800">
+                    <strong>Optimization completed successfully!</strong>
+                    <p className="text-sm mt-1">
+                      Your portfolio has been optimized to maximize returns
+                      while managing risk according to your {riskProfile}{" "}
+                      profile.
+                    </p>
+                  </AlertDescription>
                 </Alert>
-              )}
+              </div>
 
-              {/* Optimization Results */}
-              {state.optimizedPortfolio && (
-                <div className="space-y-4">
-                  <Alert className="bg-green-50 border-green-200">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertDescription className="text-green-800">
-                      <strong>Optimization completed successfully!</strong>
-                      <p className="text-sm mt-1">
-                        Your portfolio has been optimized to maximize returns
-                        while managing risk according to your {riskProfile}{" "}
-                        profile.
-                      </p>
-                    </AlertDescription>
-                  </Alert>
-
-                  {/* Efficient Frontier - Use frontierData (market || weights) so CML intersects market-opt when present */}
-                  {(() => {
-                    const frontierData =
-                      state.optimizedPortfolio.market_optimized_portfolio ||
-                      state.optimizedPortfolio.weights_optimized_portfolio;
-                    const hasFrontier =
-                      frontierData?.efficient_frontier &&
-                      frontierData.efficient_frontier.length > 0;
-                    if (!hasFrontier) return null;
-                    return (
-                      <EfficientFrontierChart
-                        currentPortfolio={{
-                          risk:
-                            state.optimizedPortfolio.current_portfolio?.metrics
-                              ?.risk ||
-                            portfolioMetrics?.risk ||
-                            0.15,
-                          return:
-                            state.optimizedPortfolio.current_portfolio?.metrics
-                              ?.expected_return ||
-                            portfolioMetrics?.expectedReturn ||
-                            0.1,
-                          name: "Current Portfolio",
-                          type: "current",
-                          sharpe_ratio:
-                            state.optimizedPortfolio.current_portfolio?.metrics
-                              ?.sharpe_ratio || portfolioMetrics?.sharpeRatio,
-                        }}
-                        efficientFrontier={frontierData.efficient_frontier}
-                        inefficientFrontier={frontierData.inefficient_frontier}
-                        randomPortfolios={frontierData.random_portfolios}
-                        capitalMarketLine={frontierData.capital_market_line}
-                        marketOptimizedPortfolio={
-                          state.optimizedPortfolio.market_optimized_portfolio
-                            ?.optimized_portfolio
-                            ? {
-                                risk: state.optimizedPortfolio
+              {/* Efficient Frontier with animation */}
+              <div className="animate-in fade-in slide-in-from-right-2 duration-500 delay-100">
+                {(() => {
+                  const frontierData =
+                    state.optimizedPortfolio.market_optimized_portfolio ||
+                    state.optimizedPortfolio.weights_optimized_portfolio;
+                  const hasFrontier =
+                    frontierData?.efficient_frontier &&
+                    frontierData.efficient_frontier.length > 0;
+                  if (!hasFrontier) return null;
+                  return (
+                    <EfficientFrontierChart
+                      currentPortfolio={{
+                        risk:
+                          state.optimizedPortfolio.current_portfolio?.metrics
+                            ?.risk ||
+                          portfolioMetrics?.risk ||
+                          0.15,
+                        return:
+                          state.optimizedPortfolio.current_portfolio?.metrics
+                            ?.expected_return ||
+                          portfolioMetrics?.expectedReturn ||
+                          0.1,
+                        name: "Current Portfolio",
+                        type: "current",
+                        sharpe_ratio:
+                          state.optimizedPortfolio.current_portfolio?.metrics
+                            ?.sharpe_ratio || portfolioMetrics?.sharpeRatio,
+                      }}
+                      efficientFrontier={frontierData.efficient_frontier}
+                      inefficientFrontier={frontierData.inefficient_frontier}
+                      randomPortfolios={frontierData.random_portfolios}
+                      capitalMarketLine={frontierData.capital_market_line}
+                      marketOptimizedPortfolio={
+                        state.optimizedPortfolio.market_optimized_portfolio
+                          ?.optimized_portfolio
+                          ? {
+                              risk: state.optimizedPortfolio
+                                .market_optimized_portfolio.optimized_portfolio
+                                .metrics.risk,
+                              return:
+                                state.optimizedPortfolio
                                   .market_optimized_portfolio
-                                  .optimized_portfolio.metrics.risk,
-                                return:
-                                  state.optimizedPortfolio
-                                    .market_optimized_portfolio
-                                    .optimized_portfolio.metrics
-                                    .expected_return,
-                                name: "Market Optimized",
-                                type: "market-optimized" as const,
-                                sharpe_ratio:
-                                  state.optimizedPortfolio
-                                    .market_optimized_portfolio
-                                    .optimized_portfolio.metrics.sharpe_ratio,
-                              }
-                            : undefined
-                        }
-                        weightsOptimizedPortfolio={
-                          state.optimizedPortfolio.weights_optimized_portfolio
-                            ?.optimized_portfolio
-                            ? {
-                                risk: state.optimizedPortfolio
+                                  .optimized_portfolio.metrics.expected_return,
+                              name: "Market Optimized",
+                              type: "market-optimized" as const,
+                              sharpe_ratio:
+                                state.optimizedPortfolio
+                                  .market_optimized_portfolio
+                                  .optimized_portfolio.metrics.sharpe_ratio,
+                            }
+                          : undefined
+                      }
+                      weightsOptimizedPortfolio={
+                        state.optimizedPortfolio.weights_optimized_portfolio
+                          ?.optimized_portfolio
+                          ? {
+                              risk: state.optimizedPortfolio
+                                .weights_optimized_portfolio.optimized_portfolio
+                                .metrics.risk,
+                              return:
+                                state.optimizedPortfolio
                                   .weights_optimized_portfolio
-                                  .optimized_portfolio.metrics.risk,
-                                return:
-                                  state.optimizedPortfolio
-                                    .weights_optimized_portfolio
-                                    .optimized_portfolio.metrics
-                                    .expected_return,
-                                name: "Weights Optimized",
-                                type: "weights-optimized" as const,
-                                sharpe_ratio:
-                                  state.optimizedPortfolio
-                                    .weights_optimized_portfolio
-                                    .optimized_portfolio.metrics.sharpe_ratio,
-                              }
-                            : undefined
-                        }
-                        showControls={true}
-                        showInteractiveLegend={true}
-                      />
-                    );
-                  })()}
+                                  .optimized_portfolio.metrics.expected_return,
+                              name: "Weights Optimized",
+                              type: "weights-optimized" as const,
+                              sharpe_ratio:
+                                state.optimizedPortfolio
+                                  .weights_optimized_portfolio
+                                  .optimized_portfolio.metrics.sharpe_ratio,
+                            }
+                          : undefined
+                      }
+                      showControls={true}
+                      showInteractiveLegend={true}
+                    />
+                  );
+                })()}
+              </div>
 
-                  {/* Portfolio Comparison - Using shared component from PortfolioOptimization */}
-                  {state.optimizedPortfolio.current_portfolio &&
-                    state.optimizedPortfolio.weights_optimized_portfolio && (
-                      <Card>
-                        <CardContent className="pt-0">
-                          <PortfolioComparisonTable
-                            tripleOptimizationResults={{
-                              current_portfolio: {
+              {/* Portfolio Comparison with animation */}
+              {state.optimizedPortfolio.current_portfolio &&
+                state.optimizedPortfolio.weights_optimized_portfolio && (
+                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
+                    <Card className="border-border/60 shadow-sm">
+                      <CardContent className="pt-4">
+                        <PortfolioComparisonTable
+                          tripleOptimizationResults={{
+                            current_portfolio: {
+                              tickers:
+                                state.optimizedPortfolio.current_portfolio
+                                  .tickers ||
+                                state.constructedPortfolio.map((s) => s.symbol),
+                              weights:
+                                state.optimizedPortfolio.current_portfolio
+                                  .weights ||
+                                state.constructedPortfolio.reduce(
+                                  (acc, s) => {
+                                    acc[s.symbol] = s.allocation / 100;
+                                    return acc;
+                                  },
+                                  {} as Record<string, number>,
+                                ),
+                              metrics: {
+                                expected_return:
+                                  state.optimizedPortfolio.current_portfolio
+                                    .metrics?.expected_return ||
+                                  portfolioMetrics?.expectedReturn ||
+                                  0,
+                                risk:
+                                  state.optimizedPortfolio.current_portfolio
+                                    .metrics?.risk ||
+                                  portfolioMetrics?.risk ||
+                                  0,
+                                sharpe_ratio:
+                                  state.optimizedPortfolio.current_portfolio
+                                    .metrics?.sharpe_ratio ||
+                                  portfolioMetrics?.sharpeRatio ||
+                                  0,
+                              },
+                            },
+                            weights_optimized_portfolio: {
+                              optimized_portfolio: {
                                 tickers:
-                                  state.optimizedPortfolio.current_portfolio
-                                    .tickers ||
-                                  state.constructedPortfolio.map(
-                                    (s) => s.symbol,
-                                  ),
+                                  state.optimizedPortfolio
+                                    .weights_optimized_portfolio
+                                    .optimized_portfolio.tickers,
                                 weights:
-                                  state.optimizedPortfolio.current_portfolio
-                                    .weights ||
-                                  state.constructedPortfolio.reduce(
-                                    (acc, s) => {
-                                      acc[s.symbol] = s.allocation / 100;
-                                      return acc;
-                                    },
-                                    {} as Record<string, number>,
-                                  ),
+                                  state.optimizedPortfolio
+                                    .weights_optimized_portfolio
+                                    .optimized_portfolio.weights,
                                 metrics: {
                                   expected_return:
-                                    state.optimizedPortfolio.current_portfolio
-                                      .metrics?.expected_return ||
-                                    portfolioMetrics?.expectedReturn ||
-                                    0,
-                                  risk:
-                                    state.optimizedPortfolio.current_portfolio
-                                      .metrics?.risk ||
-                                    portfolioMetrics?.risk ||
-                                    0,
+                                    state.optimizedPortfolio
+                                      .weights_optimized_portfolio
+                                      .optimized_portfolio.metrics
+                                      .expected_return,
+                                  risk: state.optimizedPortfolio
+                                    .weights_optimized_portfolio
+                                    .optimized_portfolio.metrics.risk,
                                   sharpe_ratio:
-                                    state.optimizedPortfolio.current_portfolio
-                                      .metrics?.sharpe_ratio ||
-                                    portfolioMetrics?.sharpeRatio ||
-                                    0,
-                                },
-                              },
-                              weights_optimized_portfolio: {
-                                optimized_portfolio: {
-                                  tickers:
                                     state.optimizedPortfolio
                                       .weights_optimized_portfolio
-                                      .optimized_portfolio.tickers,
-                                  weights:
-                                    state.optimizedPortfolio
-                                      .weights_optimized_portfolio
-                                      .optimized_portfolio.weights,
-                                  metrics: {
-                                    expected_return:
-                                      state.optimizedPortfolio
-                                        .weights_optimized_portfolio
-                                        .optimized_portfolio.metrics
-                                        .expected_return,
-                                    risk: state.optimizedPortfolio
-                                      .weights_optimized_portfolio
-                                      .optimized_portfolio.metrics.risk,
-                                    sharpe_ratio:
-                                      state.optimizedPortfolio
-                                        .weights_optimized_portfolio
-                                        .optimized_portfolio.metrics
-                                        .sharpe_ratio,
-                                  },
+                                      .optimized_portfolio.metrics.sharpe_ratio,
                                 },
                               },
-                              market_optimized_portfolio: state
-                                .optimizedPortfolio.market_optimized_portfolio
-                                ? {
-                                    optimized_portfolio: {
-                                      tickers:
+                            },
+                            market_optimized_portfolio: state.optimizedPortfolio
+                              .market_optimized_portfolio
+                              ? {
+                                  optimized_portfolio: {
+                                    tickers:
+                                      state.optimizedPortfolio
+                                        .market_optimized_portfolio
+                                        .optimized_portfolio.tickers,
+                                    weights:
+                                      state.optimizedPortfolio
+                                        .market_optimized_portfolio
+                                        .optimized_portfolio.weights,
+                                    metrics: {
+                                      expected_return:
                                         state.optimizedPortfolio
                                           .market_optimized_portfolio
-                                          .optimized_portfolio.tickers,
-                                      weights:
+                                          .optimized_portfolio.metrics
+                                          .expected_return,
+                                      risk: state.optimizedPortfolio
+                                        .market_optimized_portfolio
+                                        .optimized_portfolio.metrics.risk,
+                                      sharpe_ratio:
                                         state.optimizedPortfolio
                                           .market_optimized_portfolio
-                                          .optimized_portfolio.weights,
-                                      metrics: {
-                                        expected_return:
-                                          state.optimizedPortfolio
-                                            .market_optimized_portfolio
-                                            .optimized_portfolio.metrics
-                                            .expected_return,
-                                        risk: state.optimizedPortfolio
-                                          .market_optimized_portfolio
-                                          .optimized_portfolio.metrics.risk,
-                                        sharpe_ratio:
-                                          state.optimizedPortfolio
-                                            .market_optimized_portfolio
-                                            .optimized_portfolio.metrics
-                                            .sharpe_ratio,
-                                      },
+                                          .optimized_portfolio.metrics
+                                          .sharpe_ratio,
                                     },
-                                  }
-                                : null,
-                              comparison: {
-                                weights_vs_current: state.optimizedPortfolio
-                                  .comparison?.weights_vs_current || {
-                                  return_difference:
-                                    (state.optimizedPortfolio
-                                      .weights_optimized_portfolio
-                                      .optimized_portfolio.metrics
-                                      .expected_return || 0) -
-                                    (state.optimizedPortfolio.current_portfolio
-                                      .metrics?.expected_return || 0),
-                                  risk_difference:
-                                    (state.optimizedPortfolio
-                                      .weights_optimized_portfolio
-                                      .optimized_portfolio.metrics.risk || 0) -
-                                    (state.optimizedPortfolio.current_portfolio
-                                      .metrics?.risk || 0),
-                                  sharpe_difference:
-                                    (state.optimizedPortfolio
-                                      .weights_optimized_portfolio
-                                      .optimized_portfolio.metrics
-                                      .sharpe_ratio || 0) -
-                                    (state.optimizedPortfolio.current_portfolio
-                                      .metrics?.sharpe_ratio || 0),
-                                },
-                                market_vs_current:
-                                  state.optimizedPortfolio.comparison
-                                    ?.market_vs_current,
-                                best_sharpe:
-                                  state.optimizedPortfolio.comparison
-                                    ?.best_sharpe,
+                                  },
+                                }
+                              : null,
+                            comparison: {
+                              weights_vs_current: state.optimizedPortfolio
+                                .comparison?.weights_vs_current || {
+                                return_difference:
+                                  (state.optimizedPortfolio
+                                    .weights_optimized_portfolio
+                                    .optimized_portfolio.metrics
+                                    .expected_return || 0) -
+                                  (state.optimizedPortfolio.current_portfolio
+                                    .metrics?.expected_return || 0),
+                                risk_difference:
+                                  (state.optimizedPortfolio
+                                    .weights_optimized_portfolio
+                                    .optimized_portfolio.metrics.risk || 0) -
+                                  (state.optimizedPortfolio.current_portfolio
+                                    .metrics?.risk || 0),
+                                sharpe_difference:
+                                  (state.optimizedPortfolio
+                                    .weights_optimized_portfolio
+                                    .optimized_portfolio.metrics.sharpe_ratio ||
+                                    0) -
+                                  (state.optimizedPortfolio.current_portfolio
+                                    .metrics?.sharpe_ratio || 0),
                               },
-                              optimization_metadata:
-                                state.optimizedPortfolio.optimization_metadata,
-                            }}
-                            selectedPortfolio={selectedPortfolioType}
-                            onPortfolioSelect={handlePortfolioSelect}
-                            showSelectionButtons={true}
-                          />
-                        </CardContent>
-                      </Card>
-                    )}
-
-                  {/* Continue to Final Analysis: enabled when optimization ran and portfolio has at least one stock (Optimize→Analysis uses relaxed validation) */}
-                  <Button
-                    onClick={() => handleTabChange("analysis")}
-                    disabled={!canNavigateToTab("analysis", state, activeTab)}
-                    className="w-full mt-4 bg-primary hover:bg-primary/90"
-                    size="lg"
-                  >
-                    Continue to Final Analysis
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-
-              {validationErrors.optimize &&
-                validationErrors.optimize.length > 0 && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      {validationErrors.optimize[0]}
-                    </AlertDescription>
-                  </Alert>
+                              market_vs_current:
+                                state.optimizedPortfolio.comparison
+                                  ?.market_vs_current,
+                              best_sharpe:
+                                state.optimizedPortfolio.comparison
+                                  ?.best_sharpe,
+                            },
+                            optimization_metadata:
+                              state.optimizedPortfolio.optimization_metadata,
+                          }}
+                          selectedPortfolio={selectedPortfolioType}
+                          onPortfolioSelect={handlePortfolioSelect}
+                          showSelectionButtons={true}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
                 )}
-            </CardContent>
-          </Card>
+
+              {/* Continue to Final Analysis Button with animation */}
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 delay-300">
+                <Button
+                  onClick={() => handleTabChange("analysis")}
+                  disabled={!canNavigateToTab("analysis", state, activeTab)}
+                  className="w-full bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
+                  size="lg"
+                >
+                  Continue to Final Analysis
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Validation Errors */}
+          {validationErrors.optimize &&
+            validationErrors.optimize.length > 0 && (
+              <Alert
+                variant="destructive"
+                className="animate-in fade-in duration-200"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  {validationErrors.optimize[0]}
+                </AlertDescription>
+              </Alert>
+            )}
         </TabsContent>
 
         {/* Tab 3: Final Analysis */}
         <TabsContent value="analysis" className="space-y-4 mt-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Final Analysis
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Comprehensive analysis of your portfolio performance and risk
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Performance Summary, Quality Score, Monte Carlo from optimization (when available) */}
-              {state.optimizedPortfolio?.comparison &&
-                (() => {
-                  const triple = state.optimizedPortfolio;
-                  const selectedPortfolio = selectedPortfolioType;
-                  const isTriple = Boolean(triple.market_optimized_portfolio);
-                  return (
-                    <div className="space-y-6">
-                      <PerformanceSummaryCard
-                        tripleOptimizationResults={triple}
-                        selectedPortfolio={selectedPortfolio}
-                        riskProfile={riskProfile}
-                      />
-                      {triple.comparison?.quality_scores && (
-                        <QualityScoreCard
-                          qualityData={triple.comparison.quality_scores}
-                          selectedPortfolio={selectedPortfolio}
-                          isTriple={isTriple}
-                        />
-                      )}
-                      {triple.comparison?.monte_carlo && (
-                        <MonteCarloCard
-                          monteCarloData={triple.comparison.monte_carlo}
-                          selectedPortfolio={selectedPortfolio}
-                          isTriple={isTriple}
-                        />
-                      )}
-                    </div>
-                  );
-                })()}
-
-              {/* Fallback: simple metrics when no optimization run yet */}
-              {!state.optimizedPortfolio?.comparison && displayMetrics && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      Performance Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-sm text-muted-foreground">
-                          Expected Return
-                        </div>
-                        <div className="text-2xl font-bold">
-                          {formatPercent(displayMetrics.expectedReturn)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-muted-foreground">
-                          Risk
-                        </div>
-                        <div className="text-2xl font-bold">
-                          {formatPercent(displayMetrics.risk)}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              {!state.optimizedPortfolio?.comparison && !displayMetrics && (
-                <p className="text-sm text-muted-foreground">
-                  Run optimization in the Optimize tab to see full analysis
-                  (Performance Summary, Quality Score, Monte Carlo) here.
+          {/* Header Card with animation */}
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <Card className="bg-gradient-to-br from-purple-500/5 via-background to-background border-purple-500/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-purple-500/10">
+                    <Shield className="h-5 w-5 text-purple-600" />
+                  </div>
+                  Final Analysis
+                </CardTitle>
+                <p className="text-sm text-muted-foreground pl-11">
+                  Comprehensive analysis of your portfolio performance and risk
+                  metrics
                 </p>
-              )}
+              </CardHeader>
+            </Card>
+          </div>
 
-              {/* Stress Test Button */}
-              <Button
-                onClick={handleRunStressTest}
-                className="w-full"
-                size="lg"
-                variant="outline"
-              >
-                <Shield className="mr-2 h-4 w-4" />
-                Run Stress Test
-              </Button>
+          {/* Performance Summary, Quality Score, Monte Carlo from optimization (when available) */}
+          {state.optimizedPortfolio?.comparison &&
+            (() => {
+              const triple = state.optimizedPortfolio;
+              const selectedPortfolio = selectedPortfolioType;
+              const isTriple = Boolean(triple.market_optimized_portfolio);
+              return (
+                <div className="space-y-4">
+                  {/* Performance Summary with animation */}
+                  <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-100">
+                    <PerformanceSummaryCard
+                      tripleOptimizationResults={triple}
+                      selectedPortfolio={selectedPortfolio}
+                      riskProfile={riskProfile}
+                    />
+                  </div>
 
-              {state.stressTestResults && (
-                <Alert>
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Stress test completed. Resilience Score:{" "}
-                    {formatNumber(state.stressTestResults.resilience_score, {
-                      maxDecimals: 0,
-                    }) || "N/A"}
-                  </AlertDescription>
-                </Alert>
-              )}
+                  {/* Quality Score with animation */}
+                  {triple.comparison?.quality_scores && (
+                    <div className="animate-in fade-in slide-in-from-right-2 duration-500 delay-200">
+                      <QualityScoreCard
+                        qualityData={triple.comparison.quality_scores}
+                        selectedPortfolio={selectedPortfolio}
+                        isTriple={isTriple}
+                      />
+                    </div>
+                  )}
 
-              <Button
-                onClick={() => handleTabChange("tax-cost")}
-                disabled={!canNavigateToTab("tax-cost", state, activeTab)}
-                className="w-full mt-4"
-                size="lg"
-              >
-                Continue
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </CardContent>
-          </Card>
+                  {/* Monte Carlo with animation */}
+                  {triple.comparison?.monte_carlo && (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300">
+                      <MonteCarloCard
+                        monteCarloData={triple.comparison.monte_carlo}
+                        selectedPortfolio={selectedPortfolio}
+                        isTriple={isTriple}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+          {/* Fallback: simple metrics when no optimization run yet */}
+          {!state.optimizedPortfolio?.comparison && displayMetrics && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <Card className="border-border/60 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Performance Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100">
+                      <div className="text-sm text-emerald-600/80">
+                        Expected Return
+                      </div>
+                      <div className="text-2xl font-bold text-emerald-700">
+                        {formatPercent(displayMetrics.expectedReturn)}
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-lg bg-amber-50 border border-amber-100">
+                      <div className="text-sm text-amber-600/80">Risk</div>
+                      <div className="text-2xl font-bold text-amber-700">
+                        {formatPercent(displayMetrics.risk)}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {!state.optimizedPortfolio?.comparison && !displayMetrics && (
+            <div className="animate-in fade-in duration-200">
+              <Card className="border-dashed border-border/60 bg-muted/20">
+                <CardContent className="py-8 text-center">
+                  <Info className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">
+                    Run optimization in the Optimize tab to see full analysis
+                    (Performance Summary, Quality Score, Monte Carlo) here.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Stress Test Section with animation */}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-400">
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-md bg-orange-500/10">
+                    <Shield className="h-4 w-4 text-orange-600" />
+                  </div>
+                  <CardTitle className="text-sm font-semibold">
+                    Stress Testing
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Test how your portfolio would perform under extreme market
+                  conditions
+                </p>
+                <Button
+                  onClick={handleRunStressTest}
+                  className="w-full"
+                  size="default"
+                  variant="outline"
+                >
+                  <Shield className="mr-2 h-4 w-4" />
+                  Run Stress Test
+                </Button>
+
+                {state.stressTestResults && (
+                  <Alert className="bg-emerald-50 border-emerald-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    <AlertDescription className="text-emerald-800">
+                      Stress test completed. Resilience Score:{" "}
+                      <strong>
+                        {formatNumber(
+                          state.stressTestResults.resilience_score,
+                          {
+                            maxDecimals: 0,
+                          },
+                        ) || "N/A"}
+                      </strong>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Continue Button with animation */}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 delay-500">
+            <Button
+              onClick={() => handleTabChange("tax-cost")}
+              disabled={!canNavigateToTab("tax-cost", state, activeTab)}
+              className="w-full bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
+              size="lg"
+            >
+              Continue to Tax & Summary
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </TabsContent>
 
         {/* Hidden Tab: Stress Test */}
@@ -1582,403 +1704,450 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
         {/* Tab 4: Tax, Cost & Summary */}
         <TabsContent value="tax-cost" className="space-y-4 mt-3">
+          {/* Header Card with animation */}
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <Card className="bg-gradient-to-br from-amber-500/5 via-background to-background border-amber-500/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-amber-500/10">
+                    <Calculator className="h-5 w-5 text-amber-600" />
+                  </div>
+                  Tax & Cost Summary
+                </CardTitle>
+                <p className="text-sm text-muted-foreground pl-11">
+                  Configure tax settings and review your portfolio costs
+                </p>
+              </CardHeader>
+            </Card>
+          </div>
+
           {/* Swedish Investment Taxation — hidden until user opens it */}
-          <Collapsible className="rounded-lg border border-border bg-muted/30">
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
-              >
-                <span className="flex items-center gap-2">
-                  <BookOpen className="h-3.5 w-3.5" />
-                  Learn: Swedish Investment Taxation (ISK/KF vs AF)
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <TaxEducationPanel
-                initialCapital={capital}
-                initialTaxYear={state.taxSettings.taxYear}
-              />
-            </CollapsibleContent>
-          </Collapsible>
+          <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-100">
+            <Collapsible className="rounded-lg border border-border bg-muted/30 shadow-sm">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
+                >
+                  <span className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-blue-600" />
+                    Learn: Swedish Investment Taxation (ISK/KF vs AF)
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <TaxEducationPanel
+                  initialCapital={capital}
+                  initialTaxYear={state.taxSettings.taxYear}
+                />
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
 
           {/* Tax settings: account type, comparison, and optional what-if */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                Tax settings
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Set account type, tax year, and courtage for your report and
-                projections. Optionally compare how tax changes with different
-                capital or tax year below.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Settings: Account Type, Tax Year, Courtage (grid) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Account Type</label>
-                  <Select
-                    value={state.taxSettings.accountType || ""}
-                    onValueChange={(value) =>
-                      updateTaxSettings({ accountType: value as any })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select account type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ISK">
-                        ISK (Investeringssparkonto)
-                      </SelectItem>
-                      <SelectItem value="KF">KF (Kapitalförsäkring)</SelectItem>
-                      <SelectItem value="AF">
-                        AF (Aktie- och Fondkonto)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+          <div className="animate-in fade-in slide-in-from-right-2 duration-500 delay-200">
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-md bg-amber-500/10">
+                    <Calculator className="h-4 w-4 text-amber-600" />
+                  </div>
+                  <CardTitle className="text-base">Tax Settings</CardTitle>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-1.5">
-                    Tax Year
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className="inline-flex cursor-help text-muted-foreground hover:text-foreground"
-                          aria-label="Tax year info"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-sm">
-                        <p className="font-medium mb-1">
-                          Tax rates by year (ISK/KF)
-                        </p>
-                        <p className="text-xs mb-1">
-                          <strong>2025:</strong> Tax-free level 150,000 SEK;
-                          schablonränta 2.96%; effective rate about 0.89% on
-                          capital above the free amount.
-                        </p>
-                        <p className="text-xs">
-                          {" "}
-                          <strong>2026:</strong> Tax-free level 300,000 SEK;
-                          schablonränta 3.55%; effective rate about 1.07%.
-                          Choosing 2026 lowers tax if your capital is under 300k
-                          and changes the 5-year projection.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </label>
-                  <Select
-                    value={String(state.taxSettings.taxYear)}
-                    onValueChange={(value) =>
-                      updateTaxSettings({
-                        taxYear: parseInt(value, 10) as 2025 | 2026,
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Tax year" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2025">2025</SelectItem>
-                      <SelectItem value="2026">2026</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-1.5">
-                    Courtage Class
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className="inline-flex cursor-help text-muted-foreground hover:text-foreground"
-                          aria-label="Courtage class info"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-sm">
-                        <p className="font-medium mb-1">
-                          Avanza courtage (transaction fees) – how it is
-                          calculated
-                        </p>
-                        <p className="text-xs mb-1">
-                          <strong>Start:</strong> Up to 50,000 SEK or 500 free
-                          trades; after that 0 SEK per trade.
-                        </p>
-                        <p className="text-xs mb-1">
-                          <strong>Mini:</strong> 1 SEK or 0.25% per order
-                          (whichever is higher; orders up to 400 SEK = 1 SEK).
-                        </p>
-                        <p className="text-xs mb-1">
-                          <strong>Small:</strong> 39 SEK or 0.15% (orders up to
-                          26,000 SEK = 39 SEK).
-                        </p>
-                        <p className="text-xs mb-1">
-                          <strong>Medium:</strong> 69 SEK or 0.069% (orders up
-                          to 100,000 SEK = 69 SEK).
-                        </p>
-                        <p className="text-xs mb-1">
-                          <strong>Fast Pris:</strong> Fixed 99 SEK per order.
-                        </p>
-                        <p className="text-xs">
-                          Used for the one-time setup (one order per holding).
-                          Setup cost is subtracted in the 5-year projection.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </label>
-                  <Select
-                    value={state.taxSettings.courtagClass || ""}
-                    onValueChange={(value) =>
-                      updateTaxSettings({ courtagClass: value })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select courtage class" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="start">Start</SelectItem>
-                      <SelectItem value="mini">Mini</SelectItem>
-                      <SelectItem value="small">Small</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="fastPris">Fast Pris</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Comparison chart (hero) */}
-              {state.taxSettings.accountType && portfolioMetrics && (
-                <TaxComparisonChart
-                  capital={capital}
-                  taxYear={state.taxSettings.taxYear}
-                  expectedReturn={
-                    displayMetrics?.expectedReturn ||
-                    portfolioMetrics.expectedReturn
-                  }
-                  selectedAccountType={state.taxSettings.accountType}
-                  comparisonData={taxComparisonData}
-                  noCard
-                />
-              )}
-
-              {/* Your annual tax (one line) */}
-              {state.taxSettings.accountType && (
-                <TaxSummaryCard
-                  taxCalculation={taxCalculation}
-                  isLoading={isLoadingTax}
-                  portfolioMetrics={portfolioMetrics}
-                  capital={capital}
-                  noCard
-                  compact
-                />
-              )}
-
-              {/* Actionable insight */}
-              {taxInsightLine && (
-                <p className="text-sm text-muted-foreground">
-                  {taxInsightLine}
+                <p className="text-sm text-muted-foreground mt-0.5 pl-8">
+                  Set account type, tax year, and courtage for your report and
+                  projections
                 </p>
-              )}
-
-              {/* Optional: compare tax by capital and year (same card) */}
-              {state.taxSettings.accountType && portfolioMetrics && (
-                <div className="border-t pt-4 space-y-2">
-                  <Collapsible className="rounded-lg border border-border bg-muted/30">
-                    <CollapsibleTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Calculator className="h-3.5 w-3.5" />
-                          Compare tax by capital and year
-                        </span>
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                      </button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <WhatIfCalculator
-                        initialCapital={capital}
-                        initialTaxYear={state.taxSettings.taxYear}
-                        expectedReturn={
-                          displayMetrics?.expectedReturn ||
-                          portfolioMetrics.expectedReturn
-                        }
-                      />
-                    </CollapsibleContent>
-                  </Collapsible>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Settings: Account Type, Tax Year, Courtage (grid) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Account Type</label>
+                    <Select
+                      value={state.taxSettings.accountType || ""}
+                      onValueChange={(value) =>
+                        updateTaxSettings({ accountType: value as any })
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select account type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ISK">
+                          ISK (Investeringssparkonto)
+                        </SelectItem>
+                        <SelectItem value="KF">
+                          KF (Kapitalförsäkring)
+                        </SelectItem>
+                        <SelectItem value="AF">
+                          AF (Aktie- och Fondkonto)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-1.5">
+                      Tax Year
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex cursor-help text-muted-foreground hover:text-foreground"
+                            aria-label="Tax year info"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm">
+                          <p className="font-medium mb-1">
+                            Tax rates by year (ISK/KF)
+                          </p>
+                          <p className="text-xs mb-1">
+                            <strong>2025:</strong> Tax-free level 150,000 SEK;
+                            schablonränta 2.96%; effective rate about 0.89% on
+                            capital above the free amount.
+                          </p>
+                          <p className="text-xs">
+                            {" "}
+                            <strong>2026:</strong> Tax-free level 300,000 SEK;
+                            schablonränta 3.55%; effective rate about 1.07%.
+                            Choosing 2026 lowers tax if your capital is under
+                            300k and changes the 5-year projection.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </label>
+                    <Select
+                      value={String(state.taxSettings.taxYear)}
+                      onValueChange={(value) =>
+                        updateTaxSettings({
+                          taxYear: parseInt(value, 10) as 2025 | 2026,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Tax year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="2025">2025</SelectItem>
+                        <SelectItem value="2026">2026</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-1.5">
+                      Courtage Class
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex cursor-help text-muted-foreground hover:text-foreground"
+                            aria-label="Courtage class info"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm">
+                          <p className="font-medium mb-1">
+                            Avanza courtage (transaction fees) – how it is
+                            calculated
+                          </p>
+                          <p className="text-xs mb-1">
+                            <strong>Start:</strong> Up to 50,000 SEK or 500 free
+                            trades; after that 0 SEK per trade.
+                          </p>
+                          <p className="text-xs mb-1">
+                            <strong>Mini:</strong> 1 SEK or 0.25% per order
+                            (whichever is higher; orders up to 400 SEK = 1 SEK).
+                          </p>
+                          <p className="text-xs mb-1">
+                            <strong>Small:</strong> 39 SEK or 0.15% (orders up
+                            to 26,000 SEK = 39 SEK).
+                          </p>
+                          <p className="text-xs mb-1">
+                            <strong>Medium:</strong> 69 SEK or 0.069% (orders up
+                            to 100,000 SEK = 69 SEK).
+                          </p>
+                          <p className="text-xs mb-1">
+                            <strong>Fast Pris:</strong> Fixed 99 SEK per order.
+                          </p>
+                          <p className="text-xs">
+                            Used for the one-time setup (one order per holding).
+                            Setup cost is subtracted in the 5-year projection.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </label>
+                    <Select
+                      value={state.taxSettings.courtagClass || ""}
+                      onValueChange={(value) =>
+                        updateTaxSettings({ courtagClass: value })
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select courtage class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="start">Start</SelectItem>
+                        <SelectItem value="mini">Mini</SelectItem>
+                        <SelectItem value="small">Small</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="fastPris">Fast Pris</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Secondary: Transaction costs and Tax-Free */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Costs</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Setup and tax-free breakdown
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {state.taxSettings.courtagClass && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Transaction costs (setup)
-                  </p>
-                  <TotalCostsCard
-                    transactionCosts={transactionCosts}
-                    isLoading={isLoadingCosts}
+                {/* Comparison chart (hero) */}
+                {state.taxSettings.accountType && portfolioMetrics && (
+                  <TaxComparisonChart
+                    capital={capital}
+                    taxYear={state.taxSettings.taxYear}
+                    expectedReturn={
+                      displayMetrics?.expectedReturn ||
+                      portfolioMetrics.expectedReturn
+                    }
+                    selectedAccountType={state.taxSettings.accountType}
+                    comparisonData={taxComparisonData}
                     noCard
                   />
-                </div>
-              )}
-              {state.taxSettings.accountType &&
-                taxCalculation &&
-                (state.taxSettings.accountType === "ISK" ||
-                  state.taxSettings.accountType === "KF") && (
-                  <TaxFreeVisualization
+                )}
+
+                {/* Your annual tax (one line) */}
+                {state.taxSettings.accountType && (
+                  <TaxSummaryCard
+                    taxCalculation={taxCalculation}
+                    isLoading={isLoadingTax}
+                    portfolioMetrics={portfolioMetrics}
                     capital={capital}
-                    taxFreeLevel={
-                      taxCalculation.taxFreeLevel ||
-                      (state.taxSettings.taxYear === 2025 ? 150000 : 300000)
-                    }
-                    accountType={state.taxSettings.accountType}
-                    taxYear={state.taxSettings.taxYear}
+                    noCard
+                    compact
                   />
                 )}
-            </CardContent>
-          </Card>
 
-          {/* 5-Year Projection: single card from component */}
-          {(() => {
-            const opt = state.optimizedPortfolio;
-            const currentWeights =
-              state.constructedPortfolio.length > 0
-                ? state.constructedPortfolio.reduce(
-                    (acc, s) => {
-                      acc[s.symbol] = s.allocation / 100;
-                      return acc;
-                    },
-                    {} as Record<string, number>,
-                  )
-                : {};
-            const currentReturn = portfolioMetrics?.expectedReturn ?? 0.08;
-            const currentRisk = portfolioMetrics?.risk ?? 0.15;
-
-            let projectionWeights = currentWeights;
-            let projectionExpectedReturn = currentReturn;
-            let projectionRisk = currentRisk;
-
-            if (
-              selectedPortfolioType === "weights" &&
-              opt?.weights_optimized_portfolio?.optimized_portfolio
-            ) {
-              const wo = opt.weights_optimized_portfolio.optimized_portfolio;
-              projectionWeights = wo.weights ?? currentWeights;
-              projectionExpectedReturn =
-                wo.metrics?.expected_return ?? currentReturn;
-              projectionRisk = wo.metrics?.risk ?? currentRisk;
-            } else if (
-              selectedPortfolioType === "market" &&
-              opt?.market_optimized_portfolio?.optimized_portfolio
-            ) {
-              const mo = opt.market_optimized_portfolio.optimized_portfolio;
-              projectionWeights = mo.weights ?? currentWeights;
-              projectionExpectedReturn =
-                mo.metrics?.expected_return ?? currentReturn;
-              projectionRisk = mo.metrics?.risk ?? currentRisk;
-            }
-            // selectedPortfolioType === 'current' or no optimized data: use currentWeights, currentReturn, currentRisk (already set)
-
-            return (
-              <FiveYearProjectionChart
-                weights={projectionWeights}
-                capital={capital}
-                accountType={state.taxSettings.accountType}
-                taxYear={state.taxSettings.taxYear}
-                courtageClass={state.taxSettings.courtagClass}
-                expectedReturn={projectionExpectedReturn}
-                risk={projectionRisk}
-                rebalancingFrequency="quarterly"
-              />
-            );
-          })()}
-
-          {/* Portfolio name and export: after 5-year projection */}
-          <div className="space-y-4">
-            <div className="mb-4">
-              <label className="text-sm font-medium mb-1.5 block">
-                Portfolio Name (for report)
-              </label>
-              <Input
-                value={portfolioName}
-                onChange={(e) => setPortfolioName(e.target.value)}
-                placeholder="Enter portfolio name..."
-                className="max-w-md"
-              />
-            </div>
-
-            <p className="text-sm text-muted-foreground mb-2">
-              Export your report:
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <Button
-                onClick={handleExportPdf}
-                variant="outline"
-                className="w-full"
-                size="lg"
-                disabled={!state.taxSettings.accountType || isExporting}
-              >
-                {isExporting && exportingFormat === "pdf" ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Exporting PDF...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Download PDF report
-                  </>
+                {/* Actionable insight */}
+                {taxInsightLine && (
+                  <p className="text-sm text-muted-foreground">
+                    {taxInsightLine}
+                  </p>
                 )}
-              </Button>
-              <Button
-                onClick={handleExportCsv}
-                variant="outline"
-                className="w-full"
-                size="lg"
-                disabled={!state.taxSettings.accountType || isExporting}
-              >
-                {isExporting && exportingFormat === "csv" ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Exporting CSV...
-                  </>
-                ) : (
-                  <>
-                    <FileArchive className="mr-2 h-4 w-4" />
-                    Download CSV (ZIP)
-                  </>
-                )}
-              </Button>
-            </div>
 
-            {validationErrors["tax-cost"] &&
-              validationErrors["tax-cost"].length > 0 && (
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    {validationErrors["tax-cost"][0]}
-                  </AlertDescription>
-                </Alert>
-              )}
+                {/* Optional: compare tax by capital and year (same card) */}
+                {state.taxSettings.accountType && portfolioMetrics && (
+                  <div className="border-t pt-4 space-y-2">
+                    <Collapsible className="rounded-lg border border-border bg-muted/30">
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Calculator className="h-3.5 w-3.5" />
+                            Compare tax by capital and year
+                          </span>
+                          <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <WhatIfCalculator
+                          initialCapital={capital}
+                          initialTaxYear={state.taxSettings.taxYear}
+                          expectedReturn={
+                            displayMetrics?.expectedReturn ||
+                            portfolioMetrics.expectedReturn
+                          }
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Secondary: Transaction costs and Tax-Free with animation */}
+          <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-300">
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-md bg-emerald-500/10">
+                    <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <CardTitle className="text-base">
+                    Costs & Tax-Free Level
+                  </CardTitle>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 pl-8">
+                  Setup costs and tax-free breakdown
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {state.taxSettings.courtagClass && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Transaction costs (setup)
+                    </p>
+                    <TotalCostsCard
+                      transactionCosts={transactionCosts}
+                      isLoading={isLoadingCosts}
+                      noCard
+                    />
+                  </div>
+                )}
+                {state.taxSettings.accountType &&
+                  taxCalculation &&
+                  (state.taxSettings.accountType === "ISK" ||
+                    state.taxSettings.accountType === "KF") && (
+                    <TaxFreeVisualization
+                      capital={capital}
+                      taxFreeLevel={
+                        taxCalculation.taxFreeLevel ||
+                        (state.taxSettings.taxYear === 2025 ? 150000 : 300000)
+                      }
+                      accountType={state.taxSettings.accountType}
+                      taxYear={state.taxSettings.taxYear}
+                    />
+                  )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 5-Year Projection with animation */}
+          <div className="animate-in fade-in slide-in-from-right-2 duration-500 delay-400">
+            {(() => {
+              const opt = state.optimizedPortfolio;
+              const currentWeights =
+                state.constructedPortfolio.length > 0
+                  ? state.constructedPortfolio.reduce(
+                      (acc, s) => {
+                        acc[s.symbol] = s.allocation / 100;
+                        return acc;
+                      },
+                      {} as Record<string, number>,
+                    )
+                  : {};
+              const currentReturn = portfolioMetrics?.expectedReturn ?? 0.08;
+              const currentRisk = portfolioMetrics?.risk ?? 0.15;
+
+              let projectionWeights = currentWeights;
+              let projectionExpectedReturn = currentReturn;
+              let projectionRisk = currentRisk;
+
+              if (
+                selectedPortfolioType === "weights" &&
+                opt?.weights_optimized_portfolio?.optimized_portfolio
+              ) {
+                const wo = opt.weights_optimized_portfolio.optimized_portfolio;
+                projectionWeights = wo.weights ?? currentWeights;
+                projectionExpectedReturn =
+                  wo.metrics?.expected_return ?? currentReturn;
+                projectionRisk = wo.metrics?.risk ?? currentRisk;
+              } else if (
+                selectedPortfolioType === "market" &&
+                opt?.market_optimized_portfolio?.optimized_portfolio
+              ) {
+                const mo = opt.market_optimized_portfolio.optimized_portfolio;
+                projectionWeights = mo.weights ?? currentWeights;
+                projectionExpectedReturn =
+                  mo.metrics?.expected_return ?? currentReturn;
+                projectionRisk = mo.metrics?.risk ?? currentRisk;
+              }
+              // selectedPortfolioType === 'current' or no optimized data: use currentWeights, currentReturn, currentRisk (already set)
+
+              return (
+                <FiveYearProjectionChart
+                  weights={projectionWeights}
+                  capital={capital}
+                  accountType={state.taxSettings.accountType}
+                  taxYear={state.taxSettings.taxYear}
+                  courtageClass={state.taxSettings.courtagClass}
+                  expectedReturn={projectionExpectedReturn}
+                  risk={projectionRisk}
+                  rebalancingFrequency="quarterly"
+                />
+              );
+            })()}
+          </div>
+
+          {/* Portfolio name and export with animation */}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-500">
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-md bg-blue-500/10">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <CardTitle className="text-base">Export Report</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">
+                    Portfolio Name
+                  </label>
+                  <Input
+                    value={portfolioName}
+                    onChange={(e) => setPortfolioName(e.target.value)}
+                    placeholder="Enter portfolio name..."
+                    className="max-w-md"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Button
+                    onClick={handleExportPdf}
+                    variant="outline"
+                    className="w-full hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
+                    size="lg"
+                    disabled={!state.taxSettings.accountType || isExporting}
+                  >
+                    {isExporting && exportingFormat === "pdf" ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting PDF...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Download PDF Report
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleExportCsv}
+                    variant="outline"
+                    className="w-full hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+                    size="lg"
+                    disabled={!state.taxSettings.accountType || isExporting}
+                  >
+                    {isExporting && exportingFormat === "csv" ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting CSV...
+                      </>
+                    ) : (
+                      <>
+                        <FileArchive className="mr-2 h-4 w-4" />
+                        Download CSV (ZIP)
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {validationErrors["tax-cost"] &&
+                  validationErrors["tax-cost"].length > 0 && (
+                    <Alert
+                      variant="destructive"
+                      className="animate-in fade-in duration-200"
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        {validationErrors["tax-cost"][0]}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>

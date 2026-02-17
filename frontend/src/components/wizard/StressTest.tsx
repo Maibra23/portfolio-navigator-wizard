@@ -3817,9 +3817,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                               stressTestResults.portfolio_summary?.capital ??
                               500000;
                             const p5 = mc.percentiles?.p5 ?? -0.15;
-                            const exampleLoss = Math.round(
-                              capital * Math.abs(Math.min(0, p5)),
-                            );
                             const statements = mc.probability_statements || [];
                             return (
                               <Collapsible className="group mt-2 rounded-md border border-border">
@@ -3877,27 +3874,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       <strong className="text-foreground">
                                         Example:
                                       </strong>{" "}
-                                      {p5 < 0 ? (
-                                        <>
-                                          If your portfolio is{" "}
-                                          {capital.toLocaleString("sv-SE")} SEK
-                                          and the 5th percentile is{" "}
-                                          {(p5 * 100).toFixed(1)}%, in about 1
-                                          in 20 runs you could see a loss of{" "}
-                                          {exampleLoss.toLocaleString("sv-SE")}{" "}
-                                          SEK or more over the period.
-                                        </>
-                                      ) : (
-                                        <>
-                                          If your portfolio is{" "}
-                                          {capital.toLocaleString("sv-SE")} SEK
-                                          and the 5th percentile is{" "}
-                                          {(p5 * 100).toFixed(1)}%, the worst 5%
-                                          of outcomes still have a gain (no
-                                          loss); the downside is a return of{" "}
-                                          {(p5 * 100).toFixed(1)}%.
-                                        </>
-                                      )}
+                                      {p5 < 0
+                                        ? `If your portfolio is ${capital.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(capital * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more over the period.`
+                                        : `If your portfolio is ${capital.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`}
                                     </p>
                                   </div>
                                 </CollapsibleContent>
@@ -4878,36 +4857,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           Example:
                                         </strong>{" "}
                                         {(() => {
-                                          const p5Val =
+                                          const p5 =
                                             hypotheticalResults.monte_carlo
                                               .percentiles?.p5 ?? -0.15;
-                                          const isLoss = p5Val < 0;
                                           const cap = 500000;
-                                          return isLoss ? (
-                                            <>
-                                              If your portfolio is{" "}
-                                              {cap.toLocaleString("sv-SE")} SEK
-                                              and the 5th percentile is{" "}
-                                              {(p5Val * 100).toFixed(1)}%, in
-                                              about 1 in 20 runs you could see a
-                                              loss of{" "}
-                                              {Math.round(
-                                                cap * Math.abs(p5Val),
-                                              ).toLocaleString("sv-SE")}{" "}
-                                              SEK or more.
-                                            </>
-                                          ) : (
-                                            <>
-                                              If your portfolio is{" "}
-                                              {cap.toLocaleString("sv-SE")} SEK
-                                              and the 5th percentile is{" "}
-                                              {(p5Val * 100).toFixed(1)}%, the
-                                              worst 5% of outcomes still have a
-                                              gain (no loss); the downside is a
-                                              return of{" "}
-                                              {(p5Val * 100).toFixed(1)}%.
-                                            </>
-                                          );
+                                          const isLoss = p5 < 0;
+                                          return isLoss
+                                            ? `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, in about 1 in 20 runs you could see a loss of ${Math.round(cap * Math.abs(p5)).toLocaleString("sv-SE")} SEK or more.`
+                                            : `If your portfolio is ${cap.toLocaleString("sv-SE")} SEK and the 5th percentile is ${(p5 * 100).toFixed(1)}%, the worst 5% of outcomes still have a gain (no loss); the downside is a return of ${(p5 * 100).toFixed(1)}%.`;
                                         })()}
                                       </p>
                                     </div>
