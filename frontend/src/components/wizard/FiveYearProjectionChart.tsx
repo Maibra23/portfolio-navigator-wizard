@@ -25,6 +25,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useTheme } from "@/hooks/useTheme";
+import { getChartTheme } from "@/utils/chartThemes";
 
 interface FiveYearProjectionChartProps {
   weights: Record<string, number>;
@@ -56,6 +58,8 @@ export const FiveYearProjectionChart: React.FC<
   risk,
   rebalancingFrequency = "quarterly",
 }) => {
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
   const [data, setData] = useState<ProjectionDataPoint[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -427,7 +431,7 @@ export const FiveYearProjectionChart: React.FC<
               data={data}
               margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
               <XAxis
                 dataKey="year"
                 tick={{ fontSize: 11 }}

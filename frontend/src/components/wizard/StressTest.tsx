@@ -23,6 +23,8 @@ import {
   ReferenceLine,
 } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTheme } from "@/hooks/useTheme";
+import { getChartTheme } from "@/utils/chartThemes";
 import {
   Collapsible,
   CollapsibleContent,
@@ -83,6 +85,8 @@ export const StressTest: React.FC<StressTestProps> = ({
   capital,
   riskProfile,
 }) => {
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(
     "covid19",
   );
@@ -416,7 +420,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                     </CardHeader>
                     <CardContent>
                       <div className="mb-4">
-                        <div className="text-sm text-gray-600 mb-2">
+                        <div className="text-sm text-muted-foreground mb-2">
                           <strong>Tickers:</strong>{" "}
                           {selectedPortfolio!.tickers.join(", ")}
                         </div>
@@ -1248,7 +1252,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         >
                                           <CartesianGrid
                                             strokeDasharray="3 3"
-                                            stroke="#e5e7eb"
+                                            stroke={chartTheme.grid}
                                             horizontal={false}
                                           />
                                           <XAxis
@@ -1561,7 +1565,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         <UITooltip>
                                           <TooltipTrigger asChild>
                                             <div className="flex items-center gap-2 cursor-help">
-                                              <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
+                                              <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-background shadow-sm"></div>
                                               <span className="font-medium">
                                                 Peak (
                                                 {stressTestResults.scenarios.covid19.peaks_troughs.peak.date?.substring(
@@ -1595,7 +1599,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         <UITooltip>
                                           <TooltipTrigger asChild>
                                             <div className="flex items-center gap-2 cursor-help">
-                                              <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
+                                              <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-background shadow-sm"></div>
                                               <span className="font-medium">
                                                 Trough (
                                                 {stressTestResults.scenarios.covid19.peaks_troughs.trough.date?.substring(
@@ -1631,7 +1635,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <TooltipTrigger asChild>
                                             <div className="flex items-center gap-2 cursor-help">
                                               <div
-                                                className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                                                className="w-4 h-4 rounded-full border-2 border-background shadow-sm"
                                                 style={{
                                                   backgroundColor: "#9333ea",
                                                 }}
@@ -1764,7 +1768,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     >
                                       <CartesianGrid
                                         strokeDasharray="3 3"
-                                        stroke="#e5e7eb"
+                                        stroke={chartTheme.grid}
                                         horizontal={false}
                                       />
                                       <XAxis
@@ -2598,7 +2602,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         >
                                           <CartesianGrid
                                             strokeDasharray="3 3"
-                                            stroke="#e5e7eb"
+                                            stroke={chartTheme.grid}
                                             horizontal={false}
                                           />
                                           <XAxis
@@ -2919,7 +2923,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         <UITooltip>
                                           <TooltipTrigger asChild>
                                             <div className="flex items-center gap-2 cursor-help">
-                                              <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
+                                              <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-background shadow-sm"></div>
                                               <span className="font-medium">
                                                 Peak (
                                                 {stressTestResults.scenarios[
@@ -2956,7 +2960,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         <UITooltip>
                                           <TooltipTrigger asChild>
                                             <div className="flex items-center gap-2 cursor-help">
-                                              <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-white shadow-sm"></div>
+                                              <div className="w-4 h-4 rounded-full bg-red-500 border-2 border-background shadow-sm"></div>
                                               <span className="font-medium">
                                                 Trough (
                                                 {stressTestResults.scenarios[
@@ -2995,7 +2999,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                           <TooltipTrigger asChild>
                                             <div className="flex items-center gap-2 cursor-help">
                                               <div
-                                                className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                                                className="w-4 h-4 rounded-full border-2 border-background shadow-sm"
                                                 style={{
                                                   backgroundColor: "#9333ea",
                                                 }}
@@ -3078,7 +3082,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     >
                                       <CartesianGrid
                                         strokeDasharray="3 3"
-                                        stroke="#e5e7eb"
+                                        stroke={chartTheme.grid}
                                       />
                                       <XAxis
                                         dataKey="sector"
@@ -3485,7 +3489,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     </defs>
                                     <CartesianGrid
                                       strokeDasharray="3 3"
-                                      stroke="#e5e7eb"
+                                      stroke={chartTheme.grid}
                                     />
                                     <XAxis
                                       dataKey="return_pct"
@@ -3946,7 +3950,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               >
                                 <CartesianGrid
                                   strokeDasharray="3 3"
-                                  stroke="#e5e7eb"
+                                  stroke={chartTheme.grid}
                                 />
                                 <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                                 <YAxis
@@ -4100,7 +4104,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.crisis
                                       ? "bg-red-100 border border-red-300 text-red-700 hover:bg-red-200"
-                                      : "bg-gray-100 border border-gray-300 text-gray-500 hover:bg-gray-200 opacity-50"
+                                      : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
                                   <div className="w-4 h-1 bg-red-500"></div>
@@ -4116,7 +4120,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.policy
                                       ? "bg-blue-100 border border-blue-300 text-blue-700 hover:bg-blue-200"
-                                      : "bg-gray-100 border border-gray-300 text-gray-500 hover:bg-gray-200 opacity-50"
+                                      : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
                                   <div className="w-4 h-1 bg-blue-500"></div>
@@ -4132,7 +4136,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.recovery
                                       ? "bg-green-100 border border-green-300 text-green-700 hover:bg-green-200"
-                                      : "bg-gray-100 border border-gray-300 text-gray-500 hover:bg-gray-200 opacity-50"
+                                      : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
                                   <div className="w-4 h-1 bg-green-500"></div>
@@ -4148,7 +4152,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.warning
                                       ? "bg-yellow-100 border border-yellow-300 text-yellow-700 hover:bg-yellow-200"
-                                      : "bg-gray-100 border border-gray-300 text-gray-500 hover:bg-gray-200 opacity-50"
+                                      : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
                                   <div className="w-4 h-1 bg-yellow-500"></div>
@@ -4199,7 +4203,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       </span>
                                     </div>
                                     {selectedTimelineEvent === event && (
-                                      <div className="mt-2 pt-2 border-t border-gray-300 text-xs text-gray-600">
+                                      <div className="mt-2 pt-2 border-t border-gray-300 text-xs text-muted-foreground">
                                         Click to view details on chart
                                       </div>
                                     )}
@@ -4427,7 +4431,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                             }
                           >
                             <div className="flex items-center gap-2 mb-2">
-                              <TrendingDown className="h-4 w-4 text-gray-600" />
+                              <TrendingDown className="h-4 w-4 text-muted-foreground" />
                               <span className="font-medium">
                                 Deep Recession
                               </span>
@@ -4729,7 +4733,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       </defs>
                                       <CartesianGrid
                                         strokeDasharray="3 3"
-                                        stroke="#e5e7eb"
+                                        stroke={chartTheme.grid}
                                       />
                                       <XAxis
                                         dataKey="return_pct"

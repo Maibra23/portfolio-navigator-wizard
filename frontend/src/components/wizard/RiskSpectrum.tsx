@@ -1,8 +1,13 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import React from "react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface RiskSpectrumProps {
   score: number;
@@ -15,8 +20,8 @@ interface RiskSpectrumProps {
     adjustment_reasons: string[];
   };
   visualizationData: {
-    gradient_intensity: 'narrow' | 'medium' | 'wide';
-    boundary_proximity: 'far' | 'near' | 'crossing';
+    gradient_intensity: "narrow" | "medium" | "wide";
+    boundary_proximity: "far" | "near" | "crossing";
   };
   onCategoryClick?: (category: string) => void;
   className?: string;
@@ -24,19 +29,51 @@ interface RiskSpectrumProps {
 
 // Risk spectrum zones with more vibrant colors
 const RISK_ZONES = [
-  { min: 0, max: 20, category: 'very-conservative', label: 'Very Conservative', color: '#1e40af' }, // Deep blue
-  { min: 21, max: 40, category: 'conservative', label: 'Conservative', color: '#60a5fa' }, // Lighter blue
-  { min: 41, max: 60, category: 'moderate', label: 'Moderate', color: '#10b981' }, // Emerald green
-  { min: 61, max: 80, category: 'aggressive', label: 'Aggressive', color: '#f59e0b' }, // Amber
-  { min: 81, max: 100, category: 'very-aggressive', label: 'Very Aggressive', color: '#ef4444' }, // Red
+  {
+    min: 0,
+    max: 20,
+    category: "very-conservative",
+    label: "Very Conservative",
+    color: "#1e40af",
+  }, // Deep blue
+  {
+    min: 21,
+    max: 40,
+    category: "conservative",
+    label: "Conservative",
+    color: "#60a5fa",
+  }, // Lighter blue
+  {
+    min: 41,
+    max: 60,
+    category: "moderate",
+    label: "Moderate",
+    color: "#10b981",
+  }, // Emerald green
+  {
+    min: 61,
+    max: 80,
+    category: "aggressive",
+    label: "Aggressive",
+    color: "#f59e0b",
+  }, // Amber
+  {
+    min: 81,
+    max: 100,
+    category: "very-aggressive",
+    label: "Very Aggressive",
+    color: "#ef4444",
+  }, // Red
 ] as const;
 
 // Tooltip content
 const SPECTRUM_TOOLTIPS = {
   score_marker: "Your risk score based on your responses.",
-  confidence_band: "The shaded area shows your natural range—most people's preferences vary slightly.",
+  confidence_band:
+    "The shaded area shows your natural range—most people's preferences vary slightly.",
   category_boundary: "You're near the boundary between {cat1} and {cat2}.",
-  crossing_band: "Your responses suggest flexibility between {cat1} and {cat2}."
+  crossing_band:
+    "Your responses suggest flexibility between {cat1} and {cat2}.",
 } as const;
 
 export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
@@ -44,7 +81,7 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
   confidenceBand,
   visualizationData,
   onCategoryClick,
-  className
+  className,
 }) => {
   // Calculate marker position (0-100 scale)
   const markerPosition = Math.max(0, Math.min(100, score));
@@ -55,23 +92,25 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
   const bandWidth = bandRight - bandLeft;
 
   // Get marker border intensity (no shadows per design)
-  const getMarkerGlow = (intensity: typeof visualizationData.gradient_intensity) => {
+  const getMarkerGlow = (
+    intensity: typeof visualizationData.gradient_intensity,
+  ) => {
     switch (intensity) {
-      case 'narrow':
-        return 'ring-2 ring-primary/50';
-      case 'medium':
-        return 'ring-2 ring-primary';
-      case 'wide':
-        return 'ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse';
+      case "narrow":
+        return "ring-2 ring-primary/50";
+      case "medium":
+        return "ring-2 ring-primary";
+      case "wide":
+        return "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse";
       default:
-        return '';
+        return "";
     }
   };
 
   // Find boundary positions
   const getBoundaryPositions = () => {
     const boundaries = [20, 40, 60, 80];
-    const nearbyBoundaries = boundaries.filter(boundary => {
+    const nearbyBoundaries = boundaries.filter((boundary) => {
       const distance = Math.abs(score - boundary);
       return distance <= 10; // Within 10 points
     });
@@ -82,12 +121,19 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
 
   // Get crossing message
   const getCrossingMessage = () => {
-    if (visualizationData.boundary_proximity !== 'crossing' || !confidenceBand.secondary_category) {
+    if (
+      visualizationData.boundary_proximity !== "crossing" ||
+      !confidenceBand.secondary_category
+    ) {
       return null;
     }
 
-    const primaryLabel = RISK_ZONES.find(z => z.category === confidenceBand.primary_category)?.label || confidenceBand.primary_category;
-    const secondaryLabel = RISK_ZONES.find(z => z.category === confidenceBand.secondary_category)?.label || confidenceBand.secondary_category;
+    const primaryLabel =
+      RISK_ZONES.find((z) => z.category === confidenceBand.primary_category)
+        ?.label || confidenceBand.primary_category;
+    const secondaryLabel =
+      RISK_ZONES.find((z) => z.category === confidenceBand.secondary_category)
+        ?.label || confidenceBand.secondary_category;
 
     return `Your range spans ${primaryLabel} to ${secondaryLabel}`;
   };
@@ -104,7 +150,8 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
             </CardTitle>
             {confidenceBand.band_width > 5 && (
               <span className="text-xs text-muted-foreground">
-                Range: {confidenceBand.lower.toFixed(0)}-{confidenceBand.upper.toFixed(0)}
+                Range: {confidenceBand.lower.toFixed(0)}-
+                {confidenceBand.upper.toFixed(0)}
               </span>
             )}
           </div>
@@ -119,7 +166,7 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
           {/* Risk Spectrum Bar */}
           <div className="relative">
             {/* Main spectrum bar */}
-            <div className="relative h-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm">
+            <div className="relative h-10 rounded-lg overflow-hidden border-2 border-border shadow-sm">
               {RISK_ZONES.map((zone) => (
                 <div
                   key={zone.category}
@@ -143,13 +190,14 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
               />
 
               {/* Boundary lines for 'near' proximity */}
-              {visualizationData.boundary_proximity === 'near' && boundaryPositions.map(boundary => (
-                <div
-                  key={boundary}
-                  className="absolute top-0 h-full w-0.5 border-l-2 border-dashed border-white/90"
-                  style={{ left: `${boundary}%` }}
-                />
-              ))}
+              {visualizationData.boundary_proximity === "near" &&
+                boundaryPositions.map((boundary) => (
+                  <div
+                    key={boundary}
+                    className="absolute top-0 h-full w-0.5 border-l-2 border-dashed border-white/90"
+                    style={{ left: `${boundary}%` }}
+                  />
+                ))}
             </div>
 
             {/* Score marker - animated on mount */}
@@ -159,17 +207,22 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
                   className={cn(
                     "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10",
                     "w-5 h-5 bg-white rounded-full border-3 border-blue-600 shadow-lg",
-                    getMarkerGlow(visualizationData.gradient_intensity)
+                    getMarkerGlow(visualizationData.gradient_intensity),
                   )}
-                  initial={{ left: '0%' }}
+                  initial={{ left: "0%" }}
                   animate={{ left: `${markerPosition}%` }}
-                  transition={{ type: 'spring', stiffness: 80, damping: 18 }}
+                  transition={{ type: "spring", stiffness: 80, damping: 18 }}
                 >
                   <motion.div
                     className="absolute inset-1 bg-blue-600 rounded-full"
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    transition={{ delay: 0.2, type: 'spring', stiffness: 200, damping: 15 }}
+                    transition={{
+                      delay: 0.2,
+                      type: "spring",
+                      stiffness: 200,
+                      damping: 15,
+                    }}
                   />
                 </motion.div>
               </TooltipTrigger>
@@ -182,8 +235,12 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
           {/* Category Labels - compact */}
           <div className="flex justify-between text-[10px] font-medium text-muted-foreground px-1">
             {RISK_ZONES.map((zone) => (
-              <span key={zone.category} className="text-center" style={{ color: zone.color }}>
-                {zone.label.split(' ')[0]}
+              <span
+                key={zone.category}
+                className="text-center"
+                style={{ color: zone.color }}
+              >
+                {zone.label.split(" ")[0]}
               </span>
             ))}
           </div>
@@ -192,7 +249,7 @@ export const RiskSpectrum: React.FC<RiskSpectrumProps> = ({
           {confidenceBand.adjustment_reasons.length > 0 && (
             <div className="text-xs text-muted-foreground text-center">
               <span className="font-medium">Range factors: </span>
-              {confidenceBand.adjustment_reasons.join(', ')}
+              {confidenceBand.adjustment_reasons.join(", ")}
             </div>
           )}
         </CardContent>

@@ -45,6 +45,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useTheme } from "@/hooks/useTheme";
+import { getChartTheme } from "@/utils/chartThemes";
 
 // ---------------------------------------------------------------------------
 // Types (aligned with PortfolioOptimization / triple optimization API)
@@ -306,10 +308,10 @@ export const PerformanceSummaryCard = ({
 // ---------------------------------------------------------------------------
 
 const getScoreColor = (score: number) => {
-  if (score >= 80) return "text-green-600";
-  if (score >= 60) return "text-blue-600";
-  if (score >= 40) return "text-amber-600";
-  return "text-red-600";
+  if (score >= 80) return "text-green-500";
+  if (score >= 60) return "text-blue-500";
+  if (score >= 40) return "text-amber-500";
+  return "text-red-500";
 };
 
 const getScoreBarColor = (score: number) => {
@@ -333,6 +335,8 @@ export const QualityScoreCard = ({
   selectedPortfolio: "current" | "weights" | "market";
   isTriple: boolean;
 }) => {
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
   const tripleQuality = qualityData as {
     current: QualityScoreResult;
     weights: QualityScoreResult;
@@ -396,7 +400,7 @@ export const QualityScoreCard = ({
           <Award className="h-5 w-5 text-purple-600" />
           Multi-Factor Quality Analysis
         </CardTitle>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           Comprehensive portfolio quality assessment
         </p>
       </CardHeader>
@@ -408,7 +412,7 @@ export const QualityScoreCard = ({
                 cx="64"
                 cy="64"
                 r="56"
-                stroke="#e5e7eb"
+                stroke={chartTheme.border}
                 strokeWidth="12"
                 fill="none"
               />
@@ -428,7 +432,7 @@ export const QualityScoreCard = ({
                 <div className={`text-3xl font-bold ${getScoreColor(score)}`}>
                   {score.toFixed(0)}
                 </div>
-                <div className="text-xs text-gray-500">out of 100</div>
+                <div className="text-xs text-muted-foreground">out of 100</div>
               </div>
             </div>
           </div>
@@ -442,14 +446,14 @@ export const QualityScoreCard = ({
               </Badge>
             </div>
             <h3 className="text-xl font-bold mb-1">Composite Quality Score</h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Your portfolio scores {score.toFixed(0)}/100 across all quality
               factors
             </p>
           </div>
         </div>
         <div className="space-y-4">
-          <h4 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
+          <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
             <Info className="h-4 w-4" />
             Factor Breakdown
           </h4>
@@ -459,8 +463,8 @@ export const QualityScoreCard = ({
               <div key={factor.name} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 group relative">
-                    <Icon className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm font-medium text-gray-700">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium text-muted-foreground">
                       {factor.name}
                     </span>
                     <TooltipProvider>
@@ -480,7 +484,7 @@ export const QualityScoreCard = ({
                     {factor.score.toFixed(0)}/100
                   </span>
                 </div>
-                <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="relative h-2 bg-muted rounded-full overflow-hidden">
                   <div
                     className="absolute top-0 left-0 h-full rounded-full transition-all duration-500"
                     style={{
@@ -489,7 +493,7 @@ export const QualityScoreCard = ({
                     }}
                   />
                 </div>
-                <p className="text-xs text-gray-500 italic">
+                <p className="text-xs text-muted-foreground italic">
                   {factor.description}
                 </p>
               </div>
@@ -497,31 +501,37 @@ export const QualityScoreCard = ({
           })}
         </div>
         {isTriple && tripleQuality.market != null && (
-          <div className="pt-4 border-t border-gray-200">
-            <h4 className="font-semibold text-sm text-gray-700 mb-3">
+          <div className="pt-4 border-t border-border">
+            <h4 className="font-semibold text-sm text-muted-foreground mb-3">
               Quality Score Comparison
             </h4>
             <div className="grid grid-cols-3 gap-3">
               <div
-                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "current" ? "border-red-500 bg-red-50" : "border-gray-200"}`}
+                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "current" ? "border-red-500 bg-red-500/10" : "border-border"}`}
               >
-                <div className="text-xs text-gray-600 mb-1">Current</div>
+                <div className="text-xs text-muted-foreground mb-1">
+                  Current
+                </div>
                 <div className="text-lg font-bold text-red-600">
                   {tripleQuality.current.composite_score.toFixed(0)}
                 </div>
               </div>
               <div
-                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "weights" ? "border-blue-500 bg-blue-50" : "border-gray-200"}`}
+                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "weights" ? "border-blue-500 bg-blue-500/10" : "border-border"}`}
               >
-                <div className="text-xs text-gray-600 mb-1">Weights-Opt</div>
+                <div className="text-xs text-muted-foreground mb-1">
+                  Weights-Opt
+                </div>
                 <div className="text-lg font-bold text-blue-600">
                   {tripleQuality.weights.composite_score.toFixed(0)}
                 </div>
               </div>
               <div
-                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "market" ? "border-green-500 bg-green-50" : "border-gray-200"}`}
+                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "market" ? "border-green-500 bg-green-500/10" : "border-border"}`}
               >
-                <div className="text-xs text-gray-600 mb-1">Market-Opt</div>
+                <div className="text-xs text-muted-foreground mb-1">
+                  Market-Opt
+                </div>
                 <div className="text-lg font-bold text-green-600">
                   {tripleQuality.market.composite_score.toFixed(0)}
                 </div>
@@ -551,6 +561,8 @@ export const MonteCarloCard = ({
   selectedPortfolio: "current" | "weights" | "market";
   isTriple: boolean;
 }) => {
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
   const [returnScenarioVisibility, setReturnScenarioVisibility] = useState({
     current: true,
     weights: true,
@@ -642,7 +654,7 @@ export const MonteCarloCard = ({
           <BarChart3 className="h-5 w-5 text-blue-600" />
           Monte Carlo Risk Analysis
         </CardTitle>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           {selectedMonteCarlo.parameters?.num_simulations?.toLocaleString() ||
             "10,000"}{" "}
           simulations projecting{" "}
@@ -665,7 +677,7 @@ export const MonteCarloCard = ({
         tripleMonteCarlo.current?.percentiles != null &&
         tripleMonteCarlo.weights?.percentiles != null ? (
           <>
-            <div className="text-sm font-medium text-gray-700 mb-2">
+            <div className="text-sm font-medium text-muted-foreground mb-2">
               Return distribution comparison (5th, 50th, 95th percentiles)
             </div>
             <div className="overflow-x-auto">
@@ -675,10 +687,10 @@ export const MonteCarloCard = ({
                     <th className="text-left p-2 font-medium border-b border-border rounded-tl-lg">
                       Percentile
                     </th>
-                    <th className="text-center p-2 font-medium border-b border-border text-red-700">
+                    <th className="text-center p-2 font-medium border-b border-border text-red-500">
                       Current
                     </th>
-                    <th className="text-center p-2 font-medium border-b border-border text-blue-700">
+                    <th className="text-center p-2 font-medium border-b border-border text-blue-500">
                       Weights-Opt
                     </th>
                     {tripleMonteCarlo.market?.percentiles != null && (
@@ -773,10 +785,10 @@ export const MonteCarloCard = ({
           </>
         ) : (
           <div className="grid grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+            <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
               <div className="flex items-center gap-2 mb-2">
                 <AlertCircle className="h-4 w-4 text-red-600" />
-                <span className="text-xs font-medium text-red-700">
+                <span className="text-xs font-medium text-red-500">
                   5th percentile return (worst 5%)
                 </span>
               </div>
@@ -787,10 +799,10 @@ export const MonteCarloCard = ({
                 Worst 5% of simulated outcomes
               </div>
             </div>
-            <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="h-4 w-4 text-blue-600" />
-                <span className="text-xs font-medium text-blue-700">
+                <span className="text-xs font-medium text-blue-500">
                   Median return (50th percentile)
                 </span>
               </div>
@@ -801,7 +813,7 @@ export const MonteCarloCard = ({
                 Center of simulated outcomes
               </div>
             </div>
-            <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+            <div className="p-4 rounded-lg bg-green-500/10 border border-green-200">
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="h-4 w-4 text-green-600" />
                 <span className="text-xs font-medium text-green-700">
@@ -819,7 +831,7 @@ export const MonteCarloCard = ({
         )}
 
         <div className="space-y-2">
-          <div className="text-sm font-medium text-gray-700">
+          <div className="text-sm font-medium text-muted-foreground">
             Return Distribution
           </div>
           <div className="h-64 w-full">
@@ -857,7 +869,7 @@ export const MonteCarloCard = ({
                     <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                 <XAxis
                   dataKey="return_pct"
                   type="number"
@@ -1160,8 +1172,8 @@ export const MonteCarloCard = ({
               onClick={() => toggleVisibility("current")}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                 returnScenarioVisibility.current
-                  ? "border-red-300 bg-red-50 hover:bg-red-100"
-                  : "border-gray-200 bg-gray-100 opacity-50"
+                  ? "border-red-300 bg-red-500/10 hover:bg-red-500/20"
+                  : "border-border bg-muted opacity-50"
               }`}
               title={
                 returnScenarioVisibility.current
@@ -1172,18 +1184,18 @@ export const MonteCarloCard = ({
               {returnScenarioVisibility.current ? (
                 <Eye className="h-4 w-4 text-red-600" />
               ) : (
-                <EyeOff className="h-4 w-4 text-gray-500" />
+                <EyeOff className="h-4 w-4 text-muted-foreground" />
               )}
               <div className="w-3 h-3 rounded-full bg-red-600" />
-              <span className="font-medium text-red-700">Current</span>
+              <span className="font-medium text-red-500">Current</span>
             </button>
             <button
               type="button"
               onClick={() => toggleVisibility("weights")}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                 returnScenarioVisibility.weights
-                  ? "border-blue-300 bg-blue-50 hover:bg-blue-100"
-                  : "border-gray-200 bg-gray-100 opacity-50"
+                  ? "border-blue-300 bg-blue-500/10 hover:bg-blue-500/20"
+                  : "border-border bg-muted opacity-50"
               }`}
               title={
                 returnScenarioVisibility.weights
@@ -1194,10 +1206,10 @@ export const MonteCarloCard = ({
               {returnScenarioVisibility.weights ? (
                 <Eye className="h-4 w-4 text-blue-600" />
               ) : (
-                <EyeOff className="h-4 w-4 text-gray-500" />
+                <EyeOff className="h-4 w-4 text-muted-foreground" />
               )}
               <div className="w-3 h-3 rounded-full bg-blue-600" />
-              <span className="font-medium text-blue-700">Weights-Opt</span>
+              <span className="font-medium text-blue-500">Weights-Opt</span>
             </button>
             {tripleMonteCarlo.market && (
               <button
@@ -1205,8 +1217,8 @@ export const MonteCarloCard = ({
                 onClick={() => toggleVisibility("market")}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                   returnScenarioVisibility.market
-                    ? "border-green-300 bg-green-50 hover:bg-green-100"
-                    : "border-gray-200 bg-gray-100 opacity-50"
+                    ? "border-green-300 bg-green-500/10 hover:bg-green-100"
+                    : "border-border bg-muted opacity-50"
                 }`}
                 title={
                   returnScenarioVisibility.market
@@ -1217,7 +1229,7 @@ export const MonteCarloCard = ({
                 {returnScenarioVisibility.market ? (
                   <Eye className="h-4 w-4 text-green-600" />
                 ) : (
-                  <EyeOff className="h-4 w-4 text-gray-500" />
+                  <EyeOff className="h-4 w-4 text-muted-foreground" />
                 )}
                 <div className="w-3 h-3 rounded-full bg-green-600" />
                 <span className="font-medium text-green-700">Market-Opt</span>
@@ -1228,10 +1240,10 @@ export const MonteCarloCard = ({
 
         {/* Return Scenarios - same standard as Analysis tab: compact percentile toggles */}
         <div className="space-y-3">
-          <div className="text-sm font-medium text-gray-700">
+          <div className="text-sm font-medium text-muted-foreground">
             Return Scenarios
           </div>
-          <div className="text-xs text-gray-500 mb-2">
+          <div className="text-xs text-muted-foreground mb-2">
             Click a percentile to show it for all portfolio distributions in the
             chart
           </div>
@@ -1255,7 +1267,7 @@ export const MonteCarloCard = ({
                   }
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                     isSelected
-                      ? "border-blue-400 bg-blue-50 text-foreground"
+                      ? "border-blue-400 bg-blue-500/10 text-foreground"
                       : "border-border bg-muted/50 text-muted-foreground hover:bg-muted opacity-70 hover:opacity-100"
                   }`}
                   title={
@@ -1344,7 +1356,7 @@ export const MonteCarloCard = ({
               if (v === undefined) return null;
               return (
                 <div className="flex justify-center text-xs mt-2 py-2 border-t border-border/50">
-                  <span className="font-semibold text-gray-700">
+                  <span className="font-semibold text-muted-foreground">
                     {(v * 100).toFixed(1)}%
                   </span>
                 </div>
@@ -1353,7 +1365,7 @@ export const MonteCarloCard = ({
         </div>
 
         <div className="space-y-3">
-          <div className="text-sm font-medium text-gray-700 flex items-center gap-1">
+          <div className="text-sm font-medium text-muted-foreground flex items-center gap-1">
             Loss Probability Scenarios
             <TooltipProvider>
               <Tooltip>
@@ -1368,8 +1380,8 @@ export const MonteCarloCard = ({
             </TooltipProvider>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-              <div className="text-xs font-medium text-red-700 mb-2">
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+              <div className="text-xs font-medium text-red-500 mb-2">
                 10% Loss Threshold
               </div>
               <div className="text-2xl font-bold text-red-800">
@@ -1382,8 +1394,8 @@ export const MonteCarloCard = ({
                 Probability of 10%+ loss
               </div>
             </div>
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-              <div className="text-xs font-medium text-red-700 mb-2">
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+              <div className="text-xs font-medium text-red-500 mb-2">
                 20% Loss Threshold
               </div>
               <div className="text-2xl font-bold text-red-800">
@@ -1399,7 +1411,7 @@ export const MonteCarloCard = ({
           </div>
         </div>
 
-        <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
           <div className="flex items-start gap-3">
             <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="flex-1">

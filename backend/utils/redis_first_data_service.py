@@ -5,6 +5,7 @@ Provides Redis-first data access with lazy initialization of EnhancedDataFetcher
 """
 
 import logging
+import os
 import random
 import redis
 import json
@@ -255,8 +256,43 @@ class RedisFirstDataService:
                         return self._ticker_list
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to load from cached tickers: {e}")
-                
-                # Fallback to EnhancedDataFetcher
+
+                # Fallback to CSV backup (permanent source when Redis master list empty)
+                csv_path = os.path.join(
+                    os.path.dirname(os.path.dirname(__file__)),
+                    "scripts", "reports", "fetchable_master_list_validated_latest.csv"
+                )
+                try:
+                    if os.path.isfile(csv_path):
+                        import csv as csv_module
+                        tickers_from_csv = []
+                        with open(csv_path, "r", newline="", encoding="utf-8") as f:
+                            reader = csv_module.reader(f)
+                            next(reader, None)  # skip header
+                            for row in reader:
+                                if row and row[0].strip():
+                                    tickers_from_csv.append(row[0].strip())
+                        if tickers_from_csv:
+                            self._ticker_list = tickers_from_csv
+                            logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from CSV backup ({csv_path})")
+                            # Seed Redis so next load uses Redis
+                            if self.redis_client:
+                                try:
+                                    import gzip
+                                    compressed = gzip.compress(json.dumps(self._ticker_list).encode())
+                                    self.redis_client.setex(
+                                        "master_ticker_list_validated",
+                                        365 * 24 * 3600,
+                                        compressed
+                                    )
+                                    logger.info("✅ Seeded master_ticker_list_validated in Redis from CSV")
+                                except Exception as seed_err:
+                                    logger.warning(f"⚠️ Failed to seed Redis from CSV: {seed_err}")
+                            return self._ticker_list
+                except Exception as e:
+                    logger.debug(f"Could not load from CSV backup: {e}")
+
+                # Fallback to EnhancedDataFetcher (S&P 500 + NASDAQ + ETFs)
                 if self.enhanced_data_fetcher:
                     self._ticker_list = self.enhanced_data_fetcher.all_tickers
                     # Cache the ticker list

@@ -1,23 +1,23 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Shield } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Shield } from "lucide-react";
 
 function getResilienceColor(score: number): string {
-  if (score >= 70) return 'text-green-600';
-  if (score >= 50) return 'text-yellow-600';
-  return 'text-red-600';
+  if (score >= 70) return "text-green-500";
+  if (score >= 50) return "text-yellow-500";
+  return "text-red-500";
 }
 
 function getResilienceBadgeColor(score: number): string {
-  if (score >= 70) return 'bg-green-500';
-  if (score >= 50) return 'bg-yellow-500';
-  return 'bg-red-500';
+  if (score >= 70) return "bg-green-500";
+  if (score >= 50) return "bg-yellow-500";
+  return "bg-red-500";
 }
 
 function getResilienceLabel(score: number): string {
-  if (score >= 70) return 'Strong';
-  if (score >= 50) return 'Moderate';
-  return 'Weak';
+  if (score >= 70) return "Strong";
+  if (score >= 50) return "Moderate";
+  return "Weak";
 }
 
 interface ResilienceScoreProps {
@@ -28,22 +28,25 @@ interface ResilienceScoreProps {
 export function ResilienceScore({ score, assessment }: ResilienceScoreProps) {
   const clamped = Math.min(100, Math.max(0, score));
   const strokeColor =
-    clamped >= 70 ? '#22c55e' : clamped >= 50 ? '#f59e0b' : '#ef4444';
+    clamped >= 70 ? "#22c55e" : clamped >= 50 ? "#f59e0b" : "#ef4444";
   const circumference = 2 * Math.PI * 56;
   const strokeDash = (clamped / 100) * circumference;
 
   return (
-    <Card className="border-2 border-green-200 dark:border-green-800">
+    <Card className="border-2 border-green-500/30">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Shield className="h-5 w-5 text-green-600" />
+          <Shield className="h-5 w-5 text-green-500" />
           Portfolio Resilience Score
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-6">
           <div className="relative w-32 h-32">
-            <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 128 128">
+            <svg
+              className="w-32 h-32 transform -rotate-90"
+              viewBox="0 0 128 128"
+            >
               <circle
                 cx="64"
                 cy="64"
@@ -78,9 +81,7 @@ export function ResilienceScore({ score, assessment }: ResilienceScoreProps) {
           </div>
           <div className="flex-1">
             <p className="text-sm text-muted-foreground mb-3">{assessment}</p>
-            <Badge
-              className={`${getResilienceBadgeColor(score)} text-white`}
-            >
+            <Badge className={`${getResilienceBadgeColor(score)} text-white`}>
               {getResilienceLabel(score)} Resilience
             </Badge>
           </div>

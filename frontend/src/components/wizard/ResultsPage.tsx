@@ -1,20 +1,25 @@
-import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { FlagAlerts } from './FlagAlerts';
-import { CategoryCard } from './CategoryCard';
-import { RiskSpectrum } from './RiskSpectrum';
-import { TwoDimensionalMap, getQuadrant, QUADRANT_EXPLANATIONS, GAMIFIED_DISCLAIMER } from './TwoDimensionalMap';
-import { ArrowRight, RotateCcw } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { FlagAlerts } from "./FlagAlerts";
+import { CategoryCard } from "./CategoryCard";
+import { RiskSpectrum } from "./RiskSpectrum";
+import {
+  TwoDimensionalMap,
+  getQuadrant,
+  QUADRANT_EXPLANATIONS,
+  GAMIFIED_DISCLAIMER,
+} from "./TwoDimensionalMap";
+import { ArrowRight, RotateCcw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-import type { ConfidenceBand } from './confidence-calculator';
-import type { SafeguardResult } from './safeguards';
+import type { ConfidenceBand } from "./confidence-calculator";
+import type { SafeguardResult } from "./safeguards";
 
 // Inline interface for VisualizationData as it might not be exported
 interface VisualizationData {
-  gradient_intensity: 'narrow' | 'medium' | 'wide';
-  boundary_proximity: 'far' | 'near' | 'crossing';
+  gradient_intensity: "narrow" | "medium" | "wide";
+  boundary_proximity: "far" | "near" | "crossing";
 }
 
 export interface ResultsPageProps {
@@ -38,7 +43,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
   isGamifiedPath,
   onReviewAnswers,
   onContinue,
-  className
+  className,
 }) => {
   const {
     normalized_score,
@@ -47,19 +52,37 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
     risk_category,
     confidence_band,
     visualization_data,
-    safeguards
+    safeguards,
   } = scoringResult;
 
   const hasFlags = Object.values(safeguards.flags).some(Boolean);
-  const quadrant = getQuadrant(Math.round(normalized_mpt), Math.round(normalized_prospect));
+  const quadrant = getQuadrant(
+    Math.round(normalized_mpt),
+    Math.round(normalized_prospect),
+  );
   const quadrantExplanation = QUADRANT_EXPLANATIONS[quadrant];
-  const quadrantStyle = quadrant === 'high-high' ? { backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: '#10b981' } :
-    quadrant === 'low-high' ? { backgroundColor: 'rgba(234, 179, 8, 0.15)', borderColor: '#eab308' } :
-    quadrant === 'high-low' ? { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: '#3b82f6' } :
-    { backgroundColor: 'rgba(107, 114, 128, 0.15)', borderColor: '#9ca3af' };
+  const quadrantStyle =
+    quadrant === "high-high"
+      ? { backgroundColor: "rgba(34, 197, 94, 0.15)", borderColor: "#10b981" }
+      : quadrant === "low-high"
+        ? { backgroundColor: "rgba(234, 179, 8, 0.15)", borderColor: "#eab308" }
+        : quadrant === "high-low"
+          ? {
+              backgroundColor: "rgba(59, 130, 246, 0.15)",
+              borderColor: "#3b82f6",
+            }
+          : {
+              backgroundColor: "rgba(107, 114, 128, 0.15)",
+              borderColor: "#9ca3af",
+            };
 
   return (
-    <div className={cn("max-w-3xl mx-auto space-y-4 pb-16 animate-in fade-in duration-500", className)}>
+    <div
+      className={cn(
+        "max-w-3xl mx-auto space-y-4 pb-16 animate-in fade-in duration-500",
+        className,
+      )}
+    >
       {/* Flag Alerts - Show at top if any */}
       {hasFlags && (
         <FlagAlerts
@@ -75,7 +98,8 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
           category={risk_category}
           score={Math.round(normalized_score)}
           secondaryCategory={
-            safeguards.flags.high_uncertainty && confidence_band.secondary_category
+            safeguards.flags.high_uncertainty &&
+            confidence_band.secondary_category
               ? confidence_band.secondary_category
               : undefined
           }
@@ -95,9 +119,13 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
         <CardContent className="p-4 space-y-4">
           <div className="text-center">
             <h3 className="text-base font-semibold">Risk Breakdown</h3>
-            <p className="text-xs text-muted-foreground">Analytical vs Emotional Risk Tolerance</p>
+            <p className="text-xs text-muted-foreground">
+              Analytical vs Emotional Risk Tolerance
+            </p>
             {isGamifiedPath && (
-              <p className="text-xs text-muted-foreground mt-1">{GAMIFIED_DISCLAIMER}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {GAMIFIED_DISCLAIMER}
+              </p>
             )}
           </div>
           {/* Graph full width */}
@@ -113,17 +141,21 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
             <Card className="shadow-sm border-muted h-fit">
               <CardContent className="p-4 space-y-3">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">
+                  <div className="text-2xl font-bold text-blue-500">
                     {Math.round(normalized_mpt)}
                   </div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Analytical</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                    Analytical
+                  </div>
                 </div>
                 <div className="h-px bg-border" />
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-indigo-600">
+                  <div className="text-2xl font-bold text-indigo-500">
                     {Math.round(normalized_prospect)}
                   </div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Emotional</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                    Emotional
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -131,8 +163,12 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
               className="rounded-lg p-2.5 text-xs border-2 h-fit"
               style={quadrantStyle}
             >
-              <div className="font-bold text-gray-900">{quadrantExplanation.title}</div>
-              <p className="mt-1 text-gray-700 leading-snug">{quadrantExplanation.explanation}</p>
+              <div className="font-bold text-foreground">
+                {quadrantExplanation.title}
+              </div>
+              <p className="mt-1 text-muted-foreground leading-snug">
+                {quadrantExplanation.explanation}
+              </p>
             </div>
           </div>
         </CardContent>

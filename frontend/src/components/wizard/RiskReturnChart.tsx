@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   ComposedChart,
   Line,
@@ -9,11 +9,13 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-} from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { Plus, Minus, RotateCcw } from 'lucide-react';
+} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Plus, Minus, RotateCcw } from "lucide-react";
+import { useTheme } from "@/hooks/useTheme";
+import { getChartTheme } from "@/utils/chartThemes";
 
 interface Asset {
   ticker: string;
@@ -36,7 +38,10 @@ interface EfficientFrontierPoint {
 
 interface RiskReturnAnalysis {
   portfolio_metrics: PortfolioMetrics;
-  asset_metrics: Record<string, { return: number; risk: number; sharpe_ratio: number }>;
+  asset_metrics: Record<
+    string,
+    { return: number; risk: number; sharpe_ratio: number }
+  >;
   efficient_frontier: EfficientFrontierPoint[];
   selected_stocks: Asset[];
   capital: number;
@@ -53,6 +58,8 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
   efficientFrontier,
   portfolioMetrics,
 }) => {
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
   const [showFrontier, setShowFrontier] = useState(true);
   const [zoom, setZoom] = useState(1);
 
@@ -61,7 +68,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
     name: asset.ticker,
     risk: portfolioMetrics.risk * (asset.allocation / 100),
     return: portfolioMetrics.expected_return * (asset.allocation / 100),
-    type: 'asset',
+    type: "asset",
   }));
 
   // Prepare efficient frontier data
@@ -70,23 +77,24 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
         name: `Frontier ${index + 1}`,
         risk: point.risk,
         return: point.return,
-        type: 'frontier',
+        type: "frontier",
       }))
     : [];
 
   // Find optimal portfolio (highest Sharpe ratio)
   const optimalPortfolio = efficientFrontier.reduce(
-    (optimal, current) => (current.sharpe_ratio > optimal.sharpe_ratio ? current : optimal),
-    efficientFrontier[0] || { return: 0, risk: 0, sharpe_ratio: 0 }
+    (optimal, current) =>
+      current.sharpe_ratio > optimal.sharpe_ratio ? current : optimal,
+    efficientFrontier[0] || { return: 0, risk: 0, sharpe_ratio: 0 },
   );
 
   const optimalData = showFrontier
     ? [
         {
-          name: 'Optimal Portfolio',
+          name: "Optimal Portfolio",
           risk: optimalPortfolio.risk,
           return: optimalPortfolio.return,
-          type: 'optimal',
+          type: "optimal",
         },
       ]
     : [];
@@ -94,37 +102,42 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
   // Current portfolio data
   const currentPortfolioData = [
     {
-      name: 'Current Portfolio',
+      name: "Current Portfolio",
       risk: portfolioMetrics.risk,
       return: portfolioMetrics.expected_return,
-      type: 'current',
+      type: "current",
     },
   ];
 
-  const allData = [...assetData, ...frontierData, ...optimalData, ...currentPortfolioData];
+  const allData = [
+    ...assetData,
+    ...frontierData,
+    ...optimalData,
+    ...currentPortfolioData,
+  ];
 
   const formatPercentage = (value: number) => `${(value * 100).toFixed(2)}%`;
   const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
 
   const getPerformanceColor = (sharpeRatio: number) => {
-    if (sharpeRatio >= 1.0) return 'bg-green-500';
-    if (sharpeRatio >= 0.5) return 'bg-blue-500';
-    if (sharpeRatio >= 0.0) return 'bg-yellow-500';
-    return 'bg-red-500';
+    if (sharpeRatio >= 1.0) return "bg-green-500";
+    if (sharpeRatio >= 0.5) return "bg-blue-500";
+    if (sharpeRatio >= 0.0) return "bg-yellow-500";
+    return "bg-red-500";
   };
 
   const getRiskColor = (risk: number) => {
-    if (risk <= 0.15) return 'bg-green-500';
-    if (risk <= 0.25) return 'bg-yellow-500';
-    if (risk <= 0.35) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (risk <= 0.15) return "bg-green-500";
+    if (risk <= 0.25) return "bg-yellow-500";
+    if (risk <= 0.35) return "bg-orange-500";
+    return "bg-red-500";
   };
 
   const getDiversificationColor = (score: number) => {
-    if (score >= 0.7) return 'bg-green-500';
-    if (score >= 0.4) return 'bg-blue-500';
-    if (score >= 0.2) return 'bg-yellow-500';
-    return 'bg-red-500';
+    if (score >= 0.7) return "bg-green-500";
+    if (score >= 0.4) return "bg-blue-500";
+    if (score >= 0.2) return "bg-yellow-500";
+    return "bg-red-500";
   };
 
   return (
@@ -138,7 +151,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
               size="sm"
               onClick={() => setShowFrontier(!showFrontier)}
             >
-              {showFrontier ? 'Hide' : 'Show'} Frontier
+              {showFrontier ? "Hide" : "Show"} Frontier
             </Button>
             <Button
               variant="outline"
@@ -154,11 +167,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
             >
               <Plus className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setZoom(1)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setZoom(1)}>
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
@@ -170,28 +179,36 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
           <div className="lg:col-span-2">
             <ResponsiveContainer width="100%" height={500}>
               <ComposedChart data={allData}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                 <XAxis
                   dataKey="risk"
                   name="Risk"
                   tickFormatter={formatPercentage}
-                  label={{ value: 'Risk (Volatility)', position: 'insideBottom', offset: -10 }}
+                  label={{
+                    value: "Risk (Volatility)",
+                    position: "insideBottom",
+                    offset: -10,
+                  }}
                 />
                 <YAxis
                   dataKey="return"
                   name="Return"
                   tickFormatter={formatPercentage}
-                  label={{ value: 'Expected Return', angle: -90, position: 'insideLeft' }}
+                  label={{
+                    value: "Expected Return",
+                    angle: -90,
+                    position: "insideLeft",
+                  }}
                 />
                 <Tooltip
                   formatter={(value: number, name: string) => [
                     formatPercentage(value),
-                    name === 'return' ? 'Expected Return' : 'Risk',
+                    name === "return" ? "Expected Return" : "Risk",
                   ]}
                   labelFormatter={(label) => `Portfolio: ${label}`}
                 />
                 <Legend />
-                
+
                 {/* Efficient Frontier Line */}
                 {showFrontier && (
                   <Line
@@ -204,7 +221,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                     name="Efficient Frontier"
                   />
                 )}
-                
+
                 {/* Individual Assets */}
                 <Scatter
                   dataKey="return"
@@ -212,7 +229,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                   fill="#4ade80"
                   name="Individual Assets"
                 />
-                
+
                 {/* Optimal Portfolio */}
                 {showFrontier && (
                   <Scatter
@@ -222,7 +239,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                     name="Optimal Portfolio"
                   />
                 )}
-                
+
                 {/* Current Portfolio */}
                 <Scatter
                   dataKey="return"
@@ -241,36 +258,60 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-muted-foreground">Expected Return</span>
+                    <span className="text-sm text-muted-foreground">
+                      Expected Return
+                    </span>
                     <Badge variant="secondary">
                       {formatPercentage(portfolioMetrics.expected_return)}
                     </Badge>
                   </div>
                 </div>
-                
+
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-muted-foreground">Risk (Volatility)</span>
-                    <Badge variant="secondary" className={getRiskColor(portfolioMetrics.risk)}>
+                    <span className="text-sm text-muted-foreground">
+                      Risk (Volatility)
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={getRiskColor(portfolioMetrics.risk)}
+                    >
                       {formatPercentage(portfolioMetrics.risk)}
                     </Badge>
                   </div>
                 </div>
-                
+
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
-                    <Badge variant="secondary" className={getPerformanceColor(portfolioMetrics.sharpe_ratio)}>
+                    <span className="text-sm text-muted-foreground">
+                      Sharpe Ratio
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={getPerformanceColor(
+                        portfolioMetrics.sharpe_ratio,
+                      )}
+                    >
                       {portfolioMetrics.sharpe_ratio.toFixed(3)}
                     </Badge>
                   </div>
                 </div>
-                
+
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-muted-foreground">Diversification</span>
-                    <Badge variant="secondary" className={getDiversificationColor(portfolioMetrics.diversification_score)}>
-                      {(portfolioMetrics.diversification_score * 100).toFixed(1)}%
+                    <span className="text-sm text-muted-foreground">
+                      Diversification
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={getDiversificationColor(
+                        portfolioMetrics.diversification_score,
+                      )}
+                    >
+                      {(portfolioMetrics.diversification_score * 100).toFixed(
+                        1,
+                      )}
+                      %
                     </Badge>
                   </div>
                 </div>
@@ -281,33 +322,34 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
               <h3 className="text-lg font-semibold mb-3">Insights</h3>
               <div className="text-sm space-y-2">
                 <p>
-                  <strong>Performance:</strong>{' '}
+                  <strong>Performance:</strong>{" "}
                   {portfolioMetrics.sharpe_ratio >= 1.0
-                    ? 'Excellent risk-adjusted returns'
+                    ? "Excellent risk-adjusted returns"
                     : portfolioMetrics.sharpe_ratio >= 0.5
-                    ? 'Good risk-adjusted returns'
-                    : portfolioMetrics.sharpe_ratio >= 0.0
-                    ? 'Fair risk-adjusted returns'
-                    : 'Poor risk-adjusted returns'}
+                      ? "Good risk-adjusted returns"
+                      : portfolioMetrics.sharpe_ratio >= 0.0
+                        ? "Fair risk-adjusted returns"
+                        : "Poor risk-adjusted returns"}
                 </p>
-                
+
                 <p>
-                  <strong>Diversification:</strong>{' '}
+                  <strong>Diversification:</strong>{" "}
                   {portfolioMetrics.diversification_score >= 0.7
-                    ? 'Well diversified portfolio'
+                    ? "Well diversified portfolio"
                     : portfolioMetrics.diversification_score >= 0.4
-                    ? 'Moderately diversified'
-                    : portfolioMetrics.diversification_score >= 0.2
-                    ? 'Limited diversification'
-                    : 'Poor diversification - consider adding more assets'}
+                      ? "Moderately diversified"
+                      : portfolioMetrics.diversification_score >= 0.2
+                        ? "Limited diversification"
+                        : "Poor diversification - consider adding more assets"}
                 </p>
-                
+
                 {showFrontier && optimalPortfolio && (
                   <p>
-                    <strong>Optimization:</strong>{' '}
-                    {portfolioMetrics.sharpe_ratio >= optimalPortfolio.sharpe_ratio * 0.9
-                      ? 'Portfolio is close to optimal'
-                      : 'Consider rebalancing for better risk-adjusted returns'}
+                    <strong>Optimization:</strong>{" "}
+                    {portfolioMetrics.sharpe_ratio >=
+                    optimalPortfolio.sharpe_ratio * 0.9
+                      ? "Portfolio is close to optimal"
+                      : "Consider rebalancing for better risk-adjusted returns"}
                   </p>
                 )}
               </div>
