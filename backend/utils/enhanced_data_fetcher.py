@@ -19,7 +19,8 @@ from alpha_vantage.timeseries import TimeSeries
 import os
 from .redis_first_data_service import redis_first_data_service as _rds
 
-from .timestamp_utils import normalize_timestamp, normalize_ticker_format, suggest_ticker_alternatives
+from .timestamp_utils import normalize_timestamp, normalize_ticker_format, suggest_ticker_alternatives, get_ticker_country_exchange_currency
+from .fx_fetcher import FXRateFetcher
 from .logging_utils import get_job_logger
 # Handle both relative and absolute imports
 try:
@@ -405,7 +406,9 @@ class EnhancedDataFetcher:
         return True
 
     def _save_to_cache(self, ticker: str, data: Dict[str, Any]) -> bool:
-        """Save ticker data to cache with lightweight validation and compression"""
+        """Save ticker data to cache with lightweight validation and compression.
+        Non-USD prices are converted to USD at storage time (FX normalization).
+        """
         if not self.r:
             return False
         try:
@@ -414,10 +417,36 @@ class EnhancedDataFetcher:
                 prices_series = data['prices']
                 if hasattr(prices_series.index, 'tz_localize'):
                     prices_series.index = prices_series.index.tz_localize(None)
+
+                # --- USD normalization: convert non-USD to USD before storage ---
+                _, _, native_currency = get_ticker_country_exchange_currency(ticker)
+                if native_currency in ('USD', 'Unknown'):
+                    meta = {"native_currency": native_currency or "USD", "stored_currency": "USD", "converted": False}
+                else:
+                    try:
+                        fx_fetcher = FXRateFetcher(self.r)
+                        prices_series = fx_fetcher.convert_series(prices_series, native_currency)
+                        data['prices'] = prices_series
+                        meta = {"native_currency": native_currency, "stored_currency": "USD", "converted": True}
+                        logger.info(f"💱 Converted {ticker} from {native_currency} to USD (stored {len(prices_series)} points)")
+                    except Exception as fx_err:
+                        logger.warning(f"⚠️ FX conversion failed for {ticker} ({native_currency}): {fx_err}, storing as-is")
+                        meta = {"native_currency": native_currency, "stored_currency": native_currency, "converted": False}
+
                 prices_dict = {str(date): float(price) for date, price in prices_series.items()}
-                
+
                 # Use lightweight validation for price data
                 if self._validate_and_cache_price_data(ticker, prices_dict):
+                    # Store FX metadata (same TTL as prices)
+                    try:
+                        meta_key = self._get_cache_key(ticker, 'meta')
+                        meta_json = json.dumps(meta).encode()
+                        from .redis_first_data_service import RedisFirstDataService
+                        jittered_seconds = RedisFirstDataService.jittered_ttl(CACHE_TTL_HOURS * 3600)
+                        self.r.setex(meta_key, jittered_seconds, meta_json)
+                    except Exception as meta_err:
+                        logger.warning(f"⚠️ {ticker}: Failed to store FX metadata: {meta_err}")
+
                     # Auto-calculate and save metrics (standard approach)
                     # This ensures metrics are always computed when data is fetched
                     try:
@@ -431,7 +460,7 @@ class EnhancedDataFetcher:
                 else:
                     logger.warning(f"⚠️ {ticker}: Price data validation failed")
                     return False
-            
+
             # Save sector info (no validation needed for sector data)
             if 'sector' in data:
                 key = self._get_cache_key(ticker, 'sector')

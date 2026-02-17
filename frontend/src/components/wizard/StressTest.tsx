@@ -3590,13 +3590,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                                             stroke={line.color}
                                             strokeWidth={1.5}
                                             strokeDasharray="4 3"
-                                            label={{
-                                              value: line.label,
-                                              position: "top",
-                                              fill: line.color,
-                                              fontSize: 10,
-                                              fontWeight: 600,
-                                            }}
                                           />
                                         ) : null,
                                       );

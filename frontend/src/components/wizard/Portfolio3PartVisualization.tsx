@@ -620,6 +620,7 @@ export const Portfolio3PartVisualization: React.FC<
 
     try {
       const response = await fetchVisualizationData(payload, controller.signal);
+      if (controller.signal.aborted) return;
       setData(response);
 
       // Log ticker data for debugging
@@ -648,6 +649,7 @@ export const Portfolio3PartVisualization: React.FC<
         ...(response.correlation?.warnings ?? []),
         ...(response.sectorAllocation?.warnings ?? []),
       ];
+      if (controller.signal.aborted) return;
       setWarnings(mergedWarnings);
       setFetchState("success");
     } catch (err) {
