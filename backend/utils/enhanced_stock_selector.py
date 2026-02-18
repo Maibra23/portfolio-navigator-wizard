@@ -241,11 +241,10 @@ class EnhancedStockSelector(PortfolioStockSelector):
                 )
                 
                 logger.debug(f"  Using {len(positive_return_stocks)} stocks, prioritized by return proximity to {return_target:.2%} (tolerance: {return_tolerance:.2%})")
-                return positive_return_stocks
-            
-            # Step 4: Standard filtering (no return target) - already filtered for positive returns
+            else:
+                # Step 4: Standard filtering (no return target) - already filtered for positive returns
                 logger.debug(f"  Using {len(positive_return_stocks)} stocks with positive returns")
-                return positive_return_stocks
+            return positive_return_stocks
                 
         except Exception as e:
             logger.error(f"❌ Enhanced filtering failed: {e}")

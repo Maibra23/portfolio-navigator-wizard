@@ -97,11 +97,11 @@ class FXRateFetcher:
         if cached:
             cached_dates = sorted(cached.keys())
             if cached_dates:
-                c_start = pd.to_datetime(cached_dates[0])
-                c_end = pd.to_datetime(cached_dates[-1])
-                req_start = pd.to_datetime(start_date)
-                req_end = pd.to_datetime(end_date)
-                if c_start <= req_start and c_end >= req_end:
+                c_start_s = cached_dates[0]
+                c_end_s = cached_dates[-1]
+                req_start_s = pd.to_datetime(start_date).strftime("%Y-%m-%d") if start_date else ""
+                req_end_s = pd.to_datetime(end_date).strftime("%Y-%m-%d") if end_date else ""
+                if req_start_s and req_end_s and c_start_s <= req_start_s and c_end_s >= req_end_s:
                     subset = {d: cached[d] for d in cached_dates}
                     return self._forward_fill_rates(subset, start_date, end_date)
 
@@ -173,12 +173,26 @@ class FXRateFetcher:
                     result[ds] = rates[ds]
         return result
 
+    def _to_date_str(self, val) -> str:
+        """Normalize any date-like value to YYYY-MM-DD string. Avoids datetime vs date comparison."""
+        if val is None:
+            return ""
+        try:
+            ts = pd.to_datetime(val)
+            return ts.strftime("%Y-%m-%d")
+        except Exception:
+            return str(val)[:10] if val else ""
+
     def convert_series(self, prices: pd.Series, from_currency: str) -> pd.Series:
         """
         Convert a price series from local currency to USD.
 
+        Handles mixed tz-aware/tz-naive and datetime/date index types by normalizing
+        to naive DatetimeIndex before conversion. Uses string date comparisons to
+        avoid datetime.datetime vs datetime.date comparison errors.
+
         Args:
-            prices: Series of prices (index = datetime/date)
+            prices: Series of prices (index = datetime/date/Period)
             from_currency: 3-letter currency code of the prices
 
         Returns:
@@ -193,10 +207,25 @@ class FXRateFetcher:
             return prices
 
         idx = prices.index
-        if hasattr(idx, "tz_localize"):
-            idx = idx.tz_localize(None)
-        min_date = pd.to_datetime(idx.min()).strftime("%Y-%m-%d")
-        max_date = pd.to_datetime(idx.max()).strftime("%Y-%m-%d")
+        try:
+            vals = []
+            for t in idx:
+                ts = pd.Timestamp(t)
+                if ts.tz is not None:
+                    ts = pd.Timestamp(ts.strftime("%Y-%m-%d %H:%M:%S"))
+                vals.append(ts)
+            idx = pd.DatetimeIndex(vals)
+        except Exception as e:
+            try:
+                vals = [pd.Timestamp(str(pd.Timestamp(t))[:10]) for t in idx]
+                idx = pd.DatetimeIndex(vals)
+            except Exception as e2:
+                logger.warning(f"FX: Could not normalize price index: {e}, {e2}")
+                return prices.copy()
+        min_date = self._to_date_str(idx.min())
+        max_date = self._to_date_str(idx.max())
+        if not min_date or not max_date:
+            return prices.copy()
 
         rates = self.get_fx_rates(from_currency, min_date, max_date)
         if not rates:
@@ -205,14 +234,8 @@ class FXRateFetcher:
 
         sorted_rate_dates = sorted(rates.keys())
         usd_prices = []
-        for ts in idx:
-            if hasattr(ts, "strftime"):
-                dt = ts
-            else:
-                dt = pd.to_datetime(ts)
-            if hasattr(dt, "tz_localize") and dt.tzinfo is not None:
-                dt = dt.tz_localize(None)
-            ds = dt.strftime("%Y-%m-%d")
+        for i, ts in enumerate(idx):
+            ds = self._to_date_str(ts)
             rate = rates.get(ds)
             if rate is None:
                 for d in reversed(sorted_rate_dates):
@@ -222,7 +245,7 @@ class FXRateFetcher:
             if rate is None:
                 rate = 1.0
                 logger.debug(f"FX: No rate for {ds}, using 1.0")
-            orig = prices.loc[ts]
-            usd_prices.append(float(orig) * rate)
+            orig = float(prices.iloc[i])
+            usd_prices.append(orig * rate)
 
-        return pd.Series(usd_prices, index=prices.index)
+        return pd.Series(usd_prices, index=idx)

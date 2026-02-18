@@ -152,6 +152,7 @@ class RedisTTLMonitor:
     def _send_notifications(self, status: Dict):
         """Send notifications based on TTL status"""
         categories = status.get('categories', {})
+        details = status.get('details', {})
 
         # Critical: Immediate action needed
         if categories.get('critical', 0) > 0:
@@ -159,6 +160,9 @@ class RedisTTLMonitor:
                       f"{self.CRITICAL_THRESHOLD} day(s)")
             self._notify('CRITICAL', message, status)
             logger.error(message)
+            critical_tickers = [t for t, _ in details.get('critical', [])]
+            if critical_tickers:
+                logger.error(f"CRITICAL tickers: {', '.join(critical_tickers)}")
 
         # Warning: Action needed soon
         if categories.get('warning', 0) > 0:
@@ -166,6 +170,9 @@ class RedisTTLMonitor:
                       f"{self.WARNING_THRESHOLD} days")
             self._notify('WARNING', message, status)
             logger.warning(message)
+            warning_tickers = [t for t, _ in details.get('warning', [])]
+            if warning_tickers:
+                logger.warning(f"WARNING tickers: {', '.join(warning_tickers)}")
 
         # Info: Monitor situation
         if categories.get('info', 0) > 0:
@@ -179,6 +186,9 @@ class RedisTTLMonitor:
             message = f"❌ EXPIRED: {categories['expired']} tickers have expired cache"
             self._notify('EXPIRED', message, status)
             logger.error(message)
+            expired_tickers = [t for t, _ in details.get('expired', [])]
+            if expired_tickers:
+                logger.error(f"EXPIRED tickers: {', '.join(expired_tickers)}")
 
     def _notify(self, level: str, message: str, data: Dict):
         """Send notification via callback or log"""
@@ -198,6 +208,7 @@ class RedisTTLMonitor:
             log_dir.mkdir(exist_ok=True)
 
             log_file = log_dir / "redis_ttl_notifications.log"
+            details = data.get('details', {})
 
             with open(log_file, 'a') as f:
                 timestamp = datetime.now().isoformat()
@@ -205,6 +216,15 @@ class RedisTTLMonitor:
                 f.write(f"[{timestamp}] {level}: {message}\n")
                 f.write(f"Total Tickers: {data.get('total_tickers', 0)}\n")
                 f.write(f"Categories: {data.get('categories', {})}\n")
+                if details.get('expired'):
+                    tickers = [t for t, _ in details['expired']]
+                    f.write(f"Expired tickers: {', '.join(tickers)}\n")
+                if details.get('critical'):
+                    tickers = [t for t, _ in details['critical']]
+                    f.write(f"Critical tickers: {', '.join(tickers)}\n")
+                if details.get('warning'):
+                    tickers = [t for t, _ in details['warning']]
+                    f.write(f"Warning tickers: {', '.join(tickers)}\n")
                 f.write(f"{'='*80}\n")
 
         except Exception as e:

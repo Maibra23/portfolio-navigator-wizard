@@ -887,17 +887,21 @@ def _trigger_eligible_tickers_refresh():
         finally:
             _refresh_in_progress = False
     
-    # Schedule background task
+    # Schedule background task: only create the coroutine when we will run it
+    # to avoid "coroutine was never awaited" when there is no running loop.
     try:
-        asyncio.create_task(refresh_cache())
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        # If event loop is not running, create a new one
+        loop = None
+    if loop is not None:
+        loop.create_task(refresh_cache())
+    else:
         import threading
         def run_in_thread():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(refresh_cache())
-            loop.close()
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            new_loop.run_until_complete(refresh_cache())
+            new_loop.close()
         thread = threading.Thread(target=run_in_thread, daemon=True)
         thread.start()
 

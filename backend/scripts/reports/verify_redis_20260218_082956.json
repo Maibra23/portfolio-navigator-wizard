@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-02-18T08:29:56.237589",
+  "master_count": 1432,
+  "cached_count": 1432,
+  "missing_tickers": [],
+  "with_meta": 1417,
+  "without_meta": 15,
+  "fully_normalized": 1415,
+  "needs_check": [
+    "BGEO.L",
+    "IPG",
+    "ROO.L",
+    "TKWY.AS",
+    "HELN.SW",
+    "SYDB.CO",
+    "SPT.L",
+    "ALPH.L",
+    "COLOB.CO",
+    "AGRP.L",
+    "FI",
+    "SXS.L",
+    "KURN.SW",
+    "BALN.SW",
+    "K"
+  ],
+  "non_usd_not_converted": [
+    "GCO.MC",
+    "ABB.MC"
+  ],
+  "by_stored_currency": {
+    "USD": 1415,
+    "EUR": 2
+  }
+}

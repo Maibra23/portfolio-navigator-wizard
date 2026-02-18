@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-02-18T09:35:16.675594",
+  "total_attempted": 15,
+  "success_count": 0,
+  "still_failed": [
+    "AGRP.L",
+    "ALPH.L",
+    "BALN.SW",
+    "BGEO.L",
+    "COLOB.CO",
+    "FI",
+    "HELN.SW",
+    "IPG",
+    "K",
+    "KURN.SW",
+    "ROO.L",
+    "SPT.L",
+    "SXS.L",
+    "SYDB.CO",
+    "TKWY.AS"
+  ]
+}
