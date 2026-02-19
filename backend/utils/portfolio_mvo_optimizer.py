@@ -284,16 +284,10 @@ class PortfolioMVOptimizer:
                 logger.warning(f"⚠️ Capping unrealistic return {portfolio_return:.2%} to {MAX_REALISTIC_RETURN:.1%}")
                 portfolio_return = MAX_REALISTIC_RETURN
             
-            # 2. Apply minimum risk floor (8% annual volatility minimum)
-            MIN_RISK_FLOOR = 0.08
-            if portfolio_risk < MIN_RISK_FLOOR:
-                logger.debug(f"⚠️ Applying minimum risk floor: {portfolio_risk:.2%} → {MIN_RISK_FLOOR:.1%}")
-                portfolio_risk = MIN_RISK_FLOOR
-            
-            # 3. Recalculate Sharpe ratio with adjusted metrics
+            # 2. Recalculate Sharpe ratio with true metrics
             sharpe_ratio = (portfolio_return - self.risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
-            
-            # 4. Cap Sharpe ratio at realistic maximum (2.5)
+
+            # 3. Cap Sharpe ratio at realistic maximum (2.5)
             MAX_REALISTIC_SHARPE = 2.5
             if sharpe_ratio > MAX_REALISTIC_SHARPE:
                 logger.warning(f"⚠️ Capping unrealistic Sharpe ratio {sharpe_ratio:.2f} to {MAX_REALISTIC_SHARPE:.1f}")
@@ -365,11 +359,11 @@ class PortfolioMVOptimizer:
                 min_var_perf = ef_min_var.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                 weights_dict_min_var = dict(weights_min_var)
                 
-                # Apply safeguards
+                # Apply safeguards (return cap only — no artificial risk floor)
                 ret_val = min(float(min_var_perf[0]), 0.50)
-                risk_val = max(float(min_var_perf[1]), 0.08)
+                risk_val = float(min_var_perf[1])
                 sharpe_val = min((ret_val - self.risk_free_rate) / risk_val if risk_val > 0 else 0, 2.5)
-                
+
                 frontier_points.append({
                     "return": ret_val,
                     "risk": risk_val,
@@ -381,43 +375,46 @@ class PortfolioMVOptimizer:
                 logger.debug(f"✅ Added minimum variance portfolio: {min_var_perf[1]:.2%} risk, {min_var_perf[0]:.2%} return")
             except Exception as e:
                 logger.warning(f"⚠️ Could not add min variance portfolio: {e}")
-            
-            # Create EfficientFrontier object for the rest of the frontier
-            ef = EfficientFrontier(mu, sigma_df)
-            
-            # Get efficient frontier by varying target returns
-            # Find min and max possible returns
-            min_ret = mu.min()
-            max_ret = mu.max()
-            
+
+            # Get efficient frontier by varying target returns.
+            # Start from the min-variance portfolio return (first feasible point on the frontier),
+            # not mu.min() which wastes points on infeasible targets that all collapse to min-variance.
+            # End slightly below mu.max() to avoid boundary infeasibility.
+            if frontier_points:
+                min_ret = frontier_points[0]["return"]  # True min-variance return
+            else:
+                min_ret = mu.min()
+            max_ret = mu.max() * 0.999
+
             # Generate range of target returns (use num_points - 1 since we already added min var)
             target_returns = np.linspace(min_ret, max_ret, max(2, num_points - 1))
-            
+
             for target_return in target_returns:
                 try:
-                    # Get optimal portfolio for this target return
-                    weights = ef.efficient_return(target_return=target_return, market_neutral=False)
+                    # Create a fresh EfficientFrontier for each point to prevent
+                    # constraint accumulation and numerical drift between solves
+                    ef_point = EfficientFrontier(mu, sigma_df)
+                    weights = ef_point.efficient_return(target_return=target_return, market_neutral=False)
 
                     # Calculate portfolio metrics
-                    portfolio_perf = ef.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
+                    portfolio_perf = ef_point.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                     mu_val = portfolio_perf[0]  # Expected return
                     sigma_val = portfolio_perf[1]  # Volatility (risk)
-                    sharpe = portfolio_perf[2]  # Sharpe ratio
 
-                    # Apply safeguards
+                    # Apply safeguards (return cap only — no artificial risk floor)
                     mu_val = min(float(mu_val), 0.50)
-                    sigma_val = max(float(sigma_val), 0.08)
+                    sigma_val = float(sigma_val)
                     sharpe = min((mu_val - self.risk_free_rate) / sigma_val if sigma_val > 0 else 0, 2.5)
 
-                    # Limit maximum risk to 120% to shorten the efficient frontier
+                    # Skip degenerate high-risk outliers only
                     if sigma_val > 1.20:
                         logger.debug(f"⚠️ Skipping high-risk frontier point: {sigma_val:.2%} risk exceeds 120% limit")
                         continue
-                    
+
                     # Convert weights dict to list
                     weights_dict = dict(weights)
                     weights_list = [weights_dict.get(ticker, 0.0) for ticker in tickers_ordered]
-                    
+
                     frontier_points.append({
                         "return": mu_val,
                         "risk": sigma_val,
@@ -480,18 +477,21 @@ class PortfolioMVOptimizer:
             mu_array = mu.values
             sigma_array = sigma_df.values
             
-            # First, get the efficient frontier to determine risk range
+            # Determine risk range: from minimum-variance to maximum-return portfolio.
+            # Previously used max_sharpe() for the upper bound, but the tangent portfolio
+            # sits only partway along the frontier — this truncated the inefficient branch
+            # by up to 41%. The rightmost point is the highest-return (lowest-diversification)
+            # portfolio, found by targeting mu.max() * 0.999.
             try:
-                ef = EfficientFrontier(mu, sigma_df)
-                # Get min and max risk from efficient frontier
                 ef_min_var = EfficientFrontier(mu, sigma_df)
-                weights_min_var = ef_min_var.min_volatility()
+                ef_min_var.min_volatility()
                 min_var_perf = ef_min_var.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                 min_risk = min_var_perf[1]
-                
-                # Get maximum risk (from maximum return portfolio)
-                weights_max_ret = ef.max_sharpe(risk_free_rate=self.risk_free_rate)
-                max_ret_perf = ef.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
+
+                # Use the maximum-return portfolio for the right boundary
+                ef_max_ret = EfficientFrontier(mu, sigma_df)
+                ef_max_ret.efficient_return(target_return=float(mu.max()) * 0.999)
+                max_ret_perf = ef_max_ret.portfolio_performance(verbose=False, risk_free_rate=self.risk_free_rate)
                 max_risk = max_ret_perf[1]
             except Exception as e:
                 logger.warning(f"⚠️ Could not determine risk range from efficient frontier: {e}")
@@ -704,12 +704,10 @@ class PortfolioMVOptimizer:
             
             # Apply safeguards
             MAX_REALISTIC_RETURN = 0.50
-            MIN_RISK_FLOOR = 0.08
             MAX_REALISTIC_SHARPE = 2.5
-            
+
             portfolio_return = min(portfolio_return, MAX_REALISTIC_RETURN)
-            portfolio_risk = max(portfolio_risk, MIN_RISK_FLOOR)
-            
+
             # Calculate Sharpe ratio
             sharpe_ratio = (portfolio_return - self.risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
             sharpe_ratio = min(sharpe_ratio, MAX_REALISTIC_SHARPE)
