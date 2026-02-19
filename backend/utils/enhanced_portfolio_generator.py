@@ -419,8 +419,12 @@ class EnhancedPortfolioGenerator:
                         # Expand to all stocks but prefer less used ones
                         available_tickers = sorted(available_stocks, 
                                                  key=lambda s: ticker_usage_count.get(s.get('symbol', s.get('ticker')), 0))
-                    # Slightly perturb return target on retries to promote variety
-                    adj_return_target = return_target * (1.0 + (retry * 0.02)) if retry > 0 else return_target
+                    # Slightly perturb return target on retries, clamped to valid range
+                    from .risk_profile_config import UNIFIED_RISK_PROFILE_CONFIG
+                    _cfg = UNIFIED_RISK_PROFILE_CONFIG.get(risk_profile, {})
+                    _min_ret, _max_ret = _cfg.get('return_range', (0.0, 1.0))
+                    perturbed = return_target * (1.0 + (retry * 0.02)) if retry > 0 else return_target
+                    adj_return_target = max(_min_ret, min(_max_ret, perturbed))
                     
                     portfolio = self._generate_single_portfolio_with_exclusion(
                         risk_profile, portfolio_index, stock_selector, 
@@ -565,8 +569,13 @@ class EnhancedPortfolioGenerator:
                 logger.warning(f"⚠️ No stocks selected for portfolio {portfolio_index + 1}")
                 return None
             
-            # Create allocations using random weight generation
-            allocations = stock_selector._create_simple_allocations(selected_stocks, portfolio_index)
+            # Create allocations using constraint-aware dynamic weighting
+            from .risk_profile_config import UNIFIED_RISK_PROFILE_CONFIG
+            profile_config = UNIFIED_RISK_PROFILE_CONFIG.get(risk_profile, {})
+            quality_risk_range = profile_config.get('quality_risk_range')
+            allocations = stock_selector._create_dynamic_allocations(
+                selected_stocks, return_target, risk_range=quality_risk_range
+            )
             
             if not allocations:
                 logger.warning(f"⚠️ No allocations created for portfolio {portfolio_index + 1}")
@@ -694,65 +703,43 @@ class EnhancedPortfolioGenerator:
         else:
             return None  # Random retry for moderate
     
-    def _try_weight_optimization(self, selected_stocks: List[Dict], allocations: List[Dict], 
-                                 risk_profile: str, current_metrics: Dict, 
+    def _try_weight_optimization(self, selected_stocks: List[Dict], allocations: List[Dict],
+                                 risk_profile: str, current_metrics: Dict,
                                  target_return: float) -> Optional[List[Dict]]:
         """
-        FIX 4: Try weight optimization before rejecting portfolio
-        
-        Attempts to adjust weights to bring portfolio within acceptable ranges
-        without changing the stock selection.
+        Re-optimize weights using DynamicWeightingSystem when initial allocation
+        fails quality criteria. Delegates to the same SLSQP optimizer used for
+        initial allocation, giving it a second chance with the same stock selection.
         """
         try:
             from .risk_profile_config import UNIFIED_RISK_PROFILE_CONFIG
+            from .dynamic_weighting_system import DynamicWeightingSystem
+
             config = UNIFIED_RISK_PROFILE_CONFIG.get(risk_profile, UNIFIED_RISK_PROFILE_CONFIG['moderate'])
-            
-            current_return = current_metrics.get('expected_return', 0)
-            min_return, max_return = config['return_range']
-            
-            # Simple weight adjustment: if return too high, shift weights to lower-return stocks
-            # if return too low, shift weights to higher-return stocks
-            if current_return > max_return:
-                # Identify stocks by return
-                stock_returns = []
-                for alloc in allocations:
-                    symbol = alloc['symbol']
-                    stock = next((s for s in selected_stocks if s.get('symbol') == symbol), None)
-                    if stock:
-                        stock_return = stock.get('return', stock.get('annualized_return', 0))
-                        if stock_return > 1.0:
-                            stock_return = stock_return / 100
-                        stock_returns.append((alloc, stock_return))
-                
-                # Sort by return
-                stock_returns.sort(key=lambda x: x[1])
-                
-                # Shift weights: reduce high-return stocks, increase low-return stocks
-                new_allocations = []
-                for i, (alloc, ret) in enumerate(stock_returns):
-                    new_weight = alloc['allocation']
-                    if i < len(stock_returns) // 2:  # Lower half - increase weight
-                        new_weight = min(60, new_weight * 1.2)
-                    else:  # Upper half - decrease weight
-                        new_weight = max(15, new_weight * 0.8)
-                    
-                    new_alloc = alloc.copy()
-                    new_alloc['allocation'] = new_weight
-                    new_allocations.append(new_alloc)
-                
-                # Normalize weights
-                total_weight = sum(a['allocation'] for a in new_allocations)
-                for alloc in new_allocations:
-                    alloc['allocation'] = round((alloc['allocation'] / total_weight) * 100)
-                
-                # Ensure sum is exactly 100
-                diff = 100 - sum(a['allocation'] for a in new_allocations)
-                if diff != 0:
-                    new_allocations[0]['allocation'] += diff
-                
-                return new_allocations
-            
-            return None  # No optimization needed or possible
+            risk_range = config.get('quality_risk_range')
+
+            optimizer = DynamicWeightingSystem()
+            optimal_weights, results = optimizer.calculate_optimal_weights(
+                selected_stocks, target_return,
+                limited_availability=len(selected_stocks) < 5,
+                risk_range=risk_range,
+            )
+
+            if not results.get('success', False):
+                return None
+
+            # Build new allocations from optimized weights
+            new_allocations = []
+            for i, stock in enumerate(selected_stocks):
+                weight = optimal_weights[i] if i < len(optimal_weights) else 1.0 / len(selected_stocks)
+                alloc = {
+                    'symbol': stock.get('symbol', 'UNKNOWN'),
+                    'allocation': round(weight * 100, 1),
+                    'sector': stock.get('sector', 'Unknown'),
+                }
+                new_allocations.append(alloc)
+
+            return new_allocations
             
         except Exception as e:
             logger.debug(f"Weight optimization failed: {e}")
@@ -1390,25 +1377,68 @@ class EnhancedPortfolioGenerator:
         return f"{risk_profile}|" + "|".join(parts)
 
     def _validate_stock_pool_sufficiency(self, stock_selector: PortfolioStockSelector, available_stocks: List[Dict], risk_profile: str) -> Tuple[bool, Dict]:
-        """Validate stock pool size and sector diversity after volatility filtering."""
+        """Validate stock pool size, sector diversity, and return feasibility."""
         if not available_stocks:
             return False, {'reason': 'no_stocks'}
         try:
+            from .risk_profile_config import UNIFIED_RISK_PROFILE_CONFIG
+            config = UNIFIED_RISK_PROFILE_CONFIG.get(risk_profile, {})
+
             vr = stock_selector.RISK_PROFILE_VOLATILITY[risk_profile]
             filtered = stock_selector._filter_stocks_by_volatility(available_stocks, vr)
+
+            # Sector diversity
             sectors = {}
             for s in filtered:
                 sec = s.get('sector', 'Unknown')
                 if sec != 'Unknown':
                     sectors[sec] = sectors.get(sec, 0) + 1
+
+            # Return feasibility: check that the pool's mean return is within
+            # a reasonable distance of the profile's return range
+            pool_returns = []
+            for s in filtered:
+                r = s.get('return', 0)
+                if r > 1.0:
+                    r = r / 100
+                if r > 0:
+                    pool_returns.append(r)
+
+            return_range = config.get('return_range', (0.0, 1.0))
+            min_ret, max_ret = return_range
+
+            pool_mean_return = sum(pool_returns) / len(pool_returns) if pool_returns else 0
+            pool_min_return = min(pool_returns) if pool_returns else 0
+            pool_max_return = max(pool_returns) if pool_returns else 0
+
+            # Return feasibility: pool must contain stocks that span the target range
+            return_feasible = pool_min_return <= max_ret and pool_max_return >= min_ret
+
             portfolio_size = stock_selector.PORTFOLIO_SIZE[risk_profile]
-            min_stocks = portfolio_size * self.PORTFOLIOS_PER_PROFILE  # base
-            ok = len(filtered) >= max(60, min_stocks) and len(sectors.keys()) >= 5
-            return ok, {
+            min_stocks = portfolio_size * self.PORTFOLIOS_PER_PROFILE
+            pool_sufficient = len(filtered) >= max(60, min_stocks) and len(sectors.keys()) >= 5
+
+            ok = pool_sufficient and return_feasible
+
+            stats = {
                 'filtered_count': len(filtered),
+                'positive_return_count': len(pool_returns),
                 'sectors': sectors,
-                'min_required': max(60, min_stocks)
+                'min_required': max(60, min_stocks),
+                'pool_mean_return': round(pool_mean_return, 4),
+                'pool_return_range': (round(pool_min_return, 4), round(pool_max_return, 4)),
+                'target_return_range': return_range,
+                'return_feasible': return_feasible,
             }
+
+            if not return_feasible:
+                logger.warning(
+                    f"Pool return infeasible for {risk_profile}: "
+                    f"pool [{pool_min_return:.2%}, {pool_max_return:.2%}] "
+                    f"vs target [{min_ret:.2%}, {max_ret:.2%}]"
+                )
+
+            return ok, stats
         except Exception as e:
             return False, {'reason': f'error:{e}'}
 

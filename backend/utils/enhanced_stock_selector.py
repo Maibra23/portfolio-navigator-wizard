@@ -131,15 +131,8 @@ class EnhancedStockSelector(PortfolioStockSelector):
                 return fallback
             
             selected_stocks = validated_stocks
-            
-            # POST-SELECTION VALIDATION: Ensure selected stocks match profile requirements
-            selected_stocks = self._validate_selected_stocks(selected_stocks, risk_profile, volatility_range)
-            
-            if not selected_stocks:
-                logger.warning(f"⚠️ Selected stocks failed validation, using fallback")
-                return self._get_fallback_portfolio(risk_profile, portfolio_size)
-            
-            # FIXED: Use dynamic weighting with flexible return targeting
+
+            # Use dynamic weighting with flexible return targeting
             allocations = self._create_dynamic_allocations(
                 selected_stocks, return_target
             )
@@ -223,28 +216,53 @@ class EnhancedStockSelector(PortfolioStockSelector):
                 )
                 return []  # Return empty - let generation fail rather than create bad portfolio
             
-            # Step 3: Apply return-based filtering with profile-specific flexibility
+            # Step 3: Return-range feasibility filtering + proximity sorting
             if return_target is not None:
-                # Increase tolerance for higher-risk profiles to allow more diverse stock combinations
-                tolerance_map = {
-                    'very-conservative': 0.03,   # Keep tight for conservative (3%)
-                    'conservative': 0.04,        # Slightly relaxed (4%)
-                    'moderate': 0.08,            # Increased tolerance for diversity (8%)
-                    'aggressive': 0.08,          # Increased tolerance for diversity (8%)
-                    'very-aggressive': 0.10      # Most relaxed for maximum diversity (10%)
-                }
-                return_tolerance = tolerance_map.get(risk_profile, 0.05)
-                
+                from .risk_profile_config import UNIFIED_RISK_PROFILE_CONFIG
+                profile_config = UNIFIED_RISK_PROFILE_CONFIG.get(risk_profile, {})
+                return_range = profile_config.get('return_range', (0.0, 1.0))
+                min_ret, max_ret = return_range
+
+                # Remove stocks whose individual returns are so extreme they make
+                # the target return unreachable even with optimal weighting.
+                # A stock is feasible if its return is within a generous band:
+                # [0, max_ret + tolerance] — we keep anything below the ceiling
+                # because the optimizer can underweight high-return stocks.
+                feasibility_ceiling = max_ret + 0.15  # 15% above max range
+                feasible_stocks = []
+                for stock in positive_return_stocks:
+                    stock_return = stock.get('return', 0)
+                    if stock_return > 1.0:
+                        stock_return = stock_return / 100
+                    if stock_return <= feasibility_ceiling:
+                        feasible_stocks.append(stock)
+                    else:
+                        logger.debug(
+                            f"  Excluded {stock.get('symbol')}: return {stock_return:.2%} "
+                            f"exceeds feasibility ceiling {feasibility_ceiling:.2%}"
+                        )
+
+                if len(feasible_stocks) < portfolio_size:
+                    # Not enough feasible stocks — fall back to full pool sorted by proximity
+                    logger.warning(
+                        f"  Only {len(feasible_stocks)} feasible stocks, "
+                        f"need {portfolio_size}. Using full positive-return pool."
+                    )
+                    feasible_stocks = positive_return_stocks
+
                 # Prioritize by return proximity to target
-                positive_return_stocks.sort(
+                feasible_stocks.sort(
                     key=lambda s: abs(s.get('return', 0) - return_target)
                 )
-                
-                logger.debug(f"  Using {len(positive_return_stocks)} stocks, prioritized by return proximity to {return_target:.2%} (tolerance: {return_tolerance:.2%})")
+
+                logger.debug(
+                    f"  After feasibility filtering: {len(feasible_stocks)} stocks, "
+                    f"prioritized by proximity to {return_target:.2%}"
+                )
+                return feasible_stocks
             else:
-                # Step 4: Standard filtering (no return target) - already filtered for positive returns
                 logger.debug(f"  Using {len(positive_return_stocks)} stocks with positive returns")
-            return positive_return_stocks
+                return positive_return_stocks
                 
         except Exception as e:
             logger.error(f"❌ Enhanced filtering failed: {e}")
@@ -299,19 +317,25 @@ class EnhancedStockSelector(PortfolioStockSelector):
         
         return validated_stocks
     
-    def _create_dynamic_allocations(self, selected_stocks: List[Dict], 
-                                  return_target: float) -> List[Dict]:
-        """Create allocations using dynamic weighting system with flexible return targeting"""
+    def _create_dynamic_allocations(self, selected_stocks: List[Dict],
+                                  return_target: Optional[float] = None,
+                                  risk_range: Optional[Tuple[float, float]] = None) -> List[Dict]:
+        """Create allocations using dynamic weighting with return AND risk targeting."""
         try:
             if not selected_stocks:
                 return []
-            
-            # Check if we have limited stock availability (less than 5 stocks)
+
+            # Fall back to equal-weight templates when no return target is provided
+            if return_target is None:
+                return self._create_simple_allocations(selected_stocks)
+
             limited_availability = len(selected_stocks) < 5
-            
-            # Calculate optimal weights using dynamic weighting system
+
+            # Pass risk_range to optimizer for multi-objective targeting
             optimal_weights, optimization_results = self.dynamic_weighting.calculate_optimal_weights(
-                selected_stocks, return_target, limited_availability=limited_availability
+                selected_stocks, return_target,
+                limited_availability=limited_availability,
+                risk_range=risk_range,
             )
             
             # Create allocations with dynamic weights
@@ -320,7 +344,8 @@ class EnhancedStockSelector(PortfolioStockSelector):
                 weight = optimal_weights[i] if i < len(optimal_weights) else 1.0 / len(selected_stocks)
                 allocations.append({
                     'symbol': stock.get('symbol', 'UNKNOWN'),
-                    'allocation': round(weight * 100, 1)  # Convert to percentage
+                    'allocation': round(weight * 100, 1),  # Convert to percentage
+                    'sector': stock.get('sector', 'Unknown')
                 })
             
             # Validate weights
@@ -341,7 +366,7 @@ class EnhancedStockSelector(PortfolioStockSelector):
         except Exception as e:
             logger.error(f"❌ Dynamic allocation creation failed: {e}")
             # Fallback to simple equal weights
-            return self._create_simple_allocations(selected_stocks, portfolio_index)
+            return self._create_simple_allocations(selected_stocks)
     
     def _prioritize_stocks_by_return_potential(self, stocks: List[Dict], 
                                              risk_profile: str, return_target: float) -> List[Dict]:
@@ -356,46 +381,26 @@ class EnhancedStockSelector(PortfolioStockSelector):
             weight = max(0.1, 1.0 - abs(sector_potential - return_target))
             sector_weights[sector] = weight
         
-        # Sort stocks by sector weight and return potential
+        # Score and sort stocks without mutating the originals
+        scored_stocks = []
         for stock in stocks:
             sector = stock.get('sector', 'Unknown')
             sector_weight = sector_weights.get(sector, 0.1)
-            
-            # Get individual stock return potential (use actual returns from cache)
+
             stock_return = stock.get('annualized_return', stock.get('annual_return', 0.10))
             if stock_return is None or stock_return == 0:
-                # Fallback: calculate from price data if available
-                if 'prices' in stock and stock['prices']:
-                    try:
-                        import pandas as pd
-                        import numpy as np
-                        prices = stock['prices']
-                        if isinstance(prices, dict):
-                            prices = pd.Series(prices)
-                            prices.index = pd.to_datetime(prices.index)
-                            prices = prices.sort_index()
-                        elif isinstance(prices, list):
-                            prices = pd.Series(prices)
-                        
-                        if len(prices) > 1:
-                            returns = prices.pct_change().dropna()
-                            monthly_return = returns.mean()
-                            stock_return = (1 + monthly_return) ** 12 - 1
-                        else:
-                            stock_return = 0.10  # Default 10%
-                    except:
-                        stock_return = 0.10  # Default 10%
-            
+                stock_return = stock.get('return', 0.10)
+
             return_score = max(0.1, 1.0 - abs(stock_return - return_target))
-            
-            # Combined score: sector weight + individual return score
-            stock['targeting_score'] = sector_weight * 0.6 + return_score * 0.4
-        
-        # Sort by targeting score (descending)
-        stocks.sort(key=lambda x: x.get('targeting_score', 0.1), reverse=True)
-        
-        logger.debug(f"  📈 Prioritized {len(stocks)} stocks by return potential")
-        return stocks
+            targeting_score = sector_weight * 0.6 + return_score * 0.4
+
+            scored_stocks.append({**stock, 'targeting_score': targeting_score})
+
+        # Sort by targeting score (descending) — new list, no mutation
+        scored_stocks.sort(key=lambda x: x.get('targeting_score', 0.1), reverse=True)
+
+        logger.debug(f"  Prioritized {len(scored_stocks)} stocks by return potential")
+        return scored_stocks
     
     def _select_diversified_stocks_enhanced(self, stocks: List[Dict], risk_profile: str, 
                                           portfolio_size: int, diversification_target: float = None) -> List[Dict]:
@@ -492,102 +497,6 @@ class EnhancedStockSelector(PortfolioStockSelector):
             distribution[f'sector_{sector}'] = count
         
         return distribution
-    
-    def _create_enhanced_allocations(self, selected_stocks: List[Dict], portfolio_size: int,
-                                   return_target: float = None, diversification_target: float = None) -> List[Dict]:
-        """Create enhanced allocations with targeting-aware weighting"""
-        
-        if not selected_stocks:
-            return []
-        
-        # Enhanced weight templates based on targeting
-        if diversification_target and diversification_target >= 90:
-            # High diversification: more balanced weights
-            weight_templates = [
-                [0.30, 0.25, 0.25, 0.20],  # Balanced
-                [0.35, 0.25, 0.20, 0.20],  # Slightly top-heavy
-                [0.25, 0.25, 0.25, 0.25],  # Equal weights
-            ]
-        elif diversification_target and diversification_target >= 75:
-            # Medium diversification: moderate concentration
-            weight_templates = [
-                [0.40, 0.30, 0.30],        # 3 stocks
-                [0.35, 0.30, 0.20, 0.15],  # 4 stocks
-                [0.45, 0.35, 0.20],        # 3 stocks concentrated
-            ]
-        else:
-            # Lower diversification: more concentrated
-            weight_templates = [
-                [0.50, 0.30, 0.20],        # 3 stocks concentrated
-                [0.45, 0.35, 0.20],        # 3 stocks
-                [0.40, 0.30, 0.20, 0.10],  # 4 stocks concentrated
-            ]
-        
-        # Select appropriate template based on portfolio size
-        template = None
-        for t in weight_templates:
-            if len(t) == len(selected_stocks):
-                template = t
-                break
-        
-        # Fallback: create equal weights
-        if not template:
-            template = [1.0 / len(selected_stocks)] * len(selected_stocks)
-        
-        # Adjust weights if we have return targeting
-        if return_target:
-            template = self._adjust_weights_for_return_target(selected_stocks, template, return_target)
-        
-        # Create allocations
-        allocations = []
-        for i, stock in enumerate(selected_stocks):
-            weight = template[i] if i < len(template) else template[-1]
-            allocation = {
-                'symbol': stock.get('ticker', stock.get('symbol', 'UNKNOWN')),
-                'allocation': round(weight * 100, 1)  # Convert to percentage
-            }
-            allocations.append(allocation)
-        
-        # Ensure allocations sum to 100%
-        total_allocation = sum(a['allocation'] for a in allocations)
-        if total_allocation != 100.0:
-            # Adjust the last allocation to make it sum to 100%
-            allocations[-1]['allocation'] = round(100.0 - sum(a['allocation'] for a in allocations[:-1]), 1)
-        
-        logger.debug(f"  📊 Created allocations: {[a['allocation'] for a in allocations]}")
-        return allocations
-    
-    def _adjust_weights_for_return_target(self, selected_stocks: List[Dict], 
-                                        template: List[float], return_target: float) -> List[float]:
-        """Adjust weights to favor stocks closer to return target"""
-        
-        # Calculate return scores for each stock
-        return_scores = []
-        for stock in selected_stocks:
-            stock_return = stock.get('annualized_return', stock.get('annual_return', 0.10))
-            # Higher score for stocks closer to target
-            score = max(0.1, 1.0 - abs(stock_return - return_target))
-            return_scores.append(score)
-        
-        # Normalize scores
-        total_score = sum(return_scores)
-        if total_score > 0:
-            return_scores = [score / total_score for score in return_scores]
-        else:
-            return_scores = template  # Use original template if no scores
-        
-        # Blend with original template (70% targeting, 30% original)
-        adjusted_weights = []
-        for i in range(len(template)):
-            adjusted = return_scores[i] * 0.7 + template[i] * 0.3
-            adjusted_weights.append(adjusted)
-        
-        # Normalize to sum to 1.0
-        total_weight = sum(adjusted_weights)
-        if total_weight > 0:
-            adjusted_weights = [w / total_weight for w in adjusted_weights]
-        
-        return adjusted_weights
     
     def _get_fallback_portfolio(self, risk_profile: str, portfolio_size: int) -> List[Dict]:
         """Get fallback portfolio with appropriate size"""

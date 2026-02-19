@@ -226,9 +226,9 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
         total_allocation = sum(a.allocation for a in allocations)
         stock_count = len(allocations)
         
-        # Generate validation warnings
+        # Generate validation warnings (allow rounding e.g. 99.5-100.5)
         warnings = []
-        if abs(total_allocation - 100) > 0.01:
+        if abs(total_allocation - 100) > 0.5:
             warnings.append(f"Total allocation is {total_allocation:.1f}%. Must equal 100%.")
         
         if stock_count < 3:
@@ -9614,9 +9614,9 @@ async def sector_allocation(
                 metadata={'error': True, 'elapsedTime': time.time() - start_time}
             )
         
-        # Validate sum of weights
+        # Validate sum of weights (allow small rounding, e.g. 99.5-100.5)
         total_weight = sum(weight_list)
-        if abs(total_weight - 100.0) > 0.01:
+        if abs(total_weight - 100.0) > 0.5:
             _record_warning(warnings, f"Total weight is {total_weight:.2f}%, expected 100%")
         
         # Aggregate weights per sector

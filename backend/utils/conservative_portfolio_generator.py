@@ -22,16 +22,16 @@ logger = logging.getLogger(__name__)
 # Conservative configuration (from test results)
 CONSERVATIVE_CONFIG = {
     'aggressive': {
-        'return_range': (0.14, 0.50),
+        'return_range': (0.22, 0.55),          # Raised floor from 14% to match profile separation
         'max_realistic_return': 0.60,
-        'quality_risk_range': (0.18, 0.55),
+        'quality_risk_range': (0.20, 0.60),    # Widened ceiling for higher-risk aggressive portfolios
         'return_tolerance_upper': 0.10,
         'return_tolerance_lower': 0.01,
     },
     'very-aggressive': {
-        'return_range': (0.17, 0.65),
-        'max_realistic_return': 0.75,
-        'quality_risk_range': (0.22, 0.65),
+        'return_range': (0.28, 0.70),          # Raised floor from 17% to match profile separation
+        'max_realistic_return': 0.80,          # Raised from 0.75 for extreme returns
+        'quality_risk_range': (0.20, 0.75),    # Lowered floor: diversification reduces portfolio risk below stock vol
         'return_tolerance_upper': 0.15,
         'return_tolerance_lower': 0.01,
     },

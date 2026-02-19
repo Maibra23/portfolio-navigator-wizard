@@ -1356,24 +1356,6 @@ export const Portfolio3PartVisualization: React.FC<
         borderRadius: layoutConstants.radius,
       }}
     >
-      {warnings.length > 0 && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-1">
-              {warnings.map((warning, index) => (
-                <p
-                  key={index}
-                  className="text-sm"
-                  style={{ color: chartTheme.text.secondary }}
-                >
-                  {warning}
-                </p>
-              ))}
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {!compactMode && (
         <div className="flex items-center justify-between mb-4 px-2">
           <div className="flex items-center gap-3">

@@ -1758,13 +1758,15 @@ export const StockSelection = ({
 
   // REMOVED: getPrimarySectors function - no longer needed since we removed primary sectors display
 
-  // Continue enabled: mini-lesson always; recommendations when portfolio selected OR 3+ tickers; others by portfolioValidation
+  // Continue enabled: mini-lesson always; recommendations when portfolio selected OR 3+ tickers; full-customization when 3+ stocks; others by portfolioValidation
   const canContinue =
     activeTab === "mini-lesson"
       ? true
       : activeTab === "recommendations"
         ? selectedPortfolioIndex !== null || selectedStocks.length >= 3
-        : portfolioValidation.canProceed;
+        : activeTab === "full-customization"
+          ? selectedStocks.length >= 3
+          : portfolioValidation.canProceed;
 
   const handleNext = () => {
     // Prevent navigation if allocation is invalid (full-customization / dynamic-generation)

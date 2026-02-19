@@ -463,20 +463,32 @@ class PortfolioStockSelector:
             metrics_info = {}
             if metrics_data:
                 metrics_info = json.loads(metrics_data.decode())
+
+            # Normalize return to decimal format.
+            # Redis stores: expected_return=0.1317 (decimal), annualized_return=13.17 (percentage).
+            # Prefer expected_return; fall back to annualized_return / 100; then local annual_return.
+            stock_return = metrics_info.get('expected_return')
+            if stock_return is None:
+                raw_return = metrics_info.get('annualized_return')
+                if raw_return is not None:
+                    stock_return = raw_return / 100.0 if abs(raw_return) > 1.0 else raw_return
+                else:
+                    stock_return = annual_return  # Locally computed, already decimal
+
             stock_data = {
-                'symbol': ticker,  # FIXED: Use 'symbol' instead of 'ticker' for consistency
-                'ticker': ticker,  # Keep both for compatibility
-                'name': company_name,  # FIXED: Add 'name' key for portfolio allocation
+                'symbol': ticker,
+                'ticker': ticker,
+                'name': company_name,
                 'company_name': company_name,
                 'sector': sector_info.get('sector', 'Unknown'),
                 'industry': sector_info.get('industry', 'Unknown'),
-                'volatility': metrics_info.get('risk', volatility),  # FIXED: Use 'risk' key from Redis
-                'annualized_return': metrics_info.get('annualized_return', annual_return),  # FIXED: Use correct key
-                'annual_return': metrics_info.get('annualized_return', annual_return),  # Keep both for compatibility
-                'return': metrics_info.get('annualized_return', annual_return),
+                'volatility': metrics_info.get('risk', volatility),
+                'annualized_return': stock_return,
+                'annual_return': stock_return,
+                'return': stock_return,
                 'price': current_price,
                 'data_quality': metrics_info.get('data_quality', 'cached'),
-                'prices': price_series.tolist()[-30:],  # Last 30 data points for correlation
+                'prices': price_series.tolist()[-30:],
                 'returns': returns.tolist() if len(returns) > 0 else []
             }
             

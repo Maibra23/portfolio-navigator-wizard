@@ -527,7 +527,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-red-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Total return over the entire crisis period
                                   (from start to end date). Positive values
                                   indicate portfolio growth despite the crisis.
@@ -550,7 +553,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-orange-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-sm">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[220px] p-2 text-xs"
+                                >
                                   <div className="font-semibold mb-1">
                                     Maximum Drawdown
                                   </div>
@@ -592,7 +598,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-blue-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-sm">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[220px] p-2 text-xs"
+                                >
                                   <div className="font-semibold mb-1">
                                     Recovery Time to Peak
                                   </div>
@@ -642,7 +651,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-purple-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   V-shaped: Quick recovery (&lt;6 months).
                                   U-shaped: Moderate recovery (6-12 months).
                                   L-shaped: Slow or no recovery (&gt;12 months).
@@ -671,7 +683,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <TooltipTrigger asChild>
                                       <Info className="h-3 w-3 text-amber-500 cursor-help" />
                                     </TooltipTrigger>
-                                    <TooltipContent className="max-w-sm">
+                                    <TooltipContent
+                                      side="top"
+                                      className="max-w-[220px] p-2 text-xs"
+                                    >
                                       <div className="font-semibold mb-1">
                                         Recovery Needed
                                       </div>
@@ -722,7 +737,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <TooltipTrigger asChild>
                                       <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                     </TooltipTrigger>
-                                    <TooltipContent className="max-w-sm">
+                                    <TooltipContent
+                                      side="top"
+                                      className="max-w-[220px] p-2 text-xs"
+                                    >
                                       <div className="font-semibold mb-2">
                                         Trajectory Projections
                                       </div>
@@ -1576,7 +1594,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               </span>
                                             </div>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-sm">
+                                          <TooltipContent
+                                            side="top"
+                                            className="max-w-[220px] p-2 text-xs"
+                                          >
                                             <div className="font-semibold mb-1">
                                               Pre-Crisis Peak
                                             </div>
@@ -1610,7 +1631,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               </span>
                                             </div>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-sm">
+                                          <TooltipContent
+                                            side="top"
+                                            className="max-w-[220px] p-2 text-xs"
+                                          >
                                             <div className="font-semibold mb-1">
                                               Crisis Trough
                                             </div>
@@ -1650,7 +1674,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               </span>
                                             </div>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-sm">
+                                          <TooltipContent
+                                            side="top"
+                                            className="max-w-[220px] p-2 text-xs"
+                                          >
                                             <div className="font-semibold mb-1">
                                               Recovery Peak
                                             </div>
@@ -1840,7 +1867,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-red-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Total return over the entire crisis period
                                   (from start to end date). Positive values
                                   indicate portfolio growth despite the crisis.
@@ -1863,7 +1893,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-orange-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-sm">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[220px] p-2 text-xs"
+                                >
                                   <div className="font-semibold mb-1">
                                     Maximum Drawdown
                                   </div>
@@ -1905,7 +1938,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-blue-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-sm">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[220px] p-2 text-xs"
+                                >
                                   <div className="font-semibold mb-1">
                                     Recovery Time to Peak
                                   </div>
@@ -1955,7 +1991,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-purple-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   V-shaped: Quick recovery (&lt;6 months).
                                   U-shaped: Moderate recovery (6-12 months).
                                   L-shaped: Slow or no recovery (&gt;12 months).
@@ -1986,7 +2025,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <TooltipTrigger asChild>
                                       <Info className="h-3 w-3 text-amber-500 cursor-help" />
                                     </TooltipTrigger>
-                                    <TooltipContent className="max-w-sm">
+                                    <TooltipContent
+                                      side="top"
+                                      className="max-w-[220px] p-2 text-xs"
+                                    >
                                       <div className="font-semibold mb-1">
                                         Recovery Needed
                                       </div>
@@ -2037,7 +2079,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     <TooltipTrigger asChild>
                                       <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                     </TooltipTrigger>
-                                    <TooltipContent className="max-w-sm">
+                                    <TooltipContent
+                                      side="top"
+                                      className="max-w-[220px] p-2 text-xs"
+                                    >
                                       <div className="font-semibold mb-2">
                                         Trajectory Projections
                                       </div>
@@ -2936,7 +2981,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               </span>
                                             </div>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-sm">
+                                          <TooltipContent
+                                            side="top"
+                                            className="max-w-[220px] p-2 text-xs"
+                                          >
                                             <div className="font-semibold mb-1">
                                               Pre-Crisis Peak
                                             </div>
@@ -2973,7 +3021,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               </span>
                                             </div>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-sm">
+                                          <TooltipContent
+                                            side="top"
+                                            className="max-w-[220px] p-2 text-xs"
+                                          >
                                             <div className="font-semibold mb-1">
                                               Crisis Trough
                                             </div>
@@ -3016,7 +3067,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                               </span>
                                             </div>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-sm">
+                                          <TooltipContent
+                                            side="top"
+                                            className="max-w-[220px] p-2 text-xs"
+                                          >
                                             <div className="font-semibold mb-1">
                                               Recovery Peak
                                             </div>
@@ -3211,7 +3265,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-red-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Value at Risk: The maximum expected loss at
                                   95% confidence level. Represents the 5%
                                   worst-case scenario return.
@@ -3237,7 +3294,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-orange-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Conditional Value at Risk: Expected loss
                                   beyond VaR threshold. Average of losses in the
                                   worst 5% of scenarios.
@@ -3263,7 +3323,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-blue-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Beta measures portfolio sensitivity to market
                                   movements. 1.0 = moves with market, &gt;1.0 =
                                   more volatile, &lt;1.0 = less volatile.
@@ -3286,7 +3349,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-purple-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Probability of extreme losses beyond 2
                                   standard deviations. Higher percentage
                                   indicates greater risk of severe losses.
@@ -3310,7 +3376,10 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-indigo-500 cursor-help" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-xs">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[180px] p-2 text-xs"
+                                >
                                   Downside Deviation: Standard deviation of
                                   negative returns only. Measures volatility of
                                   losses, ignoring gains.

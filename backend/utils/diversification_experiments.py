@@ -53,8 +53,8 @@ class Strategy5_ReturnTargetBasedDiversification(DiversificationExperiment):
         )
         # Base diversification ranges for higher-risk profiles
         self.base_ranges = {
-            "aggressive": (30.0, 100.0),
-            "very-aggressive": (20.0, 100.0),
+            "aggressive": (0.0, 100.0),        # No minimum — aggressive accepts concentration
+            "very-aggressive": (0.0, 100.0),   # No minimum — very-aggressive accepts high concentration
         }
 
     def get_diversification_range(
