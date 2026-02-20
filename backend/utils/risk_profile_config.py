@@ -250,6 +250,31 @@ def get_return_targets_for_profile(risk_profile: str) -> List[float]:
     return RISK_PROFILE_RETURN_TARGETS.get(risk_profile, [20.0] * 12)
 
 
+def get_max_realistic_return_for_profile(risk_profile: str) -> float:
+    """
+    Get the maximum realistic return cap for a risk profile.
+
+    Used for two purposes:
+    1. Winsorizing individual stock expected returns (μ) before MVO optimization —
+       prevents the max-Sharpe optimizer from concentrating all weight in stocks
+       whose historical μ is a one-off outlier (e.g. +120 % in a single year).
+    2. Capping computed portfolio metrics — safety net for any return that still
+       exceeds the profile's realistic upper bound after Winsorization.
+
+    Values align with the existing `max_realistic_return` field in each profile,
+    which was already designed as the practical upper bound for that risk tier.
+
+    Args:
+        risk_profile: One of 'very-conservative', 'conservative', 'moderate',
+                     'aggressive', 'very-aggressive'
+
+    Returns:
+        Maximum realistic return as decimal (e.g. 0.55 = 55 %)
+    """
+    config = get_unified_config_for_profile(risk_profile)
+    return config['max_realistic_return']
+
+
 def get_quality_risk_range_for_profile(risk_profile: str) -> Tuple[float, float]:
     """
     Get quality control risk range for a risk profile.

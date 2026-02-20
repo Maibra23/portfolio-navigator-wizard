@@ -2369,8 +2369,9 @@ def _postprocess_weights(weights: Dict[str, float], max_assets: int = 10, min_we
     if total <= 0:
         return trimmed
     return {k: v / total for k, v in trimmed.items()}
-def compute_portfolio_metrics_with_weights(tickers: List[str], weights: Dict[str, float], 
-                                          optimizer, min_overlap_months: int = 24, 
+def compute_portfolio_metrics_with_weights(tickers: List[str], weights: Dict[str, float],
+                                          optimizer, min_overlap_months: int = 24,
+                                          risk_profile: str = "moderate",
                                           _recursion_depth: int = 0) -> Dict[str, Any]:
     """Compute portfolio metrics using actual weights."""
     # Prevent infinite recursion
@@ -2426,9 +2427,24 @@ def compute_portfolio_metrics_with_weights(tickers: List[str], weights: Dict[str
         expected_return = float(w_array @ mu_array)
         portfolio_variance = float(w_array @ sigma_matrix @ w_array)
         risk = float(np.sqrt(max(portfolio_variance, 0.0)))
-        
+
         sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
-        
+
+        # Cap extreme returns at the profile's realistic upper bound.
+        # Current-portfolio weights are user-defined (not optimizer output), but
+        # a holding in a stock with an exceptional historical year can still produce
+        # an inflated portfolio return.  We apply the same profile-level cap used
+        # in optimize_weights_only() for a consistent comparison table.
+        from utils.risk_profile_config import get_max_realistic_return_for_profile
+        max_return = get_max_realistic_return_for_profile(risk_profile)
+        if expected_return > max_return:
+            logger.debug(
+                f"Capping current portfolio return {expected_return:.2%} → {max_return:.2%} "
+                f"for profile '{risk_profile}'"
+            )
+            expected_return = max_return
+            sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
+
         return {
             "expected_return": expected_return,
             "risk": risk,
@@ -2440,10 +2456,11 @@ def compute_portfolio_metrics_with_weights(tickers: List[str], weights: Dict[str
         if len(tickers) >= 2:
             equal_weight = 1.0 / len(tickers)
             return compute_portfolio_metrics_with_weights(
-                tickers, 
-                {t: equal_weight for t in tickers}, 
-                optimizer, 
+                tickers,
+                {t: equal_weight for t in tickers},
+                optimizer,
                 min_overlap_months,
+                risk_profile,
                 _recursion_depth + 1
             )
         else:
@@ -2560,14 +2577,36 @@ def optimize_weights_only(tickers: List[str], risk_profile: str, optimizer,
         # Create aligned arrays using the valid tickers in the same order as sigma_df
         mu_array = np.array([mu_dict.get(t, 0.0) for t in available_tickers])
         sigma_matrix = sigma_df.loc[available_tickers, available_tickers].values
-        
+
         # Verify dimensions match
         if len(mu_array) != sigma_matrix.shape[0] or len(mu_array) != sigma_matrix.shape[1]:
             raise ValueError(
                 f"Dimension mismatch after alignment: mu_array={len(mu_array)}, "
                 f"sigma_matrix={sigma_matrix.shape}, available_tickers={len(available_tickers)}"
             )
-        
+
+        # --- Winsorise individual stock expected returns ---
+        # Historical μ can be inflated by one-off exceptional years (e.g. a stock
+        # returning +120 % in a single period).  Feeding raw outlier returns into
+        # max-Sharpe causes extreme concentration (62 %+ in one ticker) and
+        # produces unrealistic portfolio-level forecasts.
+        # Clipping each stock's μ at the profile's max_realistic_return is the
+        # standard MVO regularisation approach: the optimizer still maximises
+        # Sharpe, but from a bounded, profile-consistent return landscape.
+        from utils.risk_profile_config import get_max_realistic_return_for_profile
+        max_stock_return = get_max_realistic_return_for_profile(risk_profile)
+        clipped = np.clip(mu_array, -np.inf, max_stock_return)
+        if not np.array_equal(clipped, mu_array):
+            clipped_tickers = [
+                available_tickers[i] for i in range(len(mu_array))
+                if mu_array[i] > max_stock_return
+            ]
+            logger.info(
+                f"📐 Winsorised {len(clipped_tickers)} ticker(s) to profile cap "
+                f"{max_stock_return:.2%} for '{risk_profile}': {clipped_tickers}"
+            )
+            mu_array = clipped
+
         ef = EfficientFrontier(mu_array, sigma_matrix)
         
         if optimization_type == "max_sharpe":
@@ -2585,13 +2624,22 @@ def optimize_weights_only(tickers: List[str], risk_profile: str, optimizer,
             if ticker not in optimized_weights:
                 optimized_weights[ticker] = 0.0
         
-        # Calculate metrics using aligned arrays
+        # Calculate metrics using aligned arrays (mu_array already Winsorised above)
         w_array = np.array([weights_array[i] for i in range(len(available_tickers))])
         expected_return = float(w_array @ mu_array)
         portfolio_variance = float(w_array @ sigma_matrix @ w_array)
         risk = float(np.sqrt(max(portfolio_variance, 0.0)))
         sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
-        
+
+        # Safety-net output cap (catches any residual excess after Winsorization)
+        if expected_return > max_stock_return:
+            logger.warning(
+                f"⚠️ Weights-optimised return {expected_return:.2%} still exceeds "
+                f"profile cap {max_stock_return:.2%}; capping."
+            )
+            expected_return = max_stock_return
+            sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
+
         return {
             "tickers": valid_tickers,  # Return only valid tickers that were optimized
             "weights": optimized_weights,
@@ -3519,7 +3567,8 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                 tickers=user_tickers,
                 weights=request.user_weights,
                 optimizer=optimizer,
-                min_overlap_months=24
+                min_overlap_months=24,
+                risk_profile=request.risk_profile
             )
         else:
             logger.info(f"✅ Step 1: Using precomputed metrics from Redis (Return: {current_metrics['expected_return']:.2%}, Risk: {current_metrics['risk']:.2%}, Sharpe: {current_metrics['sharpe_ratio']:.2f})")

@@ -41,6 +41,13 @@ interface PortfolioPoint {
   sharpe_ratio?: number;
 }
 
+// Portfolio point with clamped position for off-scale rendering
+interface ClampedPortfolioPoint extends PortfolioPoint {
+  displayReturn: number; // original (unclamped) return, used in tooltip
+  isOffScaleHigh: boolean;
+  isOffScaleLow: boolean;
+}
+
 interface EfficientFrontierPoint {
   risk: number;
   return: number;
@@ -149,19 +156,7 @@ export const EfficientFrontierChart = ({
     [],
   );
 
-  // Apply jitter to prevent overlapping points
-  const applyJitter = useCallback(
-    (points: PortfolioPoint[], amount = 0.005) => {
-      return points.map((point) => ({
-        ...point,
-        risk: point.risk + (Math.random() - 0.5) * amount,
-        return: point.return + (Math.random() - 0.5) * amount,
-      }));
-    },
-    [],
-  );
-
-  // Build portfolio points with jitter
+  // Build portfolio comparison points (exact values — no jitter, preserves tooltip accuracy)
   const portfolioPoints: PortfolioPoint[] = useMemo(() => {
     const points: PortfolioPoint[] = [];
 
@@ -193,11 +188,6 @@ export const EfficientFrontierChart = ({
     marketOptimizedPortfolio,
     visibleSeries,
   ]);
-
-  const portfolioPointsWithJitter = useMemo(
-    () => applyJitter(portfolioPoints),
-    [portfolioPoints, applyJitter],
-  );
 
   // Sort efficient frontier by risk for smooth line rendering
   const sortedFrontier = useMemo(() => {
@@ -267,9 +257,9 @@ export const EfficientFrontierChart = ({
     if (filteredRandomPortfolios.length > 0) {
       allPoints.push(...filteredRandomPortfolios);
     }
-    if (portfolioPointsWithJitter.length > 0) {
-      allPoints.push(...portfolioPointsWithJitter);
-    }
+    // Portfolio comparison points are intentionally excluded from domain scaling.
+    // The chart frames the frontier; portfolio points outside the range get
+    // off-scale arrow indicators instead of stretching the axes.
     if (capitalMarketLine && visibleSeries.cml) {
       allPoints.push(...capitalMarketLine);
     }
@@ -307,7 +297,6 @@ export const EfficientFrontierChart = ({
     sortedFrontier,
     sortedInefficientFrontier,
     filteredRandomPortfolios,
-    portfolioPointsWithJitter,
     capitalMarketLine,
     visibleSeries.cml,
   ]);
@@ -347,6 +336,29 @@ export const EfficientFrontierChart = ({
       y: [centerY - rangeY / 2, centerY + rangeY / 2] as [number, number],
     };
   }, [currentDomain, zoomLevel, calculatedDomain]);
+
+  // Clamp portfolio comparison points to the effective Y domain.
+  // Points above/below the domain are snapped to the boundary so they remain
+  // visible; the original return is preserved in `displayReturn` for tooltips.
+  const clampedPortfolioPoints: ClampedPortfolioPoint[] = useMemo(() => {
+    const [yMin, yMax] = effectiveDomain.y;
+    return portfolioPoints.map((point) => {
+      const isOffScaleHigh = point.return > yMax;
+      const isOffScaleLow = point.return < yMin;
+      const clampedReturn = isOffScaleHigh
+        ? yMax
+        : isOffScaleLow
+          ? yMin
+          : point.return;
+      return {
+        ...point,
+        displayReturn: point.return,
+        return: clampedReturn,
+        isOffScaleHigh,
+        isOffScaleLow,
+      };
+    });
+  }, [portfolioPoints, effectiveDomain]);
 
   // Mouse handlers for box zoom
   const handleMouseDown = useCallback((e: any) => {
@@ -400,15 +412,14 @@ export const EfficientFrontierChart = ({
     effectiveDomain,
   ]);
 
-  const hasData =
-    sortedFrontier.length > 0 || portfolioPointsWithJitter.length > 0;
-  const hasCurrentPortfolio = portfolioPointsWithJitter.find(
+  const hasData = sortedFrontier.length > 0 || portfolioPoints.length > 0;
+  const hasCurrentPortfolio = clampedPortfolioPoints.find(
     (p) => p.type === "current",
   );
-  const hasWeightsOptimized = portfolioPointsWithJitter.find(
+  const hasWeightsOptimized = clampedPortfolioPoints.find(
     (p) => p.type === "weights-optimized",
   );
-  const hasMarketOptimized = portfolioPointsWithJitter.find(
+  const hasMarketOptimized = clampedPortfolioPoints.find(
     (p) => p.type === "market-optimized",
   );
 
@@ -740,9 +751,22 @@ export const EfficientFrontierChart = ({
                   if (isSelecting) return null;
                   if (!active || !payload || payload.length === 0) return null;
 
-                  const firstPayload = payload[0];
+                  // Portfolio points take priority — when hovering near a frontier
+                  // line and a portfolio point simultaneously, show the portfolio.
+                  const portfolioPayloadItem = payload.find((p: any) => {
+                    const t = p?.payload?.type;
+                    return (
+                      t === "current" ||
+                      t === "weights-optimized" ||
+                      t === "market-optimized"
+                    );
+                  });
+                  const firstPayload = portfolioPayloadItem || payload[0];
                   if (!firstPayload || !firstPayload.payload) return null;
-                  const data = firstPayload.payload as PortfolioPoint;
+                  const data = firstPayload.payload as ClampedPortfolioPoint;
+                  // Use original (unclamped) return for display; clamped value is
+                  // only used for SVG positioning when the point is off-scale.
+                  const displayReturn = data.displayReturn ?? data.return;
 
                   // Check tooltip type
                   const isEfficientFrontierLine =
@@ -903,7 +927,7 @@ export const EfficientFrontierChart = ({
                   // Portfolio point tooltip
                   const currentPortfolioMetrics = currentPortfolio;
                   const showComparison =
-                    data.type !== "current" && currentPortfolioMetrics;
+                    data.type !== "current" && currentPortfolioMetrics != null;
 
                   return (
                     <div
@@ -937,7 +961,7 @@ export const EfficientFrontierChart = ({
                             className="font-semibold"
                             style={{ color: chartTheme.text.primary }}
                           >
-                            {formatPercent(data.return)}
+                            {formatPercent(displayReturn)}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -990,13 +1014,14 @@ export const EfficientFrontierChart = ({
                                 Δ Return:
                               </span>
                               <span
-                                className={`font-semibold ${data.return > currentPortfolioMetrics.return ? "text-green-500" : "text-red-500"}`}
+                                className={`font-semibold ${displayReturn > currentPortfolioMetrics.return ? "text-green-500" : "text-red-500"}`}
                               >
-                                {data.return > currentPortfolioMetrics.return
+                                {displayReturn > currentPortfolioMetrics.return
                                   ? "+"
                                   : ""}
                                 {formatPercent(
-                                  data.return - currentPortfolioMetrics.return,
+                                  displayReturn -
+                                    currentPortfolioMetrics.return,
                                 )}
                               </span>
                             </div>
@@ -1141,32 +1166,74 @@ export const EfficientFrontierChart = ({
                 <Scatter
                   name="Current Portfolio"
                   data={[
-                    portfolioPointsWithJitter.find(
-                      (p) => p.type === "current",
-                    )!,
+                    clampedPortfolioPoints.find((p) => p.type === "current")!,
                   ]}
                   fill="#ef4444"
                   fillOpacity={1}
-                  shape={(props: any) => (
-                    <g>
-                      <circle
-                        cx={props.cx}
-                        cy={props.cy}
-                        r={14}
-                        fill="#ef4444"
-                        fillOpacity={0.2}
-                      />
-                      <circle
-                        cx={props.cx}
-                        cy={props.cy}
-                        r={10}
-                        fill="#ef4444"
-                        stroke="#fff"
-                        strokeWidth={3}
-                      />
-                      <circle cx={props.cx} cy={props.cy} r={4} fill="#fff" />
-                    </g>
-                  )}
+                  shape={(props: any) => {
+                    if (props.isOffScaleHigh) {
+                      return (
+                        <g>
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#ef4444"
+                            fillOpacity={0.2}
+                            stroke="#ef4444"
+                            strokeWidth={1}
+                          />
+                          <polygon
+                            points={`${props.cx},${props.cy - 13} ${props.cx - 7},${props.cy - 3} ${props.cx + 7},${props.cy - 3}`}
+                            fill="#ef4444"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                          />
+                        </g>
+                      );
+                    }
+                    if (props.isOffScaleLow) {
+                      return (
+                        <g>
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#ef4444"
+                            fillOpacity={0.2}
+                            stroke="#ef4444"
+                            strokeWidth={1}
+                          />
+                          <polygon
+                            points={`${props.cx},${props.cy + 13} ${props.cx - 7},${props.cy + 3} ${props.cx + 7},${props.cy + 3}`}
+                            fill="#ef4444"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                          />
+                        </g>
+                      );
+                    }
+                    return (
+                      <g>
+                        <circle
+                          cx={props.cx}
+                          cy={props.cy}
+                          r={14}
+                          fill="#ef4444"
+                          fillOpacity={0.2}
+                        />
+                        <circle
+                          cx={props.cx}
+                          cy={props.cy}
+                          r={10}
+                          fill="#ef4444"
+                          stroke="#fff"
+                          strokeWidth={3}
+                        />
+                        <circle cx={props.cx} cy={props.cy} r={4} fill="#fff" />
+                      </g>
+                    );
+                  }}
                 />
               )}
 
@@ -1175,13 +1242,55 @@ export const EfficientFrontierChart = ({
                 <Scatter
                   name="Weights-Optimized Portfolio"
                   data={[
-                    portfolioPointsWithJitter.find(
+                    clampedPortfolioPoints.find(
                       (p) => p.type === "weights-optimized",
                     )!,
                   ]}
                   fill="#3b82f6"
                   fillOpacity={1}
                   shape={(props: any) => {
+                    if (props.isOffScaleHigh) {
+                      return (
+                        <g>
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#3b82f6"
+                            fillOpacity={0.2}
+                            stroke="#3b82f6"
+                            strokeWidth={1}
+                          />
+                          <polygon
+                            points={`${props.cx},${props.cy - 13} ${props.cx - 7},${props.cy - 3} ${props.cx + 7},${props.cy - 3}`}
+                            fill="#3b82f6"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                          />
+                        </g>
+                      );
+                    }
+                    if (props.isOffScaleLow) {
+                      return (
+                        <g>
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#3b82f6"
+                            fillOpacity={0.2}
+                            stroke="#3b82f6"
+                            strokeWidth={1}
+                          />
+                          <polygon
+                            points={`${props.cx},${props.cy + 13} ${props.cx - 7},${props.cy + 3} ${props.cx + 7},${props.cy + 3}`}
+                            fill="#3b82f6"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                          />
+                        </g>
+                      );
+                    }
                     const size = 10;
                     return (
                       <g>
@@ -1214,20 +1323,62 @@ export const EfficientFrontierChart = ({
                 <Scatter
                   name="Market-Optimized Portfolio"
                   data={[
-                    portfolioPointsWithJitter.find(
+                    clampedPortfolioPoints.find(
                       (p) => p.type === "market-optimized",
                     )!,
                   ]}
                   fill="#22c55e"
                   fillOpacity={1}
                   shape={(props: any) => {
+                    if (props.isOffScaleHigh) {
+                      return (
+                        <g>
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#22c55e"
+                            fillOpacity={0.2}
+                            stroke="#22c55e"
+                            strokeWidth={1}
+                          />
+                          <polygon
+                            points={`${props.cx},${props.cy - 13} ${props.cx - 7},${props.cy - 3} ${props.cx + 7},${props.cy - 3}`}
+                            fill="#22c55e"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                          />
+                        </g>
+                      );
+                    }
+                    if (props.isOffScaleLow) {
+                      return (
+                        <g>
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#22c55e"
+                            fillOpacity={0.2}
+                            stroke="#22c55e"
+                            strokeWidth={1}
+                          />
+                          <polygon
+                            points={`${props.cx},${props.cy + 13} ${props.cx - 7},${props.cy + 3} ${props.cx + 7},${props.cy + 3}`}
+                            fill="#22c55e"
+                            stroke="#fff"
+                            strokeWidth={1.5}
+                          />
+                        </g>
+                      );
+                    }
                     const outerR = 12;
                     const innerR = 5;
-                    const points = [];
+                    const starPoints = [];
                     for (let i = 0; i < 10; i++) {
                       const r = i % 2 === 0 ? outerR : innerR;
                       const angle = ((i * 36 - 90) * Math.PI) / 180;
-                      points.push(
+                      starPoints.push(
                         `${props.cx + r * Math.cos(angle)},${props.cy + r * Math.sin(angle)}`,
                       );
                     }
@@ -1241,7 +1392,7 @@ export const EfficientFrontierChart = ({
                           fillOpacity={0.2}
                         />
                         <polygon
-                          points={points.join(" ")}
+                          points={starPoints.join(" ")}
                           fill="#22c55e"
                           stroke="#fff"
                           strokeWidth={2}
