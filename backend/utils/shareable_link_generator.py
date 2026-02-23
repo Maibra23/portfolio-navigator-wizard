@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Shareable Link Generator
-Generates secure shareable links for portfolio data with expiry and password protection
+Generates secure shareable links for portfolio data with expiry and password protection.
+Uses argon2 for password hashing; supports legacy SHA-256 hashes for existing links.
 """
 
 import logging
@@ -11,6 +12,15 @@ import secrets
 from typing import Dict, Optional
 from datetime import datetime, timedelta
 import redis
+
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerifyMismatchError
+    _argon2 = PasswordHasher()
+    _HAS_ARGON2 = True
+except ImportError:
+    _argon2 = None
+    _HAS_ARGON2 = False
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +64,23 @@ class ShareableLinkGenerator:
         return secrets.token_urlsafe(16)
     
     def _hash_password(self, password: str) -> str:
-        """Hash a password for storage"""
+        """Hash a password for storage (argon2 when available, else SHA-256 fallback)."""
+        if _HAS_ARGON2 and _argon2:
+            return _argon2.hash(password)
         return hashlib.sha256(password.encode()).hexdigest()
-    
+
     def _verify_password(self, password: str, hashed: str) -> bool:
-        """Verify a password against its hash"""
-        return self._hash_password(password) == hashed
+        """Verify a password against its hash (supports argon2 and legacy SHA-256)."""
+        if hashed.startswith("$argon2"):
+            if _HAS_ARGON2 and _argon2:
+                try:
+                    _argon2.verify(hashed, password)
+                    return True
+                except (VerifyMismatchError, Exception):
+                    return False
+            return False
+        # Legacy SHA-256 (64-char hex)
+        return hashlib.sha256(password.encode()).hexdigest() == hashed
     
     def generate_link(self, portfolio_data: Dict, 
                      expiry_days: int = 7,

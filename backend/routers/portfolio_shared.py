@@ -8,13 +8,13 @@ from typing import List, Dict, Optional, Any
 import logging
 import math
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
+from middleware.security import get_client_ip
 from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.port_analytics import PortfolioAnalytics
 
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 portfolio_analytics = PortfolioAnalytics()
 
 # Set by main.py via set_redis_manager()

@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from shared.errors import error_response, is_production
@@ -26,6 +25,7 @@ from shared.metrics import REQUEST_COUNT, REQUEST_LATENCY
 
 # Import security middleware
 from middleware.rate_limiting import limiter as rate_limiter, rate_limit_exceeded_handler
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from middleware.security import SecurityHeadersMiddleware, HTTPSRedirectMiddleware
 from middleware.validation import ValidationError
 
@@ -1113,6 +1113,16 @@ app.add_middleware(
 )
 logger.info("🔒 Security headers middleware enabled")
 
+# TrustedHostMiddleware in production (fly.io, Railway, etc.)
+if is_production():
+    _allowed_hosts_env = os.getenv(
+        "ALLOWED_HOSTS",
+        "*.fly.dev,*.railway.app,localhost,127.0.0.1",
+    )
+    _allowed_hosts = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+    logger.info("🔒 TrustedHostMiddleware enabled: %s", _allowed_hosts)
+
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Record request count and latency for Prometheus."""
@@ -1131,8 +1141,21 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(PrometheusMiddleware)
 
-# Mount Prometheus metrics endpoint
+# Mount Prometheus metrics endpoint (optional METRICS_SECRET restricts access in production)
 metrics_app = make_asgi_app()
+
+class _MetricsGuardMiddleware(BaseHTTPMiddleware):
+    """Require X-Metrics-Secret header when METRICS_SECRET env is set."""
+    async def dispatch(self, request: Request, call_next):
+        path = request.scope.get("path", "").split("?")[0] or ""
+        secret = os.getenv("METRICS_SECRET")
+        if path == "/metrics" and secret:
+            provided = request.headers.get("X-Metrics-Secret", "").strip()
+            if provided != secret:
+                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        return await call_next(request)
+
+app.add_middleware(_MetricsGuardMiddleware)
 app.mount("/metrics", metrics_app)
 
 # Add CORS middleware with environment-based configuration
@@ -1189,6 +1212,8 @@ async def _health_response():
         }
     except Exception as e:
         logger.error("Health check failed: %s", e)
+        if is_production():
+            return {"status": "unhealthy"}
         return {"status": "unhealthy", "error": str(e)}
 
 
@@ -1225,9 +1250,13 @@ def _request_id(request: Request) -> str:
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Return HTTPException as standard error response schema."""
+    """Return HTTPException as standard error response schema. Hide 5xx detail in production."""
     request_id = _request_id(request)
-    if isinstance(exc.detail, str):
+    if exc.status_code >= 500 and is_production():
+        logger.error("HTTP 5xx (detail hidden in production): %s", exc.detail)
+        message = "An error occurred. Please try again later."
+        details = None
+    elif isinstance(exc.detail, str):
         message = exc.detail
         details = None
     elif isinstance(exc.detail, list):

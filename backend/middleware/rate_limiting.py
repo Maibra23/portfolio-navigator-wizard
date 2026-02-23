@@ -1,20 +1,22 @@
 """
 Rate Limiting Configuration and Middleware
-Implements tiered rate limiting for different endpoint types
+Implements tiered rate limiting for different endpoint types.
+Uses X-Forwarded-For / Fly-Client-IP when behind a proxy (e.g. fly.io).
 """
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from functools import wraps
 import os
+
+from middleware.security import get_client_ip
 
 # Initialize limiter with Redis backend for distributed rate limiting
 def get_redis_url():
     """Get Redis URL for distributed rate limiting"""
     return os.getenv('REDIS_URL', 'redis://localhost:6379')
 
-# Create limiter instance
+# Create limiter instance (key by real client IP for proxy deployments)
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=get_client_ip,
     storage_uri=get_redis_url(),
     strategy="fixed-window",  # or "moving-window" for more accurate limiting
     default_limits=["200/minute"]  # Global default fallback
@@ -111,9 +113,9 @@ def rate_limit_exceeded_handler(request, exc):
 
 # IP-based exemptions for internal services (optional)
 def is_internal_ip(request):
-    """Check if request is from internal network"""
-    client_ip = request.client.host
-    internal_ips = os.getenv('INTERNAL_IPS', '127.0.0.1,localhost').split(',')
+    """Check if request is from internal network (uses same IP as rate limit key)."""
+    client_ip = get_client_ip(request)
+    internal_ips = [x.strip() for x in os.getenv('INTERNAL_IPS', '127.0.0.1,localhost').split(',') if x.strip()]
     return client_ip in internal_ips
 
 # Custom limiter that exempts internal IPs

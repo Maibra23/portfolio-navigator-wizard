@@ -27,7 +27,7 @@ from utils.shareable_link_generator import ShareableLinkGenerator
 from utils.five_year_projection import run_five_year_projection
 from utils.redis_ttl_monitor import RedisTTLMonitor
 from slowapi import Limiter
-from slowapi.util import get_remote_address
+from middleware.security import get_client_ip
 from pypfopt import EfficientFrontier
 from fastapi.responses import Response, StreamingResponse
 import base64
@@ -55,8 +55,8 @@ optimization_router = APIRouter()
 analytics_router = APIRouter()
 export_router = APIRouter()
 
-# Initialize rate limiter (used by routes still in this file)
-limiter = Limiter(key_func=get_remote_address)
+# Initialize rate limiter (used by routes still in this file; proxy-aware IP)
+limiter = Limiter(key_func=get_client_ip)
 
 # Initialize portfolio analytics
 portfolio_analytics = PortfolioAnalytics()
@@ -2554,84 +2554,41 @@ def find_matching_portfolio_in_redis(user_tickers: List[str], user_weights: Dict
 
 def optimize_weights_only(tickers: List[str], risk_profile: str, optimizer, 
                          optimization_type: str = "max_sharpe") -> Dict[str, Any]:
-    """Optimize weights of current tickers only (no new tickers)."""
+    """
+    Optimize weights of current tickers only (no new tickers).
+    
+    D1: Uses the same risk-constrained engine as Market-Opt (optimizer.optimize_portfolio
+    with risk_profile) so Weights-Opt and Market-Opt share profile risk enforcement.
+    D2: Profile return cap is applied after optimization (Winsorization-equivalent output cap).
+    """
     try:
-        # Get ticker metrics
-        mu_dict, sigma_df = optimizer.get_ticker_metrics(
+        # D1: Route through risk-constrained optimizer (same as Market-Opt). This enforces
+        # profile max_risk via efficient_risk when max_sharpe exceeds it.
+        result = optimizer.optimize_portfolio(
             tickers=tickers,
-            annualize=True,
+            optimization_type=optimization_type,
+            risk_profile=risk_profile,
             min_overlap_months=24,
             strict_overlap=False
         )
-        
-        # CRITICAL: Align tickers - get_ticker_metrics may filter out tickers with insufficient data
-        # Get the actual tickers that were returned (from sigma_df index or mu_dict keys)
-        available_tickers = list(sigma_df.index) if hasattr(sigma_df, 'index') and len(sigma_df.index) > 0 else list(mu_dict.keys())
-        
-        # Filter to only tickers that exist in both the original list and returned metrics
-        valid_tickers = [t for t in tickers if t in available_tickers]
-        
+        # Optimizer may return a subset of tickers if get_ticker_metrics filtered some out
+        result_tickers = result.get("tickers", [])
+        valid_tickers = [t for t in tickers if t in result_tickers] or list(result_tickers)
         if len(valid_tickers) < 2:
-            raise ValueError(f"Insufficient valid tickers for optimization: {len(valid_tickers)} (need at least 2). Original: {len(tickers)}, Available: {len(available_tickers)}")
-        
-        # Create aligned arrays using the valid tickers in the same order as sigma_df
-        mu_array = np.array([mu_dict.get(t, 0.0) for t in available_tickers])
-        sigma_matrix = sigma_df.loc[available_tickers, available_tickers].values
-
-        # Verify dimensions match
-        if len(mu_array) != sigma_matrix.shape[0] or len(mu_array) != sigma_matrix.shape[1]:
             raise ValueError(
-                f"Dimension mismatch after alignment: mu_array={len(mu_array)}, "
-                f"sigma_matrix={sigma_matrix.shape}, available_tickers={len(available_tickers)}"
+                f"Insufficient valid tickers for optimization: {len(valid_tickers)} "
+                f"(need at least 2). Original: {len(tickers)}, Result: {len(result_tickers)}"
             )
-
-        # --- Winsorise individual stock expected returns ---
-        # Historical μ can be inflated by one-off exceptional years (e.g. a stock
-        # returning +120 % in a single period).  Feeding raw outlier returns into
-        # max-Sharpe causes extreme concentration (62 %+ in one ticker) and
-        # produces unrealistic portfolio-level forecasts.
-        # Clipping each stock's μ at the profile's max_realistic_return is the
-        # standard MVO regularisation approach: the optimizer still maximises
-        # Sharpe, but from a bounded, profile-consistent return landscape.
-        from utils.risk_profile_config import get_max_realistic_return_for_profile
-        max_stock_return = get_max_realistic_return_for_profile(risk_profile)
-        clipped = np.clip(mu_array, -np.inf, max_stock_return)
-        if not np.array_equal(clipped, mu_array):
-            clipped_tickers = [
-                available_tickers[i] for i in range(len(mu_array))
-                if mu_array[i] > max_stock_return
-            ]
-            logger.info(
-                f"📐 Winsorised {len(clipped_tickers)} ticker(s) to profile cap "
-                f"{max_stock_return:.2%} for '{risk_profile}': {clipped_tickers}"
-            )
-            mu_array = clipped
-
-        ef = EfficientFrontier(mu_array, sigma_matrix)
-        
-        if optimization_type == "max_sharpe":
-            weights_array = ef.max_sharpe(risk_free_rate=optimizer.risk_free_rate)
-        elif optimization_type == "min_variance":
-            weights_array = ef.min_volatility()
-        else:
-            weights_array = ef.max_sharpe(risk_free_rate=optimizer.risk_free_rate)
-        
-        # Convert to dict - use available_tickers (aligned with optimization)
-        optimized_weights = {available_tickers[i]: float(weights_array[i]) for i in range(len(available_tickers))}
-        
-        # Set weights to 0 for tickers that were filtered out
+        optimized_weights = dict(result.get("weights", {}))
         for ticker in tickers:
             if ticker not in optimized_weights:
                 optimized_weights[ticker] = 0.0
-        
-        # Calculate metrics using aligned arrays (mu_array already Winsorised above)
-        w_array = np.array([weights_array[i] for i in range(len(available_tickers))])
-        expected_return = float(w_array @ mu_array)
-        portfolio_variance = float(w_array @ sigma_matrix @ w_array)
-        risk = float(np.sqrt(max(portfolio_variance, 0.0)))
-        sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
-
-        # Safety-net output cap (catches any residual excess after Winsorization)
+        expected_return = float(result.get("expected_return", 0.0))
+        risk = float(result.get("risk", 0.0))
+        sharpe_ratio = float(result.get("sharpe_ratio", 0.0))
+        # D2: Profile return cap (safety-net output cap)
+        from utils.risk_profile_config import get_max_realistic_return_for_profile
+        max_stock_return = get_max_realistic_return_for_profile(risk_profile)
         if expected_return > max_stock_return:
             logger.warning(
                 f"⚠️ Weights-optimised return {expected_return:.2%} still exceeds "
@@ -2639,9 +2596,8 @@ def optimize_weights_only(tickers: List[str], risk_profile: str, optimizer,
             )
             expected_return = max_stock_return
             sharpe_ratio = (expected_return - optimizer.risk_free_rate) / risk if risk > 0 else 0.0
-
         return {
-            "tickers": valid_tickers,  # Return only valid tickers that were optimized
+            "tickers": valid_tickers,
             "weights": optimized_weights,
             "metrics": {
                 "expected_return": expected_return,
@@ -3118,138 +3074,145 @@ def optimize_dual_portfolio(request: DualOptimizationRequest):
             # Create dedicated random instance for selection (isolated from tier shuffling)
             selection_random = random.Random(selection_seed)
             
-            # CHANGE: Include user tickers in market pool for fair comparison
-            # This ensures both portfolios use the same opportunity set
-            # Separate user and non-user tickers from shuffled list (order matters - uses shuffled order)
-            non_user_tickers = [t['ticker'].upper() for t in filtered_tickers if t['ticker'].upper() not in user_tickers_set]
-            user_tickers_in_pool = [t['ticker'].upper() for t in filtered_tickers if t['ticker'].upper() in user_tickers_set]
-            
-            # Combine all tickers for market pool (user tickers included)
-            # This ensures the efficient frontier includes user's tickers in the opportunity set
-            market_pool_tickers = filtered_tickers  # All filtered tickers (includes user tickers)
-            
-            # VERIFICATION: Log pool sizes after user ticker filtering
-            logger.info(f"🔍 POOL SIZE AFTER USER FILTER:")
-            logger.info(f"   Total filtered_tickers: {len(filtered_tickers)}")
-            logger.info(f"   Non-user tickers: {len(non_user_tickers)}")
-            logger.info(f"   User tickers in pool: {len(user_tickers_in_pool)}")
-            logger.info(f"   User tickers excluded: {user_tickers}")
-            
-            # CRITICAL: Determine target_count AFTER we know non_user_tickers size
-            # Adjust target if pool is small to ensure variation is possible
-            initial_target = determine_ticker_count(len(filtered_tickers), hour_seed, date_seed)
-            
-            # CRITICAL: ALWAYS ensure target_count allows variation when pool is small
-            # This is essential for diversity rotation - we need room to sample different combinations
-            # Force reduction if pool size is small (<=8) to ensure we can get different ticker sets
-            if len(non_user_tickers) <= 8:
-                # Small pool - MUST reduce target to allow variation
-                # Use hour-based random to vary the target, ensuring different hours get different counts
-                if len(non_user_tickers) <= 6:
-                    # Very small pool (6 or less) - use 3-4 to ensure we can get different combinations
-                    # CRITICAL: This MUST vary by hour to produce different ticker sets
-                    target_count = selection_random.choice([3, 4])
-                    # Ensure target is less than pool size to allow variation
-                    if target_count >= len(non_user_tickers):
-                        target_count = len(non_user_tickers) - 1
-                    if request.test_hour is not None:
-                        logger.info(f"🔀 Very small pool ({len(non_user_tickers)} tickers): Using target {target_count} (was {initial_target}) for variation")
+            # ================================================================
+            # HYBRID POOL APPROACH: Include user's tickers + market tickers
+            # This gives Market-Opt access to user's good picks while exploring alternatives
+            # (Same approach as triple optimization for consistency across both pages)
+            # ================================================================
+
+            # Build hybrid candidate pool:
+            # 1. Start with user's tickers (they may be high performers)
+            # 2. Add top market tickers sorted by Sharpe
+            candidate_pool_size = 200
+
+            # Get user ticker data from filtered pool (if available)
+            user_ticker_data = [
+                t for t in filtered_tickers
+                if t.get('ticker') and t['ticker'].upper() in user_tickers_set
+            ]
+
+            # Get market tickers (excluding user's) sorted by Sharpe
+            market_tickers_sorted = sorted(
+                [
+                    t for t in filtered_tickers
+                    if t.get('ticker') and t['ticker'].upper() not in user_tickers_set
+                ],
+                key=lambda t: t.get('sharpe_ratio', t.get('expected_return', 0.0)),
+                reverse=True
+            )
+
+            # Combine: user tickers first (prioritized), then top market tickers
+            combined_pool = user_ticker_data + market_tickers_sorted[:candidate_pool_size]
+            all_candidates = [t['ticker'].upper() for t in combined_pool]
+
+            # CONTROLLED SHUFFLE: Shuffle top candidates while keeping high-Sharpe focus
+            # This provides variation while maintaining quality
+            import time as time_module
+            seed_value = int(hashlib.md5(f"{','.join(sorted(user_tickers))}_{int(time_module.time())}".encode()).hexdigest()[:8], 16)
+            variation_random = random.Random(seed_value)
+
+            # Split into tiers: top 30 (best), middle 70, rest
+            # Only shuffle within tiers to maintain quality while adding variation
+            top_tier = all_candidates[:30]
+            middle_tier = all_candidates[30:100]
+            rest_tier = all_candidates[100:]
+
+            variation_random.shuffle(top_tier)
+            variation_random.shuffle(middle_tier)
+
+            shuffled_candidates = top_tier + middle_tier + rest_tier
+
+            # Basket size by risk profile
+            BASKET_SIZE_BY_PROFILE = {
+                'very-conservative': 16,
+                'conservative': 14,
+                'moderate': 14,
+                'aggressive': 12,
+                'very-aggressive': 10
+            }
+            target_pool_size = BASKET_SIZE_BY_PROFILE.get(request.risk_profile, 14)
+
+            logger.info(f"📊 HYBRID POOL selection: {len(user_ticker_data)} user + {len(market_tickers_sorted[:candidate_pool_size])} market tickers")
+            logger.info(f"📊 Target basket: {target_pool_size} tickers (shuffled within quality tiers)")
+            logger.info(f"📊 Top-10 shuffled candidates: {shuffled_candidates[:10]}")
+
+            # Validate each ticker has sufficient data overlap with others
+            # by checking metrics calculation doesn't produce NaN
+            best_tickers = []
+
+            # PRIORITIZE USER TICKERS: Process user tickers FIRST
+            # This ensures market tickers are selected based on overlap with user's choices
+            user_ticker_symbols = [t['ticker'].upper() for t in user_ticker_data]
+            market_only_candidates = [c for c in shuffled_candidates if c not in user_ticker_symbols]
+
+            # First, try to add user tickers
+            logger.info(f"🔍 PRIORITY: Adding user tickers first ({len(user_ticker_symbols)})...")
+            for candidate in user_ticker_symbols:
+                test_set = best_tickers + [candidate]
+                if len(test_set) >= 2:
+                    try:
+                        mu, sigma = optimizer.get_ticker_metrics(
+                            tickers=test_set,
+                            annualize=True,
+                            min_overlap_months=24,  # Relaxed for user tickers
+                            strict_overlap=False
+                        )
+                        if mu and sigma is not None:
+                            has_nan = any(np.isnan(v) for v in mu.values()) or np.isnan(sigma.values).any()
+                            has_inf = np.isinf(sigma.values).any()
+                            if not has_nan and not has_inf:
+                                best_tickers.append(candidate)
+                                logger.info(f"  ✅ USER: {candidate} added (valid overlap with {len(best_tickers)-1} others)")
+                    except Exception as e:
+                        logger.debug(f"  ⚠️ USER: {candidate} skipped (metrics error: {e})")
                 else:
-                    # Small pool (7-8) - reduce by 1-2 from initial, but ensure it's less than pool
-                    reduction = selection_random.randint(1, min(2, initial_target - 3))
-                    target_count = max(3, initial_target - reduction)
-                    # Ensure target is less than pool size
-                    if target_count >= len(non_user_tickers):
-                        target_count = len(non_user_tickers) - 1
-                    if request.test_hour is not None:
-                        logger.info(f"🔀 Small pool ({len(non_user_tickers)} tickers): Adjusted target {initial_target} -> {target_count} for variation")
-            else:
-                target_count = initial_target
-                if request.test_hour is not None:
-                    logger.info(f"🔀 Large pool ({len(non_user_tickers)} tickers): Using initial target {target_count}")
-            
-            logger.info(f"📊 Dynamic ticker count: {target_count} (from pool of {len(filtered_tickers)}, non-user: {len(non_user_tickers)})")
-            
-            if request.test_hour is not None:
-                logger.info(f"🔀 Selection prep (hour={hour_seed}): selection_seed={selection_seed}")
-                logger.info(f"🔀   Non-user tickers (from shuffled list) first 15: {non_user_tickers[:15]}")
-                logger.info(f"🔀   Total non-user: {len(non_user_tickers)}, target_count: {target_count}")
-            
-            # Prefer non-user tickers, but allow user tickers if pool is limited
-            pool_size = len(non_user_tickers)
-            
-            # CRITICAL: Determine actual_target BEFORE any conditions
-            # Force variation by varying sample size based on hour for large pools
-            if pool_size > 10:
-                # Large pool - ALWAYS use hour-based size to guarantee variation
-                hour_based_size = 3 + (hour_seed % 4)  # 3, 4, 5, or 6 based on hour
-                actual_target = min(hour_based_size, pool_size - 1)
-                if request.test_hour is not None:
-                    logger.info(f"🔀 VARIATION FIX (LARGE POOL): pool_size={pool_size}, hour={hour_seed}, hour%4={hour_seed % 4}")
-                    logger.info(f"🔀   hour_based_size={hour_based_size}, actual_target={actual_target} (overriding target_count={target_count})")
-            elif pool_size <= target_count + 2:
-                # Small pool - reduce target to ensure variation
-                max_reduction = min(3, pool_size - 3)
-                reduction = selection_random.randint(1, max_reduction)
-                actual_target = max(3, pool_size - reduction)
-                if request.test_hour is not None:
-                    logger.info(f"🔀 Small pool ({pool_size}): Reduced target from {target_count} to {actual_target}")
-            else:
-                # Medium pool - use target_count but ensure it's less than pool
-                actual_target = min(target_count, pool_size - 1)
-                if request.test_hour is not None:
-                    logger.info(f"🔀 Medium pool ({pool_size}): Using target {actual_target}")
-            
-            # Now proceed with selection using actual_target
-            if pool_size >= actual_target:
-                # CRITICAL FIX: Shuffle the list using hour-based seed to ensure variation
-                # The shuffle order will differ by hour, ensuring different tickers are selected
-                if request.test_hour is not None:
-                    before_shuffle = non_user_tickers[:10].copy()
-                    logger.info(f"🔀 BEFORE shuffle (hour={hour_seed}): first 10 = {before_shuffle}")
-                
-                selection_random.shuffle(non_user_tickers)  # Shuffle in place - order varies by hour
-                
-                if request.test_hour is not None:
-                    after_shuffle = non_user_tickers[:10].copy()
-                    logger.info(f"🔀 AFTER shuffle (hour={hour_seed}): first 10 = {after_shuffle}")
-                    logger.info(f"🔀 Shuffle changed: {before_shuffle != after_shuffle}")
-                
-                # FINAL SAFETY CHECK: Ensure actual_target is always less than pool_size
-                if actual_target >= pool_size:
-                    actual_target = max(3, pool_size - selection_random.randint(1, 2))
-                    if request.test_hour is not None:
-                        logger.info(f"🔀 SAFETY CHECK: Forced actual_target to {actual_target} (pool={pool_size})")
-                
-                # Use random.sample() to select actual_target tickers from shuffled list
-                # This ensures variation - different hours will produce different samples
-                best_tickers = selection_random.sample(non_user_tickers, actual_target)
-                
-                if request.test_hour is not None:
-                    logger.info(f"🔀 Selection RESULT (hour={hour_seed}): sampled {actual_target} from {pool_size} tickers")
-                    logger.info(f"🔀   Selected tickers ({len(best_tickers)}): {best_tickers}")
-                    logger.info(f"🔀   Selection seed: {selection_seed}")
-            elif market_pool_size <= target_count:
-                # Not enough total tickers - use all available from market pool
-                best_tickers = market_pool_ticker_symbols
-                if request.test_hour is not None:
-                    logger.info(f"🔀 Selection (hour={hour_seed}): using all {len(best_tickers)} available tickers from market pool")
-            else:
-                # Should not reach here due to earlier checks, but fallback
-                best_tickers = selection_random.sample(market_pool_ticker_symbols, min(actual_target, market_pool_size))
-                if request.test_hour is not None:
-                    logger.info(f"🔀 Selection (hour={hour_seed}): fallback selection of {len(best_tickers)} tickers")
-            
-            logger.info(f"📊 Diversity selection: diversity_seed={diversity_seed_value}, hour={hour_seed}, date={date_seed}")
-            
-            # Ensure minimum 2 tickers for optimization
+                    best_tickers.append(candidate)
+                    logger.info(f"  ✅ USER: {candidate} added (first ticker)")
+
+            user_count_added = len(best_tickers)
+            logger.info(f"📊 Added {user_count_added}/{len(user_ticker_symbols)} user tickers")
+
+            # Then, add market tickers that have good overlap
+            logger.info(f"🔍 Validating {len(market_only_candidates)} market candidate tickers for data overlap...")
+            for candidate in market_only_candidates:
+                test_set = best_tickers + [candidate]
+                if len(test_set) >= 2:
+                    try:
+                        # Quick validation: check if metrics are valid
+                        # Using 36 months (3 years) - balances data quality with coverage
+                        mu, sigma = optimizer.get_ticker_metrics(
+                            tickers=test_set,
+                            annualize=True,
+                            min_overlap_months=36,
+                            strict_overlap=True
+                        )
+                        # Check for NaN/Inf values
+                        if mu and sigma is not None:
+                            has_nan = any(np.isnan(v) for v in mu.values()) or np.isnan(sigma.values).any()
+                            has_inf = np.isinf(sigma.values).any()
+                            if not has_nan and not has_inf:
+                                best_tickers.append(candidate)
+                                logger.debug(f"  ✅ {candidate} added (valid overlap with {len(best_tickers)-1} others)")
+                                if len(best_tickers) >= target_pool_size:
+                                    break
+                            else:
+                                logger.debug(f"  ⚠️ {candidate} skipped (NaN/Inf in metrics)")
+                    except Exception as e:
+                        logger.debug(f"  ⚠️ {candidate} skipped (metrics error: {e})")
+                else:
+                    # First ticker, just add it
+                    best_tickers.append(candidate)
+
+            logger.info(f"📊 Found {len(best_tickers)} tickers with valid data overlap")
+
+            # Fallback: use top filtered tickers if not enough valid ones
             if len(best_tickers) < 2:
-                logger.warning("⚠️ Not enough eligible tickers, using all available")
-                best_tickers = [t['ticker'].upper() for t in filtered_tickers[:max(2, target_count)]]
-            
+                logger.warning("⚠️ Not enough valid tickers, using top filtered tickers...")
+                best_tickers = [t['ticker'].upper() for t in filtered_tickers[:target_pool_size]]
+
             overlap_count = len(set(best_tickers) & user_tickers_set)
-            logger.info(f"✅ Selected {len(best_tickers)} tickers (target: {target_count}): {best_tickers[:10]}...")
-            logger.info(f"📊 User tickers: {user_tickers}, Selected tickers: {best_tickers[:10]}, Overlap: {overlap_count}/{len(best_tickers)}")
+            logger.info(f"✅ Selected {len(best_tickers)} tickers: {best_tickers[:10]}...")
+            logger.info(f"📊 User tickers included: {overlap_count}/{len(best_tickers)} ({overlap_count/len(best_tickers)*100:.1f}% overlap)")
             
         except Exception as e:
             logger.error(f"❌ CRITICAL ERROR: Could not get eligible tickers: {e}")
@@ -3579,7 +3542,10 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
             "metrics": current_metrics
         }
         
-        # Step 2: Weights-only optimization (ALWAYS done)
+        # Step 2: Weights-only optimization (ALWAYS done).
+        # Asymmetry (fixed by D1): Weights-Opt now uses the same risk-constrained engine as
+        # Market-Opt (optimizer.optimize_portfolio with risk_profile); previously Weights-Opt
+        # used unconstrained max_sharpe and could exceed profile max_risk.
         logger.info(f"🔧 Step 2: Optimizing weights of current tickers...")
         weights_optimized_data = optimize_weights_only(
             tickers=user_tickers,
@@ -3678,32 +3644,34 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                 # CRITICAL: Sort by data_points first to get tickers with long histories (better overlap)
                 per_page_size = max(request.max_eligible_tickers * 50, 2000)
                 eligible_response = _get_eligible_tickers_internal(
-                    min_data_points=96,  # Require at least 96 months (8 years) of data for strong overlap
+                    min_data_points=36,  # Relaxed to 36 months (3 years) for better coverage
                     filter_negative_returns=True,
                     per_page=per_page_size,
                     page=1,
-                    sort_by='data_points'  # Sort by data points to get tickers with longest histories
+                    sort_by='sharpe_ratio'  # Sort by Sharpe ratio for quality-first selection
                 )
                 
                 eligible_tickers_data = eligible_response.get('eligible_tickers', [])
                 if not eligible_tickers_data:
                     logger.warning("⚠️ No eligible tickers found for market exploration")
                 else:
-                    # Extract ticker symbols, preferring non-user tickers for diversity
-                    user_tickers_set = set(user_tickers)
-                    
-                    # OPTION A (enhanced): Variable basket size with Sharpe-driven, diversified sampling
-                    # Create variation seed from user tickers + timestamp for different baskets each run
-                    user_tickers_str = ','.join(sorted(user_tickers))
-                    import time
-                    seed_value = int(hashlib.md5(f"{user_tickers_str}_{time.time()}".encode()).hexdigest()[:8], 16)
-                    variation_random = random.Random(seed_value)
-                    
-                    # CRITICAL FIX: Pre-validate tickers for data overlap before optimization
-                    # Get a larger candidate pool (top 200) and sort by Sharpe for better selection
+                    # HYBRID POOL APPROACH: Include user's tickers + market tickers
+                    # This gives Market-Opt access to user's good picks while exploring alternatives
+                    user_tickers_set = set(t.upper() for t in user_tickers)
+
+                    # Build hybrid candidate pool:
+                    # 1. Start with user's tickers (they may be high performers)
+                    # 2. Add top market tickers sorted by Sharpe
                     candidate_pool_size = 200
-                    # Sort by sharpe_ratio (fallback to expected_return) descending for high-quality pool
-                    sorted_eligible = sorted(
+
+                    # Get user ticker data from eligible pool (if available)
+                    user_ticker_data = [
+                        t for t in eligible_tickers_data
+                        if t.get('ticker') and t['ticker'].upper() in user_tickers_set
+                    ]
+
+                    # Get market tickers (excluding user's) sorted by Sharpe
+                    market_tickers_sorted = sorted(
                         [
                             t for t in eligible_tickers_data
                             if t.get('ticker') and t['ticker'].upper() not in user_tickers_set
@@ -3711,45 +3679,58 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                         key=lambda t: t.get('sharpe_ratio', t.get('expected_return', 0.0)),
                         reverse=True
                     )
-                    all_candidates = [t['ticker'].upper() for t in sorted_eligible][:candidate_pool_size]
-                    
-                    # Shuffle ALL candidates for variation (not just positions 51-200)
-                    # This ensures different ticker combinations each run while keeping high Sharpe focus
-                    shuffled_candidates = all_candidates.copy()
-                    variation_random.shuffle(shuffled_candidates)
-                    
-                    # Variable basket size by risk profile
-                    # LARGER baskets = more diversification = lower risk = better acceptance rate
-                    # PRIORITY 3: Expanded ticker pool for very-conservative to reduce solver infeasibility
-                    # Optimized based on comprehensive testing across all portfolios
+
+                    # Combine: user tickers first (prioritized), then top market tickers
+                    combined_pool = user_ticker_data + market_tickers_sorted[:candidate_pool_size]
+                    all_candidates = [t['ticker'].upper() for t in combined_pool]
+
+                    # CONTROLLED SHUFFLE: Shuffle top candidates while keeping high-Sharpe focus
+                    # This provides variation while maintaining quality
+                    import time
+                    seed_value = int(hashlib.md5(f"{','.join(sorted(user_tickers))}_{int(time.time())}".encode()).hexdigest()[:8], 16)
+                    variation_random = random.Random(seed_value)
+
+                    # Split into tiers: top 30 (best), middle 70, rest
+                    # Only shuffle within tiers to maintain quality while adding variation
+                    top_tier = all_candidates[:30]
+                    middle_tier = all_candidates[30:100]
+                    rest_tier = all_candidates[100:]
+
+                    variation_random.shuffle(top_tier)
+                    variation_random.shuffle(middle_tier)
+
+                    shuffled_candidates = top_tier + middle_tier + rest_tier
+
+                    # Basket size by risk profile
                     BASKET_SIZE_BY_PROFILE = {
-                        'very-conservative': (15, 20),  # Expanded for better feasibility (was 10-14)
-                        'conservative': (10, 14),       # Larger for better diversification
-                        'moderate': (12, 16),           # Even larger for moderate
-                        'aggressive': (12, 16),         # Even larger for aggressive
-                        'very-aggressive': (10, 14)     # Good balance
+                        'very-conservative': 16,
+                        'conservative': 14,
+                        'moderate': 14,
+                        'aggressive': 12,
+                        'very-aggressive': 10
                     }
-                    min_size, max_size = BASKET_SIZE_BY_PROFILE.get(request.risk_profile, (10, 14))
-                    target_pool_size = variation_random.randint(min_size, max_size)
-                    logger.info(f"🎲 Variable basket size: {target_pool_size} tickers (seed: {seed_value})")
-                    logger.info(f"🎲 Shuffled candidates (first 10): {shuffled_candidates[:10]}")
+                    target_pool_size = BASKET_SIZE_BY_PROFILE.get(request.risk_profile, 14)
+                    logger.info(f"📊 Hybrid pool selection: {len(user_ticker_data)} user + {len(market_tickers_sorted[:candidate_pool_size])} market tickers")
+                    logger.info(f"📊 Target basket: {target_pool_size} tickers (shuffled within quality tiers)")
+                    logger.info(f"📊 Top-10 shuffled candidates: {shuffled_candidates[:10]}")
                     
                     # Validate each ticker has sufficient data overlap with others
                     # by checking metrics calculation doesn't produce NaN
                     best_tickers = []
-                    logger.info(f"🔍 Validating {len(shuffled_candidates)} candidate tickers for data overlap (shuffled for variation)...")
-                    
+                    logger.info(f"🔍 Validating {len(shuffled_candidates)} candidate tickers for data overlap...")
+
                     # Try to find a subset with valid overlap
-                    # Build basket from shuffled candidates (ensures variation)
+                    # Build basket from shuffled candidates (quality tiers maintained)
                     for candidate in shuffled_candidates:
                         test_set = best_tickers + [candidate]
                         if len(test_set) >= 2:
                             try:
                                 # Quick validation: check if metrics are valid
+                                # Using 36 months (3 years) - balances data quality with coverage
                                 mu, sigma = optimizer.get_ticker_metrics(
                                     tickers=test_set,
                                     annualize=True,
-                                    min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                    min_overlap_months=36,  # Relaxed from 96 to include more high-performers
                                     strict_overlap=True
                                 )
                                 # Check for NaN/Inf values
@@ -3786,7 +3767,7 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                                 tickers=best_tickers,
                                 optimization_type=request.optimization_type,  # Usually 'max_sharpe'
                                 risk_profile=request.risk_profile,
-                                min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                min_overlap_months=36,  # Relaxed to 36 months (3 years) for better coverage
                                 strict_overlap=False
                             )
                             logger.info(f"✅ Market optimization succeeded")
@@ -3798,7 +3779,7 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                                     tickers=best_tickers,
                                     optimization_type='min_variance',
                                     risk_profile=request.risk_profile,
-                                    min_overlap_months=96,
+                                    min_overlap_months=36,
                                     strict_overlap=False
                                 )
                                 logger.info(f"✅ Market optimization succeeded with min_variance fallback")
@@ -3820,7 +3801,7 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                                     tickers=best_tickers,
                                     num_points=request.num_frontier_points,
                                     risk_profile=request.risk_profile,
-                                    min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                    min_overlap_months=36,  # Relaxed to 36 months (3 years) for better coverage
                                     strict_overlap=False
                                 )
                             except Exception as e:
@@ -3835,7 +3816,7 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                                     tickers=best_tickers,
                                     num_portfolios=request.num_random_portfolios,
                                     risk_profile=request.risk_profile,
-                                    min_overlap_months=96,  # Use 96 months (8 years) for market optimization
+                                    min_overlap_months=36,  # Relaxed to 36 months (3 years) for better coverage
                                     strict_overlap=False
                                 )
                             except Exception as e:
@@ -3903,6 +3884,8 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
                 market_optimized_response = None
         
         # Step 4: Decision framework (for recommendation) - Using improved v2 logic
+        # NOTE: No artificial Sharpe harmonization - Market-Opt competes naturally
+        # via hybrid pool (user tickers + market) and relaxed data requirements
         recommendation = decide_best_portfolio_v2(
             current=current_metrics,
             weights_opt=weights_optimized_data,
