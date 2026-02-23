@@ -1,35 +1,21 @@
 """
 Admin router: cache management, TTL monitoring, ticker refresh, health.
-Protected by ADMIN_API_KEY when set (X-Admin-Key header or Authorization: Bearer <key>).
+Protected by ADMIN_API_KEY (X-Admin-Key header or Authorization: Bearer <key>).
+Fail-closed: requests are rejected when ADMIN_API_KEY is not configured.
 """
-import os
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from datetime import datetime
 
 from utils.redis_first_data_service import redis_first_data_service as _rds
 from utils.redis_ttl_monitor import RedisTTLMonitor
-from .portfolio_shared import limiter, logger, redis_manager, portfolio_analytics
+from .portfolio_shared import WarmTickersRequest, limiter, logger, redis_manager, portfolio_analytics, require_admin_key
 
 router = APIRouter(tags=["admin"])
-
-_ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
-
-
-def _require_admin_key(request: Request) -> None:
-    """Require X-Admin-Key or Authorization Bearer to match ADMIN_API_KEY when set."""
-    if not _ADMIN_API_KEY:
-        return
-    key_header = request.headers.get("X-Admin-Key", "").strip()
-    auth = request.headers.get("Authorization", "").strip()
-    if auth.lower().startswith("bearer "):
-        key_header = key_header or auth[7:].strip()
-    if not key_header or key_header != _ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Admin authentication required")
 
 
 @router.post("/warm-cache")
 @limiter.limit("2/hour")
-async def warm_cache(request: Request, _: None = Depends(_require_admin_key)):
+async def warm_cache(request: Request, _: None = Depends(require_admin_key)):
     """Warm up the Redis cache with Redis-first approach."""
     try:
         results = _rds.warm_cache()
@@ -40,11 +26,11 @@ async def warm_cache(request: Request, _: None = Depends(_require_admin_key)):
 
 
 @router.post("/warm-tickers")
-def warm_tickers(request: dict, _: None = Depends(_require_admin_key)):
+def warm_tickers(body: WarmTickersRequest, _: None = Depends(require_admin_key)):
     """Warm up ticker data for a list of tickers."""
     try:
-        tickers = request.get("tickers", [])
-        if not tickers or not isinstance(tickers, list):
+        tickers = body.tickers
+        if not tickers:
             raise HTTPException(status_code=400, detail="Invalid tickers list")
 
         warmed = 0
@@ -80,7 +66,7 @@ def warm_tickers(request: dict, _: None = Depends(_require_admin_key)):
 
 
 @router.get("/cache-status")
-async def get_cache_status(_: None = Depends(_require_admin_key)):
+async def get_cache_status(_: None = Depends(require_admin_key)):
     """Get cache status with Redis-first approach (async Redis when available)."""
     try:
         status = await _rds.get_cache_status_async()
@@ -93,7 +79,7 @@ async def get_cache_status(_: None = Depends(_require_admin_key)):
 
 
 @router.post("/clear-cache")
-def clear_cache(_: None = Depends(_require_admin_key)):
+def clear_cache(_: None = Depends(require_admin_key)):
     """Clear all cached data with Redis-first approach."""
     try:
         results = _rds.clear_cache()
@@ -105,7 +91,7 @@ def clear_cache(_: None = Depends(_require_admin_key)):
 
 @router.get("/cache/ttl-status")
 @limiter.limit("10/minute")
-async def get_cache_ttl_status(request: Request, _: None = Depends(_require_admin_key)):
+async def get_cache_ttl_status(request: Request, _: None = Depends(require_admin_key)):
     """Get TTL status for all cached tickers."""
     try:
         if not _rds.redis_client:
@@ -120,7 +106,7 @@ async def get_cache_ttl_status(request: Request, _: None = Depends(_require_admi
 
 @router.get("/cache/ttl-report")
 @limiter.limit("10/minute")
-async def get_cache_ttl_report(request: Request, _: None = Depends(_require_admin_key)):
+async def get_cache_ttl_report(request: Request, _: None = Depends(require_admin_key)):
     """Get human-readable TTL report."""
     try:
         if not _rds.redis_client:
@@ -138,7 +124,7 @@ async def get_cache_ttl_report(request: Request, _: None = Depends(_require_admi
 async def refresh_expiring_tickers(
     request: Request,
     days_threshold: int = Query(7, description="Refresh tickers expiring within this many days"),
-    _: None = Depends(_require_admin_key),
+    _: None = Depends(require_admin_key),
 ):
     """Refresh tickers that are expiring soon."""
     try:
@@ -171,7 +157,7 @@ async def refresh_expiring_tickers(
 async def get_expiring_tickers_list(
     request: Request,
     days_threshold: int = Query(7, description="Get tickers expiring within this many days"),
-    _: None = Depends(_require_admin_key),
+    _: None = Depends(require_admin_key),
 ):
     """Get list of tickers expiring within threshold."""
     try:
@@ -192,7 +178,7 @@ async def get_expiring_tickers_list(
 
 
 @router.post("/force-refresh-expired-data")
-def force_refresh_expired_data(_: None = Depends(_require_admin_key)):
+def force_refresh_expired_data(_: None = Depends(require_admin_key)):
     """Force refresh of expired data using Redis-first approach."""
     try:
         _rds.force_refresh_expired_data()
@@ -203,7 +189,7 @@ def force_refresh_expired_data(_: None = Depends(_require_admin_key)):
 
 
 @router.post("/smart-monthly-refresh")
-def smart_monthly_refresh(_: None = Depends(_require_admin_key)):
+def smart_monthly_refresh(_: None = Depends(require_admin_key)):
     """Smart monthly refresh using Redis-first approach."""
     try:
         result = _rds.smart_monthly_refresh()

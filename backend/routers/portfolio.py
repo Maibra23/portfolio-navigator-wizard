@@ -46,6 +46,7 @@ router = APIRouter()
 
 # Include domain-focused sub-routers
 from .admin import router as admin_router
+from .portfolio_shared import require_admin_key
 router.include_router(admin_router)
 
 # Domain routers (routes in this file are attached to these).
@@ -710,7 +711,7 @@ def get_ticker_universe():
 
 
 @portfolios_router.post("/tickers/refresh")
-def refresh_tickers():
+def refresh_tickers(_: None = Depends(require_admin_key)):
     """
     Refresh ticker lists from sources
     """
@@ -5834,7 +5835,7 @@ async def generate_strategy_comparison(strategy: str, risk_profile: str):
         return _get_static_portfolio_recommendations(risk_profile)
 
 @portfolios_router.post("/strategy-portfolios/pre-generate")
-async def pre_generate_strategy_portfolios():
+async def pre_generate_strategy_portfolios(_: None = Depends(require_admin_key)):
     """
     Pre-generate ALL strategy portfolios and store in Redis cache
     
@@ -5925,7 +5926,7 @@ async def get_strategy_portfolio_cache_status():
         }
 
 @portfolios_router.post("/strategy-portfolios/clear-cache")
-async def clear_strategy_portfolio_cache():
+async def clear_strategy_portfolio_cache(_: None = Depends(require_admin_key)):
     """
     Clear all strategy portfolio caches from Redis
     
@@ -6630,7 +6631,7 @@ async def get_ttl_status():
         raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
 
 @portfolios_router.post("/regenerate-recommendations")
-async def regenerate_recommendation_portfolios(risk_profile: str = None):
+async def regenerate_recommendation_portfolios(risk_profile: str = None, _: None = Depends(require_admin_key)):
     """
     Regenerate recommendation portfolios (regular portfolios) for specific or all risk profiles.
     Uses EnhancedPortfolioGenerator directly.
@@ -6698,7 +6699,7 @@ async def regenerate_recommendation_portfolios(risk_profile: str = None):
         raise HTTPException(status_code=500, detail=f"Failed to regenerate portfolios: {str(e)}")
 
 @portfolios_router.post("/regenerate")
-async def regenerate_all_portfolios():
+async def regenerate_all_portfolios(_: None = Depends(require_admin_key)):
     """
     Regenerate all portfolios using EnhancedPortfolioGenerator + RedisPortfolioManager
     This creates fresh portfolios across all risk profiles

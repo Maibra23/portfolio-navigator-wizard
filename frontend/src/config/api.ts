@@ -1,16 +1,19 @@
 // Use environment variable for production, empty string for development (uses Vite proxy)
 // In production (Railway), VITE_API_BASE_URL will be set to the backend URL
 // In development, empty string uses Vite proxy configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 // API v1 prefix (backend serves all portfolio endpoints under /api/v1/portfolio)
 const API_V1_PORTFOLIO = `${API_BASE_URL}/api/v1/portfolio`;
 
 export const API_ENDPOINTS = {
   // Portfolio endpoints
-  TICKER_SEARCH: (query: string, limit: number = 10) => `${API_V1_PORTFOLIO}/search-tickers?q=${encodeURIComponent(query)}&limit=${limit}`,
-  TWO_ASSET_ANALYSIS: (ticker1: string, ticker2: string) => `${API_V1_PORTFOLIO}/two-asset-analysis?ticker1=${ticker1}&ticker2=${ticker2}`,
-  RECOMMENDATIONS: (riskProfile: string) => `${API_V1_PORTFOLIO}/recommendations/${riskProfile}`,
+  TICKER_SEARCH: (query: string, limit: number = 10) =>
+    `${API_V1_PORTFOLIO}/search-tickers?q=${encodeURIComponent(query)}&limit=${limit}`,
+  TWO_ASSET_ANALYSIS: (ticker1: string, ticker2: string) =>
+    `${API_V1_PORTFOLIO}/two-asset-analysis?ticker1=${encodeURIComponent(ticker1)}&ticker2=${encodeURIComponent(ticker2)}`,
+  RECOMMENDATIONS: (riskProfile: string) =>
+    `${API_V1_PORTFOLIO}/recommendations/${riskProfile}`,
 
   // Portfolio metrics and calculation
   CALCULATE_METRICS: `${API_V1_PORTFOLIO}/calculate-metrics`,
@@ -19,7 +22,8 @@ export const API_ENDPOINTS = {
   OPTIMIZE_RISK_PARITY: `${API_V1_PORTFOLIO}/optimize/risk-parity`,
   OPTIMIZE_MEAN_VARIANCE: `${API_V1_PORTFOLIO}/optimize/mean-variance`,
   OPTIMIZE_MVO: `${API_V1_PORTFOLIO}/optimization/mvo`,
-  ELIGIBLE_TICKERS: (params?: string) => `${API_V1_PORTFOLIO}/optimization/eligible-tickers${params ? `?${params}` : ''}`,
+  ELIGIBLE_TICKERS: (params?: string) =>
+    `${API_V1_PORTFOLIO}/optimization/eligible-tickers${params ? `?${params}` : ""}`,
   TICKER_METRICS: `${API_V1_PORTFOLIO}/optimization/ticker-metrics`,
 
   // Portfolio monitoring and rebalancing
@@ -51,8 +55,9 @@ export const API_ENDPOINTS = {
 
   // Legacy endpoints (keep for backward compatibility)
   TICKERS: `${API_V1_PORTFOLIO}/tickers/available`,
-  MINI_LESSON_ANALYSIS: (testCaseId: number) => `${API_V1_PORTFOLIO}/mini-lesson/analysis/${testCaseId}`,
+  MINI_LESSON_ANALYSIS: (testCaseId: number) =>
+    `${API_V1_PORTFOLIO}/mini-lesson/analysis/${testCaseId}`,
   RISK_RETURN_ANALYSIS: `${API_V1_PORTFOLIO}/analytics/risk-return-analysis`,
   SECTOR_DISTRIBUTION: `${API_V1_PORTFOLIO}/sector-distribution/enhanced`,
   ENHANCED_SECTOR_DISTRIBUTION: `${API_V1_PORTFOLIO}/sector-distribution/enhanced`,
-} as const; 
+} as const;
