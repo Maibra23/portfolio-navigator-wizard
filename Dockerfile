@@ -49,6 +49,8 @@ EXPOSE 8000
 CMD redis-server --daemonize yes \
         --save "" \
         --appendonly no \
+        --maxmemory 128mb \
+        --maxmemory-policy allkeys-lru \
         --loglevel warning \
     && exec uvicorn main:app \
         --host 0.0.0.0 \

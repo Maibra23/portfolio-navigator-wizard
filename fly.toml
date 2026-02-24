@@ -32,7 +32,9 @@ primary_region = "arn"               # Stockholm — closest to Linnaeus Univers
     soft_limit = 50
     hard_limit = 100
 
+# Machine size: same VM runs Redis + FastAPI (numpy/pandas/scipy/reportlab).
+# 512mb = minimal (dev); 1gb = recommended production; 2gb if you see OOM or heavy background jobs.
 [[vm]]
-  memory = "512mb"
+  memory = "1gb"
   cpu_kind = "shared"
   cpus = 1
