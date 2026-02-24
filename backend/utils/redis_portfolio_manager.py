@@ -302,7 +302,7 @@ class RedisPortfolioManager:
             
             # Add rotation logic: use time-based seed for consistent rotation
             import time
-            rotation_seed = int(time.time() // 300) % len(available_portfolios)  # Rotate every 5 minutes
+            rotation_seed = int(time.time() // 60) % len(available_portfolios)  # Rotate every 1 minute
             
             # Sort portfolios by expected return (highest first) for Top Pick selection
             available_portfolios.sort(key=lambda p: p.get('expectedReturn', 0), reverse=True)
