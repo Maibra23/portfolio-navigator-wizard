@@ -1,7 +1,7 @@
 ---
+description: 
 alwaysApply: true
 ---
-Do not create any txt files or markdown files, unless requested.
 
 All new changes to a specific system must be independently tested and verified before being integrated into the overall system.
 
