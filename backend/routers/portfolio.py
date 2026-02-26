@@ -26,6 +26,7 @@ from utils.csv_export_generator import CSVExportGenerator
 from utils.shareable_link_generator import ShareableLinkGenerator
 from utils.five_year_projection import run_five_year_projection
 from utils.redis_ttl_monitor import RedisTTLMonitor
+from utils.timestamp_utils import normalize_ticker_format
 from slowapi import Limiter
 from middleware.security import get_client_ip
 from pypfopt import EfficientFrontier
@@ -10406,13 +10407,16 @@ def _enrich_export_portfolio_sectors(portfolio_list: List[Dict[str, Any]]) -> Li
     """
     Enrich normalized export positions with sector from Redis when missing/empty/Unknown.
     Preserves client-provided sector when present and non-empty. Applies ETF fallback
-    when sector remains unknown and assetType indicates ETF. Logs hydration diagnostics.
+    when sector remains unknown and assetType indicates ETF. Tries normalized ticker
+    format when primary lookup fails so tickers cached under alternate format still resolve.
+    Logs hydration diagnostics and which tickers (if any) remain unknown.
     """
     if not portfolio_list:
         return portfolio_list
     total = len(portfolio_list)
     hydrated = 0
     still_unknown = 0
+    still_unknown_tickers: List[str] = []
     out = []
     for pos in portfolio_list:
         p = dict(pos)
@@ -10432,14 +10436,66 @@ def _enrich_export_portfolio_sectors(portfolio_list: List[Dict[str, Any]]) -> Li
                         if asset_type == "etf":
                             p["sector"] = "ETF"
                         else:
+                            normalized = normalize_ticker_format(ticker)
+                            if normalized != ticker:
+                                alt_info = getattr(_rds, "_get_cached_ticker_info_fast", lambda t: None)(normalized)
+                                if not alt_info or not (alt_info.get("sector") or "").strip() or (alt_info.get("sector") or "").strip().lower() == "unknown":
+                                    try:
+                                        alt_info = _rds.get_ticker_info(normalized)
+                                    except Exception:
+                                        alt_info = None
+                                if alt_info and isinstance(alt_info, dict):
+                                    alt_sector = (alt_info.get("sector") or "").strip()
+                                    if alt_sector and alt_sector.lower() != "unknown":
+                                        p["sector"] = alt_sector
+                                        hydrated += 1
+                                    else:
+                                        p["sector"] = "Unknown"
+                                        still_unknown += 1
+                                        still_unknown_tickers.append(ticker)
+                                else:
+                                    p["sector"] = "Unknown"
+                                    still_unknown += 1
+                                    still_unknown_tickers.append(ticker)
+                            else:
+                                p["sector"] = "Unknown"
+                                still_unknown += 1
+                                still_unknown_tickers.append(ticker)
+                else:
+                    normalized = normalize_ticker_format(ticker)
+                    if normalized != ticker:
+                        alt_info = getattr(_rds, "_get_cached_ticker_info_fast", lambda t: None)(normalized)
+                        if not alt_info or not (alt_info.get("sector") or "").strip() or (alt_info.get("sector") or "").strip().lower() == "unknown":
+                            try:
+                                alt_info = _rds.get_ticker_info(normalized)
+                            except Exception:
+                                alt_info = None
+                        if alt_info and isinstance(alt_info, dict):
+                            alt_sector = (alt_info.get("sector") or "").strip()
+                            if alt_sector and alt_sector.lower() != "unknown":
+                                p["sector"] = alt_sector
+                                hydrated += 1
+                            else:
+                                if (p.get("assetType") or "").lower() == "etf":
+                                    p["sector"] = "ETF"
+                                else:
+                                    p["sector"] = "Unknown"
+                                    still_unknown += 1
+                                    still_unknown_tickers.append(ticker)
+                        else:
+                            if (p.get("assetType") or "").lower() == "etf":
+                                p["sector"] = "ETF"
+                            else:
+                                p["sector"] = "Unknown"
+                                still_unknown += 1
+                                still_unknown_tickers.append(ticker)
+                    else:
+                        if (p.get("assetType") or "").lower() == "etf":
+                            p["sector"] = "ETF"
+                        else:
                             p["sector"] = "Unknown"
                             still_unknown += 1
-                else:
-                    if (p.get("assetType") or "").lower() == "etf":
-                        p["sector"] = "ETF"
-                    else:
-                        p["sector"] = "Unknown"
-                        still_unknown += 1
+                            still_unknown_tickers.append(ticker)
             except Exception as e:
                 logger.debug("Export sector enrichment failed for %s: %s", ticker, e)
                 if (p.get("assetType") or "").lower() == "etf":
@@ -10447,17 +10503,22 @@ def _enrich_export_portfolio_sectors(portfolio_list: List[Dict[str, Any]]) -> Li
                 else:
                     p["sector"] = "Unknown"
                     still_unknown += 1
+                    still_unknown_tickers.append(ticker)
         elif is_unknown:
             if (p.get("assetType") or "").lower() == "etf":
                 p["sector"] = "ETF"
             else:
                 p["sector"] = "Unknown"
                 still_unknown += 1
+                if ticker:
+                    still_unknown_tickers.append(ticker)
         out.append(p)
     logger.info(
         "Export sector hydration: total=%d hydrated_from_cache=%d still_unknown=%d",
         total, hydrated, still_unknown,
     )
+    if still_unknown_tickers:
+        logger.info("Export sector still_unknown tickers: %s", ", ".join(still_unknown_tickers))
     return out
 
 
@@ -10512,6 +10573,50 @@ async def export_pdf(request: PDFExportRequest):
     try:
         portfolio_list = _normalize_export_portfolio(request.portfolio)
         portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
+
+        # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) are included in PDF
+        # for the peak-to-trough drawdown chart, even if user only ran one scenario interactively
+        stress_test_results = request.stressTestResults
+        if stress_test_results and request.includeSections.get('stressTest', False):
+            scenarios = stress_test_results.get('scenarios', {})
+            required_scenarios = {'covid19', '2008_crisis'}
+            present_scenarios = set(scenarios.keys())
+            missing_scenarios = required_scenarios - present_scenarios
+
+            if missing_scenarios and portfolio_list:
+                try:
+                    from utils.stress_test_analyzer import StressTestAnalyzer
+                    # Extract tickers and weights from portfolio
+                    tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
+                    weights = {h.get('ticker', h.get('symbol', '')): h.get('weight', 0) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
+
+                    # Normalize weights if needed
+                    total_weight = sum(weights.values())
+                    if total_weight > 0 and abs(total_weight - 1.0) > 0.01:
+                        weights = {t: w / total_weight for t, w in weights.items()}
+
+                    if len(tickers) >= 2 and total_weight > 0:
+                        analyzer = StressTestAnalyzer()
+                        logger.info(f"📊 PDF Export: Fetching missing stress test scenarios: {missing_scenarios}")
+
+                        for scenario in missing_scenarios:
+                            try:
+                                if scenario == 'covid19':
+                                    result = analyzer.analyze_covid19_scenario(tickers, weights)
+                                    scenarios['covid19'] = result
+                                    logger.info("✅ Added COVID-19 scenario for PDF drawdown chart")
+                                elif scenario == '2008_crisis':
+                                    result = analyzer.analyze_2008_crisis_scenario(tickers, weights)
+                                    scenarios['2008_crisis'] = result
+                                    logger.info("✅ Added 2008 Financial Crisis scenario for PDF drawdown chart")
+                            except Exception as scenario_err:
+                                logger.warning(f"⚠️ Could not fetch {scenario} for PDF: {scenario_err}")
+
+                        # Update stress test results with both scenarios
+                        stress_test_results = {**stress_test_results, 'scenarios': scenarios}
+                except Exception as stress_err:
+                    logger.warning(f"⚠️ Could not enrich stress test data for PDF: {stress_err}")
+
         # Prepare data for PDF generation
         pdf_data = {
             "portfolio": portfolio_list,
@@ -10521,7 +10626,7 @@ async def export_pdf(request: PDFExportRequest):
             "projectionMetrics": request.projectionMetrics,
             "taxData": request.taxData or {},
             "costData": request.costData or {},
-            "stressTestResults": request.stressTestResults,
+            "stressTestResults": stress_test_results,
             "portfolioValue": request.portfolioValue or 0.0,
             "accountType": request.accountType,
             "taxYear": request.taxYear or datetime.now().year,
@@ -10606,6 +10711,46 @@ async def export_csv(request: CSVExportRequest):
         portfolio_list = _normalize_export_portfolio(request.portfolio)
         portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
 
+        # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) are included
+        # for the peak-to-trough drawdown chart, even if user only ran one scenario interactively
+        stress_test_results = request.stressTestResults
+        if stress_test_results and "stressTest" in request.includeFiles:
+            scenarios = stress_test_results.get('scenarios', {})
+            required_scenarios = {'covid19', '2008_crisis'}
+            present_scenarios = set(scenarios.keys())
+            missing_scenarios = required_scenarios - present_scenarios
+
+            if missing_scenarios and portfolio_list:
+                try:
+                    from utils.stress_test_analyzer import StressTestAnalyzer
+                    tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
+                    weights = {h.get('ticker', h.get('symbol', '')): h.get('weight', 0) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
+
+                    total_weight = sum(weights.values())
+                    if total_weight > 0 and abs(total_weight - 1.0) > 0.01:
+                        weights = {t: w / total_weight for t, w in weights.items()}
+
+                    if len(tickers) >= 2 and total_weight > 0:
+                        analyzer = StressTestAnalyzer()
+                        logger.info(f"📊 CSV Export: Fetching missing stress test scenarios: {missing_scenarios}")
+
+                        for scenario in missing_scenarios:
+                            try:
+                                if scenario == 'covid19':
+                                    result = analyzer.analyze_covid19_scenario(tickers, weights)
+                                    scenarios['covid19'] = result
+                                    logger.info("✅ Added COVID-19 scenario for CSV drawdown chart")
+                                elif scenario == '2008_crisis':
+                                    result = analyzer.analyze_2008_crisis_scenario(tickers, weights)
+                                    scenarios['2008_crisis'] = result
+                                    logger.info("✅ Added 2008 Financial Crisis scenario for CSV drawdown chart")
+                            except Exception as scenario_err:
+                                logger.warning(f"⚠️ Could not fetch {scenario} for CSV: {scenario_err}")
+
+                        stress_test_results = {**stress_test_results, 'scenarios': scenarios}
+                except Exception as stress_err:
+                    logger.warning(f"⚠️ Could not enrich stress test data for CSV: {stress_err}")
+
         # Executive summary (same info as PDF Section 1) - include when we have core data
         if request.portfolioValue is not None and request.accountType and request.taxYear is not None:
             exec_csv = csv_generator.generate_executive_summary_csv(
@@ -10662,8 +10807,8 @@ async def export_csv(request: CSVExportRequest):
                 "size": len(metrics_csv.encode('utf-8'))
             })
         
-        if "stressTest" in request.includeFiles and request.stressTestResults:
-            stress_csv = csv_generator.generate_stress_test_csv(request.stressTestResults)
+        if "stressTest" in request.includeFiles and stress_test_results:
+            stress_csv = csv_generator.generate_stress_test_csv(stress_test_results)
             files.append({
                 "filename": "stress_test_results.csv",
                 "content": base64.b64encode(stress_csv.encode('utf-8')).decode('utf-8'),
@@ -10799,7 +10944,7 @@ async def export_csv(request: CSVExportRequest):
                 "portfolioName": request.portfolioName or "Investment Portfolio",
                 "includeSections": {
                     "optimization": request.optimizationResults is not None,
-                    "stressTest": request.stressTestResults is not None,
+                    "stressTest": stress_test_results is not None,
                     "goals": False,
                     "rebalancing": False,
                     "taxEducation": True,
@@ -10810,7 +10955,7 @@ async def export_csv(request: CSVExportRequest):
                 "projectionMetrics": request.projectionMetrics,
                 "taxData": request.taxData or {},
                 "costData": request.costData or {},
-                "stressTestResults": request.stressTestResults,
+                "stressTestResults": stress_test_results,
                 "portfolioValue": request.portfolioValue or 0.0,
                 "accountType": request.accountType,
                 "taxYear": request.taxYear,
