@@ -60,13 +60,15 @@ interface PortfolioBuilderProps {
   selectedStocks: PortfolioAllocation[];
   onStocksUpdate: (stocks: PortfolioAllocation[]) => void;
   onMetricsUpdate?: (metrics: PortfolioMetrics | null) => void;
-  onDone?: () => void; // Called when user clicks Done (finalize workflow)
+  onDone?: (confirmedStocks: PortfolioAllocation[]) => void; // Called when user clicks Done; passes confirmed portfolio for metrics refresh
   riskProfile: string;
   capital: number;
   minStocks?: number; // Default: 3
   maxStocks?: number; // Default: 4
   fullUniverse?: boolean; // Default: true (no risk profile filtering)
   showValidation?: boolean; // Default: true
+  showDoneButton?: boolean; // Default: true (false in recommendations "Customize" context)
+  showMetricsAfterDone?: boolean; // Default: true (false in recommendations "Customize" context)
 }
 
 export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
@@ -80,6 +82,8 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
   maxStocks = 4,
   fullUniverse = true,
   showValidation = true,
+  showDoneButton = true,
+  showMetricsAfterDone = true,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
@@ -398,7 +402,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
 
     // Calculate metrics immediately for the confirmed portfolio
     calculateMetrics(nextStocks);
-    onDone?.();
+    onDone?.(nextStocks);
   };
 
   // Progress calculation for visual feedback
@@ -732,7 +736,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       </Card>
 
       {/* Performance Metrics Card - Shows after Done */}
-      {portfolioMetrics && (
+      {showMetricsAfterDone && portfolioMetrics && (
         <Card className="border-border/60 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
@@ -786,32 +790,34 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
         </Card>
       )}
 
-      {/* Done Button - Prominent call to action */}
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          onClick={handleDone}
-          disabled={
-            !isValidStockCount ||
-            isLoadingMetrics ||
-            selectedStocks.length === 0
-          }
-          size="lg"
-          className="px-8 bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          {isLoadingMetrics ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Confirm Portfolio
-            </>
-          )}
-        </Button>
-      </div>
+      {/* Done Button - Prominent call to action (hidden in recommendations Customize context) */}
+      {showDoneButton && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={handleDone}
+            disabled={
+              !isValidStockCount ||
+              isLoadingMetrics ||
+              selectedStocks.length === 0
+            }
+            size="lg"
+            className="px-8 bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
+          >
+            {isLoadingMetrics ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Confirm Portfolio
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
