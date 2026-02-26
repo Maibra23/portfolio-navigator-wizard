@@ -46,6 +46,7 @@ Simply click the theme toggle button (☀️/🌙) in the top-right corner on th
 
 ## 📋 Table of Contents
 
+- [Project Overview (5 W's and H)](#-project-overview-5-ws-and-h)
 - [Quick Start](#quick-start)
 - [What This App Does](#what-this-app-does)
 - [Key Features](#key-features)
@@ -57,6 +58,84 @@ Simply click the theme toggle button (☀️/🌙) in the top-right corner on th
 - [Troubleshooting](#troubleshooting)
 - [Deployment](#deployment)
 - [Monitoring System](#-monitoring-system)
+
+## 📘 Project Overview (5 W's and H)
+
+**TL;DR** — Portfolio Navigator Wizard is a full-stack app that uses behavioral finance (MPT + Prospect Theory) to generate personalized investment portfolios. Frontend: React + TypeScript (port 8080). Backend: FastAPI + Redis (port 8000). Data: Alpha Vantage + Yahoo Finance. Key flow: Risk Profile → Capital → Portfolio Selection → Optimization → Stress Test → Finalize & Export.
+
+**Who** — End users (investors); optional admins (X-Admin-Key for warm-cache, cache clear). Systems: React SPA, FastAPI, Redis, Alpha Vantage, Yahoo Finance, SMTP. No Postgres/Supabase in current code.
+
+**Where** — Dev: frontend :8080, backend :8000, Redis localhost:6379; browser `/api` → Vite proxy → backend. Prod: set `VITE_API_BASE_URL` and `ALLOWED_ORIGINS`.
+
+**What** — 8-step wizard; risk profiling (MPT + Prospect Theory, 5 categories, safeguards); 60+ pre-computed portfolios in Redis; triple optimization; stress test (e.g. 2008, COVID-19); PDF/CSV export, shareable links, Swedish tax, 5-year projections.
+
+**When** — Wizard order: Welcome → Risk Profile → Capital → Stock Selection → Optimization → Stress Test → Finalize → Thank You. Background: cold-start check, TTL monitoring (5 min then every 6 h), cache regeneration (10 min then every 30 min), Redis watchdog (2 min then every 60 s).
+
+**Why** — Personalized theory-grounded recommendations; MPT + Prospect Theory; Redis-first performance; WCAG; dual theme; production-ready. Redis as single cache layer; admin key to protect admin endpoints.
+
+**How** — CORS via `ALLOWED_ORIGINS`; dev proxy in [frontend/vite.config.ts](frontend/vite.config.ts) (`/api` → 127.0.0.1:8000); [frontend/src/config/api.ts](frontend/src/config/api.ts) builds endpoints. Admin: `X-Admin-Key` / `VITE_ADMIN_API_KEY`.
+
+**System context (Mermaid):**
+
+```mermaid
+flowchart LR
+  subgraph users [Users]
+    Browser[Browser]
+  end
+  subgraph app [Application]
+    Frontend[React App :8080]
+    Backend[FastAPI :8000]
+  end
+  subgraph data [Data]
+    Redis[(Redis)]
+  end
+  subgraph external [External]
+    AlphaVantage[Alpha Vantage]
+    Yahoo[Yahoo Finance]
+    SMTP[SMTP]
+  end
+  Browser <--> Frontend
+  Frontend -->|"/api" proxy| Backend
+  Backend <--> Redis
+  Backend --> AlphaVantage
+  Backend --> Yahoo
+  Backend --> SMTP
+```
+
+**User journey (Mermaid):**
+
+```mermaid
+flowchart LR
+  W[Welcome] --> R[Risk Profile]
+  R --> C[Capital]
+  C --> S[Stock Selection]
+  S -->|GET /recommendations/profile| S
+  S --> O[Optimization]
+  O -->|POST /optimization/triple| O
+  O --> T[Stress Test]
+  T -->|POST /stress-test| T
+  T --> F[Finalize]
+  F -->|POST /export/pdf or /export/csv| F
+  F --> Y[Thank You]
+```
+
+**API examples:**
+
+1. **Recommendations:** `GET /api/v1/portfolio/recommendations/moderate` → JSON array of portfolios (tickers, weights, metrics).
+2. **Stress test:** `POST /api/v1/portfolio/stress-test` with body `{"tickers": ["AAPL","MSFT","GOOGL"], "weights": {"AAPL": 0.4, "MSFT": 0.35, "GOOGL": 0.25}, "scenarios": ["covid19","2008_crisis"], "capital": 8000, "risk_profile": "moderate"}` → `portfolio_summary`, `scenarios`, `resilience_score`, `overall_assessment`.
+3. **Export PDF:** `POST /api/v1/portfolio/export/pdf` with body `{"portfolio": [...], "includeSections": {...}, "portfolioValue": 100000, ...}` → binary PDF.
+
+**Redis key patterns (reference only; do not delete):** `ticker_data:{data_type}:{ticker}` (e.g. `ticker_data:prices:AAPL`); `portfolio_bucket:{risk_profile}`; `optimization:eligible_tickers:{hash}`; `strategy_portfolio:*`.
+
+**Environment:** Backend: REDIS_URL, ALLOWED_ORIGINS, ALPHA_VANTAGE_API_KEY, ADMIN_API_KEY, TTL_*, SMTP_*, ENVIRONMENT. Frontend: VITE_API_BASE_URL (empty in dev), VITE_ADMIN_API_KEY, VITE_ENVIRONMENT.
+
+**Security & errors:** X-Admin-Key (hmac.compare_digest); rate limiting (Redis-backed); CORS (ALLOWED_ORIGINS); Pydantic validation. What can go wrong: Redis down (health fail, cold start, watchdog email); Alpha Vantage rate limits (fallback to Yahoo/cache); SMTP fail (no alerts); cache miss (cold start, slower first requests).
+
+**Recent changes:** PDF charts 300 DPI and unified palette ([backend/utils/pdf_report_generator.py](backend/utils/pdf_report_generator.py)); stress scenarios 2008 + COVID-19 ([backend/utils/stress_test_analyzer.py](backend/utils/stress_test_analyzer.py)); email sender "Portfolio-wizard App" ([backend/utils/email_notifier.py](backend/utils/email_notifier.py)).
+
+**File reference:** [backend/main.py](backend/main.py), [backend/routers/portfolio.py](backend/routers/portfolio.py), [backend/routers/strategy_buckets.py](backend/routers/strategy_buckets.py), [backend/routers/admin.py](backend/routers/admin.py), [backend/utils/redis_first_data_service.py](backend/utils/redis_first_data_service.py), [backend/utils/redis_portfolio_manager.py](backend/utils/redis_portfolio_manager.py), [backend/utils/enhanced_data_fetcher.py](backend/utils/enhanced_data_fetcher.py), [backend/utils/portfolio_mvo_optimizer.py](backend/utils/portfolio_mvo_optimizer.py), [backend/utils/stress_test_analyzer.py](backend/utils/stress_test_analyzer.py), [backend/utils/pdf_report_generator.py](backend/utils/pdf_report_generator.py), [backend/utils/email_notifier.py](backend/utils/email_notifier.py), [frontend/src/App.tsx](frontend/src/App.tsx), [frontend/src/components/PortfolioWizard.tsx](frontend/src/components/PortfolioWizard.tsx), [frontend/src/components/wizard/](frontend/src/components/wizard/), [frontend/src/config/api.ts](frontend/src/config/api.ts), [frontend/vite.config.ts](frontend/vite.config.ts).
+
+---
 
 ## 🚀 Quick Start
 

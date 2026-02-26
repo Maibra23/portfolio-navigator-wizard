@@ -136,6 +136,12 @@ class PDFReportGenerator:
         'text': '#1f2937',
     }
 
+    # Stress test scenarios to include in PDF (only these two historical crises)
+    ALLOWED_STRESS_SCENARIOS = {
+        '2008_financial_crisis', 'financial_crisis_2008', 'financial_crisis',
+        '2020_covid_crash', 'covid_crash', 'covid_2020', 'covid',
+    }
+
     def __init__(self):
         self.page_size = A4
         self.styles = getSampleStyleSheet()
@@ -689,6 +695,18 @@ class PDFReportGenerator:
                 if isinstance(value, (int, float)):
                     return float(value)
         return None
+
+    def _is_allowed_stress_scenario(self, scenario_name: str) -> bool:
+        """Check if scenario should be included in PDF (only COVID and 2008 Financial Crisis)."""
+        normalized = scenario_name.lower().replace(' ', '_').replace('-', '_')
+        return normalized in self.ALLOWED_STRESS_SCENARIOS
+
+    def _filter_stress_scenarios(self, scenarios: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter scenarios to only include COVID and 2008 Financial Crisis."""
+        return {
+            name: data for name, data in scenarios.items()
+            if self._is_allowed_stress_scenario(name)
+        }
 
     # ── Plot helpers ──────────────────────────────────────────────────────────
 
@@ -1542,7 +1560,8 @@ class PDFReportGenerator:
                     self.styles['InsightCallout'],
                 ))
                 story.append(Spacer(1, self.SPACE_AFTER_PARAGRAPH * inch))
-            scenarios = stress.get('scenarios') or stress.get('scenario_results') or {}
+            all_scenarios = stress.get('scenarios') or stress.get('scenario_results') or {}
+            scenarios = self._filter_stress_scenarios(all_scenarios)
             if scenarios:
                 summary_rows = [['Scenario', 'Estimated Impact', 'Interpretation']]
                 for scenario_name, scenario_data in scenarios.items():
@@ -1574,8 +1593,8 @@ class PDFReportGenerator:
                     ))
                     story.append(Spacer(1, self.SPACE_TIGHT * inch))
                     story.append(Paragraph(
-                        "Interpretation: double-digit downside in crisis scenarios indicates meaningful drawdown risk; "
-                        "consider reducing concentration or adding defensive exposure if this exceeds your tolerance.",
+                        "This analysis shows how your portfolio would have performed during the 2008 Financial Crisis and 2020 COVID-19 crash. "
+                        "Double-digit drawdowns indicate meaningful risk exposure; consider diversification if this exceeds your tolerance.",
                         self.styles['MethodologyBody'],
                     ))
                     story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
@@ -1645,7 +1664,7 @@ class PDFReportGenerator:
                         story.append(chart_img)
                         story.append(Spacer(1, self.SPACE_AFTER_FIGURE * inch))
                         story.append(Paragraph(
-                            "Peak-to-Trough Drawdown: Each bar shows the magnitude of portfolio loss (peak to trough) under that historical crisis. Longer bars indicate larger losses. Resilience scores below 50 suggest the portfolio may suffer large drawdowns in stress events; consider reducing concentration or adding defensive exposure.",
+                            "Peak-to-Trough Drawdown: Shows how much your portfolio would have fallen from peak to trough during the 2008 Financial Crisis and 2020 COVID-19 crash. These represent two of the most severe market downturns in recent history, providing a realistic stress test of portfolio resilience.",
                             self.styles['FigureCaption'],
                         ))
                         story.append(Spacer(1, self.SPACE_AFTER_CAPTION * inch))

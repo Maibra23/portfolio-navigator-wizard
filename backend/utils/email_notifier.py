@@ -161,7 +161,7 @@ def send_notification(
 
         mime = MIMEMultipart("alternative")
         mime["Subject"] = f"[{msg.severity}] {msg.title}"
-        mime["From"] = user
+        mime["From"] = f"Portfolio-wizard App <{user}>"
         mime["To"] = to_addr
 
         mime.attach(MIMEText(_build_plain_body(msg), "plain", "utf-8"))
