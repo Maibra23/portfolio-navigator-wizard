@@ -13,7 +13,6 @@ import {
   Shield,
   TrendingUp,
   Award,
-  BarChart3,
   Activity,
   AlertCircle,
   LineChart,
@@ -651,7 +650,7 @@ export const MonteCarloCard = ({
     <Card className="border-2 border-blue-200">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-blue-600" />
+          <Activity className="h-5 w-5 text-blue-600" />
           Monte Carlo Risk Analysis
         </CardTitle>
         <p className="text-sm text-muted-foreground">

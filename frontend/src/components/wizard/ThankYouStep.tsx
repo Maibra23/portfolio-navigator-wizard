@@ -1,19 +1,31 @@
-import { useEffect, useState, useRef } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowLeft, RotateCcw } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import { useEffect, useState, useRef } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { StepCardHeader } from "@/components/wizard/StepCardHeader";
+import { StepHeaderIcon } from "@/components/wizard/StepHeaderIcon";
+import { Button } from "@/components/ui/button";
+import { CheckCircle, ArrowLeft, RotateCcw } from "lucide-react";
+import confetti from "canvas-confetti";
 
 const REDIRECT_SECONDS = 30;
 
-const CONFETTI_COLORS = ['#2563eb', '#3b82f6', '#16a34a', '#22c55e', '#6366f1', '#8b5cf6'];
+const CONFETTI_COLORS = [
+  "#2563eb",
+  "#3b82f6",
+  "#16a34a",
+  "#22c55e",
+  "#6366f1",
+  "#8b5cf6",
+];
 
 interface ThankYouStepProps {
   onBackToSummary: () => void;
   onStartOver: () => void;
 }
 
-export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps) => {
+export const ThankYouStep = ({
+  onBackToSummary,
+  onStartOver,
+}: ThankYouStepProps) => {
   const hasTriggeredConfetti = useRef(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [autoRedirectEnabled, setAutoRedirectEnabled] = useState(true);
@@ -32,8 +44,16 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
       });
     };
     fire({});
-    const t2 = setTimeout(() => fire({ particleCount: 50, spread: 100, origin: { x: 0.25, y: 0.6 } }), 150);
-    const t3 = setTimeout(() => fire({ particleCount: 50, spread: 100, origin: { x: 0.75, y: 0.6 } }), 300);
+    const t2 = setTimeout(
+      () =>
+        fire({ particleCount: 50, spread: 100, origin: { x: 0.25, y: 0.6 } }),
+      150,
+    );
+    const t3 = setTimeout(
+      () =>
+        fire({ particleCount: 50, spread: 100, origin: { x: 0.75, y: 0.6 } }),
+      300,
+    );
     return () => {
       clearTimeout(t2);
       clearTimeout(t3);
@@ -67,22 +87,18 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
   return (
     <div className="max-w-4xl mx-auto">
       <Card>
-        <CardHeader className="text-center pb-2">
-          <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-2 border border-border">
-            <CheckCircle className="h-6 w-6 text-foreground" aria-hidden />
-          </div>
-          <h2 className="text-xl font-semibold text-foreground mb-1">Thank you</h2>
-          <p className="text-muted-foreground text-sm max-w-xl mx-auto">
-            You have completed the Portfolio Navigator Wizard. Your portfolio is set up and you can export your report anytime from the Tax & Summary step.
-          </p>
-        </CardHeader>
+        <StepCardHeader
+          icon={<StepHeaderIcon icon={CheckCircle} size="lg" />}
+          title="Thank you"
+          subtitle="You have completed the Portfolio Navigator Wizard. Your portfolio is set up and you can export your report anytime from the Tax & Summary step."
+        />
         <CardContent className="text-center space-y-3 pt-0">
           <p className="text-sm font-medium text-foreground">
             Good luck with your investments.
           </p>
           {autoRedirectEnabled && countdown !== null && countdown > 0 && (
             <p className="text-xs text-muted-foreground">
-              Starting over in {countdown} seconds.{' '}
+              Starting over in {countdown} seconds.{" "}
               <button
                 type="button"
                 onClick={handleStayHere}
@@ -93,7 +109,11 @@ export const ThankYouStep = ({ onBackToSummary, onStartOver }: ThankYouStepProps
             </p>
           )}
           <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
-            <Button variant="outline" onClick={onBackToSummary} className="gap-2">
+            <Button
+              variant="outline"
+              onClick={onBackToSummary}
+              className="gap-2"
+            >
               <ArrowLeft className="h-4 w-4" />
               Back to summary
             </Button>

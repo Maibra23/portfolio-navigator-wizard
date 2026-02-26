@@ -12,7 +12,7 @@
 3. [Practical Workflow](#practical-workflow)
 4. [Deployment Usage](#deployment-usage)
 5. [Automation Strategies](#automation-strategies)
-6. [Enhanced Slack Notifications](#enhanced-slack-notifications)
+6. [Enhanced Email Notifications](#enhanced-slack-notifications)
 
 ---
 
@@ -309,7 +309,7 @@ curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 **Automated Alternative** (recommended):
 - Just deploy and wait
 - TTL monitoring background task runs automatically
-- Slack notification confirms completion
+- email notification confirms completion
 - No manual intervention needed
 
 ---
@@ -323,7 +323,7 @@ curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 Nothing to do!
 - TTL monitoring runs every 24 hours automatically
 - Auto-refreshes critical/expired tickers
-- Slack notifications keep you informed
+- email notifications keep you informed
 ```
 
 **Option B: Manual Monthly Refresh**
@@ -423,7 +423,7 @@ curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-cache"
 
 **Phase 3: Verify (5 mins)**
 ```bash
-# Check Slack for TTL status notification
+# Check email for TTL status notification
 # Or manually check:
 curl "$BACKEND_URL/api/v1/portfolio/cache/ttl-status"
 
@@ -447,7 +447,7 @@ The background task in `backend/main.py` automatically:
 
 1. **Runs every 24 hours**
 2. **Checks TTL status** of all tickers
-3. **Sends Slack notification** with:
+3. **Sends email notification** with:
    - TTL status breakdown
    - Redis storage statistics (NEW!)
    - Key distribution
@@ -458,9 +458,9 @@ The background task in `backend/main.py` automatically:
 
 **Configuration** (already in .env.example):
 ```bash
-TTL_SLACK_NOTIFICATIONS=true
-TTL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-TTL_SLACK_CHANNEL=#redis-alerts
+TTL_EMAIL_NOTIFICATIONS=true
+TTL_NOTIFICATION_EMAIL=your@email.com, SMTP_USER, SMTP_PASSWORD (see .env.example)
+TTL_NOTIFICATION_EMAIL=#redis-alerts
 ```
 
 ---
@@ -474,7 +474,7 @@ TTL_SLACK_CHANNEL=#redis-alerts
 **How it works**:
 - TTL monitoring runs every 24 hours
 - Auto-refreshes tickers when needed
-- Slack alerts if issues
+- email alerts if issues
 - No manual intervention
 
 **Pros**:
@@ -532,7 +532,7 @@ jobs:
 **Setup**: Manual curl commands
 
 **Workflow**:
-1. Check Slack for TTL alerts
+1. Check email for TTL alerts
 2. If warning, run refresh command
 3. Verify via TTL status
 
@@ -550,7 +550,7 @@ jobs:
 
 ---
 
-## Enhanced Slack Notifications
+## Enhanced Email Notifications
 
 ### What You'll Receive
 
@@ -686,13 +686,13 @@ curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-tickers" \
 
 ---
 
-### Issue: No Slack notifications
+### Issue: No email notifications
 
 **Check**:
 1. Environment variables set correctly
 2. Webhook URL valid
-3. Backend logs for "Slack notification sent"
-4. Slack channel permissions
+3. Backend logs for "email notification sent"
+4. email inbox permissions
 
 **Test**:
 ```bash
@@ -708,7 +708,7 @@ Your ticker update system is:
 
 ✅ **Automated** - Background TTL monitoring
 ✅ **Intelligent** - Smart refresh only fetches new data
-✅ **Monitored** - Slack notifications with detailed stats
+✅ **Monitored** - email notifications with detailed stats
 ✅ **Flexible** - Multiple update strategies
 ✅ **Efficient** - Minimal API usage
 ✅ **Self-healing** - Auto-refresh of critical tickers

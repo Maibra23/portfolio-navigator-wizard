@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Building2,
   Sparkles,
+  Wallet,
 } from "lucide-react";
 
 export interface PortfolioAllocation {
@@ -496,7 +497,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-md bg-emerald-500/10">
-                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <Wallet className="h-4 w-4 text-emerald-600" />
               </div>
               <CardTitle className="text-sm font-semibold">
                 Your Portfolio

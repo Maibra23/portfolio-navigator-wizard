@@ -9,6 +9,7 @@
 #   REDIS_URL=redis://localhost:6379   (already set below — matches bundled Redis)
 #   ALLOWED_ORIGINS=https://yourdomain.com
 #   ADMIN_API_KEY=<strong-random-key>
+#   For email alerts: TTL_EMAIL_NOTIFICATIONS, TTL_NOTIFICATION_EMAIL, SMTP_USER, SMTP_PASSWORD
 #   See backend/.env.example for full list
 
 FROM python:3.11-slim

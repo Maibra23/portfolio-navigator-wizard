@@ -31,7 +31,7 @@ A **ticker** is a stock symbol (like `AAPL` for Apple, `MSFT` for Microsoft). Yo
 2. Deployed Redis database ✓
 3. Deployed Backend (Python/FastAPI) ✓
 4. Deployed Frontend (React) ✓
-5. Connected Slack notifications ✓
+5. Connected email notifications ✓
 ```
 
 **Current state:**
@@ -76,7 +76,7 @@ curl -X POST https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
 4. Takes ~90 minutes because that's a LOT of data!
 
 **How to know it's done:**
-- You'll receive a Slack notification (if configured)
+- You'll receive a email notification (if configured)
 - Or check status: `https://your-backend-url.railway.app/api/v1/portfolio/cache-status`
 
 ---
@@ -107,7 +107,7 @@ https://your-backend-url.railway.app/api/v1/portfolio/cache-status
 
 ---
 
-## 🔔 Step 3: Slack Notifications (Set It and Forget It)
+## 🔔 Step 3: Email Notifications (Set It and Forget It)
 
 ### What You'll Receive
 
@@ -145,7 +145,7 @@ Missing Metrics: 19
 - **Auto-fix:** System will auto-refresh when critical
 
 **🚨 CRITICAL (Red) - "Data expiring within 1 day"**
-- **Action:** System auto-refreshes, but check Slack
+- **Action:** System auto-refreshes, but check email
 - **Meaning:** Some tickers need immediate refresh
 - **Auto-fix:** Already triggered automatically!
 
@@ -165,7 +165,7 @@ Missing Metrics: 19
 Your app automatically:
 - ✅ Checks TTL status every 24 hours
 - ✅ Refreshes tickers when they expire within 1 day
-- ✅ Sends Slack notifications to keep you informed
+- ✅ Sends email notifications to keep you informed
 - ✅ Logs everything for troubleshooting
 
 **This is already running!** It started the moment you deployed.
@@ -177,7 +177,7 @@ Your app automatically:
 **When you might want to manually refresh:**
 - You added new tickers to the master list
 - You want the latest month's data immediately
-- Slack alerted you to issues and auto-refresh failed
+- Email alerted you to issues and auto-refresh failed
 
 **How to manually refresh:**
 
@@ -256,11 +256,11 @@ https://your-backend-url.railway.app/api/v1/portfolio/warm-cache
 ### Daily: Do Nothing! 🎉
 - Automatic TTL monitoring runs at 6 AM (or 5 min after deploy)
 - Auto-refreshes critical tickers
-- Sends Slack notifications
+- Sends email notifications
 
 ### Weekly: Quick Check (2 minutes)
 ```bash
-# Check Slack for any WARNING or CRITICAL alerts
+# Check email for any WARNING or CRITICAL alerts
 # If all INFO alerts, you're good! ✅
 ```
 
@@ -299,7 +299,7 @@ curl https://your-backend-url.railway.app/api/v1/portfolio/cache-status
 
 ---
 
-### Scenario 2: "Slack says WARNING - 120 tickers expiring"
+### Scenario 2: "email says WARNING - 120 tickers expiring"
 
 **What it means:** Some tickers will expire in 7 days
 
@@ -319,7 +319,7 @@ Option B: Refresh early (proactive)
 
 ---
 
-### Scenario 3: "Slack says CRITICAL - 45 tickers expiring within 1 day"
+### Scenario 3: "email says CRITICAL - 45 tickers expiring within 1 day"
 
 **What it means:** Auto-refresh should have already triggered
 
@@ -500,9 +500,9 @@ Healthy (>= 14 days): 1,312
 3. Go to "Variables" tab
 4. Add these variables:
    ```
-   TTL_SLACK_NOTIFICATIONS=true
-   TTL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-   TTL_SLACK_CHANNEL=#redis-alerts
+   TTL_EMAIL_NOTIFICATIONS=true
+   TTL_NOTIFICATION_EMAIL=your@email.com, SMTP_USER, SMTP_PASSWORD (see .env.example)
+   TTL_NOTIFICATION_EMAIL=#redis-alerts
    ```
 5. Backend automatically redeploys
 6. Wait 5 minutes - you'll get your first notification!
@@ -515,28 +515,28 @@ Healthy (>= 14 days): 1,312
 ```
 1. Deploy to Railway ✓
 2. Warm cache (90 minutes)
-3. Verify via Slack notification
+3. Verify via email notification
 4. Done! ✅
 ```
 
 ### Day 2-30 (Automated):
 ```
 - Automatic TTL monitoring running
-- Slack notifications every 24 hours
+- email notifications every 24 hours
 - Auto-refresh of critical tickers
 - You do: Nothing! 🎉
 ```
 
 ### Monthly (Optional):
 ```
-- Review Slack alerts
+- Review email alerts
 - Optional: Run smart-refresh
 - Check Railway costs
 ```
 
 ### When Issues Arise (Rare):
 ```
-- Check Slack alert
+- Check email alert
 - Check cache-status
 - Manually refresh if needed
 - 99% of the time: Auto-refresh already fixed it
@@ -549,7 +549,7 @@ Healthy (>= 14 days): 1,312
 ### Q: How often should I manually refresh?
 **A:** Never! The automatic system handles it. Only refresh manually if:
 - Initial deployment (warm-cache once)
-- Slack alerts you to a CRITICAL issue
+- email alerts you to a CRITICAL issue
 - You're adding new tickers
 
 ### Q: What if I forget to refresh?
@@ -615,4 +615,4 @@ curl -X POST "$BACKEND_URL/api/v1/portfolio/warm-cache"
 
 Remember: The system is designed to run itself. You just monitor Slack and enjoy your deployment! ☕
 
-Questions? Check the guides above or review Slack notifications for system status.
+Questions? Check the guides above or review email notifications for system status.

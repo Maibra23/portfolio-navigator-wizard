@@ -1,8 +1,9 @@
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { AlertCircle } from 'lucide-react';
+import React from "react";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { StepCardHeader } from "@/components/wizard/StepCardHeader";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { HelpCircle } from "lucide-react";
 
 interface ConfirmationModalProps {
   category: string;
@@ -17,10 +18,10 @@ const ExtremeProfileModalContent = {
   title: "Please Confirm Your Profile",
   body: "Your responses indicate a Very {category} approach. This is less common—about 10% of investors fall into this category.",
   options: {
-    confirm: { label: "Yes, this reflects my preferences", action: 'confirm' },
-    review: { label: "I'd like to review my answers", action: 'review' },
-    showDescription: { label: "I'm not sure", action: 'showDescription' }
-  }
+    confirm: { label: "Yes, this reflects my preferences", action: "confirm" },
+    review: { label: "I'd like to review my answers", action: "review" },
+    showDescription: { label: "I'm not sure", action: "showDescription" },
+  },
 } as const;
 
 export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
@@ -29,22 +30,25 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   onConfirm,
   onReview,
   onShowDescription,
-  className
+  className,
 }) => {
   if (!isOpen) return null;
 
-  const bodyText = ExtremeProfileModalContent.body.replace('{category}', category);
+  const bodyText = ExtremeProfileModalContent.body.replace(
+    "{category}",
+    category,
+  );
 
   return (
     <Card className={cn("w-full border border-border", className)}>
-      <CardHeader className="text-center pb-2">
-        <div className="mx-auto w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-4">
-          <AlertCircle className="h-6 w-6 text-blue-600" />
-        </div>
-        <CardTitle className="text-xl font-bold text-foreground">
-          {ExtremeProfileModalContent.title}
-        </CardTitle>
-      </CardHeader>
+      <StepCardHeader
+        icon={
+          <div className="mx-auto w-12 h-12 bg-blue-50 dark:bg-blue-950/40 rounded-full flex items-center justify-center">
+            <HelpCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          </div>
+        }
+        title={ExtremeProfileModalContent.title}
+      />
       <CardContent className="text-center space-y-4">
         <p className="text-muted-foreground text-sm leading-relaxed">
           {bodyText}

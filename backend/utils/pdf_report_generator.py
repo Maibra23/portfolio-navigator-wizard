@@ -49,7 +49,7 @@ FRONT_MATTER_PAGES = 3
 
 
 class PageNumCanvas(canvas.Canvas):
-    """Canvas that adds page numbers: Roman (i, ii, iii) for front matter, Arabic for body."""
+    """Minimal professional header (report name + date) and clean footer (Page X of Y)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,30 +61,31 @@ class PageNumCanvas(canvas.Canvas):
 
     def save(self):
         page_count = len(self.pages)
+        report_date = datetime.now().strftime("%Y-%m-%d")
         for page in self.pages:
             self.__dict__.update(page)
-            self.draw_page_info(page_count)
+            self.draw_page_info(page_count, report_date)
             super().showPage()
         super().save()
 
-    def draw_page_info(self, page_count):
-        self.setFont("Helvetica", 7)
-        self.setStrokeColor(colors.HexColor('#e2e8f0'))
+    def draw_page_info(self, page_count: int, report_date: str):
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor('#374151'))
+        self.drawString(40, 802, "Portfolio Analysis Report")
+        self.drawRightString(555, 802, report_date)
+        self.setStrokeColor(colors.HexColor('#e5e7eb'))
         self.setLineWidth(0.5)
-        self.line(40, 38, 555, 38)
-        self.line(40, 805, 555, 805)
-        self.setFillColor(colors.HexColor('#718096'))
+        self.line(40, 798, 555, 798)
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor('#6b7280'))
         if self._pageNumber <= FRONT_MATTER_PAGES:
             roman_num = ['i', 'ii', 'iii'][self._pageNumber - 1]
-            self.drawRightString(555, 25, roman_num)
+            self.drawRightString(555, 22, roman_num)
         else:
             body_num = self._pageNumber - FRONT_MATTER_PAGES
             body_total = page_count - FRONT_MATTER_PAGES
-            self.drawRightString(555, 25, f"Page {body_num} of {body_total}")
-        self.drawString(40, 25, "Portfolio Analysis Report")
-        self.drawString(40, 812, "Portfolio Navigator Wizard")
-        report_date = datetime.now().strftime("%Y-%m-%d")
-        self.drawRightString(555, 812, report_date)
+            self.drawRightString(555, 22, f"Page {body_num} of {body_total}")
+        self.line(40, 42, 555, 42)
 
 
 class PDFReportGenerator:
@@ -134,16 +135,24 @@ class PDFReportGenerator:
     # ── Spacing helpers ───────────────────────────────────────────────────────
 
     def _sp(self, space_type: str) -> Spacer:
-        """Return a Spacer for the given context type (academic spacing)."""
+        """Return a Spacer for the given context type (institutional spacing)."""
         mapping = {
             'section':   self.SPACE_BEFORE_SECTION * inch,
-            'header':    self.SPACE_AFTER_SECTION_HEADER * inch,
-            'table':     self.SPACE_AFTER_TABLE * inch,
-            'chart':     self.SPACE_AFTER_CHART * inch,
-            'caption':   self.SPACE_AFTER_CAPTION * inch,
-            'tight':     self.SPACE_TIGHT * inch,
+            'header':   self.SPACE_AFTER_SECTION_HEADER * inch,
+            'paragraph': self.SPACE_AFTER_PARAGRAPH * inch,
+            'table_before': self.SPACE_BEFORE_TABLE * inch,
+            'table':    self.SPACE_AFTER_TABLE * inch,
+            'figure_before': self.SPACE_BEFORE_FIGURE * inch,
+            'figure':   self.SPACE_AFTER_FIGURE * inch,
+            'caption':  self.SPACE_AFTER_CAPTION * inch,
+            'chart':    self.SPACE_AFTER_CHART * inch,
+            'tight':    self.SPACE_TIGHT * inch,
         }
         return Spacer(1, mapping.get(space_type, self.SPACE_AFTER_TABLE * inch))
+
+    def _append_spacer(self, story: list, space_type: str) -> None:
+        """Append a standard spacer to the story for consistent vertical rhythm."""
+        story.append(self._sp(space_type))
 
     def _start_major_section(self, story: list, section_num: int, title: str, force_new_page: bool = False) -> None:
         """Begin a major numbered section. Use force_new_page=True for data-heavy sections (3, 5, 7)."""
@@ -159,26 +168,96 @@ class PDFReportGenerator:
         story.append(Paragraph(title, self.styles['SubsectionHeading']))
         story.append(Spacer(1, self.SPACE_AFTER_SUBSECTION_HEADER * inch))
 
-    def _generate_front_matter(self, data: Dict[str, Any]) -> List:
-        """Generate academic front matter: page i title, page ii TOC + lists, page iii disclaimer/definitions."""
+    def _generate_executive_dashboard(self, data: Dict[str, Any]) -> List:
+        """First-page dashboard: title, KPI cards (Value, Expected Return, Risk, Sharpe), allocation visual, performance summary."""
         story = []
         portfolio_name = (data.get('portfolioName') or 'Investment Portfolio').strip()
         title_case_name = portfolio_name.title() if portfolio_name else 'Investment Portfolio'
         report_date = datetime.now().strftime("%B %d, %Y")
-        report_id = f"{portfolio_name[:2].upper()}-{datetime.now().strftime('%Y%m%d-%H%M')}" if len(portfolio_name) >= 2 else f"RP-{datetime.now().strftime('%Y%m%d-%H%M')}"
+        portfolio_value = data.get('portfolioValue', 0.0)
+        metrics = data.get('metrics') or {}
+        exp_ret = data.get('expectedReturn') if 'expectedReturn' in data else metrics.get('expectedReturn')
+        risk_val = data.get('risk') if 'risk' in data else metrics.get('risk')
+        sharpe_val = data.get('sharpeRatio') if 'sharpeRatio' in data else metrics.get('sharpeRatio')
 
-        # Page i: Title
-        story.append(Spacer(1, 2.5 * inch))
+        story.append(Spacer(1, 0.8 * inch))
         story.append(Paragraph("Portfolio Analysis Report", self.styles['TitlePageMain']))
-        story.append(Spacer(1, 0.3 * inch))
+        story.append(Spacer(1, 0.15 * inch))
         story.append(Paragraph(title_case_name, self.styles['TitlePageSubtitle']))
-        story.append(Spacer(1, 1.5 * inch))
-        story.append(Paragraph("Prepared by:", self.styles['TitlePageBody']))
-        story.append(Paragraph("Portfolio Navigator Wizard", self.styles['TitlePageBody']))
-        story.append(Spacer(1, 1.0 * inch))
+        story.append(Spacer(1, 0.2 * inch))
         story.append(Paragraph(f"Report Date: {report_date}", self.styles['TitlePageDate']))
-        story.append(Paragraph(f"Report ID: {report_id}", self.styles['TitlePageID']))
+        story.append(Spacer(1, 0.35 * inch))
+
+        kpi_data = [
+            ['Value', 'Expected Return', 'Risk (Vol)', 'Sharpe Ratio'],
+            [
+                self._format_number(portfolio_value, decimals=0, currency=True),
+                self._format_percentage(exp_ret) if exp_ret is not None else 'N/A',
+                self._format_percentage(risk_val) if risk_val is not None else 'N/A',
+                self._format_number(sharpe_val, decimals=3) if sharpe_val is not None else 'N/A',
+            ],
+        ]
+        kpi_table = self._create_table(kpi_data, col_widths=[1.5 * inch] * 4, ultra_compact=True)
+        story.append(kpi_table)
+        story.append(Spacer(1, 0.3 * inch))
+
+        portfolio = data.get('portfolio', [])
+        if portfolio and MPL_AVAILABLE:
+            try:
+                sector_weights = {}
+                for pos in portfolio:
+                    alloc = pos.get('allocation', 0.0)
+                    if alloc > 1:
+                        alloc = alloc / 100.0
+                    sector = pos.get('sector', 'Unknown')
+                    sector_weights[sector] = sector_weights.get(sector, 0.0) + alloc
+                has_real_sectors = sector_weights and any(s != 'Unknown' for s in sector_weights.keys())
+                plt.figure(figsize=(4, 2.2))
+                if has_real_sectors:
+                    labels = list(sector_weights.keys())
+                    sizes = list(sector_weights.values())
+                    plt.pie(sizes, labels=labels, autopct='%1.0f%%', startangle=140,
+                            colors=plt.cm.Paired(range(len(labels))), textprops={'fontsize': 6})
+                    plt.title('Allocation Overview', fontsize=8, fontweight='bold')
+                else:
+                    ticker_labels = []
+                    ticker_sizes = []
+                    for pos in portfolio:
+                        a = pos.get('allocation', 0.0)
+                        if a > 1:
+                            a = a / 100.0
+                        if a > 0:
+                            ticker_labels.append(pos.get('ticker', pos.get('symbol', 'N/A')))
+                            ticker_sizes.append(a)
+                    if ticker_labels and ticker_sizes:
+                        plt.pie(ticker_sizes, labels=ticker_labels, autopct='%1.0f%%', startangle=140,
+                                colors=plt.cm.Paired(range(len(ticker_labels))), textprops={'fontsize': 5})
+                        plt.title('Holdings Allocation', fontsize=8, fontweight='bold')
+                    else:
+                        plt.close()
+                        raise ValueError("No allocation data")
+                plt.axis('equal')
+                plt.tight_layout(pad=0.3)
+                chart_img = self._generate_plot(plt, width=4, height=2.2)
+                story.append(chart_img)
+                story.append(Spacer(1, 0.2 * inch))
+            except Exception as e:
+                logger.warning(f"Dashboard allocation chart skipped: {e}")
+
+        story.append(Paragraph(
+            "This report summarizes portfolio composition, Swedish tax impact, optimization results, "
+            "and risk metrics. See following sections for methodology, detailed tables, and projections.",
+            self.styles['MethodologyBody'],
+        ))
+        story.append(Spacer(1, 0.25 * inch))
+        story.append(Paragraph("Prepared by Portfolio Navigator Wizard", self.styles['TitlePageID']))
         story.append(PageBreak())
+        return story
+
+    def _generate_front_matter(self, data: Dict[str, Any]) -> List:
+        """Front matter: page i executive dashboard, page ii TOC + lists, page iii disclaimer/definitions."""
+        story = []
+        story.extend(self._generate_executive_dashboard(data))
 
         # Page ii: TOC
         story.append(Spacer(1, 1.5 * inch))
@@ -266,8 +345,8 @@ class PDFReportGenerator:
     # ── Style setup ───────────────────────────────────────────────────────────
 
     def _setup_custom_styles(self):
-        """Academic-grade paragraph styles (spaceAfter=0, spaceBefore=0; spacing via Spacer in story)."""
-        # Title page
+        """Institutional typography: Report Title (24pt) > Section (15pt) > Subsection (12pt) > Body (10pt) > Table/Caption (8–10pt)."""
+        # Report title (front matter)
         self.styles.add(ParagraphStyle(
             name='TitlePageMain',
             fontSize=24,
@@ -374,14 +453,14 @@ class PDFReportGenerator:
             leftIndent=10,
             firstLineIndent=-10,
         ))
-        # Body section headings and text
+        # Body: section headings and text
         self.styles.add(ParagraphStyle(
             name='SectionHeading',
-            fontSize=14,
+            fontSize=15,
             textColor=colors.HexColor('#1a365d'),
             spaceAfter=0, spaceBefore=0,
             fontName='Helvetica-Bold',
-            leading=17,
+            leading=18,
         ))
         self.styles.add(ParagraphStyle(
             name='SubsectionHeading',
@@ -474,12 +553,15 @@ class PDFReportGenerator:
 
     def _create_table(self, data: List[List[str]], col_widths: Optional[List[float]] = None,
                       compact: bool = True, ultra_compact: bool = False) -> Table:
-        """Create a styled table. compact=True standard density; ultra_compact=True max density."""
+        """Create a styled table; splits across pages with header row repeated."""
         if col_widths is None and data:
             col_widths = self._calculate_optimal_column_widths(data)
         if col_widths is None:
             col_widths = [self.PAGE_WIDTH_INCH * inch / max(1, len(data[0]))] * len(data[0]) if data else []
-        table = Table(data, colWidths=col_widths)
+        repeat_rows = 1 if len(data) > 1 else 0
+        table = Table(data, colWidths=col_widths, repeatRows=repeat_rows)
+        # Keep narrow tables left-aligned (e.g., Tax-Free Breakdown) instead of centered.
+        table.hAlign = 'LEFT'
 
         if ultra_compact:
             header_pad, data_pad = 4, 3
@@ -570,6 +652,23 @@ class PDFReportGenerator:
             display_val = value * 100
         return f"{display_val:.{decimals}f}%"
 
+    def _extract_stress_impact(self, scenario_result: Any) -> Optional[float]:
+        """Extract scenario impact across legacy and current stress-test schemas."""
+        if not isinstance(scenario_result, dict):
+            return None
+        for key in ('portfolio_impact', 'impact', 'value_change', 'value_change_pct'):
+            value = scenario_result.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+        metrics = scenario_result.get('metrics', {})
+        if isinstance(metrics, dict):
+            # Current analyzer stores impact in metrics.max_drawdown (negative for drawdown).
+            for key in ('max_drawdown', 'total_return', 'worst_month_return'):
+                value = metrics.get(key)
+                if isinstance(value, (int, float)):
+                    return float(value)
+        return None
+
     # ── Plot helpers ──────────────────────────────────────────────────────────
 
     def _generate_plot(self, plt_obj, width: float = None, height: float = None,
@@ -610,7 +709,7 @@ class PDFReportGenerator:
         opt = data.get('optimizationResults')
         stress_results = data.get('stressTestResults')
 
-        # 1. Sector Allocation
+        # 1. Portfolio composition: sector allocation or fallback to holdings allocation
         try:
             sector_weights = {}
             for pos in portfolio:
@@ -619,18 +718,42 @@ class PDFReportGenerator:
                     weight = weight / 100.0
                 sector = pos.get('sector', 'Unknown')
                 sector_weights[sector] = sector_weights.get(sector, 0.0) + weight
-            if sector_weights and any(s != 'Unknown' for s in sector_weights.keys()):
+            has_real_sectors = sector_weights and any(
+                s != 'Unknown' for s in sector_weights.keys()
+            )
+            if portfolio:
                 plt.figure(figsize=(10, 6))
-                labels = list(sector_weights.keys())
-                sizes = list(sector_weights.values())
-                plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140,
-                        colors=plt.cm.Paired(range(len(labels))))
-                plt.title('Portfolio Sector Allocation')
+                if has_real_sectors:
+                    labels = list(sector_weights.keys())
+                    sizes = list(sector_weights.values())
+                    plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140,
+                            colors=plt.cm.Paired(range(len(labels))))
+                    plt.title('Portfolio Sector Allocation')
+                    filename = "sector_allocation.png"
+                else:
+                    ticker_labels = []
+                    ticker_sizes = []
+                    for pos in portfolio:
+                        ticker = pos.get('ticker', pos.get('symbol', 'N/A'))
+                        alloc = pos.get('allocation', 0.0)
+                        if alloc > 1:
+                            alloc = alloc / 100.0
+                        if alloc > 0:
+                            ticker_labels.append(ticker)
+                            ticker_sizes.append(alloc)
+                    if ticker_labels and ticker_sizes:
+                        plt.pie(ticker_sizes, labels=ticker_labels, autopct='%1.1f%%', startangle=140,
+                                colors=plt.cm.Paired(range(len(ticker_labels))))
+                        plt.title('Portfolio Holdings Allocation')
+                        filename = "portfolio_composition.png"
+                    else:
+                        plt.close()
+                        raise ValueError("No allocation data")
                 plt.axis('equal')
                 content = self._generate_plot_base64(plt)
-                plots.append({"filename": "sector_allocation.png", "content": content, "size": len(content)})
+                plots.append({"filename": filename, "content": content, "size": len(content)})
         except Exception as e:
-            logger.warning(f"Failed to generate sector plot for ZIP: {e}")
+            logger.warning(f"Failed to generate composition plot for ZIP: {e}")
 
         # 2. Efficient Frontier
         if opt:
@@ -680,11 +803,10 @@ class PDFReportGenerator:
                 if scenarios:
                     names, impacts = [], []
                     for name, res in scenarios.items():
-                        if isinstance(res, dict):
-                            impact = res.get('portfolio_impact') or res.get('impact')
-                            if impact is not None:
-                                names.append(name.replace('_', ' ').title())
-                                impacts.append(impact * 100)
+                        impact = self._extract_stress_impact(res)
+                        if impact is not None:
+                            names.append(name.replace('_', ' ').title())
+                            impacts.append(float(impact) * 100)
                     if names:
                         plt.figure(figsize=(10, 6))
                         sorted_indices = sorted(range(len(impacts)), key=lambda k: impacts[k])
@@ -696,17 +818,56 @@ class PDFReportGenerator:
                         plt.grid(True, axis='x', linestyle='--', alpha=0.7)
                         content = self._generate_plot_base64(plt)
                         plots.append({"filename": "stress_test_impact.png", "content": content, "size": len(content)})
+                    first_with_series = None
+                    for name, res in scenarios.items():
+                        if isinstance(res, dict):
+                            perf = res.get('monthly_performance') or []
+                            if perf and len(perf) > 0:
+                                first_with_series = (name, res)
+                                break
+                    if first_with_series:
+                        try:
+                            scenario_name, scenario_data = first_with_series
+                            perf = scenario_data.get('monthly_performance', [])
+                            months = [p.get('month', '') for p in perf if p.get('month')]
+                            values = [float(p.get('value', 0)) for p in perf]
+                            if months and values and len(months) == len(values):
+                                base = values[0] if values[0] != 0 else 1.0
+                                indexed = [(v / base) * 100 for v in values]
+                                plt.figure(figsize=(10, 5))
+                                plt.plot(range(len(months)), indexed, color='#3182ce', linewidth=2)
+                                plt.axhline(y=100, color='#718096', linestyle='--', linewidth=0.8, alpha=0.7)
+                                plt.title('Portfolio Value Over Time (Stress Scenario)')
+                                plt.ylabel('Value (indexed to 100)')
+                                plt.xlabel('Month')
+                                step = max(1, len(months) // 10)
+                                plt.xticks(range(0, len(months), step), [months[i] for i in range(0, len(months), step)], rotation=45, ha='right')
+                                plt.grid(True, alpha=0.3)
+                                plt.tight_layout(pad=0.5)
+                                content = self._generate_plot_base64(plt)
+                                label = scenario_name.replace('_', ' ').title().replace(' ', '_')
+                                plots.append({"filename": f"stress_test_portfolio_over_time_{label}.png", "content": content, "size": len(content)})
+                        except Exception as timeline_e:
+                            logger.warning(f"Failed to generate stress portfolio-over-time plot for ZIP: {timeline_e}")
             except Exception as e:
                 logger.warning(f"Failed to generate stress test plot for ZIP: {e}")
 
         # 4. 5-Year Projection
         projection_metrics = data.get('projectionMetrics') or {}
-        weights = projection_metrics.get('weights') or (data.get('portfolio') or {}).get('weights') or {}
-        if not weights and (data.get('portfolio') or {}).get('allocations'):
+        portfolio_data = data.get('portfolio')
+        weights = projection_metrics.get('weights') or {}
+        if not weights and isinstance(portfolio_data, dict):
+            weights = portfolio_data.get('weights') or {}
+            if not weights and portfolio_data.get('allocations'):
+                weights = {
+                    a.get('symbol', a.get('ticker', '')): (a.get('allocation', 0) / 100.0)
+                    for a in portfolio_data.get('allocations', [])
+                    if a.get('symbol') or a.get('ticker')
+                }
+        if not weights and isinstance(portfolio_data, list):
             weights = {
-                a.get('symbol', a.get('ticker', '')): (a.get('allocation', 0) / 100.0)
-                for a in (data.get('portfolio') or {}).get('allocations', [])
-                if a.get('symbol') or a.get('ticker')
+                p.get('ticker', p.get('symbol', '')): (p.get('allocation', 0) / 100.0 if (p.get('allocation', 0) > 1) else p.get('allocation', 0))
+                for p in portfolio_data if p.get('ticker') or p.get('symbol')
             }
         if run_five_year_projection and portfolio_value and weights:
             try:
@@ -779,7 +940,7 @@ class PDFReportGenerator:
         table1 = self._create_numbered_table(
             1, "Executive Summary",
             summary_data,
-            note="Expected Return = annualized historical gain. Risk (Volatility) = typical annual price swing. Sharpe Ratio: above 1.0 = good risk-adjusted return, above 1.5 = excellent.",
+            note="Expected return and risk drive the projection range; a higher Sharpe ratio indicates better return per unit of risk. Use these KPIs to gauge whether the portfolio aligns with your goals and tolerance for volatility.",
             col_widths=[1.6 * inch, 1.8 * inch, 1.4 * inch, 1.8 * inch],
             ultra_compact=True,
         )
@@ -838,7 +999,9 @@ class PDFReportGenerator:
         # ── Section 3: Portfolio Composition (new page) ───────────────────────
         self._start_major_section(story, 3, "Portfolio Composition", force_new_page=True)
         story.append(Paragraph(
-            "Holdings breakdown. A well-diversified portfolio spreads risk across multiple assets and sectors.",
+            "Allocation below shows where capital is deployed. High concentration in a single holding or sector "
+            "amplifies drawdown risk in downturns; spreading across assets and industries generally improves "
+            "resilience when one segment underperforms.",
             self.styles['AcademicBody'],
         ))
         story.append(Spacer(1, self.SPACE_AFTER_PARAGRAPH * inch))
@@ -868,29 +1031,56 @@ class PDFReportGenerator:
             )
             story.extend(table2)
             story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
-            if MPL_AVAILABLE and sector_weights:
+            if MPL_AVAILABLE and portfolio:
                 try:
-                    has_real_sectors = any(s != 'Unknown' for s in sector_weights.keys())
+                    has_real_sectors = sector_weights and any(
+                        s != 'Unknown' for s in sector_weights.keys()
+                    )
+                    story.append(Spacer(1, self.SPACE_BEFORE_FIGURE * inch))
+                    plt.figure(figsize=(6, 3.2))
                     if has_real_sectors:
-                        story.append(Spacer(1, self.SPACE_BEFORE_FIGURE * inch))
-                        plt.figure(figsize=(6, 3.2))
                         labels = list(sector_weights.keys())
                         sizes = list(sector_weights.values())
                         plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140,
                                 colors=plt.cm.Paired(range(len(labels))), textprops={'fontsize': 7})
                         plt.title('Sector Allocation', fontsize=9, fontweight='bold')
-                        plt.axis('equal')
-                        plt.tight_layout(pad=0.5)
-                        chart_img = self._generate_plot(plt, compact=True)
-                        fig1 = self._create_numbered_figure(
-                            1, "Sector Allocation",
-                            chart_img,
-                            "Each slice shows the combined allocation to that industry. Exposure above 40% in one sector creates industry-specific concentration risk. A spread of 10–25% per sector generally improves stability across market cycles.",
+                        caption = (
+                            "Each slice shows the combined allocation to that industry. "
+                            "Exposure above 40% in one sector creates industry-specific concentration risk. "
+                            "A spread of 10–25% per sector generally improves stability across market cycles."
                         )
-                        story.extend(fig1)
-                        story.append(Spacer(1, self.SPACE_AFTER_CAPTION * inch))
+                        fig_title = "Sector Allocation"
+                    else:
+                        ticker_labels = []
+                        ticker_sizes = []
+                        for pos in portfolio:
+                            ticker = pos.get('ticker', pos.get('symbol', 'N/A'))
+                            alloc = pos.get('allocation', 0.0)
+                            if alloc > 1:
+                                alloc = alloc / 100.0
+                            if alloc > 0:
+                                ticker_labels.append(ticker)
+                                ticker_sizes.append(alloc)
+                        if ticker_labels and ticker_sizes:
+                            plt.pie(ticker_sizes, labels=ticker_labels, autopct='%1.1f%%', startangle=140,
+                                    colors=plt.cm.Paired(range(len(ticker_labels))), textprops={'fontsize': 6})
+                            plt.title('Portfolio Holdings Allocation', fontsize=9, fontweight='bold')
+                            caption = (
+                                "Allocation by holding. Concentration above 20–25% in a single name "
+                                "increases single-stock risk; consider rebalancing or diversification."
+                            )
+                            fig_title = "Portfolio Holdings Allocation"
+                        else:
+                            plt.close()
+                            raise ValueError("No allocation data")
+                    plt.axis('equal')
+                    plt.tight_layout(pad=0.5)
+                    chart_img = self._generate_plot(plt, compact=True)
+                    fig1 = self._create_numbered_figure(1, fig_title, chart_img, caption)
+                    story.extend(fig1)
+                    story.append(Spacer(1, self.SPACE_AFTER_CAPTION * inch))
                 except Exception as plot_e:
-                    logger.warning(f"Failed to generate sector pie chart: {plot_e}")
+                    logger.warning(f"Failed to generate composition chart: {plot_e}")
         else:
             story.append(Paragraph("No portfolio data available.", self.styles['CompactBody']))
             story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
@@ -999,13 +1189,15 @@ class PDFReportGenerator:
             story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
 
         # ── Section 5: Optimization Results (new page) ───────────────────────
-        self._start_major_section(story, 5, "Optimization Results", force_new_page=True)
+        self._start_major_section(story, 5, "Optimization Results", force_new_page=False)
         opt = data.get('optimizationResults')
         if opt:
             rec = (opt.get('optimization_metadata') or {}).get('recommendation', 'weights')
             story.append(Paragraph(
-                f"Strategy: {rec.replace('_', ' ').title()} — "
-                "Modern Portfolio Theory to maximize return per unit of risk.",
+                f"Strategy: {rec.replace('_', ' ').title()}. "
+                "Comparing Current to Weights-Opt shows whether rebalancing improves risk-adjusted return; "
+                "Market-Opt indicates if expanding the universe could achieve better tradeoffs. "
+                "If your current portfolio sits below the efficient frontier, the same return may be achievable with lower risk.",
                 self.styles['CompactBody'],
             ))
             story.append(Spacer(1, self.SPACE_AFTER_PARAGRAPH * inch))
@@ -1042,7 +1234,7 @@ class PDFReportGenerator:
                 table5 = self._create_numbered_table(
                     5, "Optimization Metrics",
                     opt_table,
-                    note="Current = your portfolio as built. Weights-Opt = same assets, rebalanced for better risk/return. Market-Opt = assets selected by the optimizer. Higher Sharpe ratio means more return earned per unit of risk taken.",
+                    note="Current = as built; Weights-Opt = same assets rebalanced; Market-Opt = optimizer-selected assets. A higher Sharpe ratio implies better return per unit of risk. Portfolios below the frontier in the chart are inefficient—consider rebalancing or diversification.",
                     ultra_compact=True,
                 )
                 story.extend(table5)
@@ -1154,10 +1346,11 @@ class PDFReportGenerator:
             story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
 
         # ── Section 7: Five-Year Projection (new page) ───────────────────────
-        self._start_major_section(story, 7, "Five-Year Projection", force_new_page=True)
+        self._start_major_section(story, 7, "Five-Year Projection", force_new_page=False)
         story.append(Paragraph(
-            "Net growth after Swedish taxes and costs. Base Case = realistic planning; "
-            "Pessimistic = stress-test your goals.",
+            "Net growth after Swedish taxes and costs. Use the pessimistic path to check that goals remain "
+            "reachable in a bad market; if the range falls short of your target, consider increasing contributions "
+            "or extending the time horizon. Base Case is the central planning figure.",
             self.styles['MethodologyBody'],
         ))
         story.append(Spacer(1, self.SPACE_AFTER_PARAGRAPH * inch))
@@ -1278,14 +1471,15 @@ class PDFReportGenerator:
             table8 = self._create_numbered_table(
                 8, "Risk Metrics",
                 risk_table,
-                note="Diversification above 70 = strong resistance to single-asset turbulence. Sharpe above 1.0 = good, above 1.5 = excellent. Volatility of 20% means the portfolio typically swings ±20% in a given year.",
+                note="High diversification (e.g. above 70) supports resistance to single-asset shocks. Sharpe above 1.0 is good risk-adjusted return. High volatility implies larger short-term swings—ensure your time horizon and comfort with drawdowns align with these metrics.",
                 col_widths=[2.0 * inch, 1.5 * inch, 2.0 * inch],
                 ultra_compact=True,
             )
             story.extend(table8)
             story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
+        include_sections = data.get('includeSections') or {}
         stress = data.get('stressTestResults')
-        if stress:
+        if stress and include_sections.get('stressTest', True):
             self._subsection_heading(story, "Stress Test Analysis")
             resilience = stress.get('resilience_score')
             if resilience is not None:
@@ -1300,16 +1494,90 @@ class PDFReportGenerator:
                 ))
                 story.append(Spacer(1, self.SPACE_AFTER_PARAGRAPH * inch))
             scenarios = stress.get('scenarios') or stress.get('scenario_results') or {}
+            if scenarios:
+                summary_rows = [['Scenario', 'Estimated Impact', 'Interpretation']]
+                for scenario_name, scenario_data in scenarios.items():
+                    impact = self._extract_stress_impact(scenario_data)
+                    if impact is None:
+                        continue
+                    impact_pct = float(impact) * 100
+                    if impact_pct <= -20:
+                        interpretation = "Severe downside stress"
+                    elif impact_pct <= -10:
+                        interpretation = "Material downside stress"
+                    elif impact_pct < 0:
+                        interpretation = "Mild downside stress"
+                    elif impact_pct == 0:
+                        interpretation = "Neutral scenario outcome"
+                    else:
+                        interpretation = "Positive relative resilience"
+                    summary_rows.append([
+                        scenario_name.replace('_', ' ').title(),
+                        self._format_percentage(impact_pct),
+                        interpretation,
+                    ])
+                if len(summary_rows) > 1:
+                    story.append(Spacer(1, self.SPACE_BEFORE_TABLE * inch))
+                    story.append(self._create_table(
+                        summary_rows,
+                        col_widths=[1.8 * inch, 1.4 * inch, 3.0 * inch],
+                        ultra_compact=True,
+                    ))
+                    story.append(Spacer(1, self.SPACE_TIGHT * inch))
+                    story.append(Paragraph(
+                        "Interpretation: double-digit downside in crisis scenarios indicates meaningful drawdown risk; "
+                        "consider reducing concentration or adding defensive exposure if this exceeds your tolerance.",
+                        self.styles['MethodologyBody'],
+                    ))
+                    story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
             if scenarios and MPL_AVAILABLE:
                 try:
+                    first_with_series = None
+                    for name, res in scenarios.items():
+                        if isinstance(res, dict):
+                            perf = res.get('monthly_performance') or []
+                            if perf and len(perf) > 0:
+                                first_with_series = (name, res)
+                                break
+                    if first_with_series:
+                        try:
+                            scenario_name, scenario_data = first_with_series
+                            perf = scenario_data.get('monthly_performance', [])
+                            months = [p.get('month', '') for p in perf if p.get('month')]
+                            values = [float(p.get('value', 0)) for p in perf]
+                            if months and values and len(months) == len(values):
+                                base = values[0] if values[0] != 0 else 1.0
+                                indexed = [(v / base) * 100 for v in values]
+                                plt.figure(figsize=(6, 2.6))
+                                plt.plot(range(len(months)), indexed, color='#3182ce', linewidth=2)
+                                plt.axhline(y=100, color='#718096', linestyle='--', linewidth=0.8, alpha=0.7)
+                                plt.title('Portfolio Value Over Time', fontsize=9, fontweight='bold')
+                                plt.ylabel('Value (indexed to 100)', fontsize=7)
+                                plt.xlabel('Month', fontsize=7)
+                                step = max(1, len(months) // 8)
+                                plt.xticks(range(0, len(months), step), [months[i] for i in range(0, len(months), step)], rotation=45, ha='right', fontsize=6)
+                                plt.tick_params(axis='y', labelsize=6)
+                                plt.grid(True, alpha=0.3)
+                                plt.tight_layout(pad=0.5)
+                                chart_img = self._generate_plot(plt, compact=True)
+                                story.append(Spacer(1, self.SPACE_BEFORE_FIGURE * inch))
+                                story.append(chart_img)
+                                story.append(Spacer(1, self.SPACE_AFTER_FIGURE * inch))
+                                label = scenario_name.replace('_', ' ').title()
+                                story.append(Paragraph(
+                                    f"Portfolio value over time during {label}. Value indexed to 100 at scenario start (crisis and recovery window).",
+                                    self.styles['FigureCaption'],
+                                ))
+                                story.append(Spacer(1, self.SPACE_AFTER_CAPTION * inch))
+                        except Exception as timeline_e:
+                            logger.warning(f"Failed to generate stress portfolio-over-time chart: {timeline_e}")
                     plt.figure(figsize=(6, 2.8))
                     names, impacts = [], []
                     for name, res in scenarios.items():
-                        if isinstance(res, dict):
-                            impact = res.get('portfolio_impact') or res.get('impact')
-                            if impact is not None:
-                                names.append(name.replace('_', ' ').title()[:20])
-                                impacts.append(impact * 100)
+                        impact = self._extract_stress_impact(res)
+                        if impact is not None:
+                            names.append(name.replace('_', ' ').title()[:20])
+                            impacts.append(float(impact) * 100)
                     if names:
                         sorted_indices = sorted(range(len(impacts)), key=lambda k: impacts[k])
                         names = [names[i] for i in sorted_indices]
@@ -1326,7 +1594,7 @@ class PDFReportGenerator:
                         story.append(chart_img)
                         story.append(Spacer(1, self.SPACE_AFTER_FIGURE * inch))
                         story.append(Paragraph(
-                            "Scenario Impact: Each bar shows the estimated change in portfolio value under that historical crisis scenario. Red = potential loss, Green = gain.",
+                            "Scenario Impact: Each bar shows estimated portfolio value change under that historical crisis. Red = loss, Green = gain. Resilience scores below 50 suggest the portfolio may suffer large drawdowns in stress events; consider reducing concentration or adding defensive exposure.",
                             self.styles['FigureCaption'],
                         ))
                         story.append(Spacer(1, self.SPACE_AFTER_CAPTION * inch))

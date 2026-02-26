@@ -447,350 +447,73 @@ class RedisTTLMonitor:
         return result
 
 
-# Email notification callback example
+# Email notification callback (sends via utils.email_notifier)
 def email_notification_callback(level: str, message: str, data: Dict):
     """
-    Example callback for email notifications
+    Email callback for TTL monitoring. Sends via SMTP (Gmail-friendly).
 
     To use:
         monitor = RedisTTLMonitor(redis_client, notification_callback=email_notification_callback)
 
-    Requirements:
-        pip install sendgrid  # or use smtplib
+    Environment: TTL_EMAIL_NOTIFICATIONS=true, TTL_NOTIFICATION_EMAIL, SMTP_* (see .env.example).
     """
-    # Only send for critical/warning
     if level not in ['CRITICAL', 'WARNING', 'EXPIRED']:
         return
-
     try:
-        # Example using environment variables
-        email_enabled = os.getenv('TTL_EMAIL_NOTIFICATIONS', 'false').lower() == 'true'
-        if not email_enabled:
-            return
+        from utils.email_notifier import NotificationMessage, send_notification
 
-        # Email configuration from environment
-        to_email = os.getenv('TTL_NOTIFICATION_EMAIL')
-
-        if not to_email:
-            logger.debug("TTL_NOTIFICATION_EMAIL not configured")
-            return
-
-        # Format email content
-        subject = f"[{level}] Redis Cache Expiration Alert"
-        body = f"""
-        {message}
-
-        Total Tickers: {data.get('total_tickers', 0)}
-
-        Status Breakdown:
-        - Expired: {data.get('categories', {}).get('expired', 0)}
-        - Critical: {data.get('categories', {}).get('critical', 0)}
-        - Warning: {data.get('categories', {}).get('warning', 0)}
-
-        Timestamp: {data.get('timestamp', 'N/A')}
-
-        Please refresh the cache using:
-        POST /api/v1/portfolio/cache/warm
-        """
-
-        # Send email (implement your email service here)
-        logger.info(f"Would send email to {to_email}: {subject}")
-        # send_email(to_email, subject, body)  # Implement this
-
-    except Exception as e:
-        logger.error(f"Email notification failed: {e}")
-
-
-# Slack webhook notification callback
-def slack_notification_callback(level: str, message: str, data: Dict):
-    """
-    Slack webhook notification callback for TTL monitoring
-
-    To use:
-        monitor = RedisTTLMonitor(redis_client, notification_callback=slack_notification_callback)
-
-    Environment variables required:
-        TTL_SLACK_NOTIFICATIONS=true
-        TTL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-        TTL_SLACK_CHANNEL=#redis-alerts (optional)
-    """
-    try:
-        # Only send for important levels
-        if level not in ['CRITICAL', 'WARNING', 'EXPIRED']:
-            return
-
-        # Determine color based on level
-        color_map = {
-            'CRITICAL': '#FF0000',  # Red
-            'EXPIRED': '#FF0000',   # Red
-            'WARNING': '#FFA500',   # Orange
-            'INFO': '#0000FF'       # Blue
-        }
-        color = color_map.get(level, '#808080')
-
-        # Determine emoji based on level
-        emoji_map = {
-            'CRITICAL': ':rotating_light:',
-            'EXPIRED': ':x:',
-            'WARNING': ':warning:',
-            'INFO': ':information_source:'
-        }
-        emoji = emoji_map.get(level, ':bell:')
-
-        # Get categories
         categories = data.get('categories', {})
         total = data.get('total_tickers', 0)
+        timestamp = str(data.get('timestamp', 'N/A'))[:19]
 
-        # Get detailed Redis stats (passed in data or fetch if needed)
+        fields = {
+            'Total tickers': str(total),
+            'Timestamp': timestamp,
+            'Expired': f"{categories.get('expired', 0)} tickers",
+            'Critical (<1 day)': f"{categories.get('critical', 0)} tickers",
+            'Warning (<7 days)': f"{categories.get('warning', 0)} tickers",
+            'Healthy': f"{categories.get('healthy', 0)} tickers",
+        }
+
         redis_stats = data.get('redis_stats')
-
-        # Build Slack message with blocks for better formatting
-        blocks = [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": f"{emoji} Redis Cache TTL Alert - {level}"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*{message}*"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*📊 TTL Status*"
-                },
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Total Tickers:*\n{total}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Timestamp:*\n{data.get('timestamp', 'N/A')[:19]}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Expired:*\n{categories.get('expired', 0)} tickers"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Critical (<1 day):*\n{categories.get('critical', 0)} tickers"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Warning (<7 days):*\n{categories.get('warning', 0)} tickers"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Healthy:*\n{categories.get('healthy', 0)} tickers"
-                    }
-                ]
-            }
-        ]
-
-        # Add detailed Redis storage statistics if available
         if redis_stats and 'error' not in redis_stats:
             keys = redis_stats.get('keys', {})
             memory = redis_stats.get('memory', {})
             tickers = redis_stats.get('tickers', {})
             data_types = redis_stats.get('data_types', {})
-
-            # Storage Overview
-            blocks.append({"type": "divider"})
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*💾 Redis Storage Overview*"
-                },
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Total Keys:*\n{keys.get('total', 0):,}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Memory Used:*\n{memory.get('used_memory_human', 'N/A')}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Peak Memory:*\n{memory.get('used_memory_peak_human', 'N/A')}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Memory Limit:*\n{memory.get('maxmemory_human', 'unlimited')}"
-                    }
-                ]
-            })
-
-            # Key Distribution
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*🔑 Key Distribution*"
-                },
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Price Data:*\n{keys.get('prices', 0):,} keys"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Sector Data:*\n{keys.get('sectors', 0):,} keys"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Metrics:*\n{keys.get('metrics', 0):,} keys"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Portfolios:*\n{keys.get('portfolios', 0):,} keys"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Strategy Portfolios:*\n{keys.get('strategy_portfolios', 0):,} keys"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Other:*\n{keys.get('other', 0):,} keys"
-                    }
-                ]
-            })
-
-            # Ticker Data Completeness
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*📈 Ticker Data Completeness*"
-                },
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Total Unique Tickers:*\n{tickers.get('total_unique', 0):,}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*With Prices:*\n{tickers.get('with_prices', 0):,}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*With Sectors:*\n{tickers.get('with_sectors', 0):,}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*With Metrics:*\n{tickers.get('with_metrics', 0):,}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Complete Data:*\n{tickers.get('complete_data', 0):,}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Missing Metrics:*\n{tickers.get('missing_metrics', 0):,}"
-                    }
-                ]
-            })
-
-            # Storage Size Estimation
-            total_estimated_mb = sum([
+            fields['Total keys'] = str(keys.get('total', 0))
+            fields['Memory used'] = str(memory.get('used_memory_human', 'N/A'))
+            fields['Total unique tickers'] = str(tickers.get('total_unique', 0))
+            total_mb = sum([
                 data_types.get('prices_estimated_mb', 0),
                 data_types.get('sectors_estimated_mb', 0),
                 data_types.get('metrics_estimated_mb', 0),
                 data_types.get('portfolios_estimated_mb', 0),
-                data_types.get('strategy_portfolios_estimated_mb', 0)
+                data_types.get('strategy_portfolios_estimated_mb', 0),
             ])
+            fields['Estimated storage (MB)'] = f"~{total_mb:.2f}"
 
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*📦 Estimated Storage by Type* (Total: ~{total_estimated_mb:.2f} MB)"
-                },
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Prices:*\n~{data_types.get('prices_estimated_mb', 0):.2f} MB"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Sectors:*\n~{data_types.get('sectors_estimated_mb', 0):.2f} MB"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Metrics:*\n~{data_types.get('metrics_estimated_mb', 0):.2f} MB"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Portfolios:*\n~{data_types.get('portfolios_estimated_mb', 0):.2f} MB"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Strategy:*\n~{data_types.get('strategy_portfolios_estimated_mb', 0):.2f} MB"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Fragmentation:*\n{memory.get('mem_fragmentation_ratio', 0):.2f}"
-                    }
-                ]
-            })
-
-        # Add action buttons for critical/expired
-        if level in ['CRITICAL', 'EXPIRED'] and categories.get(level.lower(), 0) > 0:
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*Recommended Action:*\nRefresh expiring tickers immediately to maintain cache health."
-                }
-            })
-
-        # Add divider
-        blocks.append({"type": "divider"})
-
-        # Add footer
-        blocks.append({
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": "Portfolio Navigator Wizard | Redis TTL Monitoring System"
-                }
-            ]
-        })
-
-        # Optional: Override channel
-        channel = os.getenv('TTL_SLACK_CHANNEL')
-
-        # Build Slack payload
-        # IMPORTANT: We send via a single-destination webhook. No per-message channel overrides.
-        from utils.slack_notifier import SlackMessage, send_slack
-        send_slack(
-            SlackMessage(
+        body_message = (
+            f"{message}\n\n"
+            "Refresh expiring tickers: POST /api/v1/portfolio/cache/warm"
+        )
+        send_notification(
+            NotificationMessage(
                 title=f"Redis Cache TTL Alert - {level}",
-                message=f"*{message}*",
+                message=body_message,
                 severity=level,
-                blocks=blocks,
+                fields=fields,
             ),
             throttle_key=f"ttl_monitor:{level}",
-            min_interval_seconds=60,  # prevent bursts when check runs frequently
+            min_interval_seconds=60,
         )
-        logger.info(f"✅ Slack notification queued/sent: {level}")
-
+        logger.info("Email notification queued/sent: %s", level)
     except Exception as e:
-        logger.error(f"❌ Slack notification failed: {e}")
+        logger.error("Email notification failed: %s", e)
 
 
 # Alias for backward compatibility
-webhook_notification_callback = slack_notification_callback
+webhook_notification_callback = email_notification_callback
 
 
 if __name__ == "__main__":

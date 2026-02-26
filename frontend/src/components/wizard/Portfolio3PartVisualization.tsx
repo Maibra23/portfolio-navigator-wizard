@@ -31,6 +31,7 @@ import {
   getVisualizationPalette,
   getPortfolioColors,
 } from "@/utils/chartThemes";
+import { getAdminKeyHeaders } from "@/config/api";
 
 // Layout constants (theme-independent)
 const layoutConstants = {
@@ -563,6 +564,7 @@ export const Portfolio3PartVisualization: React.FC<
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getAdminKeyHeaders(),
         },
         body: JSON.stringify({ tickers: tickersToWarm }),
       });

@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Loader2, TrendingDown, Info } from "lucide-react";
+import { Loader2, Receipt, Info } from "lucide-react";
 import {
   Tooltip as UITooltip,
   TooltipContent,
@@ -140,7 +140,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingDown className="h-4 w-4" />
+            <Receipt className="h-4 w-4" />
             Account Type Tax Comparison
           </CardTitle>
         </CardHeader>
@@ -160,7 +160,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingDown className="h-4 w-4" />
+            <Receipt className="h-4 w-4" />
             Account Type Tax Comparison
           </CardTitle>
         </CardHeader>
@@ -339,7 +339,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <TrendingDown className="h-4 w-4" />
+          <Receipt className="h-4 w-4" />
           Account Type Tax Comparison
           <UITooltip>
             <TooltipTrigger asChild>

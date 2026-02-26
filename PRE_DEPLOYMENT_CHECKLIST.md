@@ -47,15 +47,15 @@ All 8 pre-deployment tasks are now complete:
 **Files**: `backend/.env.example`, `frontend/.env.example`
 - Complete documentation of all variables
 - Railway-specific notes included
-- Slack integration variables added
+- Email integration variables added
 
 ### 7. ✅ Requirements Updated
 **File**: `backend/requirements.txt`
 - Added `slowapi>=0.1.9` for rate limiting
 
-### 8. ✅ Slack Integration
+### 8. ✅ Email Integration
 **Files**: `backend/utils/redis_ttl_monitor.py`, `backend/main.py`
-- Enhanced Slack webhook notifications
+- Enhanced Email webhook notifications
 - Beautiful message formatting with emojis
 - Automatic TTL monitoring background task
 - Runs every 24 hours
@@ -173,28 +173,28 @@ done
 
 **✅ Pass Criteria**: Rate limiting kicks in after limit
 
-### Test 6: Slack Integration (Optional)
+### Test 6: Email Integration (Optional)
 
-**Setup Slack Webhook:**
-1. Go to https://api.slack.com/messaging/webhooks
-2. Create webhook for your workspace
-3. Copy webhook URL
+**Setup Email Webhook:**
+1. Go to https://myaccount.google.com/apppasswords
+2. Create Gmail app password
+3. Copy app password
 
 **Test:**
 ```bash
-export TTL_SLACK_NOTIFICATIONS=true
-export TTL_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+export TTL_EMAIL_NOTIFICATIONS=true
+export SMTP_PASSWORD="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
 # Restart backend with these variables
 python -m uvicorn main:app --reload
 
-# Trigger a manual TTL check (will send Slack message)
+# Trigger a manual TTL check (will send Email message)
 curl http://localhost:8000/api/v1/portfolio/cache/ttl-status
 ```
 
-**Expected**: Slack message appears in your channel
+**Expected**: Email message appears in your channel
 
-**✅ Pass Criteria**: Slack notification received
+**✅ Pass Criteria**: Email notification received
 
 ### Test 7: Frontend (Optional)
 
@@ -234,7 +234,7 @@ git status
 git add .
 
 # Commit
-git commit -m "Add Railway deployment readiness: CORS, rate limiting, TLS, TTL monitoring, Slack integration
+git commit -m "Add Railway deployment readiness: CORS, rate limiting, TLS, TTL monitoring, Email integration
 
 - Update CORS to use environment variable
 - Add SlowAPI rate limiting (2/hour for cache warming)
@@ -242,7 +242,7 @@ git commit -m "Add Railway deployment readiness: CORS, rate limiting, TLS, TTL m
 - Add 4 new TTL monitoring endpoints
 - Update frontend API config for production
 - Add environment variable templates
-- Add Slack webhook integration
+- Add email (SMTP) integration
 - Add automated TTL monitoring background task
 
 Resolves pre-deployment requirements for Railway deployment.
@@ -284,9 +284,11 @@ Now that code is ready, follow these steps:
    ENVIRONMENT=production
    USE_LIVE_DATA=true
    LOG_LEVEL=INFO
-   TTL_SLACK_NOTIFICATIONS=true
-   TTL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-   TTL_SLACK_CHANNEL=#redis-alerts
+   TTL_EMAIL_NOTIFICATIONS=true
+   SMTP_USER=your@gmail.com
+   SMTP_PASSWORD=your-app-password
+   TTL_NOTIFICATION_EMAIL=your@email.com
+   TTL_NOTIFICATION_EMAIL=#redis-alerts
    ```
 
 5. **Reference Redis**:
@@ -363,19 +365,19 @@ curl $BACKEND_URL/api/v1/portfolio/cache/ttl-status
 # Open https://your-frontend.up.railway.app in browser
 ```
 
-### Step 8: Verify Slack Notifications (1 minute)
+### Step 8: Verify Email Notifications (1 minute)
 
-Within 5 minutes of backend startup, you should receive a Slack notification about TTL status.
+Within 5 minutes of backend startup, you should receive a Email notification about TTL status.
 
 Check your `#redis-alerts` channel.
 
 ---
 
-## 🔔 Slack Notification Setup
+## 🔔 Email Notification Setup
 
-### Create Slack Webhook
+### Create Email Webhook
 
-1. Go to https://api.slack.com/messaging/webhooks
+1. Go to https://myaccount.google.com/apppasswords
 2. Click "Create New App" → "From scratch"
 3. App name: "Portfolio Navigator Alerts"
 4. Select your workspace
@@ -383,27 +385,29 @@ Check your `#redis-alerts` channel.
 6. Toggle "Activate Incoming Webhooks" to ON
 7. Click "Add New Webhook to Workspace"
 8. Select channel (e.g., `#redis-alerts`)
-9. Copy webhook URL
+9. Copy app password
 
 ### Configure in Railway
 
 1. Go to backend service → Variables
 2. Add:
    ```
-   TTL_SLACK_NOTIFICATIONS=true
-   TTL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
-   TTL_SLACK_CHANNEL=#redis-alerts
+   TTL_EMAIL_NOTIFICATIONS=true
+   SMTP_USER=your@gmail.com
+   SMTP_PASSWORD=your-app-password
+   TTL_NOTIFICATION_EMAIL=your@email.com
+   TTL_NOTIFICATION_EMAIL=#redis-alerts
    ```
 3. Backend redeploys automatically
 
-### Test Slack Integration
+### Test Email Integration
 
 ```bash
-# Trigger TTL check (sends Slack message)
+# Trigger TTL check (sends Email message)
 curl https://your-backend.up.railway.app/api/v1/portfolio/cache/ttl-status
 ```
 
-Check Slack channel for message like:
+Check Email channel for message like:
 ```
 🔔 Redis Cache TTL Alert - INFO
 
@@ -422,7 +426,7 @@ Warning (<7 days): 0 tickers
 ### Daily (Automated by Background Task)
 
 - ✅ TTL monitoring runs every 24 hours
-- ✅ Slack notifications sent if issues detected
+- ✅ Email notifications sent if issues detected
 - ✅ Auto-refresh of critical tickers
 
 ### Weekly (Manual Check)
@@ -444,7 +448,7 @@ curl $BACKEND_URL/api/v1/portfolio/cache/ttl-report
 ### Monthly (Maintenance)
 
 1. Check for dependency updates
-2. Review Slack alerts history
+2. Review Email alerts history
 3. Verify cache health
 4. Check Railway costs
 
@@ -458,7 +462,7 @@ Your deployment is successful when:
 - ✅ Frontend loads and searches work
 - ✅ Redis has 1,432 tickers cached
 - ✅ TTL monitoring endpoint works
-- ✅ Slack notifications received
+- ✅ Email notifications received
 - ✅ Background task running (check logs)
 - ✅ Rate limiting works
 - ✅ CORS allows frontend requests
@@ -483,13 +487,13 @@ Your deployment is successful when:
 # Format: redis://default:password@host:port
 ```
 
-### Slack Notifications Not Working
+### Email Notifications Not Working
 ```bash
 # Check environment variables:
-echo $TTL_SLACK_NOTIFICATIONS  # Should be "true"
-echo $TTL_SLACK_WEBHOOK_URL    # Should start with https://hooks.slack.com
+echo $TTL_EMAIL_NOTIFICATIONS  # Should be "true"
+echo $SMTP_USER $TTL_NOTIFICATION_EMAIL  # Should be set
 
-# Check backend logs for "Slack notification sent"
+# Check backend logs for "Email notification sent"
 ```
 
 ### Rate Limiting Too Aggressive
@@ -504,7 +508,7 @@ echo $TTL_SLACK_WEBHOOK_URL    # Should start with https://hooks.slack.com
 ## 📝 Next Steps After Deployment
 
 1. **Monitor for 24 hours**
-   - Check Slack for first automatic TTL report
+   - Check Email for first automatic TTL report
    - Verify cache remains healthy
    - Check Railway usage
 
@@ -516,12 +520,12 @@ echo $TTL_SLACK_WEBHOOK_URL    # Should start with https://hooks.slack.com
 
 3. **Set up alerts**
    - Railway usage alerts ($3, $4, $5)
-   - Slack notifications for errors
+   - Email notifications for errors
 
 4. **Document**
    - Save backend and frontend URLs
    - Document any custom configurations
-   - Keep webhook URLs secure
+   - Keep SMTP credentials secure
 
 ---
 
@@ -530,7 +534,7 @@ echo $TTL_SLACK_WEBHOOK_URL    # Should start with https://hooks.slack.com
 All pre-deployment tasks are complete. Your application is:
 - ✅ Production-ready
 - ✅ Secure (CORS, rate limiting)
-- ✅ Monitored (TTL alerts, Slack notifications)
+- ✅ Monitored (TTL alerts, Email notifications)
 - ✅ Scalable (supports Railway cloud)
 
 **Estimated Total Deployment Time**: 2-3 hours

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
+import { getAdminKeyHeaders } from "@/config/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +50,7 @@ import {
   BarChart3,
   Activity,
   AlertCircle,
-  Building2,
+  Landmark,
   Calendar,
   FileText,
   BookOpen,
@@ -73,6 +74,12 @@ interface SelectedPortfolioData {
 interface StressTestProps {
   onNext: () => void;
   onPrev: () => void;
+  onStressTestResults?: (results: {
+    portfolio_summary: any;
+    scenarios: Record<string, any>;
+    resilience_score: number;
+    overall_assessment: string;
+  }) => void;
   selectedPortfolio: SelectedPortfolioData | null;
   capital: number;
   riskProfile: string;
@@ -81,6 +88,7 @@ interface StressTestProps {
 export const StressTest: React.FC<StressTestProps> = ({
   onNext,
   onPrev,
+  onStressTestResults,
   selectedPortfolio,
   capital,
   riskProfile,
@@ -153,7 +161,10 @@ export const StressTest: React.FC<StressTestProps> = ({
       // Warm cache in background (non-blocking)
       fetch("/api/v1/portfolio/warm-tickers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAdminKeyHeaders(),
+        },
         body: JSON.stringify({ tickers: selectedPortfolio.tickers }),
       }).catch(() => {
         // Silently fail - cache warm-up is optional
@@ -292,6 +303,9 @@ export const StressTest: React.FC<StressTestProps> = ({
 
       setStressTestResults(data);
       setActiveScenario(selectedScenario);
+      if (onStressTestResults) {
+        onStressTestResults(data);
+      }
     } catch (err: any) {
       console.error("Stress test error:", err);
       setError(
@@ -1840,7 +1854,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                       <Card className="border-2 border-amber-200">
                         <CardHeader>
                           <CardTitle className="text-lg flex items-center gap-2">
-                            <Building2 className="h-5 w-5 text-amber-600" />
+                            <Landmark className="h-5 w-5 text-amber-600" />
                             2008 Financial Crisis Analysis
                           </CardTitle>
                           <p className="text-sm text-muted-foreground">
@@ -3411,7 +3425,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-lg flex items-center gap-2">
-                          <BarChart3 className="h-5 w-5 text-blue-600" />
+                          <Activity className="h-5 w-5 text-blue-600" />
                           Monte Carlo Simulation Results
                         </CardTitle>
                         <p className="text-sm text-muted-foreground">
@@ -4158,21 +4172,21 @@ export const StressTest: React.FC<StressTestProps> = ({
                             {/* Recovery Thresholds Legend removed - user requested no horizontal lines */}
 
                             {/* Event Type Legend */}
-                            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-                              <div className="text-xs font-medium text-blue-700 mb-2">
+                            <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                              <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                                 Key Events Timeline
                               </div>
                               <div className="flex items-center justify-center gap-6 text-xs flex-wrap mb-3">
                                 <button
                                   onClick={() =>
-                                    setVisibleEventTypes({
-                                      ...visibleEventTypes,
-                                      crisis: !visibleEventTypes.crisis,
-                                    })
+                                    setVisibleEventTypes((prev) => ({
+                                      ...prev,
+                                      crisis: !prev.crisis,
+                                    }))
                                   }
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.crisis
-                                      ? "bg-red-100 border border-red-300 text-red-700 hover:bg-red-200"
+                                      ? "bg-red-500/15 border border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-500/25"
                                       : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
@@ -4181,14 +4195,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 </button>
                                 <button
                                   onClick={() =>
-                                    setVisibleEventTypes({
-                                      ...visibleEventTypes,
-                                      policy: !visibleEventTypes.policy,
-                                    })
+                                    setVisibleEventTypes((prev) => ({
+                                      ...prev,
+                                      policy: !prev.policy,
+                                    }))
                                   }
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.policy
-                                      ? "bg-blue-100 border border-blue-300 text-blue-700 hover:bg-blue-200"
+                                      ? "bg-blue-500/15 border border-blue-500/40 text-blue-700 dark:text-blue-300 hover:bg-blue-500/25"
                                       : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
@@ -4197,14 +4211,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 </button>
                                 <button
                                   onClick={() =>
-                                    setVisibleEventTypes({
-                                      ...visibleEventTypes,
-                                      recovery: !visibleEventTypes.recovery,
-                                    })
+                                    setVisibleEventTypes((prev) => ({
+                                      ...prev,
+                                      recovery: !prev.recovery,
+                                    }))
                                   }
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.recovery
-                                      ? "bg-green-100 border border-green-300 text-green-700 hover:bg-green-200"
+                                      ? "bg-green-500/15 border border-green-500/40 text-green-700 dark:text-green-300 hover:bg-green-500/25"
                                       : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
@@ -4213,14 +4227,14 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 </button>
                                 <button
                                   onClick={() =>
-                                    setVisibleEventTypes({
-                                      ...visibleEventTypes,
-                                      warning: !visibleEventTypes.warning,
-                                    })
+                                    setVisibleEventTypes((prev) => ({
+                                      ...prev,
+                                      warning: !prev.warning,
+                                    }))
                                   }
                                   className={`flex items-center gap-2 px-2 py-1 rounded transition-all ${
                                     visibleEventTypes.warning
-                                      ? "bg-yellow-100 border border-yellow-300 text-yellow-700 hover:bg-yellow-200"
+                                      ? "bg-yellow-500/15 border border-yellow-500/40 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-500/25"
                                       : "bg-muted border border-border text-muted-foreground hover:bg-muted/80 opacity-50"
                                   }`}
                                 >
@@ -4239,12 +4253,12 @@ export const StressTest: React.FC<StressTestProps> = ({
                                     key={idx}
                                     className={`p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
                                       event.type === "crisis"
-                                        ? "bg-red-50 border-red-200 hover:bg-red-100"
+                                        ? "bg-red-500/10 border-red-500/30 hover:bg-red-500/20"
                                         : event.type === "policy"
-                                          ? "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                                          ? "bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20"
                                           : event.type === "recovery"
-                                            ? "bg-green-50 border-green-200 hover:bg-green-100"
-                                            : "bg-yellow-50 border-yellow-200 hover:bg-yellow-100"
+                                            ? "bg-green-500/10 border-green-500/30 hover:bg-green-500/20"
+                                            : "bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20"
                                     }`}
                                     onClick={() =>
                                       setSelectedTimelineEvent(event)
@@ -4272,7 +4286,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       </span>
                                     </div>
                                     {selectedTimelineEvent === event && (
-                                      <div className="mt-2 pt-2 border-t border-gray-300 text-xs text-muted-foreground">
+                                      <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground">
                                         Click to view details on chart
                                       </div>
                                     )}

@@ -646,9 +646,9 @@ groups:
 
 ### Notification Channels
 
-**Slack Integration:**
+**Email Integration:**
 
-1. Create Slack webhook:
+1. Create email (SMTP):
    - Go to https://api.slack.com/messaging/webhooks
    - Create new webhook for your workspace
    - Copy webhook URL
@@ -724,7 +724,7 @@ execute_alerts = true
 
 #### Respond to Alerts
 
-1. Receive Slack notification: "High Error Rate"
+1. Receive email notification: "High Error Rate"
 2. Click alert link → Opens Grafana
 3. Review dashboard at alert time
 4. Check logs via Railway Dashboard
@@ -784,7 +784,7 @@ execute_alerts = true
 
 2. **Watch alert fire:**
    - Grafana shows "RedisMemoryWarning" alert
-   - Slack channel receives notification
+   - email inbox receives notification
    - Dashboard panel turns yellow/red
 
 3. **Resolve issue:**

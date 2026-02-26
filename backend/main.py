@@ -9,6 +9,7 @@ import logging
 import os
 import time
 import uuid
+from pathlib import Path
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import FastAPI, HTTPException, Request
@@ -18,6 +19,10 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+
+# Load backend/.env before any router imports (so ADMIN_API_KEY etc. are available)
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from shared.errors import error_response, is_production
 from shared.structured_logging import set_request_id, configure_structured_logging
@@ -56,13 +61,13 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Portfolio Navigator Wizard Backend...")
     
     try:
-        # Centralized Slack notifier (single destination via webhook)
-        from utils.slack_notifier import SlackMessage, send_slack
+        # Centralized email notifier (single recipient via SMTP)
+        from utils.email_notifier import NotificationMessage, send_notification as _send_notification
 
-        def send_slack_notification(title: str, message: str, severity: str = "INFO", fields: dict | None = None,
-                                    throttle_key: str | None = None, min_interval_seconds: int = 0):
-            send_slack(
-                SlackMessage(title=title, message=message, severity=severity, fields=fields),
+        def send_notification(title: str, message: str, severity: str = "INFO", fields: dict | None = None,
+                              throttle_key: str | None = None, min_interval_seconds: int = 0):
+            _send_notification(
+                NotificationMessage(title=title, message=message, severity=severity, fields=fields),
                 throttle_key=throttle_key,
                 min_interval_seconds=min_interval_seconds,
             )
@@ -106,7 +111,7 @@ async def lifespan(app: FastAPI):
                     logger.warning("   All caches will be regenerated automatically in the background.")
                     logger.warning("=" * 80)
 
-                    send_slack_notification(
+                    send_notification(
                         title="Cold start detected - Redis empty",
                         severity="CRITICAL",
                         message=(
@@ -345,7 +350,7 @@ async def lifespan(app: FastAPI):
                         logger.info("="*80)
                         logger.info("✅ Eligible tickers endpoint is now ready for instant responses!")
 
-                        send_slack_notification(
+                        send_notification(
                             title="Eligible tickers cache ready",
                             severity="SUCCESS",
                             message=(
@@ -518,8 +523,8 @@ async def lifespan(app: FastAPI):
                         logger.info("✅ Portfolio recommendations are now ready!")
                         logger.info("="*80)
 
-                        # Slack notification on completion (especially useful after cold start)
-                        send_slack_notification(
+                        # Email notification on completion (especially useful after cold start)
+                        send_notification(
                             title="Portfolio generation completed",
                             severity="SUCCESS",
                             message=(
@@ -577,8 +582,8 @@ async def lifespan(app: FastAPI):
 
         # Start TTL monitoring background task
         async def ttl_monitoring_task():
-            """Background task to monitor TTL and send Slack notifications"""
-            from utils.redis_ttl_monitor import RedisTTLMonitor, slack_notification_callback
+            """Background task to monitor TTL and send email notifications"""
+            from utils.redis_ttl_monitor import RedisTTLMonitor, email_notification_callback
 
             # Wait 5 minutes after startup before first check
             await asyncio.sleep(300)
@@ -589,7 +594,7 @@ async def lifespan(app: FastAPI):
 
             monitor = RedisTTLMonitor(
                 redis_first_data_service.redis_client,
-                notification_callback=slack_notification_callback
+                notification_callback=email_notification_callback
             )
 
             logger.info("🔍 TTL monitoring background task started")
@@ -618,7 +623,7 @@ async def lifespan(app: FastAPI):
 
                         # If anything is already expired, refresh immediately (cannot pre-notify 2 hours ahead).
                         if categories.get("expired", 0) > 0:
-                            send_slack_notification(
+                            send_notification(
                                 title="Ticker cache auto-refresh starting (expired)",
                                 severity="CRITICAL",
                                 message=(
@@ -636,7 +641,7 @@ async def lifespan(app: FastAPI):
                             )
                         else:
                             # Only critical (not expired): schedule with 2-hour pre-notice
-                            send_slack_notification(
+                            send_notification(
                                 title="Ticker cache auto-refresh scheduled",
                                 severity="WARNING",
                                 message=(
@@ -663,7 +668,7 @@ async def lifespan(app: FastAPI):
                             logger.info(
                                 f"✅ Auto-refresh complete: {result['refreshed']}/{result['total_expiring']} tickers"
                             )
-                            send_slack_notification(
+                            send_notification(
                                 title="Ticker cache auto-refresh completed",
                                 severity="SUCCESS",
                                 message=f"Refreshed {result['refreshed']}/{result['total_expiring']} tickers.",
@@ -672,7 +677,7 @@ async def lifespan(app: FastAPI):
                             )
                         except Exception as e:
                             logger.error(f"❌ Auto-refresh failed: {e}")
-                            send_slack_notification(
+                            send_notification(
                                 title="Ticker cache auto-refresh failed",
                                 severity="CRITICAL",
                                 message=f"Auto-refresh failed: {e}",
@@ -695,7 +700,7 @@ async def lifespan(app: FastAPI):
 
         # ---------------------------------------------------------------------
         # Proactive cache regeneration supervisor (app-level caches)
-        # - Schedules regeneration 2 hours in advance (Slack pre-notify)
+        # - Schedules regeneration 2 hours in advance (email pre-notify)
         # - Regenerates in background while old cache is still valid
         # ---------------------------------------------------------------------
         async def cache_regeneration_supervisor():
@@ -706,7 +711,7 @@ async def lifespan(app: FastAPI):
               - optimization:eligible_tickers:* (default eligible-tickers cache)
 
             Behavior:
-              - If missing/expired: regenerate immediately (background) + Slack alert
+              - If missing/expired: regenerate immediately (background) + email alert
               - If expiring within SCHEDULE_THRESHOLD: notify now, regenerate after PRENOTICE_SECONDS
               - Deduplicates schedules to avoid repeated regenerations
             """
@@ -740,7 +745,7 @@ async def lifespan(app: FastAPI):
                 run_at = now + prenotice_seconds
                 scheduled[job_name] = run_at
 
-                send_slack_notification(
+                send_notification(
                     title="Cache regeneration scheduled",
                     severity="WARNING",
                     message=f"{job_name} will regenerate in ~{prenotice_seconds//3600} hours (proactive refresh).",
@@ -750,19 +755,19 @@ async def lifespan(app: FastAPI):
                 async def _runner():
                     try:
                         await asyncio.sleep(max(0, run_at - _now_ts()))
-                        send_slack_notification(
+                        send_notification(
                             title="Cache regeneration starting",
                             severity="INFO",
                             message=f"Starting regeneration for {job_name}.",
                         )
                         await run_coro_factory()
-                        send_slack_notification(
+                        send_notification(
                             title="Cache regeneration completed",
                             severity="SUCCESS",
                             message=f"Regeneration completed for {job_name}.",
                         )
                     except Exception as e:
-                        send_slack_notification(
+                        send_notification(
                             title="Cache regeneration failed",
                             severity="CRITICAL",
                             message=f"{job_name} regeneration failed: {e}",
@@ -795,7 +800,7 @@ async def lifespan(app: FastAPI):
                             await asyncio.to_thread(_ensure_missing_portfolios_generated, risk_profile)
 
                         if ttl_s is None or ttl_s <= 0:
-                            send_slack_notification(
+                            send_notification(
                                 title="Portfolio cache missing/expired",
                                 severity="WARNING",
                                 message=f"{job_name} missing/expired. Regenerating immediately in background.",
@@ -804,7 +809,7 @@ async def lifespan(app: FastAPI):
                             asyncio.create_task(_regen_portfolios_for())
                         elif ttl_s <= prenotice_seconds:
                             # Too close to expiry to wait 2h; refresh now
-                            send_slack_notification(
+                            send_notification(
                                 title="Portfolio cache expiring soon",
                                 severity="WARNING",
                                 message=f"{job_name} expires in {_fmt_seconds(ttl_s)}. Regenerating immediately (cannot wait 2h).",
@@ -827,7 +832,7 @@ async def lifespan(app: FastAPI):
                         needs_generation = bool(status.get("needs_generation")) if isinstance(status, dict) else False
 
                         if needs_generation or min_ttl_s <= 0:
-                            send_slack_notification(
+                            send_notification(
                                 title="Strategy cache missing/expired",
                                 severity="WARNING",
                                 message=f"{job_name} missing/expired. Regenerating immediately in background.",
@@ -835,7 +840,7 @@ async def lifespan(app: FastAPI):
                             )
                             asyncio.create_task(_regen_strategies())
                         elif min_ttl_s <= prenotice_seconds:
-                            send_slack_notification(
+                            send_notification(
                                 title="Strategy cache expiring soon",
                                 severity="WARNING",
                                 message=f"{job_name} expires in {_fmt_seconds(min_ttl_s)}. Regenerating immediately (cannot wait 2h).",
@@ -892,7 +897,7 @@ async def lifespan(app: FastAPI):
                             logger.info(f"✅ Eligible tickers cache regenerated in {time.time()-start_time:.1f}s")
 
                         if ttl_s <= 0:
-                            send_slack_notification(
+                            send_notification(
                                 title="Eligible tickers cache missing/expired",
                                 severity="WARNING",
                                 message=f"{job_name} missing/expired. Regenerating immediately in background.",
@@ -900,7 +905,7 @@ async def lifespan(app: FastAPI):
                             )
                             asyncio.create_task(_regen_eligible())
                         elif ttl_s <= prenotice_seconds:
-                            send_slack_notification(
+                            send_notification(
                                 title="Eligible tickers cache expiring soon",
                                 severity="WARNING",
                                 message=f"{job_name} expires in {_fmt_seconds(ttl_s)}. Regenerating immediately (cannot wait 2h).",
@@ -921,12 +926,12 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(cache_regeneration_supervisor())
 
         # ---------------------------------------------------------------------
-        # Redis connectivity watchdog (Slack-only, single destination)
+        # Redis connectivity watchdog (email notification, single recipient)
         # ---------------------------------------------------------------------
         async def redis_health_watchdog():
             await asyncio.sleep(120)
             if not redis_first_data_service or not redis_first_data_service.redis_client:
-                send_slack_notification(
+                send_notification(
                     title="Redis not connected at startup",
                     severity="CRITICAL",
                     message="Redis client is not available. Cache regeneration and TTL monitoring may not function.",
@@ -949,7 +954,7 @@ async def lifespan(app: FastAPI):
                     consecutive_failures = 0
                     if not was_up:
                         was_up = True
-                        send_slack_notification(
+                        send_notification(
                             title="Redis connectivity restored",
                             severity="SUCCESS",
                             message="Redis ping succeeded again. Cache operations should be healthy.",
@@ -961,7 +966,7 @@ async def lifespan(app: FastAPI):
                     # only alert if it's not a transient blip
                     if was_up and consecutive_failures >= 3:
                         was_up = False
-                        send_slack_notification(
+                        send_notification(
                             title="Redis connectivity lost",
                             severity="CRITICAL",
                             message="Redis ping has failed 3 consecutive checks. Users may see degraded performance or cache misses.",
@@ -1043,14 +1048,14 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
-class Slack5xxMiddleware(BaseHTTPMiddleware):
+class Email5xxMiddleware(BaseHTTPMiddleware):
     """
-    Slack-only notification for 5xx responses (rate limited).
-    Uses the single-destination Slack webhook configured for TTL notifications.
+    Email notification for 5xx responses (rate limited).
+    Uses the same SMTP/recipient configured for TTL notifications.
     """
 
     async def dispatch(self, request: Request, call_next):
-        from utils.slack_notifier import SlackMessage, send_slack
+        from utils.email_notifier import NotificationMessage, send_notification
 
         path = request.url.path
         # Avoid spamming for health/metrics endpoints
@@ -1061,8 +1066,8 @@ class Slack5xxMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             if response.status_code >= 500:
                 rid = getattr(request.state, "request_id", "unknown")
-                send_slack(
-                    SlackMessage(
+                send_notification(
+                    NotificationMessage(
                         title="HTTP 5xx detected",
                         severity="CRITICAL",
                         message=f"Request returned {response.status_code}.",
@@ -1078,8 +1083,8 @@ class Slack5xxMiddleware(BaseHTTPMiddleware):
             return response
         except Exception as e:
             rid = getattr(request.state, "request_id", "unknown")
-            send_slack(
-                SlackMessage(
+            send_notification(
+                NotificationMessage(
                     title="Unhandled exception in request",
                     severity="CRITICAL",
                     message=f"Unhandled exception while processing request: {e}",
@@ -1096,7 +1101,7 @@ class Slack5xxMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(RequestIDMiddleware)
-app.add_middleware(Slack5xxMiddleware)
+app.add_middleware(Email5xxMiddleware)
 
 # Add security middleware
 # Note: HTTPS redirect disabled in development, enabled via environment variable

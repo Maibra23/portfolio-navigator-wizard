@@ -20,7 +20,7 @@ groups:
           summary: "High HTTP 5xx error rate detected"
           description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes (threshold: 5%)"
           impact: "Users are experiencing server errors"
-          action: "Check backend logs and Slack notifications for error details"
+          action: "Check backend logs and email notifications for error details"
 
       # Slow API responses
       - alert: SlowAPIResponses

@@ -10401,6 +10401,66 @@ def _normalize_export_portfolio(portfolio: Union[List[Dict[str, Any]], Dict[str,
         return out
     return []
 
+
+def _enrich_export_portfolio_sectors(portfolio_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Enrich normalized export positions with sector from Redis when missing/empty/Unknown.
+    Preserves client-provided sector when present and non-empty. Applies ETF fallback
+    when sector remains unknown and assetType indicates ETF. Logs hydration diagnostics.
+    """
+    if not portfolio_list:
+        return portfolio_list
+    total = len(portfolio_list)
+    hydrated = 0
+    still_unknown = 0
+    out = []
+    for pos in portfolio_list:
+        p = dict(pos)
+        ticker = (p.get("ticker") or p.get("symbol") or "").strip().upper()
+        current_sector = (p.get("sector") or "").strip()
+        is_unknown = not current_sector or current_sector.lower() == "unknown"
+        if is_unknown and ticker:
+            try:
+                info = _rds.get_ticker_info(ticker)
+                if info and isinstance(info, dict):
+                    cached_sector = (info.get("sector") or "").strip()
+                    if cached_sector and cached_sector.lower() != "unknown":
+                        p["sector"] = cached_sector
+                        hydrated += 1
+                    else:
+                        asset_type = (p.get("assetType") or "").lower() or (str(info.get("assetType") or "").lower())
+                        if asset_type == "etf":
+                            p["sector"] = "ETF"
+                        else:
+                            p["sector"] = "Unknown"
+                            still_unknown += 1
+                else:
+                    if (p.get("assetType") or "").lower() == "etf":
+                        p["sector"] = "ETF"
+                    else:
+                        p["sector"] = "Unknown"
+                        still_unknown += 1
+            except Exception as e:
+                logger.debug("Export sector enrichment failed for %s: %s", ticker, e)
+                if (p.get("assetType") or "").lower() == "etf":
+                    p["sector"] = "ETF"
+                else:
+                    p["sector"] = "Unknown"
+                    still_unknown += 1
+        elif is_unknown:
+            if (p.get("assetType") or "").lower() == "etf":
+                p["sector"] = "ETF"
+            else:
+                p["sector"] = "Unknown"
+                still_unknown += 1
+        out.append(p)
+    logger.info(
+        "Export sector hydration: total=%d hydrated_from_cache=%d still_unknown=%d",
+        total, hydrated, still_unknown,
+    )
+    return out
+
+
 # Pydantic models for PDF export
 class PDFExportRequest(BaseModel):
     portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
@@ -10451,6 +10511,7 @@ async def export_pdf(request: PDFExportRequest):
     """
     try:
         portfolio_list = _normalize_export_portfolio(request.portfolio)
+        portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
         # Prepare data for PDF generation
         pdf_data = {
             "portfolio": portfolio_list,
@@ -10543,6 +10604,7 @@ async def export_csv(request: CSVExportRequest):
     try:
         files = []
         portfolio_list = _normalize_export_portfolio(request.portfolio)
+        portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
 
         # Executive summary (same info as PDF Section 1) - include when we have core data
         if request.portfolioValue is not None and request.accountType and request.taxYear is not None:

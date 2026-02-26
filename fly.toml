@@ -2,8 +2,8 @@
 # Deploy: fly deploy --remote-only
 # First deploy: fly launch --no-deploy (to set app name), then fly deploy
 #
-# Sensitive env vars (ADMIN_API_KEY, TTL_SLACK_WEBHOOK_URL, etc.) go in Fly secrets:
-#   fly secrets set ADMIN_API_KEY=your-key METRICS_SECRET=your-secret
+# Sensitive env vars (ADMIN_API_KEY, SMTP_PASSWORD, etc.) go in Fly secrets:
+#   fly secrets set ADMIN_API_KEY=your-key SMTP_USER=you@gmail.com SMTP_PASSWORD=app-password
 
 app = "portfolio-navigator-wizard"   # change to your actual Fly app name
 primary_region = "arn"               # Stockholm — closest to Linnaeus University

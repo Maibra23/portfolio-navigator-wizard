@@ -1,32 +1,38 @@
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { CheckCircle, AlertCircle, Building2, Shield, Loader2 } from 'lucide-react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { CheckCircle, Activity, Landmark, Shield, Loader2 } from "lucide-react";
 
-export type ScenarioId = 'covid19' | '2008_crisis';
+export type ScenarioId = "covid19" | "2008_crisis";
 
 interface ScenarioOption {
   id: ScenarioId;
   title: string;
   description: string;
   details: string[];
-  icon: typeof AlertCircle;
+  icon: typeof Activity;
 }
 
 const SCENARIOS: ScenarioOption[] = [
   {
-    id: 'covid19',
-    title: '2020 COVID-19 Crash',
-    description: 'Fastest market crash in modern history (Feb-Apr 2020). Tests rapid volatility and recovery capability.',
-    details: ['Crisis Duration: 3 months', 'Recovery Pattern: V-shaped', 'Volatility: High'],
-    icon: AlertCircle,
+    id: "covid19",
+    title: "2020 COVID-19 Crash",
+    description:
+      "Fastest market crash in modern history (Feb-Apr 2020). Tests rapid volatility and recovery capability.",
+    details: [
+      "Crisis Duration: 3 months",
+      "Recovery Pattern: V-shaped",
+      "Volatility: High",
+    ],
+    icon: Activity,
   },
   {
-    id: '2008_crisis',
-    title: '2008 Financial Crisis',
-    description: 'Most severe crisis since Great Depression (Sep 2008 - Mar 2010). Tests prolonged drawdown and recovery behavior.',
-    details: ['Crisis Duration: 18 months', 'Recovery Pattern: Prolonged'],
-    icon: Building2,
+    id: "2008_crisis",
+    title: "2008 Financial Crisis",
+    description:
+      "Most severe crisis since Great Depression (Sep 2008 - Mar 2010). Tests prolonged drawdown and recovery behavior.",
+    details: ["Crisis Duration: 18 months", "Recovery Pattern: Prolonged"],
+    icon: Landmark,
   },
 ];
 
@@ -46,13 +52,15 @@ export function ScenarioSelector({
   onRunTest,
   isLoading,
   loadingProgress = 0,
-  loadingStep = '',
+  loadingStep = "",
   runDisabled = false,
 }: ScenarioSelectorProps) {
   return (
     <div className="space-y-3">
       <div className="text-center">
-        <h3 className="text-base font-semibold mb-1">Select Stress Test Scenario</h3>
+        <h3 className="text-base font-semibold mb-1">
+          Select Stress Test Scenario
+        </h3>
         <p className="text-sm text-muted-foreground">
           Choose one scenario to test your portfolio&apos;s resilience
         </p>
@@ -67,8 +75,8 @@ export function ScenarioSelector({
               key={scenario.id}
               className={`cursor-pointer transition-all ${
                 isSelected
-                  ? 'border-2 border-blue-500 bg-blue-50 shadow-md dark:bg-blue-950/30 dark:border-blue-500'
-                  : 'border border-gray-200 hover:border-gray-300 hover:shadow-sm dark:border-border'
+                  ? "border-2 border-blue-500 bg-blue-50 shadow-md dark:bg-blue-950/30 dark:border-blue-500"
+                  : "border border-gray-200 hover:border-gray-300 hover:shadow-sm dark:border-border"
               }`}
               onClick={() => onSelectScenario(scenario.id)}
             >
@@ -76,9 +84,13 @@ export function ScenarioSelector({
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      {isSelected && <CheckCircle className="h-5 w-5 text-blue-600" />}
+                      {isSelected && (
+                        <CheckCircle className="h-5 w-5 text-blue-600" />
+                      )}
                       <Icon className="h-5 w-5 text-blue-600 dark:text-amber-500" />
-                      <h3 className="font-semibold text-lg">{scenario.title}</h3>
+                      <h3 className="font-semibold text-lg">
+                        {scenario.title}
+                      </h3>
                     </div>
                     <p className="text-xs text-gray-600 dark:text-muted-foreground mb-3">
                       {scenario.description}

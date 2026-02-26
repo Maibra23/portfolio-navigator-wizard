@@ -18,7 +18,18 @@ import {
   ValueType,
   NameType,
 } from "recharts/types/component/DefaultTooltipContent";
-import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import {
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  BookOpen,
+  ChevronDown,
+} from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useTheme } from "@/hooks/useTheme";
 import {
   getChartTheme,
@@ -78,6 +89,8 @@ interface EfficientFrontierChartProps {
   className?: string;
   showControls?: boolean;
   showInteractiveLegend?: boolean;
+  /** Optional ticker symbol from the weights-optimized portfolio for educational example (e.g. why weights-opt can outperform market-opt). */
+  weightsOptimizedTickerExample?: string;
 }
 
 // Spacing and layout constants (theme-independent)
@@ -109,6 +122,7 @@ export const EfficientFrontierChart = ({
   className,
   showControls = true,
   showInteractiveLegend = true,
+  weightsOptimizedTickerExample,
 }: EfficientFrontierChartProps) => {
   // Get current theme for dynamic colors
   const { theme } = useTheme();
@@ -423,6 +437,57 @@ export const EfficientFrontierChart = ({
     (p) => p.type === "market-optimized",
   );
 
+  // Dynamic metrics for educational copy (market-optimized preferred, else weights-optimized)
+  const optimalPortfolio =
+    marketOptimizedPortfolio ?? weightsOptimizedPortfolio;
+  const explanationMetrics = useMemo(() => {
+    const cur = currentPortfolio;
+    const opt = optimalPortfolio;
+    if (!cur) return null;
+    const curRet = (cur.return ?? 0) * 100;
+    const curRisk = (cur.risk ?? 0) * 100;
+    const curSharpe =
+      cur.sharpe_ratio != null && isFinite(cur.sharpe_ratio)
+        ? cur.sharpe_ratio.toFixed(2)
+        : "—";
+    if (!opt) {
+      return {
+        currentReturn: curRet.toFixed(2),
+        currentRisk: curRisk.toFixed(2),
+        currentSharpe: curSharpe,
+        hasOptimal: false,
+        optimalReturn: "",
+        optimalRisk: "",
+        optimalSharpe: "",
+        riskReductionPct: "",
+        returnDelta: "",
+        riskDelta: "",
+      };
+    }
+    const optRet = (opt.return ?? 0) * 100;
+    const optRisk = (opt.risk ?? 0) * 100;
+    const optSharpe =
+      opt.sharpe_ratio != null && isFinite(opt.sharpe_ratio)
+        ? opt.sharpe_ratio.toFixed(2)
+        : "—";
+    const riskReductionPct =
+      curRisk > 0 ? (((curRisk - optRisk) / curRisk) * 100).toFixed(1) : "—";
+    const returnDelta = (optRet - curRet).toFixed(2);
+    const riskDelta = (optRisk - curRisk).toFixed(2);
+    return {
+      currentReturn: curRet.toFixed(2),
+      currentRisk: curRisk.toFixed(2),
+      currentSharpe: curSharpe,
+      hasOptimal: true,
+      optimalReturn: optRet.toFixed(2),
+      optimalRisk: optRisk.toFixed(2),
+      optimalSharpe: optSharpe,
+      riskReductionPct,
+      returnDelta: Number(returnDelta) >= 0 ? `+${returnDelta}` : returnDelta,
+      riskDelta: Number(riskDelta) <= 0 ? riskDelta : `+${riskDelta}`,
+    };
+  }, [currentPortfolio, optimalPortfolio]);
+
   return (
     <Card
       className={className}
@@ -675,6 +740,7 @@ export const EfficientFrontierChart = ({
           </div>
         )}
       </CardHeader>
+
       <CardContent
         className="min-h-[500px] h-[500px]"
         style={{
@@ -1413,6 +1479,225 @@ export const EfficientFrontierChart = ({
           </div>
         )}
       </CardContent>
+
+      {/* Collapsible educational section: below graph, theme-aware, hidden by default */}
+      <div className="px-6 pb-4">
+        <Collapsible
+          className="group rounded-md border"
+          style={{ borderColor: chartTheme.border }}
+        >
+          <CollapsibleTrigger
+            className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium transition-colors hover:opacity-90"
+            style={{
+              color: chartTheme.text.primary,
+              background: chartTheme.canvas,
+            }}
+          >
+            <div className="flex items-center gap-1.5">
+              <BookOpen
+                className="h-3.5 w-3.5 shrink-0"
+                style={{ color: chartTheme.text.secondary }}
+              />
+              <span>Understanding this chart</span>
+            </div>
+            <ChevronDown
+              className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
+              style={{ color: chartTheme.text.secondary }}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div
+              className="border-t px-3 py-3 text-xs space-y-3 max-h-[280px] overflow-y-auto"
+              style={{
+                borderColor: chartTheme.border,
+                color: chartTheme.text.secondary,
+                background: chartTheme.cardBackground,
+              }}
+            >
+              <section>
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: chartTheme.text.primary }}
+                >
+                  Risk and return tradeoff
+                </p>
+                <p>
+                  Expected return and volatility are positively related. In
+                  equilibrium, higher expected return is associated with higher
+                  risk. The relationship is analogous to yield and credit risk
+                  in fixed income: greater reward typically requires bearing
+                  more uncertainty.{" "}
+                  {explanationMetrics?.hasOptimal && (
+                    <>
+                      Your current portfolio implies{" "}
+                      <strong style={{ color: chartTheme.text.primary }}>
+                        {explanationMetrics.currentReturn}%
+                      </strong>{" "}
+                      expected return at{" "}
+                      <strong style={{ color: chartTheme.text.primary }}>
+                        {explanationMetrics.currentRisk}%
+                      </strong>{" "}
+                      volatility. The market-optimized portfolio targets{" "}
+                      <strong style={{ color: chartTheme.text.primary }}>
+                        {explanationMetrics.optimalReturn}%
+                      </strong>{" "}
+                      return at{" "}
+                      <strong style={{ color: chartTheme.text.primary }}>
+                        {explanationMetrics.optimalRisk}%
+                      </strong>{" "}
+                      volatility.
+                    </>
+                  )}
+                </p>
+              </section>
+              <section
+                className="pt-2 border-t"
+                style={{ borderColor: chartTheme.border }}
+              >
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: chartTheme.text.primary }}
+                >
+                  Markowitz optimization
+                </p>
+                <p>
+                  The curve is the mean-variance efficient set: portfolios that
+                  maximize expected return for a given level of risk, as
+                  formalized by Harry Markowitz (1952). It is the investment
+                  analogue of a production-possibility frontier, the boundary of
+                  achievable risk and return outcomes.{" "}
+                  {explanationMetrics?.hasOptimal &&
+                    explanationMetrics.currentSharpe !== "—" &&
+                    explanationMetrics.optimalSharpe !== "—" && (
+                      <>
+                        Moving toward the frontier can raise the Sharpe ratio
+                        from{" "}
+                        <strong style={{ color: chartTheme.text.primary }}>
+                          {explanationMetrics.currentSharpe}
+                        </strong>{" "}
+                        to{" "}
+                        <strong style={{ color: chartTheme.text.primary }}>
+                          {explanationMetrics.optimalSharpe}
+                        </strong>
+                        .
+                      </>
+                    )}
+                </p>
+              </section>
+              <section
+                className="pt-2 border-t"
+                style={{ borderColor: chartTheme.border }}
+              >
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: chartTheme.text.primary }}
+                >
+                  Diversification benefit
+                </p>
+                <p>
+                  Efficient portfolios exploit diversification. Holding assets
+                  whose returns are not perfectly correlated reduces portfolio
+                  variance without sacrificing return proportionally. The idea
+                  is analogous to a structural truss, where load is distributed
+                  across members so that no single element bears the full
+                  stress.{" "}
+                  {explanationMetrics?.hasOptimal &&
+                    explanationMetrics.riskReductionPct !== "—" &&
+                    Number(explanationMetrics.riskReductionPct) > 0 && (
+                      <>
+                        The optimized portfolio can lower volatility by
+                        approximately{" "}
+                        <strong style={{ color: chartTheme.text.primary }}>
+                          {explanationMetrics.riskReductionPct}%
+                        </strong>{" "}
+                        while targeting similar or higher return.
+                      </>
+                    )}
+                </p>
+              </section>
+              <section
+                className="pt-2 border-t"
+                style={{ borderColor: chartTheme.border }}
+              >
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: chartTheme.text.primary }}
+                >
+                  Interpretation of positions
+                </p>
+                <p>
+                  Points above the curve are not attainable. Points on the curve
+                  are mean-variance efficient. Points below are dominated:
+                  another portfolio offers the same return with lower risk, or
+                  higher return for the same risk. The current portfolio (red)
+                  and the optimized portfolio (green star or blue diamond) can
+                  be compared accordingly. Moving toward the frontier improves
+                  the risk-adjusted outcome.
+                </p>
+              </section>
+              <section
+                className="pt-2 border-t"
+                style={{ borderColor: chartTheme.border }}
+              >
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: chartTheme.text.primary }}
+                >
+                  Capital Market Line (CML)
+                </p>
+                <p>
+                  The purple dashed line represents combinations of the
+                  risk-free asset and the tangency (market) portfolio. It is the
+                  efficient way to choose exposure to market risk, analogous to
+                  a single control that moves allocation along the optimal
+                  trade-off from the risk-free rate to the market portfolio.
+                </p>
+              </section>
+              <section
+                className="pt-2 border-t"
+                style={{ borderColor: chartTheme.border }}
+              >
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: chartTheme.text.primary }}
+                >
+                  Weights-optimized vs market-optimized
+                </p>
+                <p>
+                  The weights-optimized portfolio (blue diamond) optimizes only
+                  the allocation across your chosen assets. The market-optimized
+                  portfolio (green star) also considers a risk-free asset and
+                  targets maximum Sharpe ratio. In some cases the
+                  weights-optimized portfolio can outperform the
+                  market-optimized one. That can happen when your universe
+                  contains names with strong expected returns that the optimizer
+                  tilts into.{" "}
+                  {weightsOptimizedTickerExample ? (
+                    <>
+                      For example, a holding such as{" "}
+                      <strong style={{ color: chartTheme.text.primary }}>
+                        {weightsOptimizedTickerExample}
+                      </strong>{" "}
+                      may have a higher expected return in the model than the
+                      average market exposure, so the weights-optimized solution
+                      can lean into it and achieve a better risk-adjusted result
+                      than the market portfolio alone.
+                    </>
+                  ) : (
+                    <>
+                      For example, certain names in the weights-optimized
+                      portfolio may have higher expected returns in the model
+                      than the average market exposure. The optimizer can then
+                      tilt into those names and deliver a better risk-adjusted
+                      result than the market portfolio alone.
+                    </>
+                  )}
+                </p>
+              </section>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
 
       {/* Static Legend (shown when interactive legend is disabled) */}
       {!showInteractiveLegend && (

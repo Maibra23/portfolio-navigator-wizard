@@ -21,6 +21,9 @@ import {
   Info,
   BookOpen,
   ChevronDown,
+  PieChart,
+  ClipboardList,
+  Receipt,
 } from "lucide-react";
 import {
   Collapsible,
@@ -354,16 +357,23 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       const weights: Record<string, number> =
         selectedPortfolioData.weights || {};
 
-      const newStocks: PortfolioAllocation[] = (tickers || []).map(
-        (symbol) => ({
+      const sectorMap = new Map(
+        state.constructedPortfolio
+          .filter((s) => s.sector != null && s.sector !== "")
+          .map((s) => [s.symbol, s.sector as string]),
+      );
+      const newStocks: PortfolioAllocation[] = (tickers || []).map((symbol) => {
+        const existing = state.constructedPortfolio.find(
+          (s) => s.symbol === symbol,
+        );
+        return {
           symbol,
           allocation: (weights[symbol] || 0) * 100,
-          // Try to preserve existing names if they exist in current portfolio
-          name:
-            state.constructedPortfolio.find((s) => s.symbol === symbol)?.name ||
-            "",
-        }),
-      );
+          name: existing?.name ?? "",
+          sector: existing?.sector ?? sectorMap.get(symbol),
+          assetType: existing?.assetType,
+        };
+      });
 
       updateConstructedPortfolio(newStocks);
       // Mark builder as done since we just selected a valid optimized portfolio
@@ -947,7 +957,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                   <div className="space-y-1">
                     <CardTitle className="text-lg font-semibold flex items-center gap-2">
                       <div className="p-2 rounded-lg bg-primary/10">
-                        <TrendingUp className="h-5 w-5 text-primary" />
+                        <PieChart className="h-5 w-5 text-primary" />
                       </div>
                       Create Your Investment Portfolio
                     </CardTitle>
@@ -1085,7 +1095,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-md bg-emerald-500/10">
-                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    <ClipboardList className="h-4 w-4 text-emerald-600" />
                   </div>
                   <CardTitle className="text-base">
                     Current Portfolio Summary
@@ -1318,6 +1328,10 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                       }
                       showControls={true}
                       showInteractiveLegend={true}
+                      weightsOptimizedTickerExample={
+                        state.optimizedPortfolio.weights_optimized_portfolio
+                          ?.optimized_portfolio?.tickers?.[0]
+                      }
                     />
                   );
                 })()}
@@ -1674,6 +1688,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 setHiddenTab(null);
                 setActiveTab("analysis");
               }}
+              onStressTestResults={updateStressTestResults}
               selectedPortfolio={{
                 source: selectedPortfolioType,
                 tickers: state.constructedPortfolio.map((s) => s.symbol),
@@ -1971,7 +1986,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-md bg-emerald-500/10">
-                    <TrendingUp className="h-4 w-4 text-emerald-600" />
+                    <Receipt className="h-4 w-4 text-emerald-600" />
                   </div>
                   <CardTitle className="text-base">
                     Costs & Tax-Free Level

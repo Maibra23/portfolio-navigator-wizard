@@ -92,5 +92,5 @@ networks:
 # 1. For production, use Railway's managed Redis instead of Docker Redis
 # 2. Update prometheus.yml to scrape from Railway backend URL
 # 3. Set up Grafana dashboards using provisioning files
-# 4. Configure alertmanager for Slack/email notifications
+# 4. Configure alertmanager for email notifications
 # 5. Use strong passwords for Grafana in production (env var: GF_SECURITY_ADMIN_PASSWORD)

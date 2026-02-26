@@ -16,10 +16,10 @@
 5. **Frontend API Config** - Production URL support
 6. **Environment Templates** - `.env.example` files created
 7. **Dependencies Updated** - `slowapi>=0.1.9` added
-8. **Slack Integration** - Enhanced notifications with detailed Redis stats
+8. **Email Integration** - Enhanced notifications with detailed Redis stats
 
 ### ✅ Enhanced Features
-- **Comprehensive Redis Statistics** in Slack notifications:
+- **Comprehensive Redis Statistics** in email notifications:
   - TTL status breakdown
   - Memory usage and limits
   - Key distribution by type
@@ -30,7 +30,7 @@
 - **Automatic Background Monitoring**:
   - Runs every 24 hours
   - Auto-refreshes critical tickers
-  - Sends detailed Slack notifications
+  - Sends detailed email notifications
   - Logs all activities
 
 ### ✅ Documentation Created
@@ -68,9 +68,9 @@
    export ALPHA_VANTAGE_API_KEY="your_actual_key"
 
    # Optional: For Slack testing
-   export TTL_SLACK_NOTIFICATIONS=true
-   export TTL_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-   export TTL_SLACK_CHANNEL="#redis-alerts"
+   export TTL_EMAIL_NOTIFICATIONS=true
+   export TTL_NOTIFICATION_EMAIL=your@email.com, SMTP_USER, SMTP_PASSWORD
+   export TTL_NOTIFICATION_EMAIL="#redis-alerts"
    ```
 
 ### Run Automated Test Suite
@@ -87,7 +87,7 @@
 - ✅ Rate limiting enforcement
 - ✅ Redis connectivity
 - ✅ Cache status
-- ✅ Slack notifications (if configured)
+- ✅ email notifications (if configured)
 
 **Expected output:**
 ```
@@ -144,10 +144,10 @@ Test 6: Cache Status
 ✅ PASS: Cache status retrieved
 
 ================================================================
-Test 7: Slack Notification Test
+Test 7: Email Notification Test
 ================================================================
-✅ PASS: TTL check triggered (check Slack for notification)
-📱 Check your Slack channel for the notification!
+✅ PASS: TTL check triggered (check email for notification)
+📱 Check your email inbox for the notification!
 
 ================================================================
 Test Summary
@@ -157,7 +157,7 @@ Test Summary
 
 ---
 
-## 📱 Enhanced Slack Notification Format
+## 📱 Enhanced Email Notification Format
 
 ### What You'll Receive
 
@@ -209,7 +209,7 @@ Portfolio Navigator Wizard | Redis TTL Monitoring System
 
 ## 🚀 Free Tier Compatibility
 
-### ✅ Slack Free Tier
+### ✅ Email (Gmail)
 - **Cost**: $0/month (free forever)
 - **Incoming Webhooks**: Unlimited
 - **Message History**: 90 days
@@ -219,7 +219,7 @@ Portfolio Navigator Wizard | Redis TTL Monitoring System
 ### ✅ Railway Free Tier
 - **Cost**: $5 credit/month
 - **Outbound HTTP**: Included (no extra charge)
-- **Slack Webhooks**: Free (tiny bandwidth)
+- **Email (SMTP)**: Free (tiny bandwidth)
 - **Our Usage**: < 1 MB/month for notifications
 - **Impact on Budget**: ~$0.00
 
@@ -236,7 +236,7 @@ Portfolio Navigator Wizard | Redis TTL Monitoring System
 # 1. Warm the cache (takes 90 minutes, do this ONCE)
 curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-cache
 
-# 2. Wait for Slack notification confirming completion
+# 2. Wait for email notification confirming completion
 
 # 3. Do nothing! Auto-monitoring handles everything from here
 ```
@@ -253,7 +253,7 @@ curl https://your-backend.railway.app/api/v1/portfolio/cache-status
 ```
 You don't need to do anything!
 - Auto-refresh runs every 24 hours
-- Sends Slack notifications
+- Sends email notifications
 - Refreshes expiring tickers automatically
 ```
 
@@ -261,7 +261,7 @@ You don't need to do anything!
 ```
 Rarely! Only when:
 - Adding new tickers
-- Slack alerts you to CRITICAL issues
+- email alerts you to CRITICAL issues
 - Auto-refresh failed (very rare)
 ```
 
@@ -289,7 +289,7 @@ curl -X POST https://your-backend.railway.app/api/v1/portfolio/warm-tickers \
 
 - [ ] All tests pass locally (run `./test_deployment.sh`)
 - [ ] Redis is running and healthy
-- [ ] Slack webhook created and tested
+- [ ] email (SMTP) created and tested
 - [ ] Backend starts without errors
 - [ ] Frontend can communicate with backend
 - [ ] Rate limiting working
@@ -305,7 +305,7 @@ git commit -m "Production-ready: All pre-deployment tasks complete
 ✅ Rate limiting (SlowAPI) - 2/hour for cache warming
 ✅ Redis TLS support for cloud deployment
 ✅ 4 new TTL monitoring endpoints
-✅ Enhanced Slack notifications with Redis stats
+✅ Enhanced email notifications with Redis stats
 ✅ Automatic TTL monitoring background task
 ✅ Frontend production URL configuration
 ✅ Comprehensive documentation and testing
@@ -331,9 +331,9 @@ git push origin main
      ALPHA_VANTAGE_API_KEY=your_key
      ENVIRONMENT=production
      USE_LIVE_DATA=true
-     TTL_SLACK_NOTIFICATIONS=true
-     TTL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-     TTL_SLACK_CHANNEL=#redis-alerts
+     TTL_EMAIL_NOTIFICATIONS=true
+     TTL_NOTIFICATION_EMAIL and SMTP_* set (see .env.example)
+     TTL_NOTIFICATION_EMAIL=#redis-alerts
      ```
    - Reference Redis service (auto-adds REDIS_URL)
    - Generate domain, copy URL
@@ -357,7 +357,7 @@ git push origin main
    ```
 
 6. **Verify** (5 mins)
-   - Check Slack for first TTL notification
+   - Check email for first TTL notification
    - Open frontend URL in browser
    - Test search and portfolio features
 
@@ -367,7 +367,7 @@ git push origin main
 
 ### First 24 Hours
 - Cache warming: 90 minutes
-- First Slack notification: ~5 mins after backend starts
+- First email notification: ~5 mins after backend starts
 - Daily TTL check: Every 24 hours from first start
 - Auto-refresh: As needed (if any tickers critical)
 
@@ -391,12 +391,12 @@ git push origin main
 - Port issue → Railway sets PORT automatically
 ```
 
-### Slack notifications not working
+### email notifications not working
 ```bash
 # Check:
-1. TTL_SLACK_NOTIFICATIONS=true
-2. TTL_SLACK_WEBHOOK_URL is valid
-3. Backend logs show "Slack notification sent"
+1. TTL_EMAIL_NOTIFICATIONS=true
+2. SMTP_USER and TTL_NOTIFICATION_EMAIL are set
+3. Backend logs show "email notification sent"
 4. Webhook URL hasn't expired
 ```
 
@@ -439,7 +439,7 @@ Ready to deploy when all checked:
 - [ ] Ran `./test_deployment.sh` - all tests pass
 - [ ] Committed all changes to Git
 - [ ] Pushed to GitHub
-- [ ] Have Slack webhook URL ready
+- [ ] Have email (SMTP) URL ready
 - [ ] Have Alpha Vantage API key ready
 - [ ] Railway account created
 - [ ] Understand basic ticker management (read beginner guide)
@@ -468,4 +468,4 @@ Ready to deploy when all checked:
 
 **Good luck with your deployment!** 🚀
 
-Questions? Check the documentation or review Slack notifications for system status.
+Questions? Check the documentation or review email notifications for system status.

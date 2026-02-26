@@ -3,6 +3,12 @@
 // In development, empty string uses Vite proxy configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
+/** Optional X-Admin-Key header for warm-tickers and other admin endpoints. Set VITE_ADMIN_API_KEY (same value as backend ADMIN_API_KEY) to enable. */
+export const getAdminKeyHeaders = (): Record<string, string> => {
+  const key = import.meta.env.VITE_ADMIN_API_KEY;
+  return typeof key === "string" && key ? { "X-Admin-Key": key } : {};
+};
+
 // API v1 prefix (backend serves all portfolio endpoints under /api/v1/portfolio)
 const API_V1_PORTFOLIO = `${API_BASE_URL}/api/v1/portfolio`;
 

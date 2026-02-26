@@ -174,37 +174,34 @@ echo ""
 echo -e "${GREEN}✅ PASS: Cache status retrieved${NC}"
 echo ""
 
-# Test 7: Enhanced Slack Notification Test (if configured)
+# Test 7: Email Notification Test (if configured)
 echo "================================================================"
-echo "Test 7: Slack Notification Test"
+echo "Test 7: Email Notification Test"
 echo "================================================================"
 
-if [ -n "$TTL_SLACK_WEBHOOK_URL" ] && [ "$TTL_SLACK_NOTIFICATIONS" == "true" ]; then
-    echo "Slack notifications configured, testing..."
-    echo "Triggering TTL check (should send Slack notification)..."
+if [ "$TTL_EMAIL_NOTIFICATIONS" == "true" ] && [ -n "$TTL_NOTIFICATION_EMAIL" ]; then
+    echo "Email notifications configured, testing..."
+    echo "Triggering TTL check (should send email)..."
 
     ttl_check=$(curl -s http://localhost:8000/api/v1/portfolio/cache/ttl-status)
 
     echo ""
-    echo -e "${BLUE}📱 Check your Slack channel for the notification!${NC}"
+    echo -e "${BLUE}📧 Check the recipient inbox ($TTL_NOTIFICATION_EMAIL) for the notification.${NC}"
     echo ""
-    echo "Expected message format:"
-    echo "  🔔 Redis Cache TTL Alert - INFO/WARNING/CRITICAL"
-    echo "  📊 TTL Status (tickers, timestamp)"
-    echo "  💾 Redis Storage Overview (keys, memory)"
-    echo "  🔑 Key Distribution (prices, sectors, metrics, portfolios)"
-    echo "  📈 Ticker Data Completeness"
-    echo "  📦 Estimated Storage by Type"
+    echo "Expected: Redis Cache TTL Alert (subject with severity), TTL status and Redis stats in body."
     echo ""
 
-    echo -e "${GREEN}✅ PASS: TTL check triggered (check Slack for notification)${NC}"
+    echo -e "${GREEN}✅ PASS: TTL check triggered (check email for notification)${NC}"
 else
-    echo -e "${YELLOW}⚠️  SKIP: Slack not configured${NC}"
+    echo -e "${YELLOW}⚠️  SKIP: Email not configured${NC}"
     echo ""
-    echo "To test Slack notifications, set environment variables:"
-    echo "  export TTL_SLACK_NOTIFICATIONS=true"
-    echo "  export TTL_SLACK_WEBHOOK_URL='https://hooks.slack.com/services/YOUR/WEBHOOK/URL'"
-    echo "  export TTL_SLACK_CHANNEL='#redis-alerts'"
+    echo "To test email notifications, set environment variables:"
+    echo "  export TTL_EMAIL_NOTIFICATIONS=true"
+    echo "  export TTL_NOTIFICATION_EMAIL='your@email.com'"
+    echo "  export SMTP_HOST=smtp.gmail.com"
+    echo "  export SMTP_PORT=587"
+    echo "  export SMTP_USER=your@gmail.com"
+    echo "  export SMTP_PASSWORD='your-app-password'"
     echo ""
     echo "Then restart the backend and run this test again."
 fi

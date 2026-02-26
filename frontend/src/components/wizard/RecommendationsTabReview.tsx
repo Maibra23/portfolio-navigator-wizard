@@ -2,81 +2,81 @@
  * ============================================================================
  * RECOMMENDATIONS TAB - CODE REVIEW FILE
  * ============================================================================
- * 
- * This file contains the complete code for the "Recommendations" tab from 
+ *
+ * This file contains the complete code for the "Recommendations" tab from
  * PortfolioOptimization.tsx (lines ~4094-5200+).
- * 
+ *
  * PURPOSE: For your review to decide what to keep, remove, or improve.
- * 
+ *
  * ============================================================================
  * CURRENT STRUCTURE:
  * ============================================================================
- * 
+ *
  * 1. PRIMARY RECOMMENDATION CARD (lines 4105-4283)
  *    - Shows "Significant Improvement Opportunity" (amber) if Sharpe diff > 20%
  *    - Shows "Moderate Improvement Available" (blue) if Sharpe diff > 10%
  *    - Shows "Excellent Portfolio Performance!" (green) otherwise
  *    - Displays top 5 tickers from optimized portfolio
- *    
+ *
  *    QUESTION: Do we need this? It duplicates info from the comparison table.
- * 
+ *
  * 2. RECOMMENDED ACTIONS CARD (lines 4286-4355)
  *    - "Apply Optimized Weights" if Sharpe improvement > 0
  *    - "Reduced Risk Profile" if risk improvement > 0
  *    - "Enhanced Returns" if return improvement > 0
  *    - "Optimized Portfolio Tickers" list
- *    
+ *
  *    QUESTION: Do we need this? It's based on mvoResults.improvements which
  *    may not be accurate for triple optimization.
- * 
+ *
  * 3. PERFORMANCE SUMMARY CARD (lines 4357-4431)
  *    - "Current → Optimized" comparison (Return, Risk, Sharpe differences)
  *    - "Risk Profile Compliance" check
- *    
+ *
  *    ISSUE: Uses dualOptimizationResults which may not reflect the SELECTED
  *    portfolio (current/weights/market). Should use tripleOptimizationResults
  *    and show metrics for the SELECTED portfolio.
- * 
+ *
  * 4. MULTI-FACTOR QUALITY SCORE CARD (lines 4433-4933)
  *    - Shows composite quality score (0-100)
  *    - Factor breakdown: Risk Alignment, Downside Protection, Diversification, Consistency
  *    - Compares selected vs best alternative portfolio
- *    
+ *
  *    IMPROVEMENT IDEAS:
  *    - Add gauge/meter visualization for composite score
  *    - Add explanations for each factor
  *    - Show trend arrows for improvement potential
- * 
+ *
  * 5. MONTE CARLO SIMULATION CARD (lines 4935-5200+)
  *    - Probability of positive returns
  *    - Return distribution histogram
  *    - Percentile ranges (5th, 25th, 50th, 75th, 95th)
  *    - Loss probability thresholds
- *    
+ *
  *    IMPROVEMENT IDEAS:
  *    - Add confidence interval visualization
  *    - Add VaR (Value at Risk) display
  *    - Add scenario analysis (best/worst/expected)
- * 
+ *
  * ============================================================================
  * RECOMMENDATIONS FOR CLEANUP:
  * ============================================================================
- * 
+ *
  * REMOVE OR SIMPLIFY:
  * - Primary Recommendation Card: Redundant with comparison table
  * - Recommended Actions Card: Based on old mvoResults, not accurate
- * 
+ *
  * KEEP AND FIX:
  * - Performance Summary: Fix to use selected portfolio from tripleOptimizationResults
  * - Quality Score Card: Keep, it's valuable
  * - Monte Carlo Card: Keep, it's valuable
- * 
+ *
  * ============================================================================
  */
 
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Target,
   CheckCircle,
@@ -86,8 +86,8 @@ import {
   TrendingUp,
   Lightbulb,
   Award,
-  BarChart3,
-} from 'lucide-react';
+  Activity,
+} from "lucide-react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -97,7 +97,7 @@ import {
   Tooltip as RechartsTooltip,
   Legend,
   Line,
-} from 'recharts';
+} from "recharts";
 
 // ============================================================================
 // TYPES (from PortfolioOptimization.tsx)
@@ -199,7 +199,7 @@ interface TripleOptimizationResponse {
     };
   };
   optimization_metadata: {
-    recommendation: 'current' | 'weights' | 'market';
+    recommendation: "current" | "weights" | "market";
     market_exploration_successful: boolean;
   };
 }
@@ -207,7 +207,7 @@ interface TripleOptimizationResponse {
 // ============================================================================
 // SECTION 1: PRIMARY RECOMMENDATION CARD
 // ============================================================================
-// 
+//
 // VERDICT: Consider REMOVING or SIMPLIFYING
 // - Duplicates information already shown in the comparison table
 // - The "Action Plan" and "Top Opportunities" are helpful but could be
@@ -223,29 +223,42 @@ const PrimaryRecommendationCard = ({
   riskProfile,
 }: {
   tripleOptimizationResults: TripleOptimizationResponse | null;
-  selectedPortfolio: 'current' | 'weights' | 'market';
+  selectedPortfolio: "current" | "weights" | "market";
   riskProfile: string;
 }) => {
   if (!tripleOptimizationResults) return null;
 
-  const currentSharpe = tripleOptimizationResults.current_portfolio?.metrics?.sharpe_ratio ?? 0;
-  
+  const currentSharpe =
+    tripleOptimizationResults.current_portfolio?.metrics?.sharpe_ratio ?? 0;
+
   let optimizedSharpe = 0;
   let optimizedWeights: Record<string, number> = {};
-  
-  if (selectedPortfolio === 'weights') {
-    optimizedSharpe = tripleOptimizationResults.weights_optimized_portfolio?.optimized_portfolio?.metrics?.sharpe_ratio ?? 0;
-    optimizedWeights = tripleOptimizationResults.weights_optimized_portfolio?.optimized_portfolio?.weights || {};
-  } else if (selectedPortfolio === 'market' && tripleOptimizationResults.market_optimized_portfolio) {
-    optimizedSharpe = tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio?.metrics?.sharpe_ratio ?? 0;
-    optimizedWeights = tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio?.weights || {};
+
+  if (selectedPortfolio === "weights") {
+    optimizedSharpe =
+      tripleOptimizationResults.weights_optimized_portfolio?.optimized_portfolio
+        ?.metrics?.sharpe_ratio ?? 0;
+    optimizedWeights =
+      tripleOptimizationResults.weights_optimized_portfolio?.optimized_portfolio
+        ?.weights || {};
+  } else if (
+    selectedPortfolio === "market" &&
+    tripleOptimizationResults.market_optimized_portfolio
+  ) {
+    optimizedSharpe =
+      tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio
+        ?.metrics?.sharpe_ratio ?? 0;
+    optimizedWeights =
+      tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio
+        ?.weights || {};
   }
-  
+
   const sharpeDiffFromCurrent = optimizedSharpe - currentSharpe;
-  const sharpeDiffPercent = currentSharpe > 0 ? (sharpeDiffFromCurrent / currentSharpe) * 100 : 0;
-  
+  const sharpeDiffPercent =
+    currentSharpe > 0 ? (sharpeDiffFromCurrent / currentSharpe) * 100 : 0;
+
   const topTickers = Object.entries(optimizedWeights)
-    .sort(([,a], [,b]) => (b as number) - (a as number))
+    .sort(([, a], [, b]) => (b as number) - (a as number))
     .slice(0, 5)
     .map(([ticker, weight]) => ({ ticker, weight: weight as number }));
 
@@ -261,8 +274,9 @@ const PrimaryRecommendationCard = ({
       <CardContent>
         {/* Content based on sharpeDiffPercent thresholds */}
         <div className="text-sm text-gray-600">
-          Current Sharpe: {currentSharpe.toFixed(2)} → Selected: {optimizedSharpe.toFixed(2)} 
-          ({sharpeDiffPercent > 0 ? '+' : ''}{sharpeDiffPercent.toFixed(0)}%)
+          Current Sharpe: {currentSharpe.toFixed(2)} → Selected:{" "}
+          {optimizedSharpe.toFixed(2)}({sharpeDiffPercent > 0 ? "+" : ""}
+          {sharpeDiffPercent.toFixed(0)}%)
         </div>
       </CardContent>
     </Card>
@@ -291,7 +305,9 @@ const RecommendedActionsCard = ({
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Recommended Actions</CardTitle>
-        <p className="text-muted-foreground">Based on your {riskProfile} risk profile</p>
+        <p className="text-muted-foreground">
+          Based on your {riskProfile} risk profile
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* This card uses mvoResults.improvements which may not be accurate */}
@@ -316,38 +332,47 @@ const PerformanceSummaryCard = ({
   riskProfile,
 }: {
   tripleOptimizationResults: TripleOptimizationResponse | null;
-  selectedPortfolio: 'current' | 'weights' | 'market';
+  selectedPortfolio: "current" | "weights" | "market";
   riskProfile: string;
 }) => {
   if (!tripleOptimizationResults) return null;
 
   const current = tripleOptimizationResults.current_portfolio?.metrics;
-  
+
   let selected;
-  let selectedLabel = 'Selected';
-  
-  if (selectedPortfolio === 'weights') {
-    selected = tripleOptimizationResults.weights_optimized_portfolio?.optimized_portfolio?.metrics;
-    selectedLabel = 'Weights-Optimized';
-  } else if (selectedPortfolio === 'market' && tripleOptimizationResults.market_optimized_portfolio) {
-    selected = tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio?.metrics;
-    selectedLabel = 'Market-Optimized';
+  let selectedLabel = "Selected";
+
+  if (selectedPortfolio === "weights") {
+    selected =
+      tripleOptimizationResults.weights_optimized_portfolio?.optimized_portfolio
+        ?.metrics;
+    selectedLabel = "Weights-Optimized";
+  } else if (
+    selectedPortfolio === "market" &&
+    tripleOptimizationResults.market_optimized_portfolio
+  ) {
+    selected =
+      tripleOptimizationResults.market_optimized_portfolio.optimized_portfolio
+        ?.metrics;
+    selectedLabel = "Market-Optimized";
   } else {
     selected = current;
-    selectedLabel = 'Current';
+    selectedLabel = "Current";
   }
 
-  const returnDiff = (selected?.expected_return ?? 0) - (current?.expected_return ?? 0);
+  const returnDiff =
+    (selected?.expected_return ?? 0) - (current?.expected_return ?? 0);
   const riskDiff = (selected?.risk ?? 0) - (current?.risk ?? 0);
-  const sharpeDiff = (selected?.sharpe_ratio ?? 0) - (current?.sharpe_ratio ?? 0);
+  const sharpeDiff =
+    (selected?.sharpe_ratio ?? 0) - (current?.sharpe_ratio ?? 0);
 
   // Risk limits by profile
   const riskProfileMaxRisk: Record<string, number> = {
-    'very-conservative': 0.18,
-    'conservative': 0.25,
-    'moderate': 0.32,
-    'aggressive': 0.35,
-    'very-aggressive': 0.47
+    "very-conservative": 0.18,
+    conservative: 0.25,
+    moderate: 0.32,
+    aggressive: 0.35,
+    "very-aggressive": 0.47,
   };
   const maxRisk = riskProfileMaxRisk[riskProfile] || 0.32;
   const selectedRisk = selected?.risk ?? 0;
@@ -368,43 +393,61 @@ const PerformanceSummaryCard = ({
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Return</span>
-                <span className={`font-semibold ${returnDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {returnDiff >= 0 ? '+' : ''}{(returnDiff * 100).toFixed(1)}%
+                <span
+                  className={`font-semibold ${returnDiff >= 0 ? "text-green-600" : "text-red-600"}`}
+                >
+                  {returnDiff >= 0 ? "+" : ""}
+                  {(returnDiff * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Risk</span>
-                <span className={`font-semibold ${riskDiff <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {riskDiff <= 0 ? '' : '+'}{(riskDiff * 100).toFixed(1)}%
+                <span
+                  className={`font-semibold ${riskDiff <= 0 ? "text-green-600" : "text-red-600"}`}
+                >
+                  {riskDiff <= 0 ? "" : "+"}
+                  {(riskDiff * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Sharpe</span>
-                <span className={`font-semibold ${sharpeDiff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {sharpeDiff >= 0 ? '+' : ''}{sharpeDiff.toFixed(2)}
+                <span
+                  className={`font-semibold ${sharpeDiff >= 0 ? "text-green-600" : "text-red-600"}`}
+                >
+                  {sharpeDiff >= 0 ? "+" : ""}
+                  {sharpeDiff.toFixed(2)}
                 </span>
               </div>
             </div>
           </div>
-          
+
           {/* Risk Profile Compliance */}
           <div className="p-4 rounded-lg bg-muted border border-border">
-            <div className="text-sm font-medium text-gray-600 mb-2">Risk Profile Compliance</div>
+            <div className="text-sm font-medium text-gray-600 mb-2">
+              Risk Profile Compliance
+            </div>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Max Allowed</span>
-                <span className="font-semibold text-indigo-600">{(maxRisk * 100).toFixed(0)}%</span>
+                <span className="font-semibold text-indigo-600">
+                  {(maxRisk * 100).toFixed(0)}%
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Your Risk</span>
-                <span className={`font-semibold ${isCompliant ? 'text-green-600' : 'text-red-600'}`}>
+                <span
+                  className={`font-semibold ${isCompliant ? "text-green-600" : "text-red-600"}`}
+                >
                   {(selectedRisk * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Status</span>
-                <Badge variant={isCompliant ? 'default' : 'destructive'} className={isCompliant ? 'bg-green-500' : ''}>
-                  {isCompliant ? '✓ Compliant' : '⚠ Over Limit'}
+                <Badge
+                  variant={isCompliant ? "default" : "destructive"}
+                  className={isCompliant ? "bg-green-500" : ""}
+                >
+                  {isCompliant ? "✓ Compliant" : "⚠ Over Limit"}
                 </Badge>
               </div>
             </div>
@@ -420,7 +463,7 @@ const PerformanceSummaryCard = ({
 // ============================================================================
 //
 // VERDICT: KEEP - This is valuable
-// 
+//
 // IMPROVEMENT IDEAS:
 // 1. Add a circular gauge/meter for the composite score
 // 2. Add tooltips explaining each factor
@@ -438,7 +481,7 @@ const QualityScoreCard = ({
     market?: QualityScoreResult | null;
     optimized?: QualityScoreResult;
   };
-  selectedPortfolio: 'current' | 'weights' | 'market';
+  selectedPortfolio: "current" | "weights" | "market";
   isTriple: boolean;
 }) => {
   // ... implementation
@@ -450,9 +493,7 @@ const QualityScoreCard = ({
           Multi-Factor Quality Score
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        {/* Factor breakdown with progress bars */}
-      </CardContent>
+      <CardContent>{/* Factor breakdown with progress bars */}</CardContent>
     </Card>
   );
 };
@@ -481,7 +522,7 @@ const MonteCarloCard = ({
     market?: MonteCarloResult | null;
     optimized?: MonteCarloResult;
   };
-  selectedPortfolio: 'current' | 'weights' | 'market';
+  selectedPortfolio: "current" | "weights" | "market";
   isTriple: boolean;
 }) => {
   // ... implementation
@@ -489,13 +530,11 @@ const MonteCarloCard = ({
     <Card className="border-2 border-blue-200">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-blue-600" />
+          <Activity className="h-5 w-5 text-blue-600" />
           Monte Carlo Simulation
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        {/* Probability comparison and histogram */}
-      </CardContent>
+      <CardContent>{/* Probability comparison and histogram */}</CardContent>
     </Card>
   );
 };
@@ -534,4 +573,3 @@ export {
   QualityScoreCard,
   MonteCarloCard,
 };
-

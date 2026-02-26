@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { getAdminKeyHeaders } from "@/config/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StepCardHeader } from "@/components/wizard/StepCardHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -332,7 +334,10 @@ export const StockSelection = ({
 
       const response = await fetch("/api/v1/portfolio/warm-tickers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAdminKeyHeaders(),
+        },
         body: JSON.stringify({ tickers: uniqueTickers }),
       });
 
@@ -2267,13 +2272,11 @@ export const StockSelection = ({
           className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg bg-gradient-to-b from-primary/30 via-primary/20 to-transparent"
           aria-hidden="true"
         />
-        <CardHeader className="text-center pl-4 pb-2">
-          <CardTitle className="text-xl">Portfolio Construction</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Build your portfolio with {capital.toLocaleString()} SEK · Risk
-            profile: {getRiskProfileDisplay()}
-          </p>
-        </CardHeader>
+        <StepCardHeader
+          className="pl-4"
+          title="Portfolio Construction"
+          subtitle={`Build your portfolio with ${capital.toLocaleString()} SEK · Risk profile: ${getRiskProfileDisplay()}`}
+        />
 
         <CardContent>
           <Tabs
@@ -2454,7 +2457,12 @@ export const StockSelection = ({
                       <Card>
                         <CardHeader className="pb-2">
                           <CardTitle className="text-base flex items-center gap-2">
-                            <TrendingUp className="h-4 w-4" />
+                            <span
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary"
+                              aria-hidden
+                            >
+                              1
+                            </span>
                             {twoAssetAnalysis.ticker1}
                           </CardTitle>
                           <p className="text-xs text-muted-foreground mt-0.5">
@@ -2503,7 +2511,12 @@ export const StockSelection = ({
                       <Card>
                         <CardHeader className="pb-2">
                           <CardTitle className="text-base flex items-center gap-2">
-                            <TrendingUp className="h-4 w-4" />
+                            <span
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary"
+                              aria-hidden
+                            >
+                              2
+                            </span>
                             {twoAssetAnalysis.ticker2}
                           </CardTitle>
                           <p className="text-xs text-muted-foreground mt-0.5">
