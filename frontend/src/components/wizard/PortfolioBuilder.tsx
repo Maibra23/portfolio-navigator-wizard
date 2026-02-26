@@ -20,6 +20,7 @@ import {
   Building2,
   Sparkles,
   Wallet,
+  Shuffle,
 } from "lucide-react";
 
 export interface PortfolioAllocation {
@@ -269,6 +270,29 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
     }));
 
     onStocksUpdate(equallyAllocatedStocks);
+  };
+
+  // Random allocation - random weights that sum to 100%
+  const applyRandomAllocation = () => {
+    if (selectedStocks.length === 0) return;
+
+    const n = selectedStocks.length;
+    const raw = selectedStocks.map(() => Math.random() + 0.1);
+    const sum = raw.reduce((a, b) => a + b, 0);
+    const scaled = raw.map((r) => (r / sum) * 100);
+    // Round to 1 decimal and fix last so total is exactly 100
+    const rounded = scaled.map((v, i) =>
+      i < n - 1 ? Math.round(v * 10) / 10 : 0,
+    );
+    const roundedSum = rounded.slice(0, -1).reduce((a, b) => a + b, 0);
+    rounded[n - 1] = Math.round((100 - roundedSum) * 10) / 10;
+
+    const randomlyAllocatedStocks = selectedStocks.map((stock, i) => ({
+      ...stock,
+      allocation: rounded[i],
+    }));
+
+    onStocksUpdate(randomlyAllocatedStocks);
   };
 
   // Calculate portfolio metrics once the user confirms the portfolio with Done
@@ -644,15 +668,26 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
                 </label>
               </div>
               {showWeightEditor && (
-                <Button
-                  onClick={applyEqualAllocation}
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                >
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  Equal Split
-                </Button>
+                <div className="flex flex-col gap-1.5">
+                  <Button
+                    onClick={applyEqualAllocation}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Equal Split
+                  </Button>
+                  <Button
+                    onClick={applyRandomAllocation}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    <Shuffle className="h-3 w-3 mr-1" />
+                    Random allocation
+                  </Button>
+                </div>
               )}
             </div>
           )}

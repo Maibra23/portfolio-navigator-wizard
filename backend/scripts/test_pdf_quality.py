@@ -106,8 +106,9 @@ def main():
             },
         },
         "stressTestResults": {
+            # Use API scenario names (2008_crisis, covid19) to match real frontend data
             "scenarios": {
-                "2008_financial_crisis": {
+                "2008_crisis": {
                     "metrics": {
                         "max_drawdown": -0.42,
                         "total_return": -0.15,
@@ -126,7 +127,7 @@ def main():
                         {"month": "Jun 2009", "value": 78000},
                     ],
                 },
-                "2020_covid_crash": {
+                "covid19": {
                     "metrics": {
                         "max_drawdown": -0.34,
                         "total_return": 0.12,

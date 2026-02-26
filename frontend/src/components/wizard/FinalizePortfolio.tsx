@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,8 @@ interface FinalizePortfolioProps {
   onPrev: () => void;
   capital: number;
   riskProfile: string;
+  initialTab?: "builder" | "optimize" | "analysis" | "tax-cost";
+  onInitialTabApplied?: () => void;
 }
 
 export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
@@ -79,6 +81,8 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
   onPrev,
   capital,
   riskProfile,
+  initialTab,
+  onInitialTabApplied,
 }) => {
   const {
     state,
@@ -118,6 +122,8 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
   // Builder "Done" pressed: user must press Done in Portfolio Builder before Continue to Optimize
   const [builderDone, setBuilderDone] = useState(false);
+
+  const taxCostContentRef = useRef<HTMLDivElement>(null);
 
   // Validation state
   const [validationErrors, setValidationErrors] = useState<
@@ -183,6 +189,24 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
       }));
     }
   }, [activeTab, state, isLoaded]);
+
+  // Scroll to top of Tax & Summary when landing from Final Analysis or Stress Test
+  useEffect(() => {
+    if (activeTab === "tax-cost") {
+      taxCostContentRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [activeTab]);
+
+  // Open to a specific tab when returning from Thank You (e.g. Back to summary → Tax & Summary)
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+      onInitialTabApplied?.();
+    }
+  }, [initialTab]); // eslint-disable-line react-hooks/exhaustive-deps -- only run when initialTab is set from parent
 
   // Handle tab change with validation (Optimize only reachable from Builder after Done)
   const handleTabChange = (newTab: string) => {
@@ -1719,8 +1743,11 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
         {/* Tab 4: Tax, Cost & Summary */}
         <TabsContent value="tax-cost" className="space-y-4 mt-3">
-          {/* Header Card with animation */}
-          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+          {/* Header Card with animation - ref for scroll-into-view when landing */}
+          <div
+            ref={taxCostContentRef}
+            className="animate-in fade-in slide-in-from-top-2 duration-300"
+          >
             <Card className="bg-gradient-to-br from-amber-500/5 via-background to-background border-amber-500/20">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">

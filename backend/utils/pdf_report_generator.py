@@ -137,9 +137,10 @@ class PDFReportGenerator:
     }
 
     # Stress test scenarios to include in PDF (only these two historical crises)
+    # Includes variations from both API response names and display names
     ALLOWED_STRESS_SCENARIOS = {
-        '2008_financial_crisis', 'financial_crisis_2008', 'financial_crisis',
-        '2020_covid_crash', 'covid_crash', 'covid_2020', 'covid',
+        '2008_financial_crisis', 'financial_crisis_2008', 'financial_crisis', '2008_crisis',
+        '2020_covid_crash', 'covid_crash', 'covid_2020', 'covid', 'covid19',
     }
 
     def __init__(self):
@@ -707,6 +708,23 @@ class PDFReportGenerator:
             name: data for name, data in scenarios.items()
             if self._is_allowed_stress_scenario(name)
         }
+
+    def _format_scenario_name(self, scenario_name: str) -> str:
+        """Format scenario name for display (e.g., 'covid19' -> '2020 COVID Crash')."""
+        normalized = scenario_name.lower().replace(' ', '_').replace('-', '_')
+        # Mapping from API/internal names to display names
+        display_names = {
+            'covid19': '2020 COVID Crash',
+            'covid': '2020 COVID Crash',
+            'covid_2020': '2020 COVID Crash',
+            'covid_crash': '2020 COVID Crash',
+            '2020_covid_crash': '2020 COVID Crash',
+            '2008_crisis': '2008 Financial Crisis',
+            '2008_financial_crisis': '2008 Financial Crisis',
+            'financial_crisis': '2008 Financial Crisis',
+            'financial_crisis_2008': '2008 Financial Crisis',
+        }
+        return display_names.get(normalized, scenario_name.replace('_', ' ').title())
 
     # ── Plot helpers ──────────────────────────────────────────────────────────
 
@@ -1580,7 +1598,7 @@ class PDFReportGenerator:
                     else:
                         interpretation = "Positive relative resilience"
                     summary_rows.append([
-                        scenario_name.replace('_', ' ').title(),
+                        self._format_scenario_name(scenario_name),
                         self._format_percentage(impact_pct),
                         interpretation,
                     ])
@@ -1631,7 +1649,7 @@ class PDFReportGenerator:
                                 story.append(Spacer(1, self.SPACE_BEFORE_FIGURE * inch))
                                 story.append(chart_img)
                                 story.append(Spacer(1, self.SPACE_AFTER_FIGURE * inch))
-                                label = scenario_name.replace('_', ' ').title()
+                                label = self._format_scenario_name(scenario_name)
                                 story.append(Paragraph(
                                     f"Portfolio value over time during {label}. Value indexed to 100 at scenario start (crisis and recovery window).",
                                     self.styles['FigureCaption'],
@@ -1644,7 +1662,7 @@ class PDFReportGenerator:
                     for name, res in scenarios.items():
                         impact = self._extract_stress_impact(res)
                         if impact is not None:
-                            names.append(name.replace('_', ' ').title()[:20])
+                            names.append(self._format_scenario_name(name))
                             impacts.append(float(impact) * 100)
                     if names:
                         # Convert to positive values (magnitude) since drawdowns are always losses

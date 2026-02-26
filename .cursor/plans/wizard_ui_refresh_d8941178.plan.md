@@ -78,7 +78,23 @@ Adopt a **uniform card-based layout** inspired by the cleanest existing patterns
 - **Accent bar**: Apply the left accent bar pattern consistently to the primary card of each step (or remove it from all)
 - **Theme-safe colors**: Replace all hard-coded colors (e.g., `text-blue-600`, `bg-emerald-50`) with CSS variable-based equivalents so dark mode works correctly
 - **Enhanced progress indicator**: Upgrade from the 1px bar to a segmented stepper with step labels/icons
-- **Consistent spacing**: Standardize padding and gap values across all steps
+- **Consistent spacing**: Standardize padding and gap values across all steps.
+
+---
+
+## Risks and Mitigations
+
+The following friction points were identified before implementation. Each is acknowledged in the plan with a mitigation or scoped decision.
+
+
+| Plan Item                                    | Risk          | What Could Happen                                                                                                             | Mitigation / Decision                                                                                                                                                                                                                                                              |
+| -------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Width change (max-w-4xl to max-w-5xl)        | Low           | Charts/tables in PortfolioOptimization and StressTest are already at max-w-6xl; they will fit properly instead of overflowing | No change. Proceed as planned.                                                                                                                                                                                                                                                     |
+| Progress bar to segmented stepper            | Medium        | New JSX structure, icon imports, active/completed state styling; more code to maintain                                        | **Scoped down**: Implement an **enhanced progress bar** (taller bar, step count, optional small step dots) instead of a full icon-and-label stepper. Avoid adding 8 step icons and connector lines to limit maintenance. If a full stepper is desired later, do it as a follow-up. |
+| Remove gradient cards from FinalizePortfolio | Low           | Purely cosmetic                                                                                                               | Proceed. Replace with flat card + subtle border so it matches other steps.                                                                                                                                                                                                         |
+| Dark mode color replacements                 | Low (tedious) | Straightforward find-replace but 30+ instances across files                                                                   | **Batch by file** in Phase 3: do PortfolioBuilder, StressTest, FinalizePortfolio, then grep for remaining `text-*-[0-9]`, `bg-*-[0-9]` in wizard components. Use a single theme-safe palette (e.g. primary/muted/success/destructive) to avoid drift.                              |
+| WelcomeStep "stronger first impression"      | Medium        | Subjective scope; could lead to iteration on "what looks better"                                                              | **Scope to concrete, bounded changes only**: (1) Use StepCardHeader + StepHeaderIcon. (2) One subtle hover on feature tiles (e.g. scale or border). (3) Single CTA size bump. (4) No open-ended "redesign." If more is needed, treat as a separate, later task.                    |
+
 
 ---
 

@@ -1,4 +1,4 @@
-import { PortfolioState } from '@/hooks/usePortfolioState';
+import { PortfolioState } from "@/hooks/usePortfolioState";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -8,28 +8,32 @@ export interface ValidationResult {
 
 export const validateTab = (
   tabId: string,
-  state: PortfolioState
+  state: PortfolioState,
 ): ValidationResult => {
   const errors: string[] = [];
   const warnings: string[] = [];
 
   switch (tabId) {
-    case 'builder':
+    case "builder":
       // Tab 1 validation: 3-4 stocks required to proceed; 100% allocation recommended
       const stockCount = state.constructedPortfolio.length;
       const totalAllocation = state.constructedPortfolio.reduce(
         (sum, stock) => sum + (stock.allocation || 0),
-        0
+        0,
       );
 
       if (stockCount < 3) {
-        errors.push(`You need at least 3 stocks. Currently have ${stockCount}.`);
+        errors.push(
+          `You need at least 3 stocks. Currently have ${stockCount}.`,
+        );
       }
       if (stockCount > 4) {
         errors.push(`Maximum 4 stocks allowed. Currently have ${stockCount}.`);
       }
       if (Math.abs(totalAllocation - 100) > 0.1) {
-        warnings.push(`Total allocation should equal 100%. Currently at ${totalAllocation.toFixed(1)}%.`);
+        warnings.push(
+          `Total allocation should equal 100%. Currently at ${totalAllocation.toFixed(1)}%.`,
+        );
       }
 
       // Allow navigation to Optimize when 3-4 stocks are selected (allocation can be fixed on next step)
@@ -39,23 +43,27 @@ export const validateTab = (
 
       break;
 
-    case 'optimize':
+    case "optimize":
       // Tab 2 validation: Optimization must be completed
       if (!state.optimizedPortfolio) {
-        errors.push('Optimization must be completed before proceeding.');
+        errors.push(
+          'Complete the optimization step: click "Optimize" above, then you can continue.',
+        );
       } else {
         return { isValid: true, errors: [], warnings: [] };
       }
       break;
 
-    case 'analysis':
+    case "analysis":
       // Tab 3 validation: Require optimization to be completed
       if (!state.optimizedPortfolio) {
-        errors.push('Please complete portfolio optimization before viewing analysis.');
+        errors.push(
+          "Please complete portfolio optimization before viewing analysis.",
+        );
       }
       // Also ensure portfolio was built
       if (state.constructedPortfolio.length === 0) {
-        errors.push('Please build a portfolio first.');
+        errors.push("Please build a portfolio first.");
       }
 
       if (errors.length === 0) {
@@ -63,10 +71,10 @@ export const validateTab = (
       }
       break;
 
-    case 'tax-cost':
+    case "tax-cost":
       // Tab 4 validation: Account type must be selected for export
       if (!state.taxSettings.accountType) {
-        warnings.push('Account type must be selected before exporting.');
+        warnings.push("Account type must be selected before exporting.");
         // This is a warning, not an error - user can still view the tab
         return { isValid: true, errors: [], warnings };
       }
@@ -79,16 +87,16 @@ export const validateTab = (
   return {
     isValid: errors.length === 0,
     errors,
-    warnings
+    warnings,
   };
 };
 
 export const canNavigateToTab = (
   targetTab: string,
   state: PortfolioState,
-  currentTab: string
+  currentTab: string,
 ): boolean => {
-  const tabOrder = ['builder', 'optimize', 'analysis', 'tax-cost'];
+  const tabOrder = ["builder", "optimize", "analysis", "tax-cost"];
   const currentTabIndex = tabOrder.indexOf(currentTab);
   const targetTabIndex = tabOrder.indexOf(targetTab);
 
@@ -98,13 +106,17 @@ export const canNavigateToTab = (
   }
 
   // Optimize → Analysis: allow if optimization was run (user may have selected an optimized portfolio with different stock count)
-  if (currentTab === 'optimize' && targetTab === 'analysis') {
-    return Boolean(state.optimizedPortfolio && state.constructedPortfolio.length > 0);
+  if (currentTab === "optimize" && targetTab === "analysis") {
+    return Boolean(
+      state.optimizedPortfolio && state.constructedPortfolio.length > 0,
+    );
   }
 
   // Analysis → Tax-cost: allow if user reached analysis (optimization done, portfolio present)
-  if (currentTab === 'analysis' && targetTab === 'tax-cost') {
-    return Boolean(state.optimizedPortfolio && state.constructedPortfolio.length > 0);
+  if (currentTab === "analysis" && targetTab === "tax-cost") {
+    return Boolean(
+      state.optimizedPortfolio && state.constructedPortfolio.length > 0,
+    );
   }
 
   // For forward navigation, validate ALL previous tabs
