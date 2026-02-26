@@ -1682,7 +1682,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             <StressTest
               onNext={() => {
                 setHiddenTab(null);
-                setActiveTab("analysis");
+                setActiveTab("tax-cost");
               }}
               onPrev={() => {
                 setHiddenTab(null);

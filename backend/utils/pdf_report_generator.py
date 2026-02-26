@@ -127,10 +127,28 @@ class PDFReportGenerator:
     # Usable page width (A4 8.27" minus 2" margins)
     PAGE_WIDTH_INCH = 6.27
 
+    # Unified color palette for charts (brand consistency)
+    CHART_COLORS = {
+        'primary': '#2563eb',
+        'positive': '#059669',
+        'negative': '#dc2626',
+        'neutral': '#6b7280',
+        'text': '#1f2937',
+    }
+
     def __init__(self):
         self.page_size = A4
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
+        if MPL_AVAILABLE:
+            matplotlib.rcParams.update({
+                'figure.dpi': 300,
+                'savefig.dpi': 300,
+                'font.family': ['Helvetica', 'Arial', 'DejaVu Sans'],
+                'lines.linewidth': 1.5,
+                'axes.linewidth': 1.0,
+                'text.antialiased': True,
+            })
 
     # ── Spacing helpers ───────────────────────────────────────────────────────
 
@@ -209,6 +227,8 @@ class PDFReportGenerator:
                     alloc = pos.get('allocation', 0.0)
                     if alloc > 1:
                         alloc = alloc / 100.0
+                    if alloc <= 0:
+                        continue
                     sector = pos.get('sector', 'Unknown')
                     sector_weights[sector] = sector_weights.get(sector, 0.0) + alloc
                 has_real_sectors = sector_weights and any(s != 'Unknown' for s in sector_weights.keys())
@@ -653,17 +673,18 @@ class PDFReportGenerator:
         return f"{display_val:.{decimals}f}%"
 
     def _extract_stress_impact(self, scenario_result: Any) -> Optional[float]:
-        """Extract scenario impact across legacy and current stress-test schemas."""
+        """Extract scenario impact for charts. Prefers metrics.max_drawdown (peak-to-trough drawdown, negative for loss)."""
         if not isinstance(scenario_result, dict):
             return None
+        metrics = scenario_result.get('metrics', {})
+        if isinstance(metrics, dict) and metrics.get('max_drawdown') is not None:
+            return float(metrics['max_drawdown'])
         for key in ('portfolio_impact', 'impact', 'value_change', 'value_change_pct'):
             value = scenario_result.get(key)
             if isinstance(value, (int, float)):
                 return float(value)
-        metrics = scenario_result.get('metrics', {})
         if isinstance(metrics, dict):
-            # Current analyzer stores impact in metrics.max_drawdown (negative for drawdown).
-            for key in ('max_drawdown', 'total_return', 'worst_month_return'):
+            for key in ('total_return', 'worst_month_return'):
                 value = metrics.get(key)
                 if isinstance(value, (int, float)):
                     return float(value)
@@ -675,8 +696,9 @@ class PDFReportGenerator:
                        compact: bool = False, large: bool = False) -> Image:
         """Convert matplotlib plot to reportlab Image."""
         img_buffer = BytesIO()
-        plt_obj.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150,
-                        facecolor='white', edgecolor='none', pad_inches=0.5)
+        plt_obj.savefig(img_buffer, format='png', bbox_inches='tight', dpi=300,
+                        facecolor='white', edgecolor='none', pad_inches=0.1,
+                        transparent=False)
         img_buffer.seek(0)
         plt_obj.close()
         if compact:
@@ -691,10 +713,20 @@ class PDFReportGenerator:
     def _generate_plot_base64(self, plt_obj) -> str:
         """Convert a matplotlib plot to a base64 encoded PNG string."""
         img_buffer = BytesIO()
-        plt_obj.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+        plt_obj.savefig(img_buffer, format='png', bbox_inches='tight', dpi=300,
+                        facecolor='white', edgecolor='none', pad_inches=0.1,
+                        transparent=False)
         img_buffer.seek(0)
         plt_obj.close()
         return base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+
+    def _save_fig_svg_base64(self, plt_obj) -> str:
+        """Save figure to SVG in a buffer, return base64 string. Does not close the figure."""
+        svg_buffer = BytesIO()
+        plt_obj.savefig(svg_buffer, format='svg', bbox_inches='tight',
+                        facecolor='white', edgecolor='none', pad_inches=0.1)
+        svg_buffer.seek(0)
+        return base64.b64encode(svg_buffer.getvalue()).decode('utf-8')
 
     # ── ZIP plot export ───────────────────────────────────────────────────────
 
@@ -709,13 +741,15 @@ class PDFReportGenerator:
         opt = data.get('optimizationResults')
         stress_results = data.get('stressTestResults')
 
-        # 1. Portfolio composition: sector allocation or fallback to holdings allocation
+        # 1. Portfolio composition: sector allocation or fallback to holdings allocation (exclude 0% positions)
         try:
             sector_weights = {}
             for pos in portfolio:
                 weight = pos.get('allocation', 0.0)
                 if weight > 1:
                     weight = weight / 100.0
+                if weight <= 0:
+                    continue
                 sector = pos.get('sector', 'Unknown')
                 sector_weights[sector] = sector_weights.get(sector, 0.0) + weight
             has_real_sectors = sector_weights and any(
@@ -750,6 +784,8 @@ class PDFReportGenerator:
                         plt.close()
                         raise ValueError("No allocation data")
                 plt.axis('equal')
+                svg_content = self._save_fig_svg_base64(plt)
+                plots.append({"filename": filename.replace(".png", ".svg"), "content": svg_content, "size": len(svg_content)})
                 content = self._generate_plot_base64(plt)
                 plots.append({"filename": filename, "content": content, "size": len(content)})
         except Exception as e:
@@ -777,20 +813,22 @@ class PDFReportGenerator:
                 current = (opt.get('current_portfolio') or {}).get('metrics', {})
                 if current:
                     plt.scatter(current.get('risk', 0), current.get('expected_return', 0),
-                                c='red', s=100, marker='*', label='Current')
+                                c=self.CHART_COLORS['negative'], s=100, marker='*', label='Current')
                 weights_opt = (opt.get('weights_optimized_portfolio') or {}).get('optimized_portfolio', {}).get('metrics', {})
                 if weights_opt:
                     plt.scatter(weights_opt.get('risk', 0), weights_opt.get('expected_return', 0),
-                                c='blue', s=80, marker='D', label='Weights Optimized')
+                                c=self.CHART_COLORS['primary'], s=80, marker='D', label='Weights Optimized')
                 market_opt = (opt.get('market_optimized_portfolio') or {}).get('optimized_portfolio', {}).get('metrics', {})
                 if market_opt:
                     plt.scatter(market_opt.get('risk', 0), market_opt.get('expected_return', 0),
-                                c='green', s=80, marker='s', label='Market Optimized')
+                                c=self.CHART_COLORS['positive'], s=80, marker='s', label='Market Optimized')
                 plt.title('Portfolio Optimization: Risk vs Return')
                 plt.xlabel('Risk (Volatility)')
                 plt.ylabel('Expected Return')
                 plt.legend()
                 plt.grid(True, linestyle='--', alpha=0.7)
+                svg_content = self._save_fig_svg_base64(plt)
+                plots.append({"filename": "optimization_frontier.svg", "content": svg_content, "size": len(svg_content)})
                 content = self._generate_plot_base64(plt)
                 plots.append({"filename": "optimization_frontier.png", "content": content, "size": len(content)})
             except Exception as e:
@@ -809,13 +847,19 @@ class PDFReportGenerator:
                             impacts.append(float(impact) * 100)
                     if names:
                         plt.figure(figsize=(10, 6))
-                        sorted_indices = sorted(range(len(impacts)), key=lambda k: impacts[k])
+                        # Convert to positive values (magnitude) since drawdowns are always losses
+                        impacts_magnitude = [abs(x) for x in impacts]
+                        sorted_indices = sorted(range(len(impacts_magnitude)), key=lambda k: impacts_magnitude[k], reverse=True)
                         names = [names[i] for i in sorted_indices]
-                        impacts = [impacts[i] for i in sorted_indices]
-                        plt.barh(names, impacts, color=['red' if x < 0 else 'green' for x in impacts])
-                        plt.title('Stress Test: Potential Impact')
-                        plt.xlabel('Impact (%)')
+                        impacts_magnitude = [impacts_magnitude[i] for i in sorted_indices]
+                        plt.barh(names, impacts_magnitude, color=self.CHART_COLORS['negative'])
+                        plt.axvline(x=0, color=self.CHART_COLORS['neutral'], linewidth=0.8, alpha=0.7)
+                        plt.title('Peak-to-Trough Drawdown by Scenario')
+                        plt.xlabel('Drawdown Magnitude (%)')
                         plt.grid(True, axis='x', linestyle='--', alpha=0.7)
+                        plt.tight_layout(pad=0.5)
+                        svg_content = self._save_fig_svg_base64(plt)
+                        plots.append({"filename": "stress_test_impact.svg", "content": svg_content, "size": len(svg_content)})
                         content = self._generate_plot_base64(plt)
                         plots.append({"filename": "stress_test_impact.png", "content": content, "size": len(content)})
                     first_with_series = None
@@ -835,8 +879,8 @@ class PDFReportGenerator:
                                 base = values[0] if values[0] != 0 else 1.0
                                 indexed = [(v / base) * 100 for v in values]
                                 plt.figure(figsize=(10, 5))
-                                plt.plot(range(len(months)), indexed, color='#3182ce', linewidth=2)
-                                plt.axhline(y=100, color='#718096', linestyle='--', linewidth=0.8, alpha=0.7)
+                                plt.plot(range(len(months)), indexed, color=self.CHART_COLORS['primary'], linewidth=2)
+                                plt.axhline(y=100, color=self.CHART_COLORS['neutral'], linestyle='--', linewidth=0.8, alpha=0.7)
                                 plt.title('Portfolio Value Over Time (Stress Scenario)')
                                 plt.ylabel('Value (indexed to 100)')
                                 plt.xlabel('Month')
@@ -844,8 +888,10 @@ class PDFReportGenerator:
                                 plt.xticks(range(0, len(months), step), [months[i] for i in range(0, len(months), step)], rotation=45, ha='right')
                                 plt.grid(True, alpha=0.3)
                                 plt.tight_layout(pad=0.5)
-                                content = self._generate_plot_base64(plt)
                                 label = scenario_name.replace('_', ' ').title().replace(' ', '_')
+                                svg_content = self._save_fig_svg_base64(plt)
+                                plots.append({"filename": f"stress_test_portfolio_over_time_{label}.svg", "content": svg_content, "size": len(svg_content)})
+                                content = self._generate_plot_base64(plt)
                                 plots.append({"filename": f"stress_test_portfolio_over_time_{label}.png", "content": content, "size": len(content)})
                         except Exception as timeline_e:
                             logger.warning(f"Failed to generate stress portfolio-over-time plot for ZIP: {timeline_e}")
@@ -883,9 +929,9 @@ class PDFReportGenerator:
                     rebalancing_frequency='quarterly',
                 )
                 plt.figure(figsize=(10, 6))
-                plt.plot(proj['years'], proj['optimistic'], 'g-', marker='o', label='Optimistic')
-                plt.plot(proj['years'], proj['base'], 'b-', marker='o', label='Base Case')
-                plt.plot(proj['years'], proj['pessimistic'], 'r-', marker='o', label='Pessimistic')
+                plt.plot(proj['years'], proj['optimistic'], color=self.CHART_COLORS['positive'], linestyle='-', marker='o', label='Optimistic')
+                plt.plot(proj['years'], proj['base'], color=self.CHART_COLORS['primary'], linestyle='-', marker='o', label='Base Case')
+                plt.plot(proj['years'], proj['pessimistic'], color=self.CHART_COLORS['negative'], linestyle='-', marker='o', label='Pessimistic')
                 plt.title('5-Year Portfolio Projection')
                 plt.xlabel('Year')
                 plt.ylabel('Value (SEK)')
@@ -897,6 +943,8 @@ class PDFReportGenerator:
                     if x >= 1e3: return f'{x/1e3:.0f}k'
                     return f'{x:.0f}'
                 plt.gca().yaxis.set_major_formatter(FuncFormatter(format_sek))
+                svg_content = self._save_fig_svg_base64(plt)
+                plots.append({"filename": "five_year_projection.svg", "content": svg_content, "size": len(svg_content)})
                 content = self._generate_plot_base64(plt)
                 plots.append({"filename": "five_year_projection.png", "content": content, "size": len(content)})
             except Exception as e:
@@ -1020,8 +1068,9 @@ class PDFReportGenerator:
                     self._format_percentage(allocation * 100),
                     self._format_number(value, currency=True),
                 ])
-                sector = pos.get('sector', 'Unknown')
-                sector_weights[sector] = sector_weights.get(sector, 0.0) + allocation
+                if allocation > 0:
+                    sector = pos.get('sector', 'Unknown')
+                    sector_weights[sector] = sector_weights.get(sector, 0.0) + allocation
             story.append(Spacer(1, self.SPACE_BEFORE_TABLE * inch))
             table2 = self._create_numbered_table(
                 2, "Portfolio Holdings",
@@ -1268,23 +1317,23 @@ class PDFReportGenerator:
                     )
                     if frontier:
                         ax.plot([p['risk'] for p in frontier], [p['return'] for p in frontier],
-                                color='#2b6cb0', linewidth=2.2, zorder=2, label='Frontier')
+                                color=self.CHART_COLORS['primary'], linewidth=2.2, zorder=2, label='Frontier')
                     if current:
                         ax.scatter(
                             current.get('risk', 0), current.get('expected_return', 0),
-                            c='#e53e3e', s=220, marker='*',
+                            c=self.CHART_COLORS['negative'], s=220, marker='*',
                             edgecolors='white', linewidths=1.2, zorder=5, label='Current',
                         )
                     if wo_metrics:
                         ax.scatter(
                             wo_metrics.get('risk', 0), wo_metrics.get('expected_return', 0),
-                            c='#3182ce', s=130, marker='D',
+                            c=self.CHART_COLORS['primary'], s=130, marker='D',
                             edgecolors='white', linewidths=1.0, zorder=5, label='Weights Opt',
                         )
                     if mo_metrics:
                         ax.scatter(
                             mo_metrics.get('risk', 0), mo_metrics.get('expected_return', 0),
-                            c='#38a169', s=130, marker='s',
+                            c=self.CHART_COLORS['positive'], s=130, marker='s',
                             edgecolors='white', linewidths=1.0, zorder=5, label='Market Opt',
                         )
                     ax.set_title('Risk vs Return', fontsize=9, fontweight='bold')
@@ -1410,9 +1459,9 @@ class PDFReportGenerator:
                 story.append(Spacer(1, self.SPACE_AFTER_TABLE * inch))
                 if MPL_AVAILABLE:
                     plt.figure(figsize=(6, 2.6))
-                    plt.plot(proj['years'], proj['optimistic'], '#38a169', linewidth=1.8, label='Optimistic')
-                    plt.plot(proj['years'], proj['base'], '#3182ce', linewidth=2.2, label='Base')
-                    plt.plot(proj['years'], proj['pessimistic'], '#e53e3e', linewidth=1.8, label='Pessimistic')
+                    plt.plot(proj['years'], proj['optimistic'], self.CHART_COLORS['positive'], linewidth=1.8, label='Optimistic')
+                    plt.plot(proj['years'], proj['base'], self.CHART_COLORS['primary'], linewidth=2.2, label='Base')
+                    plt.plot(proj['years'], proj['pessimistic'], self.CHART_COLORS['negative'], linewidth=1.8, label='Pessimistic')
                     plt.title('5-Year Projection', fontsize=9, fontweight='bold')
                     plt.ylabel('Value (SEK)', fontsize=7)
                     plt.xlabel('Year', fontsize=7)
@@ -1549,8 +1598,8 @@ class PDFReportGenerator:
                                 base = values[0] if values[0] != 0 else 1.0
                                 indexed = [(v / base) * 100 for v in values]
                                 plt.figure(figsize=(6, 2.6))
-                                plt.plot(range(len(months)), indexed, color='#3182ce', linewidth=2)
-                                plt.axhline(y=100, color='#718096', linestyle='--', linewidth=0.8, alpha=0.7)
+                                plt.plot(range(len(months)), indexed, color=self.CHART_COLORS['primary'], linewidth=2)
+                                plt.axhline(y=100, color=self.CHART_COLORS['neutral'], linestyle='--', linewidth=0.8, alpha=0.7)
                                 plt.title('Portfolio Value Over Time', fontsize=9, fontweight='bold')
                                 plt.ylabel('Value (indexed to 100)', fontsize=7)
                                 plt.xlabel('Month', fontsize=7)
@@ -1579,13 +1628,15 @@ class PDFReportGenerator:
                             names.append(name.replace('_', ' ').title()[:20])
                             impacts.append(float(impact) * 100)
                     if names:
-                        sorted_indices = sorted(range(len(impacts)), key=lambda k: impacts[k])
+                        # Convert to positive values (magnitude) since drawdowns are always losses
+                        impacts_magnitude = [abs(x) for x in impacts]
+                        sorted_indices = sorted(range(len(impacts_magnitude)), key=lambda k: impacts_magnitude[k], reverse=True)
                         names = [names[i] for i in sorted_indices]
-                        impacts = [impacts[i] for i in sorted_indices]
-                        plt.barh(names, impacts,
-                                 color=['#e53e3e' if x < 0 else '#38a169' for x in impacts], height=0.55)
-                        plt.title('Crisis Impact', fontsize=9, fontweight='bold')
-                        plt.xlabel('Value Change (%)', fontsize=7)
+                        impacts_magnitude = [impacts_magnitude[i] for i in sorted_indices]
+                        plt.barh(names, impacts_magnitude, color=self.CHART_COLORS['negative'], height=0.55)
+                        plt.axvline(x=0, color=self.CHART_COLORS['neutral'], linewidth=0.8, alpha=0.7)
+                        plt.title('Peak-to-Trough Drawdown by Scenario', fontsize=9, fontweight='bold')
+                        plt.xlabel('Drawdown Magnitude (%)', fontsize=7)
                         plt.tick_params(axis='both', labelsize=6)
                         plt.grid(True, axis='x', linestyle='--', alpha=0.5)
                         plt.tight_layout(pad=0.5)
@@ -1594,7 +1645,7 @@ class PDFReportGenerator:
                         story.append(chart_img)
                         story.append(Spacer(1, self.SPACE_AFTER_FIGURE * inch))
                         story.append(Paragraph(
-                            "Scenario Impact: Each bar shows estimated portfolio value change under that historical crisis. Red = loss, Green = gain. Resilience scores below 50 suggest the portfolio may suffer large drawdowns in stress events; consider reducing concentration or adding defensive exposure.",
+                            "Peak-to-Trough Drawdown: Each bar shows the magnitude of portfolio loss (peak to trough) under that historical crisis. Longer bars indicate larger losses. Resilience scores below 50 suggest the portfolio may suffer large drawdowns in stress events; consider reducing concentration or adding defensive exposure.",
                             self.styles['FigureCaption'],
                         ))
                         story.append(Spacer(1, self.SPACE_AFTER_CAPTION * inch))
