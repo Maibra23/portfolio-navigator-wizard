@@ -182,8 +182,10 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
                 symbols = list({a.symbol for a in allocations if getattr(a, 'symbol', None)})
                 if symbols:
                     try:
-                        # Try smart refresh for missing symbols (no external if FAST_STARTUP enforced)
-                        _ = _rds.smart_refresh_tickers(symbols)
+                        # Only trigger smart refresh when at least one symbol is missing or stale (avoids "Smart refresh triggered" when all in Redis)
+                        need_refresh = _rds.tickers_needing_refresh(symbols)
+                        if need_refresh:
+                            _ = _rds.smart_refresh_tickers(symbols)
                     except Exception:
                         pass
                     # Force-load into Redis cache via Redis-first getters
@@ -507,6 +509,8 @@ def optimize_custom_weights(returns_data: Dict[str, pd.Series], risk_profile: st
         logger.error(f"Error in custom optimization: {e}")
         return [1.0/len(returns_data)] * len(returns_data)
 
+_SEARCH_TICKERS_CACHE_TTL = 90  # seconds
+
 @portfolios_router.get("/search-tickers")
 def search_tickers(
     q: str = Query(..., description="Search query"), 
@@ -522,7 +526,19 @@ def search_tickers(
             filters['sector'] = sector
         if risk_profile:
             filters['risk_profile'] = risk_profile
-        
+
+        # Short-lived Redis cache to avoid repeated work for same query (e.g. backspace/typing)
+        cache_key = None
+        if _rds.redis_client:
+            key_raw = f"search:tickers:{q.strip().lower()}|{limit}|{sector or ''}|{risk_profile or ''}"
+            cache_key = f"search:tickers:{hashlib.md5(key_raw.encode()).hexdigest()}"
+            raw = _rds.redis_client.get(cache_key)
+            if raw:
+                try:
+                    return json.loads(raw)
+                except Exception:
+                    pass
+
         # Perform enhanced search
         results = _rds.search_tickers(q, limit, filters)
         
@@ -543,7 +559,7 @@ def search_tickers(
             }
             formatted_results.append(formatted_result)
         
-        return {
+        response_body = {
             'success': True,
             'query': q,
             'filters_applied': filters,
@@ -557,6 +573,14 @@ def search_tickers(
                 'cache_status': True
             }
         }
+
+        if _rds.redis_client and cache_key:
+            try:
+                _rds.redis_client.setex(cache_key, _SEARCH_TICKERS_CACHE_TTL, json.dumps(response_body))
+            except Exception:
+                pass
+
+        return response_body
         
     except Exception as e:
         logger.error(f"Error in enhanced ticker search: {e}")
@@ -10587,8 +10611,9 @@ async def export_pdf(request: PDFExportRequest):
                 try:
                     from utils.stress_test_analyzer import StressTestAnalyzer
                     # Extract tickers and weights from portfolio
+                    # Note: _normalize_export_portfolio stores weights in 'allocation' field (0-1 scale)
                     tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
-                    weights = {h.get('ticker', h.get('symbol', '')): h.get('weight', 0) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
+                    weights = {h.get('ticker', h.get('symbol', '')): h.get('allocation', h.get('weight', 0)) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
 
                     # Normalize weights if needed
                     total_weight = sum(weights.values())
@@ -10723,8 +10748,9 @@ async def export_csv(request: CSVExportRequest):
             if missing_scenarios and portfolio_list:
                 try:
                     from utils.stress_test_analyzer import StressTestAnalyzer
+                    # Note: _normalize_export_portfolio stores weights in 'allocation' field (0-1 scale)
                     tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
-                    weights = {h.get('ticker', h.get('symbol', '')): h.get('weight', 0) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
+                    weights = {h.get('ticker', h.get('symbol', '')): h.get('allocation', h.get('weight', 0)) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
 
                     total_weight = sum(weights.values())
                     if total_weight > 0 and abs(total_weight - 1.0) > 0.01:

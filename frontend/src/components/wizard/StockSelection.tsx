@@ -570,6 +570,7 @@ export const StockSelection = ({
   } | null>(null);
   const customizeSectionRef = useRef<HTMLDivElement>(null);
   const recommendationsGridRef = useRef<HTMLDivElement>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   // Load dynamic recommendations from backend
   useEffect(() => {
@@ -1360,34 +1361,29 @@ export const StockSelection = ({
       return;
     }
 
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = new AbortController();
+    const signal = searchAbortRef.current.signal;
+
     setIsLoading(true);
     setError(null);
 
     try {
-      console.log(`Searching for: "${query}"`);
-
-      // FIXED: Use correct endpoint path to match backend
       const response = await fetch(
         `/api/v1/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=10`,
+        { signal },
       );
-
-      console.log(`Response status: ${response.status}`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`API Error: ${response.status} - ${errorText}`);
         throw new Error(
           `Failed to fetch stock data: ${response.status} - ${errorText}`,
         );
       }
 
       const data = await response.json();
-      console.log("API Response:", data);
-
       const tickers = data.results || [];
-      console.log(`Found ${tickers.length} tickers`);
 
-      // NEW: Add warning if no results found
       if (tickers.length === 0) {
         setError(
           `No stocks found for "${query}". The stock may not be in our database. Try a different search term.`,
@@ -1424,13 +1420,13 @@ export const StockSelection = ({
         ),
       );
     } catch (error) {
-      console.error("Search error:", error);
+      if (error instanceof Error && error.name === "AbortError") return;
       setError(
         error instanceof Error ? error.message : "Failed to search stocks",
       );
       setSearchResults([]);
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
   }, []);
 

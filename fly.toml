@@ -16,6 +16,8 @@ primary_region = "arn"               # Stockholm — closest to Linnaeus Univers
   ENVIRONMENT       = "production"
   PORT              = "8080"
   REDIS_URL         = "redis://localhost:6379"
+  # ALLOWED_ORIGINS: Add your frontend URL here (comma-separated if multiple)
+  ALLOWED_ORIGINS   = "https://portfolio-navigator-wizard.fly.dev"
   # Non-secret env vars — set secrets separately via: fly secrets set KEY=value
   USE_LIVE_DATA                  = "true"
   MANUAL_REGENERATION_REQUIRED   = "false"
@@ -31,6 +33,14 @@ primary_region = "arn"               # Stockholm — closest to Linnaeus Univers
     type       = "requests"
     soft_limit = 50
     hard_limit = 100
+
+  # HTTP health check (recommended for cold-start reliability)
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval     = "30s"
+    method       = "GET"
+    path         = "/healthz"
+    timeout      = "5s"
 
 # Machine size: same VM runs Redis + FastAPI (numpy/pandas/scipy/reportlab).
 # 512mb = minimal (dev); 1gb = recommended production; 2gb if you see OOM or heavy background jobs.

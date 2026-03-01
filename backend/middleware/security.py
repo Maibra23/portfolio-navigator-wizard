@@ -46,7 +46,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "style-src 'self' 'unsafe-inline'",  # Tailwind/shadcn needs unsafe-inline
                 "img-src 'self' data: https:",  # Allow images from HTTPS and data URLs
                 "font-src 'self' data:",  # Allow fonts from self and data URLs
-                "connect-src 'self' https://query1.finance.yahoo.com https://www.alphavantage.co",  # External APIs
+                "connect-src 'self' https://query1.finance.yahoo.com",  # External APIs
                 "frame-ancestors 'none'",  # Equivalent to X-Frame-Options: DENY
                 "base-uri 'self'",  # Prevent base tag injection
                 "form-action 'self'",  # Forms can only submit to same origin

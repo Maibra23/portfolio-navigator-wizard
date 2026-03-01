@@ -556,21 +556,47 @@ class RedisFirstDataService:
         if not q:
             return []
         
-        results = []
-        
-        # Apply filters if provided
+        q_upper = q.upper()
         sector_filter = filters.get('sector', None) if filters else None
         risk_filter = filters.get('risk_profile', None) if filters else None
-        
-        # Search through ALL cached tickers (complete data in Redis)
+
+        # Fast path: query looks like a single ticker (e.g. AAPL, MTRS.ST) - direct Redis lookup
+        if len(q) <= 10 and q.replace(".", "").replace("-", "").isalnum():
+            all_tickers = self.all_tickers
+            cached_tickers = [t for t in all_tickers if self._is_cached(t, 'prices') and self._is_cached(t, 'sector')]
+            if q_upper in cached_tickers:
+                ticker_info = self.get_ticker_info(q_upper)
+                if ticker_info:
+                    if sector_filter and ticker_info.get('sector', '').lower() != sector_filter.lower():
+                        pass  # fall through to full search
+                    elif risk_filter and not self._is_suitable_for_risk_profile(ticker_info, risk_filter):
+                        pass
+                    else:
+                        score = self._calculate_enhanced_relevance_score(q, ticker_info)
+                        if score > 0:
+                            result = [{
+                                'ticker': q_upper,
+                                'company_name': ticker_info.get('company_name', ''),
+                                'sector': ticker_info.get('sector', ''),
+                                'industry': ticker_info.get('industry', ''),
+                                'relevance_score': score,
+                                'cached': self._is_cached(q_upper, 'prices'),
+                                'risk_level': self._calculate_risk_level(ticker_info),
+                                'market_cap': ticker_info.get('market_cap', 'Unknown'),
+                                'last_price': ticker_info.get('current_price', 0),
+                                'data_quality': ticker_info.get('data_quality', 'Unknown')
+                            }]
+                            logger.debug("Single-ticker fast path: %s", q_upper)
+                            return result[:limit]
+
+        results = []
         all_tickers = self.all_tickers
         cached_tickers = [t for t in all_tickers if self._is_cached(t, 'prices') and self._is_cached(t, 'sector')]
         
-        logger.info(f"🔍 Searching '{query}' through {len(cached_tickers)} cached tickers (out of {len(all_tickers)} total)")
+        logger.debug("Searching '%s' through %s cached tickers (out of %s total)", query, len(cached_tickers), len(all_tickers))
         
         # SMART PRE-FILTERING: Only check tickers that might match AND are cached
         candidate_tickers = []
-        q_upper = q.upper()
         
         # Phase 1: Quick ticker symbol matching (CACHED ONLY)
         for ticker in cached_tickers:
@@ -589,7 +615,7 @@ class RedisFirstDataService:
                     if q in company_name:
                         candidate_tickers.append(ticker)
         
-        logger.info(f"📋 Pre-filter found {len(candidate_tickers)} cached candidates")
+        logger.debug("Pre-filter found %s cached candidates", len(candidate_tickers))
         
         # Process only the candidate tickers (not all 809)
         for ticker in candidate_tickers:
@@ -628,7 +654,7 @@ class RedisFirstDataService:
         
         # Sort by relevance score (highest first)
         results.sort(key=lambda x: x['relevance_score'], reverse=True)
-        logger.info(f"✅ Search completed: {len(results)} results found")
+        logger.debug("Search completed: %s results found", len(results))
         return results[:limit]
     
     def _calculate_enhanced_relevance_score(self, query: str, ticker_info: Dict) -> int:
@@ -987,6 +1013,30 @@ class RedisFirstDataService:
             smart_refresh_logger.error("Smart monthly refresh failed: %s", e)
             return None
     
+    def tickers_needing_refresh(self, tickers: List[str]) -> List[str]:
+        """Return which tickers are missing or stale (data older than 30 days). Call this before smart_refresh_tickers to avoid triggering refresh when all are fresh."""
+        result = []
+        for ticker in tickers:
+            try:
+                cached_data = self.get_monthly_data(ticker)
+                if cached_data is None:
+                    result.append(ticker)
+                elif isinstance(cached_data, pd.Series) and not cached_data.empty:
+                    last_date = cached_data.index[-1]
+                    if hasattr(last_date, 'to_pydatetime'):
+                        last_date_dt = last_date.to_pydatetime()
+                    elif isinstance(last_date, pd.Timestamp):
+                        last_date_dt = last_date.to_pydatetime()
+                    else:
+                        last_date_dt = pd.to_datetime(last_date).to_pydatetime()
+                    days_old = (datetime.now() - last_date_dt).days
+                    if days_old > 30:
+                        result.append(ticker)
+            except Exception as e:
+                logger.debug("Error checking cache freshness for %s: %s", ticker, e)
+                result.append(ticker)
+        return result
+
     def smart_refresh_tickers(self, tickers: List[str]):
         """Smart refresh for specific tickers using EnhancedDataFetcher"""
         if not self.enhanced_data_fetcher:
@@ -995,35 +1045,7 @@ class RedisFirstDataService:
             return None
         
         try:
-            logger.info(f"Smart refreshing {len(tickers)} specific tickers")
-            smart_refresh_logger.info("Smart refresh triggered via UI for %s tickers", len(tickers))
-            smart_refresh_logger.info("Tickers: %s", ", ".join(tickers))
-            
-            # Check which tickers actually need refresh before fetching
-            tickers_needing_refresh = []
-            for ticker in tickers:
-                try:
-                    cached_data = self.get_monthly_data(ticker)
-                    if cached_data is None:
-                        tickers_needing_refresh.append(ticker)
-                    elif isinstance(cached_data, pd.Series) and not cached_data.empty:
-                        last_date = cached_data.index[-1]
-                        # Handle pandas Timestamp conversion
-                        if hasattr(last_date, 'to_pydatetime'):
-                            last_date_dt = last_date.to_pydatetime()
-                        elif isinstance(last_date, pd.Timestamp):
-                            last_date_dt = last_date.to_pydatetime()
-                        else:
-                            last_date_dt = pd.to_datetime(last_date).to_pydatetime()
-                        
-                        days_old = (datetime.now() - last_date_dt).days
-                        if days_old > 30:
-                            tickers_needing_refresh.append(ticker)
-                except Exception as e:
-                    logger.debug(f"⚠️ Error checking cache freshness for {ticker}: {e}")
-                    tickers_needing_refresh.append(ticker)
-            
-            # Only refresh tickers that need it
+            tickers_needing_refresh = self.tickers_needing_refresh(tickers)
             if not tickers_needing_refresh:
                 logger.info(f"✅ All {len(tickers)} tickers are fresh, no refresh needed")
                 smart_refresh_logger.info("All tickers are fresh, no refresh needed")

@@ -35,14 +35,14 @@ ENV PYTHONUNBUFFERED=1
 # Tell the app to connect to the bundled Redis on localhost
 ENV REDIS_URL=redis://localhost:6379
 
-# Fly.io injects PORT — fall back to 8000 for local runs
-ENV PORT=8000
+# Fly.io injects PORT — fall back to 8080 for local runs (aligned with fly.toml)
+ENV PORT=8080
 
 # Health check (Fly.io uses this to decide if the instance is healthy)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/healthz')" || exit 1
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8080') + '/healthz')" || exit 1
 
-EXPOSE 8000
+EXPOSE 8080
 
 # Start Redis as a background daemon, then hand PID 1 to uvicorn via exec.
 # redis-server --daemonize yes returns only after Redis is accepting connections,
@@ -55,5 +55,5 @@ CMD redis-server --daemonize yes \
         --loglevel warning \
     && exec uvicorn main:app \
         --host 0.0.0.0 \
-        --port "${PORT:-8000}" \
+        --port "${PORT:-8080}" \
         --workers 1

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { getAdminKeyHeaders } from "@/config/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,8 @@ interface StressTestProps {
     resilience_score: number;
     overall_assessment: string;
   }) => void;
+  /** Callback when loading state changes (for parent to disable tab navigation) */
+  onLoadingChange?: (isLoading: boolean) => void;
   selectedPortfolio: SelectedPortfolioData | null;
   capital: number;
   riskProfile: string;
@@ -89,6 +92,7 @@ export const StressTest: React.FC<StressTestProps> = ({
   onNext,
   onPrev,
   onStressTestResults,
+  onLoadingChange,
   selectedPortfolio,
   capital,
   riskProfile,
@@ -171,6 +175,12 @@ export const StressTest: React.FC<StressTestProps> = ({
       });
     }
   }, [selectedPortfolio]);
+
+  // Notify parent when loading state changes (for tab navigation blocking)
+  useEffect(() => {
+    const anyLoading = isLoading || hypotheticalLoading;
+    onLoadingChange?.(anyLoading);
+  }, [isLoading, hypotheticalLoading, onLoadingChange]);
 
   // Key market events for interactive timeline annotations
   const crisisEvents = {
@@ -4995,13 +5005,45 @@ export const StressTest: React.FC<StressTestProps> = ({
 
           {/* Navigation Buttons */}
           <div className="flex justify-between pt-6 border-t">
-            <Button variant="outline" onClick={onPrev}>
+            <Button
+              variant="outline"
+              onClick={onPrev}
+              disabled={isLoading || hypotheticalLoading}
+            >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Previous
             </Button>
-            <Button onClick={onNext} className="bg-primary hover:bg-primary/90">
-              {stressTestResults ? "Complete & Proceed" : "Skip Stress Test"}
-              <ArrowRight className="ml-2 h-4 w-4" />
+            <Button
+              onClick={() => {
+                if (isLoading || hypotheticalLoading) {
+                  toast.warning("Scenario in progress", {
+                    description:
+                      "Please wait for the current scenario to complete before proceeding.",
+                    duration: 3000,
+                  });
+                  return;
+                }
+                onNext();
+              }}
+              disabled={isLoading || hypotheticalLoading}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {isLoading || hypotheticalLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Running...
+                </>
+              ) : stressTestResults ? (
+                <>
+                  Complete & Proceed
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              ) : (
+                <>
+                  Skip Stress Test
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
             </Button>
           </div>
         </CardContent>

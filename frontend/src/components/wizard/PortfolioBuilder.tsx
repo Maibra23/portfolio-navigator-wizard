@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,6 +97,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
     count: number;
     regionLabels: string[];
   } | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +125,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
     0,
   );
 
-  // Search stocks function
+  // Search stocks function (cancel in-flight request when query changes)
   const searchStocks = useCallback(
     async (query: string) => {
       if (!query.trim() || query.length < 1) {
@@ -132,18 +133,19 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
         return;
       }
 
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = new AbortController();
+      const signal = searchAbortRef.current.signal;
+
       setIsLoading(true);
       setError(null);
 
       try {
-        console.log(`Searching for: "${query}"`);
-
-        // Build search URL with optional risk profile filter
         const searchUrl = fullUniverse
           ? `/api/v1/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=20`
           : `/api/v1/portfolio/search-tickers?q=${encodeURIComponent(query)}&limit=20&risk_profile=${riskProfile}`;
 
-        const response = await fetch(searchUrl);
+        const response = await fetch(searchUrl, { signal });
 
         if (!response.ok) {
           throw new Error(`Search failed: ${response.statusText}`);
@@ -168,11 +170,11 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
           setSearchResults([]);
         }
       } catch (err: any) {
-        console.error("Search error:", err);
+        if (err.name === "AbortError") return;
         setError(err.message || "Failed to search stocks");
         setSearchResults([]);
       } finally {
-        setIsLoading(false);
+        if (!signal.aborted) setIsLoading(false);
       }
     },
     [riskProfile, fullUniverse],
@@ -400,9 +402,14 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       onStocksUpdate(selectedStocks);
     }
 
-    // Calculate metrics immediately for the confirmed portfolio
-    calculateMetrics(nextStocks);
-    onDone?.(nextStocks);
+    // When showMetricsAfterDone is false (e.g. Recommendations), parent refreshes metrics in onDone; avoid duplicate POST.
+    if (!showMetricsAfterDone && onDone) {
+      onDone(nextStocks);
+    } else {
+      // Finalize flow: we own metrics refresh
+      calculateMetrics(nextStocks);
+      onDone?.(nextStocks);
+    }
   };
 
   // Progress calculation for visual feedback

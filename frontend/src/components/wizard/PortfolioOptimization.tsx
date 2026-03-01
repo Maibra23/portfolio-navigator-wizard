@@ -3773,89 +3773,91 @@ export const PortfolioOptimization = ({
                     )}
                   </CardContent>
 
-                  {/* Legend and Optimize Button */}
-                  <div className="px-6 pb-6 space-y-4">
-                    {/* Why run Optimize and what to expect (collapsible) */}
-                    <Collapsible className="group rounded-lg border border-border bg-muted/30">
-                      <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/50 rounded-lg">
-                        <span className="text-sm font-medium text-foreground">
-                          Why run Optimize? / What to expect
+                  {/* Legend and Optimize Button - hidden after successful optimization */}
+                  {efficientFrontier.length === 0 && (
+                    <div className="px-6 pb-6 space-y-4">
+                      {/* Why run Optimize and what to expect (collapsible) */}
+                      <Collapsible className="group rounded-lg border border-border bg-muted/30">
+                        <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/50 rounded-lg">
+                          <span className="text-sm font-medium text-foreground">
+                            Why run Optimize? / What to expect
+                          </span>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="px-3 pb-3 space-y-2">
+                            <p className="text-xs text-muted-foreground">
+                              Finds weights (or a market portfolio) for better
+                              risk-adjusted return using your risk profile and
+                              the efficient frontier.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Runs in a few seconds, then opens the Analysis tab
+                              to compare your portfolio with optimized options
+                              and apply or explore.
+                            </p>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                      {/* Info: Always optimizes from market tickers */}
+                      <div className="flex items-center justify-center gap-2 p-3 bg-blue-500/10/50 rounded-lg border border-blue-200">
+                        <Info className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm text-blue-400">
+                          Optimizes portfolio from eligible market tickers
+                          matching your risk profile
                         </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="px-3 pb-3 space-y-2">
-                          <p className="text-xs text-muted-foreground">
-                            Finds weights (or a market portfolio) for better
-                            risk-adjusted return using your risk profile and the
-                            efficient frontier.
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Runs in a few seconds, then opens the Analysis tab
-                            to compare your portfolio with optimized options and
-                            apply or explore.
-                          </p>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                    {/* Info: Always optimizes from market tickers */}
-                    <div className="flex items-center justify-center gap-2 p-3 bg-blue-500/10/50 rounded-lg border border-blue-200">
-                      <Info className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm text-blue-400">
-                        Optimizes portfolio from eligible market tickers
-                        matching your risk profile
-                      </span>
+                      </div>
+
+                      <div className="flex justify-center pt-2">
+                        <Button
+                          onClick={runOptimization}
+                          disabled={
+                            isLoading ||
+                            !currentPortfolio ||
+                            !Array.isArray(currentPortfolio) ||
+                            currentPortfolio.length < 2
+                          }
+                          size="lg"
+                          className="flex items-center gap-2"
+                        >
+                          {isLoading ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Optimizing...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="h-4 w-4" />
+                              Optimize
+                            </>
+                          )}
+                        </Button>
+                      </div>
+
+                      {(!currentPortfolio || currentPortfolio.length < 2) && (
+                        <p
+                          className="text-sm text-center"
+                          style={{ color: chartTheme.text.secondary }}
+                        >
+                          Select at least 2 stocks to enable optimization
+                        </p>
+                      )}
+
+                      {error && (
+                        <Alert variant="destructive" className="mt-4">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>{error}</AlertDescription>
+                        </Alert>
+                      )}
+
+                      {successMessage && (
+                        <Alert className="bg-green-500/10 border-green-200 text-green-400 mt-4">
+                          <CheckCircle className="h-4 w-4" />
+                          <AlertDescription>{successMessage}</AlertDescription>
+                        </Alert>
+                      )}
                     </div>
-
-                    <div className="flex justify-center pt-2">
-                      <Button
-                        onClick={runOptimization}
-                        disabled={
-                          isLoading ||
-                          !currentPortfolio ||
-                          !Array.isArray(currentPortfolio) ||
-                          currentPortfolio.length < 2
-                        }
-                        size="lg"
-                        className="flex items-center gap-2"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Optimizing...
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="h-4 w-4" />
-                            Optimize
-                          </>
-                        )}
-                      </Button>
-                    </div>
-
-                    {(!currentPortfolio || currentPortfolio.length < 2) && (
-                      <p
-                        className="text-sm text-center"
-                        style={{ color: chartTheme.text.secondary }}
-                      >
-                        Select at least 2 stocks to enable optimization
-                      </p>
-                    )}
-
-                    {error && (
-                      <Alert variant="destructive" className="mt-4">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>{error}</AlertDescription>
-                      </Alert>
-                    )}
-
-                    {successMessage && (
-                      <Alert className="bg-green-500/10 border-green-200 text-green-400 mt-4">
-                        <CheckCircle className="h-4 w-4" />
-                        <AlertDescription>{successMessage}</AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
+                  )}
                 </Card>
               </div>
             </TabsContent>

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,6 +100,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     "builder" | "optimize" | "analysis" | "tax-cost"
   >("builder");
   const [hiddenTab, setHiddenTab] = useState<"stress-test" | null>(null);
+  const [isStressTestLoading, setIsStressTestLoading] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeButtonClicked, setOptimizeButtonClicked] = useState(false); // hide button immediately on click
   const [optimizationError, setOptimizationError] = useState<string | null>(
@@ -939,28 +941,70 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger
             value="builder"
-            disabled={!canNavigateToTab("builder", state, activeTab)}
+            disabled={
+              isStressTestLoading ||
+              !canNavigateToTab("builder", state, activeTab)
+            }
+            onClick={() => {
+              if (isStressTestLoading) {
+                toast.warning("Scenario in progress", {
+                  description: "Please wait for the stress test to complete.",
+                  duration: 3000,
+                });
+              }
+            }}
           >
             Portfolio Builder
           </TabsTrigger>
           <TabsTrigger
             value="optimize"
             disabled={
+              isStressTestLoading ||
               !canNavigateToTab("optimize", state, activeTab) ||
               (activeTab === "builder" && !builderDone)
             }
+            onClick={() => {
+              if (isStressTestLoading) {
+                toast.warning("Scenario in progress", {
+                  description: "Please wait for the stress test to complete.",
+                  duration: 3000,
+                });
+              }
+            }}
           >
             Optimize
           </TabsTrigger>
           <TabsTrigger
             value="analysis"
-            disabled={!canNavigateToTab("analysis", state, activeTab)}
+            disabled={
+              isStressTestLoading ||
+              !canNavigateToTab("analysis", state, activeTab)
+            }
+            onClick={() => {
+              if (isStressTestLoading) {
+                toast.warning("Scenario in progress", {
+                  description: "Please wait for the stress test to complete.",
+                  duration: 3000,
+                });
+              }
+            }}
           >
             Final Analysis
           </TabsTrigger>
           <TabsTrigger
             value="tax-cost"
-            disabled={!canNavigateToTab("tax-cost", state, activeTab)}
+            disabled={
+              isStressTestLoading ||
+              !canNavigateToTab("tax-cost", state, activeTab)
+            }
+            onClick={() => {
+              if (isStressTestLoading) {
+                toast.warning("Scenario in progress", {
+                  description: "Please wait for the stress test to complete.",
+                  duration: 3000,
+                });
+              }
+            }}
           >
             Tax & Summary
           </TabsTrigger>
@@ -1223,30 +1267,31 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             </Card>
           </div>
 
-          {/* Optimize Button with animation */}
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 delay-200">
-            {!isOptimizing && !optimizeButtonClicked && (
-              <Button
-                onClick={() => {
-                  setOptimizeButtonClicked(true);
-                  handleOptimize();
-                }}
-                disabled={state.constructedPortfolio.length === 0}
-                className="w-full bg-blue-600 hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                size="lg"
-              >
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Run Optimization
-              </Button>
-            )}
-            {(isOptimizing || optimizeButtonClicked) &&
-              !state.optimizedPortfolio && (
+          {/* Optimize Button with animation - hidden after successful optimization */}
+          {!state.optimizedPortfolio && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 delay-200">
+              {!isOptimizing && !optimizeButtonClicked && (
+                <Button
+                  onClick={() => {
+                    setOptimizeButtonClicked(true);
+                    handleOptimize();
+                  }}
+                  disabled={state.constructedPortfolio.length === 0}
+                  className="w-full bg-blue-600 hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  size="lg"
+                >
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Run Optimization
+                </Button>
+              )}
+              {(isOptimizing || optimizeButtonClicked) && (
                 <div className="flex items-center justify-center gap-3 py-6 text-sm text-muted-foreground bg-muted/30 rounded-lg border border-border/50">
                   <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
                   <span>Optimizing your portfolio...</span>
                 </div>
               )}
-          </div>
+            </div>
+          )}
 
           {/* Optimization Error */}
           {optimizationError && (
@@ -1713,6 +1758,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                 setActiveTab("analysis");
               }}
               onStressTestResults={updateStressTestResults}
+              onLoadingChange={setIsStressTestLoading}
               selectedPortfolio={{
                 source: selectedPortfolioType,
                 tickers: state.constructedPortfolio.map((s) => s.symbol),
