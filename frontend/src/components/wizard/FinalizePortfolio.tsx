@@ -535,9 +535,10 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     portfolioMetrics?.expectedReturn,
   ]);
 
-  // Calculate transaction costs when courtage class changes
+  // Calculate transaction costs when courtage class changes (only on tax-cost tab)
   useEffect(() => {
     if (
+      activeTab === "tax-cost" &&
       state.taxSettings.courtagClass &&
       state.constructedPortfolio.length > 0 &&
       capital > 0
@@ -592,7 +593,12 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
     } else {
       setTransactionCosts(null);
     }
-  }, [state.taxSettings.courtagClass, state.constructedPortfolio, capital]);
+  }, [
+    activeTab,
+    state.taxSettings.courtagClass,
+    state.constructedPortfolio,
+    capital,
+  ]);
 
   // Fetch tax comparison data for all account types (for export)
   const fetchTaxComparisonForExport = async () => {

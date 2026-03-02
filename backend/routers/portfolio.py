@@ -27,14 +27,14 @@ from utils.shareable_link_generator import ShareableLinkGenerator
 from utils.five_year_projection import run_five_year_projection
 from utils.redis_ttl_monitor import RedisTTLMonitor
 from utils.timestamp_utils import normalize_ticker_format
-from slowapi import Limiter
-from middleware.security import get_client_ip
+from middleware.rate_limiting import limiter, RateLimits
 from pypfopt import EfficientFrontier
 from fastapi.responses import Response, StreamingResponse
 import base64
 import zipfile
 from io import BytesIO
 from models.portfolio import PortfolioRequest, PortfolioResponse, PortfolioAllocation
+from shared.errors import safe_error_message, safe_error_detail
 from datetime import datetime, timedelta, date
 import random
 
@@ -56,9 +56,6 @@ portfolios_router = APIRouter()
 optimization_router = APIRouter()
 analytics_router = APIRouter()
 export_router = APIRouter()
-
-# Initialize rate limiter (used by routes still in this file; proxy-aware IP)
-limiter = Limiter(key_func=get_client_ip)
 
 # Initialize portfolio analytics
 portfolio_analytics = PortfolioAnalytics()
@@ -140,13 +137,14 @@ class PortfolioOptimizationResponse(BaseModel):
     recommendations: List[str]
 
 @portfolios_router.post("/calculate-metrics", response_model=PortfolioMetricsResponse)
-def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
+@limiter.limit(RateLimits.CALCULATE)
+async def calculate_portfolio_metrics(request: Request, body: PortfolioMetricsRequest):
     """
     Calculate real-time portfolio metrics based on current allocations
     """
     try:
-        allocations = request.allocations
-        risk_profile = request.riskProfile
+        allocations = body.allocations
+        risk_profile = body.riskProfile
         
         if not allocations:
             raise HTTPException(status_code=400, detail="Portfolio allocations required")
@@ -263,17 +261,21 @@ def calculate_portfolio_metrics(request: PortfolioMetricsRequest):
         
     except Exception as e:
         logger.error(f"Error calculating portfolio metrics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=safe_error_message(e, "Failed to calculate portfolio metrics")
+        )
 
 @portfolios_router.post("/optimize", response_model=PortfolioOptimizationResponse)
-def optimize_portfolio(request: PortfolioOptimizationRequest):
+@limiter.limit(RateLimits.OPTIMIZE_SINGLE)
+async def optimize_portfolio(request: Request, body: PortfolioOptimizationRequest):
     """
     Optimize portfolio allocations using advanced algorithms
     """
     try:
-        allocations = request.allocations
-        risk_profile = request.riskProfile
-        optimization_type = request.optimizationType
+        allocations = body.allocations
+        risk_profile = body.riskProfile
+        optimization_type = body.optimizationType
         
         if not allocations:
             raise HTTPException(status_code=400, detail="Portfolio allocations required")
@@ -314,7 +316,7 @@ def optimize_portfolio(request: PortfolioOptimizationRequest):
         elif optimization_type == "risk-parity":
             optimized_weights = optimize_risk_parity_weights(returns_data, risk_profile)
         else:
-            optimized_weights = optimize_custom_weights(returns_data, risk_profile, request.targetReturn, request.maxRisk)
+            optimized_weights = optimize_custom_weights(returns_data, risk_profile, body.targetReturn, body.maxRisk)
         
         # Create optimized allocations
         optimized_allocations = []
@@ -384,7 +386,10 @@ def optimize_portfolio(request: PortfolioOptimizationRequest):
         
     except Exception as e:
         logger.error(f"Error optimizing portfolio: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=safe_error_message(e, "Failed to optimize portfolio")
+        )
 
 def optimize_mean_variance_weights(returns_data: Dict[str, pd.Series], risk_profile: str) -> List[float]:
     """
@@ -512,8 +517,10 @@ def optimize_custom_weights(returns_data: Dict[str, pd.Series], risk_profile: st
 _SEARCH_TICKERS_CACHE_TTL = 90  # seconds
 
 @portfolios_router.get("/search-tickers")
-def search_tickers(
-    q: str = Query(..., description="Search query"), 
+@limiter.limit(RateLimits.SEARCH)
+async def search_tickers(
+    request: Request,
+    q: str = Query(..., description="Search query"),
     limit: int = Query(10, description="Maximum results"),
     sector: str = Query(None, description="Filter by sector"),
     risk_profile: str = Query(None, description="Filter by risk profile")
@@ -584,10 +591,15 @@ def search_tickers(
         
     except Exception as e:
         logger.error(f"Error in enhanced ticker search: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=safe_error_message(e, "Search failed")
+        )
 
 @portfolios_router.get("/search-suggestions")
-def search_suggestions(
+@limiter.limit(RateLimits.SEARCH)
+async def search_suggestions(
+    request: Request,
     q: str = Query(..., description="Search query for autocomplete"),
     limit: int = Query(8, description="Maximum suggestions")
 ):
@@ -602,7 +614,10 @@ def search_suggestions(
         }
     except Exception as e:
         logger.error(f"Error in search suggestions: {e}")
-        raise HTTPException(status_code=500, detail=f"Suggestions failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=safe_error_message(e, "Suggestions failed")
+        )
 
 @portfolios_router.get("/ticker-info/{ticker}")
 def get_ticker_info(ticker: str):
@@ -616,7 +631,7 @@ def get_ticker_info(ticker: str):
         raise
     except Exception as e:
         logger.error(f"Error getting ticker info for {ticker}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get ticker info: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get ticker info"))
 
 @portfolios_router.get("/ticker-price-history/{ticker}")
 def get_ticker_price_history(ticker: str, days: int = Query(30, description="Number of days")):
@@ -630,7 +645,7 @@ def get_ticker_price_history(ticker: str, days: int = Query(30, description="Num
         raise
     except Exception as e:
         logger.error(f"Error getting price history for {ticker}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get price history: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get price history"))
 
 @portfolios_router.get("/ticker-monthly-data/{ticker}")
 def get_ticker_monthly_data(ticker: str):
@@ -644,7 +659,7 @@ def get_ticker_monthly_data(ticker: str):
         raise
     except Exception as e:
         logger.error(f"Error getting monthly data for {ticker}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get monthly data: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get monthly data"))
 
 # (Admin routes: warm-cache, warm-tickers, cache-status, clear-cache, TTL, force-refresh, health -> routers/admin.py)
 
@@ -660,7 +675,7 @@ def get_master_tickers():
         }
     except Exception as e:
         logger.error(f"Error getting master tickers: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get master tickers: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get master tickers"))
 
 @portfolios_router.get("/tickers/available")
 def get_available_tickers(limit: int = Query(100, description="Maximum number of tickers")):
@@ -675,7 +690,7 @@ def get_available_tickers(limit: int = Query(100, description="Maximum number of
         }
     except Exception as e:
         logger.error(f"Error getting available tickers: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get available tickers: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get available tickers"))
 
 
 def _ticker_region_from_symbol(ticker: str) -> str:
@@ -732,7 +747,7 @@ def get_ticker_universe():
         }
     except Exception as e:
         logger.error(f"Error getting ticker universe: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get ticker universe: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get ticker universe"))
 
 
 @portfolios_router.post("/tickers/refresh")
@@ -759,7 +774,7 @@ def refresh_tickers(_: None = Depends(require_admin_key)):
             "source": "redis"
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error refreshing tickers: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error refreshing tickers"))
 
 # ============================================================================
 # Agent 1: Optimization Data Preparation Endpoints
@@ -1699,7 +1714,7 @@ def _get_eligible_tickers_internal(
         logger.error(f"❌ Error getting eligible tickers: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get eligible tickers: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get eligible tickers"))
 
 # Task 1.1: Get Eligible Tickers for Optimization (API Endpoint)
 @optimization_router.get("/optimization/eligible-tickers")
@@ -2110,7 +2125,7 @@ def get_ticker_metrics_batch(request: TickerMetricsRequest):
         logger.error(f"❌ Error getting ticker metrics: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to get ticker metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get ticker metrics"))
 
 # Task 2: Mean-Variance Optimization (MVO) Endpoint
 class MVOOptimizationRequest(BaseModel):
@@ -2333,7 +2348,7 @@ def optimize_portfolio_mvo(request: MVOOptimizationRequest):
         logger.error(f"❌ Error in MVO optimization: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to optimize portfolio: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to optimize portfolio"))
 
 class DualOptimizationRequest(BaseModel):
     user_tickers: List[str]  # User's selected tickers
@@ -3377,7 +3392,7 @@ def optimize_dual_portfolio(request: DualOptimizationRequest):
             logger.error(f"❌ Error optimizing portfolio: {e}")
             import traceback
             traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Failed to optimize portfolio: {str(e)}")
+            raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to optimize portfolio"))
         
         # Step 4: Compare results
         optimized_metrics = optimized_portfolio_response.optimized_portfolio.get('metrics', {})
@@ -3511,7 +3526,7 @@ def optimize_dual_portfolio(request: DualOptimizationRequest):
         logger.error(f"❌ Error in dual optimization: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to perform dual optimization: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to perform dual optimization"))
 
 @optimization_router.post("/optimization/triple", response_model=TripleOptimizationResponse)
 def optimize_triple_portfolio(request: TripleOptimizationRequest):
@@ -4068,7 +4083,7 @@ def optimize_triple_portfolio(request: TripleOptimizationRequest):
         logger.error(f"❌ Error in triple optimization: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to perform triple optimization: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to perform triple optimization"))
 
 @analytics_router.post("/stress-test")
 def run_stress_test(request: Dict[str, Any]):
@@ -4288,7 +4303,10 @@ def run_stress_test(request: Dict[str, Any]):
         logger.error(f"❌ Error in stress test: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to run stress test: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=safe_error_message(e, "Failed to run stress test")
+        )
 
 @analytics_router.post("/what-if-scenario")
 def run_what_if_scenario(request: Dict[str, Any]):
@@ -4483,7 +4501,7 @@ def run_what_if_scenario(request: Dict[str, Any]):
         logger.error(f"❌ Error in What-If scenario: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to run What-If scenario: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to run What-If scenario"))
 
 def _handle_hypothetical_scenario(request: Dict[str, Any], start_time: float):
     """Handle hypothetical scenario logic (called from what-if endpoint)"""
@@ -4598,7 +4616,7 @@ def _handle_hypothetical_scenario(request: Dict[str, Any], start_time: float):
         logger.error(f"❌ Error in hypothetical scenario: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to run hypothetical scenario: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to run hypothetical scenario"))
 
 @analytics_router.post("/hypothetical-scenario")
 def run_hypothetical_scenario(request: Dict[str, Any]):
@@ -4859,7 +4877,7 @@ def run_hypothetical_scenario(request: Dict[str, Any]):
         logger.error(f"❌ Error in hypothetical scenario: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to run hypothetical scenario: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to run hypothetical scenario"))
 
 def _warm_tickers_for_recommendations(symbols: List[str]) -> None:
     """Background helper: warm Redis cache for tickers used in recommendations (non-blocking)."""
@@ -5538,7 +5556,8 @@ async def generate_pure_strategy_portfolios(
 
 # NEW: Pure vs Personalized Strategy Comparison for Optimization Tab
 @portfolios_router.post("/optimize/strategy-comparison")
-async def optimize_strategy_comparison(risk_profile: str, strategy: str = 'diversification'):
+@limiter.limit(RateLimits.OPTIMIZE_DUAL)
+async def optimize_strategy_comparison(request: Request, risk_profile: str, strategy: str = 'diversification'):
     """
     Compare Pure Strategy vs Personalized Strategy portfolios for the Analyze Optimization tab
     
@@ -5592,11 +5611,13 @@ async def optimize_strategy_comparison(risk_profile: str, strategy: str = 'diver
         
     except Exception as e:
         logger.error(f"❌ Strategy comparison failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Strategy comparison failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Strategy comparison failed"))
 
 # NEW: Portfolio Optimization Analysis Endpoint
 @portfolios_router.post("/optimize/analysis", response_model=Dict)
-def analyze_portfolio_optimization(
+@limiter.limit(RateLimits.OPTIMIZE_SINGLE)
+async def analyze_portfolio_optimization(
+    request: Request,
     current_portfolio: List[PortfolioAllocation],
     risk_profile: str,
     target_return: Optional[float] = None,
@@ -5654,7 +5675,7 @@ def analyze_portfolio_optimization(
         
     except Exception as e:
         logger.error(f"Error analyzing portfolio optimization: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Operation failed"))
 
 def _generate_optimization_recommendations(current_metrics: Dict, improvements: List[Dict], risk_profile: str) -> List[str]:
     """Generate actionable optimization recommendations"""
@@ -6143,7 +6164,7 @@ def two_asset_analysis(ticker1: str, ticker2: str):
         raise
     except Exception as e:
         logger.error(f"Error in two-asset analysis: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in two-asset analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error in two-asset analysis"))
 
 # REMOVED: Duplicate ticker-info endpoint - using the Redis-first one above
 
@@ -6195,7 +6216,7 @@ def get_portfolio_validation(risk_profile: str):
         raise
     except Exception as e:
         logger.error(f"Error validating portfolios for {risk_profile}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error validating portfolios: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error validating portfolios"))
 
 # Use app Redis (REDIS_URL) for enhanced analytics; no localhost
 def _analytics_redis():
@@ -6412,7 +6433,7 @@ async def risk_return_analysis(request: PortfolioAnalyticsRequest):
         return response
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error calculating risk-return analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error calculating risk-return analysis"))
 
 @analytics_router.get("/sector-distribution/enhanced")
 async def enhanced_sector_distribution():
@@ -6521,7 +6542,7 @@ async def enhanced_sector_distribution():
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error calculating sector distribution: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error calculating sector distribution"))
 
 def get_performance_rating(sharpe_ratio: float) -> str:
     if sharpe_ratio >= 1.0:
@@ -6549,7 +6570,7 @@ class SmartRefreshRequest(BaseModel):
     tickers: Optional[List[str]] = None
 
 @analytics_router.post("/ticker-table/refresh")
-async def refresh_ticker_table():
+async def refresh_ticker_table(_: None = Depends(require_admin_key)):
     """
     Force refresh of all ticker data in Redis using Redis-first approach
     """
@@ -6565,10 +6586,10 @@ async def refresh_ticker_table():
         
     except Exception as e:
         logger.error(f"Error refreshing ticker table: {e}")
-        raise HTTPException(status_code=500, detail=f"Error refreshing ticker table: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error refreshing ticker table"))
 
 @analytics_router.post("/ticker-table/smart-refresh")
-async def smart_monthly_refresh(request: SmartRefreshRequest = Body(default=SmartRefreshRequest())):
+async def smart_monthly_refresh(_: None = Depends(require_admin_key), request: SmartRefreshRequest = Body(default=SmartRefreshRequest())):
     """
     Smart monthly refresh that only fetches the latest month of data using Redis-first approach
     - Extends time range incrementally (no re-downloading of historical data)
@@ -6608,7 +6629,7 @@ async def smart_monthly_refresh(request: SmartRefreshRequest = Body(default=Smar
         
     except Exception as e:
         logger.error(f"Error in smart monthly refresh: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in smart monthly refresh: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error in smart monthly refresh"))
 
 @analytics_router.get("/tickers/ttl-status")
 async def get_ttl_status():
@@ -6653,7 +6674,7 @@ async def get_ttl_status():
         
     except Exception as e:
         logger.error(f"Error getting TTL status: {e}")
-        raise HTTPException(status_code=500, detail=f"TTL status check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "TTL status check failed"))
 
 @portfolios_router.post("/regenerate-recommendations")
 async def regenerate_recommendation_portfolios(risk_profile: str = None, _: None = Depends(require_admin_key)):
@@ -6721,7 +6742,7 @@ async def regenerate_recommendation_portfolios(risk_profile: str = None, _: None
         
     except Exception as e:
         logger.error(f"Error regenerating recommendation portfolios: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to regenerate portfolios: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to regenerate portfolios"))
 
 @portfolios_router.post("/regenerate")
 async def regenerate_all_portfolios(_: None = Depends(require_admin_key)):
@@ -6801,7 +6822,7 @@ async def regenerate_all_portfolios(_: None = Depends(require_admin_key)):
     except Exception as e:
         logger.error(f"❌ Error in portfolio regeneration: {e}")
         portfolio_regen_logger.error("Portfolio regeneration failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Portfolio regeneration failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Portfolio regeneration failed"))
 
 @analytics_router.get("/ticker-table/data")
 async def get_ticker_table_data():
@@ -7035,7 +7056,7 @@ async def get_ticker_table_data():
         
     except Exception as e:
         logger.error(f"Error getting ticker table data: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting ticker table data: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error getting ticker table data"))
 
 @portfolios_router.get("/mini-lesson/assets")
 def get_mini_lesson_assets():
@@ -7387,7 +7408,7 @@ def get_mini_lesson_assets():
         
     except Exception as e:
         logger.error(f"Error getting mini-lesson assets: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting mini-lesson assets: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error getting mini-lesson assets"))
 
 @portfolios_router.get("/mini-lesson/random-pair")
 def get_random_asset_pair():
@@ -7470,7 +7491,7 @@ def get_random_asset_pair():
         raise
     except Exception as e:
         logger.error(f"Error generating random asset pair: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating random asset pair: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error generating random asset pair"))
 
 
 @portfolios_router.post("/mini-lesson/custom-portfolio")
@@ -7538,17 +7559,18 @@ def calculate_custom_portfolio(request: dict):
         raise
     except Exception as e:
         logger.error(f"Error calculating custom portfolio: {e}")
-        raise HTTPException(status_code=500, detail=f"Error calculating custom portfolio: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error calculating custom portfolio"))
 
 @portfolios_router.post("/optimize/risk-parity")
-async def optimize_risk_parity(request: dict):
+@limiter.limit(RateLimits.OPTIMIZE_SINGLE)
+async def optimize_risk_parity(request: Request, body: dict = Body()):
     """
     Optimize portfolio using risk parity approach
     Returns: Risk-parity optimized weights and metrics
     """
     try:
-        tickers = request.get('tickers', [])
-        target_risk = request.get('target_risk', 0.15)  # Default 15% target risk
+        tickers = body.get('tickers', [])
+        target_risk = body.get('target_risk', 0.15)  # Default 15% target risk
         
         if len(tickers) < 2:
             raise HTTPException(status_code=400, detail="At least 2 tickers required for optimization")
@@ -7646,18 +7668,19 @@ async def optimize_risk_parity(request: dict):
         
     except Exception as e:
         logger.error(f"Error in risk parity optimization: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in risk parity optimization: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error in risk parity optimization"))
 
 @portfolios_router.post("/optimize/mean-variance")
-async def optimize_mean_variance(request: dict):
+@limiter.limit(RateLimits.OPTIMIZE_SINGLE)
+async def optimize_mean_variance(request: Request, body: dict = Body()):
     """
     Optimize portfolio using mean-variance optimization (Markowitz)
     Returns: Mean-variance optimized weights and efficient frontier
     """
     try:
-        tickers = request.get('tickers', [])
-        target_return = request.get('target_return', None)
-        risk_aversion = request.get('risk_aversion', 1.0)  # Default risk aversion
+        tickers = body.get('tickers', [])
+        target_return = body.get('target_return', None)
+        risk_aversion = body.get('risk_aversion', 1.0)  # Default risk aversion
         
         if len(tickers) < 2:
             raise HTTPException(status_code=400, detail="At least 2 tickers required for optimization")
@@ -7777,7 +7800,7 @@ async def optimize_mean_variance(request: dict):
         
     except Exception as e:
         logger.error(f"Error in mean-variance optimization: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in mean-variance optimization: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error in mean-variance optimization"))
 
 @analytics_router.get("/analytics/performance-attribution")
 async def performance_attribution(portfolio_id: str = None, allocations: str = None):
@@ -7906,7 +7929,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
         
     except Exception as e:
         logger.error(f"Error in performance attribution: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in performance attribution: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error in performance attribution"))
 
 @analytics_router.get("/analytics/risk-decomposition")
 async def risk_decomposition(allocations: str):
@@ -8017,7 +8040,7 @@ async def risk_decomposition(allocations: str):
         
     except Exception as e:
         logger.error(f"Error in risk decomposition: {e}")
-        raise HTTPException(status_code=500, detail=f"Error in risk decomposition: {str(e)}") 
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error in risk decomposition")) 
 
 @analytics_router.post("/rebalance/check")
 async def check_rebalancing_needs(request: dict):
@@ -8112,7 +8135,7 @@ async def check_rebalancing_needs(request: dict):
         
     except Exception as e:
         logger.error(f"Error checking rebalancing needs: {e}")
-        raise HTTPException(status_code=500, detail=f"Error checking rebalancing needs: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error checking rebalancing needs"))
 
 @analytics_router.post("/monitor/performance-tracking")
 async def track_portfolio_performance(request: dict):
@@ -8265,7 +8288,7 @@ async def track_portfolio_performance(request: dict):
         
     except Exception as e:
         logger.error(f"Error tracking portfolio performance: {e}")
-        raise HTTPException(status_code=500, detail=f"Error tracking portfolio performance: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error tracking portfolio performance"))
 
 # (Health check -> routers/admin.py)
 
@@ -8342,7 +8365,7 @@ def get_enhanced_ticker_table():
         
     except Exception as e:
         logger.error(f"Error getting enhanced ticker data: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get enhanced ticker data: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get enhanced ticker data"))
 
 def get_ticker_quality_status(ticker_info: Dict) -> str:
     """Determine ticker quality status"""
@@ -8382,7 +8405,7 @@ def get_ticker_days_left(ticker: str) -> str:
         return "28 days"
 
 @analytics_router.get("/ticker-table/status")
-async def get_enhanced_ticker_status():
+async def get_enhanced_ticker_status(_: None = Depends(require_admin_key)):
     """Get status of enhanced ticker table and auto-refresh service"""
     try:
         auto_service = get_auto_refresh_service()
@@ -8408,10 +8431,10 @@ async def get_enhanced_ticker_status():
         
     except Exception as e:
         logger.error(f"Error getting enhanced status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get enhanced status: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get enhanced status"))
 
 @analytics_router.post("/ticker-table/start-auto-refresh")
-async def start_auto_refresh_service():
+async def start_auto_refresh_service(_: None = Depends(require_admin_key)):
     """Start the automatic refresh service"""
     try:
         auto_service = get_auto_refresh_service()
@@ -8425,10 +8448,10 @@ async def start_auto_refresh_service():
         
     except Exception as e:
         logger.error(f"Error starting auto-refresh: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start auto-refresh: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to start auto-refresh"))
 
 @analytics_router.post("/ticker-table/stop-auto-refresh")
-async def stop_auto_refresh_service():
+async def stop_auto_refresh_service(_: None = Depends(require_admin_key)):
     """Stop the automatic refresh service"""
     try:
         auto_service = get_auto_refresh_service()
@@ -8442,11 +8465,11 @@ async def stop_auto_refresh_service():
         
     except Exception as e:
         logger.error(f"Error stopping auto-refresh: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to stop auto-refresh: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to stop auto-refresh"))
 
 
 @analytics_router.get("/ticker-table/data-quality-report")
-async def get_data_quality_report():
+async def get_data_quality_report(_: None = Depends(require_admin_key)):
     """Get comprehensive data quality report"""
     try:
         auto_service = get_auto_refresh_service()
@@ -8496,7 +8519,7 @@ async def get_data_quality_report():
         
     except Exception as e:
         logger.error(f"Error getting data quality report: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get quality report: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get quality report"))
 
 @analytics_router.get("/ticker-table/enhanced-html")
 async def get_enhanced_ticker_table_html():
@@ -8596,7 +8619,7 @@ async def get_enhanced_ticker_table_html():
         
     except Exception as e:
         logger.error(f"Error serving enhanced HTML: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to serve HTML: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to serve HTML"))
 
 # Portfolio name and description generation functions
 def _generate_portfolio_name(risk_profile: str, option: int) -> str:
@@ -8866,13 +8889,13 @@ def get_all_portfolios_table_data():
 
     except Exception as e:
         logger.error(f"Error getting portfolios table data: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting portfolios table data: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error getting portfolios table data"))
 
 
 
 
 @analytics_router.get("/ticker-table/refresh/preview")
-async def refresh_ticker_table_preview():
+async def refresh_ticker_table_preview(_: None = Depends(require_admin_key)):
     """Return an estimate of how many tickers would be refreshed and estimated time."""
     try:
         # Use the same preview logic as smart-refresh but for full refresh
@@ -8898,10 +8921,10 @@ async def refresh_ticker_table_preview():
         }
     except Exception as e:
         logger.error(f"Error generating refresh preview: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating refresh preview: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error generating refresh preview"))
 
 @analytics_router.get("/ticker-table/smart-refresh/preview")
-async def smart_refresh_preview():
+async def smart_refresh_preview(_: None = Depends(require_admin_key)):
     """Return how many tickers would be refreshed by smart-refresh, without executing it."""
     try:
         result = _rds.preview_expired_data()
@@ -8916,7 +8939,7 @@ async def smart_refresh_preview():
         }
     except Exception as e:
         logger.error(f"Error generating smart-refresh preview: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating smart-refresh preview: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error generating smart-refresh preview"))
 
 
 @portfolios_router.get("/regenerate/estimate")
@@ -8935,7 +8958,7 @@ async def estimate_portfolio_regeneration():
         return {"status": "success", "estimate_seconds": est_seconds, "note": note}
     except Exception as e:
         logger.error(f"Error estimating regeneration: {e}")
-        raise HTTPException(status_code=500, detail=f"Error estimating regeneration: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Error estimating regeneration"))
 
 
 # ============================================================================
@@ -9968,7 +9991,7 @@ async def verify_portfolio_tickers():
         logger.error(f"❌ Error verifying portfolio tickers: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to verify portfolio tickers: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to verify portfolio tickers"))
 
 # ============================================================================
 # Agent 2: Tax Calculation, Transaction Costs, Export, and Shareable Links
@@ -10107,7 +10130,7 @@ async def calculate_tax(request: TaxCalculationRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error calculating tax: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to calculate tax: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to calculate tax"))
 
 # Pydantic models for transaction costs
 class TransactionCostRequest(BaseModel):
@@ -10183,7 +10206,7 @@ async def estimate_transaction_costs(request: TransactionCostRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error estimating transaction costs: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to estimate transaction costs: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to estimate transaction costs"))
 
 
 # Five-year projection (regression-based, Sweden tax/costs)
@@ -10232,7 +10255,7 @@ async def projection_five_year(request: FiveYearProjectionRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error running five-year projection: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to run projection: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to run projection"))
 
 
 # Pydantic models for tax-adjusted metrics
@@ -10398,7 +10421,7 @@ async def calculate_tax_adjusted_metrics(request: TaxAdjustedMetricsRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error calculating tax-adjusted metrics: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to calculate tax-adjusted metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to calculate tax-adjusted metrics"))
 
 def _normalize_export_portfolio(portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Accept portfolio as list of positions or as { tickers, weights, allocations }; return list of positions (allocation 0-1, ticker set)."""
@@ -10568,7 +10591,8 @@ class PDFExportRequest(BaseModel):
     educationalSummary: Optional[Dict[str, Any]] = None
 
 @export_router.post("/export/pdf")
-async def export_pdf(request: PDFExportRequest):
+@limiter.limit(RateLimits.EXPORT)
+async def export_pdf(request: Request, body: PDFExportRequest):
     """
     Generate PDF report
     
@@ -10595,13 +10619,13 @@ async def export_pdf(request: PDFExportRequest):
     - Content-Type: application/pdf
     """
     try:
-        portfolio_list = _normalize_export_portfolio(request.portfolio)
+        portfolio_list = _normalize_export_portfolio(body.portfolio)
         portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
 
         # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) are included in PDF
         # for the peak-to-trough drawdown chart, even if user only ran one scenario interactively
-        stress_test_results = request.stressTestResults
-        if stress_test_results and request.includeSections.get('stressTest', False):
+        stress_test_results = body.stressTestResults
+        if stress_test_results and body.includeSections.get('stressTest', False):
             scenarios = stress_test_results.get('scenarios', {})
             required_scenarios = {'covid19', '2008_crisis'}
             present_scenarios = set(scenarios.keys())
@@ -10645,23 +10669,23 @@ async def export_pdf(request: PDFExportRequest):
         # Prepare data for PDF generation
         pdf_data = {
             "portfolio": portfolio_list,
-            "portfolioName": request.portfolioName or "Investment Portfolio",
-            "includeSections": request.includeSections,
-            "optimizationResults": request.optimizationResults,
-            "projectionMetrics": request.projectionMetrics,
-            "taxData": request.taxData or {},
-            "costData": request.costData or {},
+            "portfolioName": body.portfolioName or "Investment Portfolio",
+            "includeSections": body.includeSections,
+            "optimizationResults": body.optimizationResults,
+            "projectionMetrics": body.projectionMetrics,
+            "taxData": body.taxData or {},
+            "costData": body.costData or {},
             "stressTestResults": stress_test_results,
-            "portfolioValue": request.portfolioValue or 0.0,
-            "accountType": request.accountType,
-            "taxYear": request.taxYear or datetime.now().year,
-            "courtageClass": request.courtageClass,
-            "metrics": request.metrics or {},
+            "portfolioValue": body.portfolioValue or 0.0,
+            "accountType": body.accountType,
+            "taxYear": body.taxYear or datetime.now().year,
+            "courtageClass": body.courtageClass,
+            "metrics": body.metrics or {},
             # Enhanced data
-            "taxComparison": request.taxComparison,
-            "taxFreeData": request.taxFreeData,
-            "recommendations": request.recommendations,
-            "educationalSummary": request.educationalSummary
+            "taxComparison": body.taxComparison,
+            "taxFreeData": body.taxFreeData,
+            "recommendations": body.recommendations,
+            "educationalSummary": body.educationalSummary
         }
 
         # Generate PDF
@@ -10678,7 +10702,7 @@ async def export_pdf(request: PDFExportRequest):
     
     except Exception as e:
         logger.error(f"Error generating PDF: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to generate PDF"))
 
 # Pydantic models for CSV export (same content as PDF for parity)
 class CSVExportRequest(BaseModel):
@@ -10706,10 +10730,11 @@ class CSVExportResponse(BaseModel):
     zipFile: Optional[str] = None  # base64 encoded zip if multiple files
 
 @export_router.post("/export/csv", response_model=CSVExportResponse)
-async def export_csv(request: CSVExportRequest):
+@limiter.limit(RateLimits.EXPORT)
+async def export_csv(request: Request, body: CSVExportRequest):
     """
     Generate CSV exports
-    
+
     Request:
     {
         "portfolio": {...},
@@ -10718,7 +10743,7 @@ async def export_csv(request: CSVExportRequest):
         "stressTestResults": {...} (optional),
         "includeFiles": ["holdings", "tax", "costs", "metrics", "stressTest"]
     }
-    
+
     Response:
     {
         "files": [
@@ -10733,13 +10758,13 @@ async def export_csv(request: CSVExportRequest):
     """
     try:
         files = []
-        portfolio_list = _normalize_export_portfolio(request.portfolio)
+        portfolio_list = _normalize_export_portfolio(body.portfolio)
         portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
 
         # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) are included
         # for the peak-to-trough drawdown chart, even if user only ran one scenario interactively
-        stress_test_results = request.stressTestResults
-        if stress_test_results and "stressTest" in request.includeFiles:
+        stress_test_results = body.stressTestResults
+        if stress_test_results and "stressTest" in body.includeFiles:
             scenarios = stress_test_results.get('scenarios', {})
             required_scenarios = {'covid19', '2008_crisis'}
             present_scenarios = set(scenarios.keys())
@@ -10778,13 +10803,13 @@ async def export_csv(request: CSVExportRequest):
                     logger.warning(f"⚠️ Could not enrich stress test data for CSV: {stress_err}")
 
         # Executive summary (same info as PDF Section 1) - include when we have core data
-        if request.portfolioValue is not None and request.accountType and request.taxYear is not None:
+        if body.portfolioValue is not None and body.accountType and body.taxYear is not None:
             exec_csv = csv_generator.generate_executive_summary_csv(
-                portfolio_value=float(request.portfolioValue),
-                account_type=request.accountType,
-                tax_year=int(request.taxYear),
-                metrics=request.metrics,
-                portfolio_name=request.portfolioName,
+                portfolio_value=float(body.portfolioValue),
+                account_type=body.accountType,
+                tax_year=int(body.taxYear),
+                metrics=body.metrics,
+                portfolio_name=body.portfolioName,
             )
             files.append({
                 "filename": "executive_summary.csv",
@@ -10793,9 +10818,9 @@ async def export_csv(request: CSVExportRequest):
             })
 
         # Generate requested CSV files
-        if "holdings" in request.includeFiles and portfolio_list:
+        if "holdings" in body.includeFiles and portfolio_list:
             holdings_csv = csv_generator.generate_portfolio_holdings_csv(
-                portfolio_list, portfolio_value=request.portfolioValue
+                portfolio_list, portfolio_value=body.portfolioValue
             )
             files.append({
                 "filename": "portfolio_holdings.csv",
@@ -10803,10 +10828,10 @@ async def export_csv(request: CSVExportRequest):
                 "size": len(holdings_csv.encode('utf-8'))
             })
 
-        if "tax" in request.includeFiles and request.taxData:
+        if "tax" in body.includeFiles and body.taxData:
             tax_csv = csv_generator.generate_tax_analysis_csv(
-                request.taxData,
-                tax_free_data=request.taxFreeData,
+                body.taxData,
+                tax_free_data=body.taxFreeData,
             )
             files.append({
                 "filename": "tax_analysis.csv",
@@ -10814,10 +10839,10 @@ async def export_csv(request: CSVExportRequest):
                 "size": len(tax_csv.encode('utf-8'))
             })
         
-        if "costs" in request.includeFiles and request.costData:
+        if "costs" in body.includeFiles and body.costData:
             costs_csv = csv_generator.generate_transaction_costs_csv(
-                request.costData,
-                portfolio_value=request.portfolioValue,
+                body.costData,
+                portfolio_value=body.portfolioValue,
             )
             files.append({
                 "filename": "transaction_costs.csv",
@@ -10825,15 +10850,15 @@ async def export_csv(request: CSVExportRequest):
                 "size": len(costs_csv.encode('utf-8'))
             })
         
-        if "metrics" in request.includeFiles and request.metrics:
-            metrics_csv = csv_generator.generate_portfolio_metrics_csv(request.metrics)
+        if "metrics" in body.includeFiles and body.metrics:
+            metrics_csv = csv_generator.generate_portfolio_metrics_csv(body.metrics)
             files.append({
                 "filename": "portfolio_metrics.csv",
                 "content": base64.b64encode(metrics_csv.encode('utf-8')).decode('utf-8'),
                 "size": len(metrics_csv.encode('utf-8'))
             })
         
-        if "stressTest" in request.includeFiles and stress_test_results:
+        if "stressTest" in body.includeFiles and stress_test_results:
             stress_csv = csv_generator.generate_stress_test_csv(stress_test_results)
             files.append({
                 "filename": "stress_test_results.csv",
@@ -10842,8 +10867,8 @@ async def export_csv(request: CSVExportRequest):
             })
 
         # Same content as PDF: optimization comparison, quality scores, Monte Carlo
-        if "optimization" in request.includeFiles and request.optimizationResults:
-            opt = request.optimizationResults
+        if "optimization" in body.includeFiles and body.optimizationResults:
+            opt = body.optimizationResults
             try:
                 opt_comp = csv_generator.generate_optimization_comparison_csv(opt)
                 files.append({
@@ -10869,26 +10894,26 @@ async def export_csv(request: CSVExportRequest):
                 logger.warning("CSV optimization export failed: %s", e)
 
         # Same content as PDF: 5-year projection (run same projection as PDF)
-        if "projection" in request.includeFiles and request.projectionMetrics and request.portfolioValue and request.accountType and request.taxYear:
-            proj_metrics = request.projectionMetrics
+        if "projection" in body.includeFiles and body.projectionMetrics and body.portfolioValue and body.accountType and body.taxYear:
+            proj_metrics = body.projectionMetrics
             weights = proj_metrics.get('weights') or {}
             if not weights and portfolio_list:
                 weights = {p.get('symbol', p.get('ticker', '')): p.get('allocation', 0) for p in portfolio_list if p.get('symbol') or p.get('ticker')}
-            exp_ret = proj_metrics.get('expectedReturn') or proj_metrics.get('expected_return') or (request.metrics or {}).get('expectedReturn') or (request.metrics or {}).get('expected_return') or 0.08
-            risk_val = proj_metrics.get('risk') or (request.metrics or {}).get('risk') or 0.15
-            cost_data = request.costData or {}
+            exp_ret = proj_metrics.get('expectedReturn') or proj_metrics.get('expected_return') or (body.metrics or {}).get('expectedReturn') or (body.metrics or {}).get('expected_return') or 0.08
+            risk_val = proj_metrics.get('risk') or (body.metrics or {}).get('risk') or 0.15
+            cost_data = body.costData or {}
             courtage_class = (cost_data.get('courtageClass') or cost_data.get('courtage_class') or 'medium').lower() or 'medium'
             if courtage_class == 'fastpris':
                 courtage_class = 'fastPris'
             try:
-                if run_five_year_projection and weights and 2025 <= (request.taxYear or 0) <= 2026:
+                if run_five_year_projection and weights and 2025 <= (body.taxYear or 0) <= 2026:
                     proj = run_five_year_projection(
-                        initial_capital=float(request.portfolioValue),
+                        initial_capital=float(body.portfolioValue),
                         weights={k: float(v) for k, v in weights.items() if v and k},
                         expected_return=float(exp_ret) if exp_ret is not None else 0.08,
                         risk=float(risk_val) if risk_val is not None else 0.15,
-                        account_type=str(request.accountType),
-                        tax_year=int(request.taxYear),
+                        account_type=str(body.accountType),
+                        tax_year=int(body.taxYear),
                         courtage_class=courtage_class or 'medium',
                         rebalancing_frequency='quarterly',
                     )
@@ -10902,11 +10927,11 @@ async def export_csv(request: CSVExportRequest):
                 logger.warning("CSV 5-year projection export failed: %s", e)
 
         # New enhanced CSV files
-        if "taxComparison" in request.includeFiles and request.taxComparison:
+        if "taxComparison" in body.includeFiles and body.taxComparison:
             try:
                 tax_comp_csv = csv_generator.generate_tax_comparison_csv(
-                    request.taxComparison,
-                    request.accountType
+                    body.taxComparison,
+                    body.accountType
                 )
                 files.append({
                     "filename": "tax_comparison.csv",
@@ -10916,9 +10941,9 @@ async def export_csv(request: CSVExportRequest):
             except Exception as e:
                 logger.warning("CSV tax comparison export failed: %s", e)
 
-        if "recommendations" in request.includeFiles and request.recommendations:
+        if "recommendations" in body.includeFiles and body.recommendations:
             try:
-                rec_csv = csv_generator.generate_recommendations_csv(request.recommendations)
+                rec_csv = csv_generator.generate_recommendations_csv(body.recommendations)
                 files.append({
                     "filename": "recommendations.csv",
                     "content": base64.b64encode(rec_csv.encode('utf-8')).decode('utf-8'),
@@ -10927,9 +10952,9 @@ async def export_csv(request: CSVExportRequest):
             except Exception as e:
                 logger.warning("CSV recommendations export failed: %s", e)
 
-        if request.educationalSummary:
+        if body.educationalSummary:
             try:
-                edu_csv = csv_generator.generate_educational_summary_csv(request.educationalSummary)
+                edu_csv = csv_generator.generate_educational_summary_csv(body.educationalSummary)
                 files.append({
                     "filename": "educational_summary.csv",
                     "content": base64.b64encode(edu_csv.encode('utf-8')).decode('utf-8'),
@@ -10941,9 +10966,9 @@ async def export_csv(request: CSVExportRequest):
         # Always include methodology and glossary for user comprehension
         try:
             methodology_csv = csv_generator.generate_methodology_csv(
-                account_type=request.accountType,
-                tax_year=request.taxYear,
-                courtage_class=request.costData.get('courtageClass') if request.costData else None
+                account_type=body.accountType,
+                tax_year=body.taxYear,
+                courtage_class=body.costData.get('courtageClass') if body.costData else None
             )
             files.insert(0, {  # Insert at beginning so it's read first
                 "filename": "00_METHODOLOGY.csv",
@@ -10967,30 +10992,30 @@ async def export_csv(request: CSVExportRequest):
         try:
             pdf_data = {
                 "portfolio": portfolio_list,
-                "portfolioName": request.portfolioName or "Investment Portfolio",
+                "portfolioName": body.portfolioName or "Investment Portfolio",
                 "includeSections": {
-                    "optimization": request.optimizationResults is not None,
+                    "optimization": body.optimizationResults is not None,
                     "stressTest": stress_test_results is not None,
                     "goals": False,
                     "rebalancing": False,
                     "taxEducation": True,
-                    "taxComparison": request.taxComparison is not None,
-                    "recommendations": request.recommendations is not None and len(request.recommendations) > 0
+                    "taxComparison": body.taxComparison is not None,
+                    "recommendations": body.recommendations is not None and len(body.recommendations) > 0
                 },
-                "optimizationResults": request.optimizationResults,
-                "projectionMetrics": request.projectionMetrics,
-                "taxData": request.taxData or {},
-                "costData": request.costData or {},
+                "optimizationResults": body.optimizationResults,
+                "projectionMetrics": body.projectionMetrics,
+                "taxData": body.taxData or {},
+                "costData": body.costData or {},
                 "stressTestResults": stress_test_results,
-                "portfolioValue": request.portfolioValue or 0.0,
-                "accountType": request.accountType,
-                "taxYear": request.taxYear,
-                "courtageClass": request.courtageClass,
-                "metrics": request.metrics or {},
-                "taxComparison": request.taxComparison,
-                "taxFreeData": request.taxFreeData,
-                "recommendations": request.recommendations,
-                "educationalSummary": request.educationalSummary
+                "portfolioValue": body.portfolioValue or 0.0,
+                "accountType": body.accountType,
+                "taxYear": body.taxYear,
+                "courtageClass": body.courtageClass,
+                "metrics": body.metrics or {},
+                "taxComparison": body.taxComparison,
+                "taxFreeData": body.taxFreeData,
+                "recommendations": body.recommendations,
+                "educationalSummary": body.educationalSummary
             }
             plots = pdf_generator.generate_report_plots(pdf_data)
             if plots:
@@ -11017,7 +11042,7 @@ async def export_csv(request: CSVExportRequest):
     
     except Exception as e:
         logger.error(f"Error generating CSV exports: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate CSV exports: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to generate CSV exports"))
 
 # Pydantic models for shareable links
 class ShareLinkRequest(BaseModel):
@@ -11074,7 +11099,7 @@ async def create_shareable_link(request: ShareLinkRequest):
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating shareable link: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create shareable link: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to create shareable link"))
 
 @export_router.get("/share/{link_id}")
 async def get_shareable_link(link_id: str, password: Optional[str] = None):
@@ -11106,7 +11131,7 @@ async def get_shareable_link(link_id: str, password: Optional[str] = None):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error retrieving shareable link: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve shareable link: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to retrieve shareable link"))
 
 @export_router.get("/share/{link_id}/info")
 async def get_shareable_link_info(link_id: str):
@@ -11135,7 +11160,7 @@ async def get_shareable_link_info(link_id: str):
         raise
     except Exception as e:
         logger.error(f"Error getting shareable link info: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get shareable link info: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to get shareable link info"))
 
 @analytics_router.get("/consolidated-table")
 async def get_consolidated_table_html():
@@ -11624,7 +11649,7 @@ async def get_consolidated_table_html():
         return HTMLResponse(content=html)
     except Exception as e:
         logger.error(f"Error serving consolidated table: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to serve consolidated table: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to serve consolidated table"))
 
 
 # Mount domain sub-routers after all route decorators have run (so routes are registered)

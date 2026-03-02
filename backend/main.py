@@ -1152,11 +1152,13 @@ metrics_app = make_asgi_app()
 class _MetricsGuardMiddleware(BaseHTTPMiddleware):
     """Require X-Metrics-Secret header when METRICS_SECRET env is set."""
     async def dispatch(self, request: Request, call_next):
+        import hmac
         path = request.scope.get("path", "").split("?")[0] or ""
         secret = os.getenv("METRICS_SECRET")
         if path == "/metrics" and secret:
             provided = request.headers.get("X-Metrics-Secret", "").strip()
-            if provided != secret:
+            # Use constant-time comparison to prevent timing attacks
+            if not provided or not hmac.compare_digest(provided, secret):
                 return JSONResponse(status_code=403, content={"detail": "Forbidden"})
         return await call_next(request)
 

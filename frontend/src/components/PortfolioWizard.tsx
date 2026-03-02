@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
@@ -10,6 +11,16 @@ import {
   CheckCircle,
   FileText,
 } from "lucide-react";
+import { useWizardState } from "@/hooks/useWizardState";
+import type {
+  RiskProfile,
+  WizardData,
+  PortfolioAllocation,
+  PortfolioMetrics,
+  SelectedPortfolioData,
+} from "@/hooks/useWizardState";
+import { validateStepRequirements } from "@/utils/wizardValidation";
+import { updateWithInvalidation } from "@/utils/wizardInvalidation";
 import { WelcomeStep } from "./wizard/WelcomeStep";
 import { RiskProfiler } from "./wizard/RiskProfiler";
 import { CapitalInput } from "./wizard/CapitalInput";
@@ -21,47 +32,7 @@ import { ThankYouStep } from "./wizard/ThankYouStep";
 import { WizardStepErrorBoundary } from "./wizard/WizardStepErrorBoundary";
 import { ThemeSelector } from "@/components/ThemeSelector";
 
-export type RiskProfile =
-  | "very-conservative"
-  | "conservative"
-  | "moderate"
-  | "aggressive"
-  | "very-aggressive"
-  | null;
-
-export interface PortfolioAllocation {
-  symbol: string;
-  allocation: number;
-  name?: string;
-  assetType?: "stock" | "bond" | "etf";
-}
-
-export interface PortfolioMetrics {
-  expectedReturn: number;
-  risk: number;
-  diversificationScore: number;
-  sharpeRatio: number;
-}
-
-export interface SelectedPortfolioData {
-  source: "current" | "weights" | "market";
-  tickers: string[];
-  weights: Record<string, number>;
-  metrics: {
-    expected_return: number;
-    risk: number;
-    sharpe_ratio: number;
-  };
-}
-
-export interface WizardData {
-  riskProfile: RiskProfile;
-  riskAnalysis: any;
-  capital: number;
-  selectedStocks: PortfolioAllocation[];
-  portfolioMetrics: PortfolioMetrics | null;
-  selectedPortfolio: SelectedPortfolioData | null;
-}
+export type { RiskProfile, WizardData, PortfolioAllocation, PortfolioMetrics, SelectedPortfolioData };
 
 const STEPS = [
   { id: "welcome", title: "Welcome", icon: TrendingUp },
@@ -92,38 +63,54 @@ const stepTransition = {
 };
 
 export const PortfolioWizard = () => {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [finalizeOpenToTab, setFinalizeOpenToTab] = useState<"tax-cost" | null>(
-    null,
-  );
-  const [wizardData, setWizardData] = useState<WizardData>({
-    riskProfile: null,
-    riskAnalysis: null,
-    capital: 0,
-    selectedStocks: [],
-    portfolioMetrics: null,
-    selectedPortfolio: null,
-  });
+  const {
+    state: { currentStep, wizardData, finalizeOpenToTab },
+    updateStep,
+    updateWizardData: setWizardDataRaw,
+    setFinalizeOpenToTab,
+    resetWizardState,
+  } = useWizardState();
   const directionRef = useRef(1);
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
 
-  const nextStep = () => {
-    if (currentStep < STEPS.length - 1) {
-      directionRef.current = 1;
-      setCurrentStep((prev) => prev + 1);
+  useEffect(() => {
+    const validation = validateStepRequirements(currentStep, wizardData);
+    if (!validation.valid && validation.redirectTo !== undefined) {
+      updateStep(validation.redirectTo);
+      toast.error(`Please complete: ${validation.missing.join(", ")}`);
     }
+  }, [currentStep, wizardData, updateStep]);
+
+  const nextStep = () => {
+    if (currentStep >= STEPS.length - 1) return;
+    const next = currentStep + 1;
+    const validation = validateStepRequirements(next, wizardData);
+    if (!validation.valid) {
+      toast.error(`Missing: ${validation.missing.join(", ")}`);
+      return;
+    }
+    directionRef.current = 1;
+    updateStep(next);
   };
 
   const prevStep = () => {
     if (currentStep > 0) {
       directionRef.current = -1;
-      setCurrentStep((prev) => prev - 1);
+      updateStep(currentStep - 1);
     }
   };
 
   const updateWizardData = (data: Partial<WizardData>) => {
-    setWizardData((prev) => ({ ...prev, ...data }));
+    setWizardDataRaw((prev) => {
+      let next = prev;
+      for (const key of Object.keys(data) as (keyof WizardData)[]) {
+        if ((data as Record<string, unknown>)[key] !== undefined) {
+          next = updateWithInvalidation(next, key, (data as Record<string, unknown>)[key] as WizardData[keyof WizardData]);
+        }
+      }
+      return next;
+    });
   };
 
   const renderStep = () => {
@@ -234,7 +221,7 @@ export const PortfolioWizard = () => {
             }}
             onStartOver={() => {
               directionRef.current = -1;
-              setCurrentStep(0);
+              resetWizardState();
             }}
           />
         );

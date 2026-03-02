@@ -210,27 +210,27 @@ def add_security_headers(app, enable_hsts: bool = True, enable_csp: bool = True)
 
 def get_client_ip(request: Request) -> str:
     """
-    Get client IP address, considering proxies and load balancers
+    Get client IP address, considering proxies and load balancers.
 
-    Args:
-        request: FastAPI Request object
-
-    Returns:
-        Client IP address
+    Fly.io sets Fly-Client-IP at the edge (trustworthy). X-Forwarded-For can be
+    spoofed by clients, so we only use it as fallback and take the rightmost IP.
     """
-    # Check X-Forwarded-For header (set by proxies/load balancers)
+    # Fly.io sets this header at the edge - trustworthy
+    fly_client_ip = request.headers.get("Fly-Client-IP")
+    if fly_client_ip:
+        return fly_client_ip.strip()
+
+    # X-Forwarded-For fallback (take rightmost IP added by last trusted proxy)
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        # X-Forwarded-For can contain multiple IPs (client, proxy1, proxy2, ...)
-        # The first one is the client IP
-        return forwarded_for.split(",")[0].strip()
+        ips = [ip.strip() for ip in forwarded_for.split(",")]
+        return ips[-1] if ips else request.client.host
 
-    # Check X-Real-IP header (set by Nginx and other proxies)
+    # X-Real-IP fallback (set by Nginx and other proxies)
     real_ip = request.headers.get("X-Real-IP")
     if real_ip:
         return real_ip.strip()
 
-    # Fallback to direct connection IP
     return request.client.host
 
 def is_safe_redirect_url(url: str, allowed_domains: list = None) -> bool:
