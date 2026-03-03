@@ -35,7 +35,7 @@ class RedisFirstDataService:
     """
     
     # --- Memory & Connection Configuration ---
-    MAX_MEMORY = "48mb"
+    MAX_MEMORY = "256mb"
     MAX_MEMORY_POLICY = "volatile-lru"   # Evict least-recently-used keys that have a TTL
     MAX_CONNECTIONS = 50                 # Connection pool ceiling
     TTL_JITTER_PERCENT = 15             # +/- 15% random jitter on TTLs to prevent stampede
@@ -73,7 +73,7 @@ class RedisFirstDataService:
     # ------------------------------------------------------------------ #
     def _configure_redis_memory(self):
         """
-        Set maxmemory (48 MB) and volatile-lru eviction policy on the
+        Set maxmemory (256 MB) and volatile-lru eviction policy on the
         Redis server.  This runs once at startup so the limits are always
         enforced even if the server was restarted without a config file.
         """

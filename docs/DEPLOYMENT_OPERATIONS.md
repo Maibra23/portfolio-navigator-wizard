@@ -4,6 +4,7 @@
 1. [Current Deployment Status](#current-deployment-status)
 2. [How the System Works](#how-the-system-works)
 3. [Redis Data Lifecycle](#redis-data-lifecycle)
+   - [When to Worry About Redis Data Loss](#when-to-worry-about-redis-data-loss)
 4. [Auto-Stop Behavior (Why Frontend Shows "Suspended")](#auto-stop-behavior)
 5. [Manual Data Population](#manual-data-population)
 6. [Monitoring and Maintenance](#monitoring-and-maintenance)
@@ -105,9 +106,11 @@ The Dockerfile configures Redis with:
 redis-server --daemonize yes \
     --save "" \              # No disk persistence
     --appendonly no \        # No AOF persistence
-    --maxmemory 128mb \
+    --maxmemory 256mb \
     --maxmemory-policy allkeys-lru
 ```
+
+For a full breakdown of key namespaces, sizes, and why 256 MB is suitable, see [REDIS_MEMORY_ANALYSIS.md](REDIS_MEMORY_ANALYSIS.md).
 
 #### What This Means:
 
@@ -147,6 +150,45 @@ if db_size == 0 or (price_key_count == 0 and portfolio_key_count == 0):
         message="Container restarted and Redis has no data..."
     )
 ```
+
+### When to Worry About Redis Data Loss
+
+**Only worry about the BACKEND restarting** — the frontend has nothing to do with Redis.
+
+Redis lives INSIDE the backend container:
+
+```
+┌─────────────────────────────────┐     ┌─────────────────────────────────┐
+│         FRONTEND                │     │          BACKEND                │
+│    (nginx + static files)       │     │  ┌─────────────────────────┐   │
+│                                 │     │  │       REDIS             │   │
+│    No Redis here!               │     │  │   (data lives here)     │   │
+│    Can restart freely ✅        │     │  └─────────────────────────┘   │
+│                                 │     │  ┌─────────────────────────┐   │
+│                                 │     │  │      FastAPI            │   │
+│                                 │     │  └─────────────────────────┘   │
+└─────────────────────────────────┘     └─────────────────────────────────┘
+     Restart = No data loss                 Restart = ALL DATA LOST
+```
+
+#### Quick Reference: When to Worry
+
+| Event | Redis Data | Worry? |
+|-------|------------|--------|
+| Frontend stops/restarts | **Safe** ✅ | No |
+| Frontend suspended (idle) | **Safe** ✅ | No |
+| `fly deploy` frontend | **Safe** ✅ | No |
+| Backend keeps running normally | **Safe** ✅ | No |
+| `fly deploy` backend | **LOST** ❌ | **YES** |
+| Backend machine restarts | **LOST** ❌ | **YES** |
+| Backend crashes | **LOST** ❌ | **YES** |
+| Fly.io maintenance on backend | **LOST** ❌ | **YES** |
+
+#### Practical Implication:
+
+- **Deploy frontend anytime** — no impact on data
+- **Deploy backend carefully** — repopulate Redis after each deploy
+- Your `min_machines_running = 1` on backend helps prevent unnecessary restarts
 
 ---
 

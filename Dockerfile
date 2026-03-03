@@ -50,7 +50,7 @@ EXPOSE 8080
 CMD redis-server --daemonize yes \
         --save "" \
         --appendonly no \
-        --maxmemory 128mb \
+        --maxmemory 256mb \
         --maxmemory-policy allkeys-lru \
         --loglevel warning \
     && exec uvicorn main:app \
