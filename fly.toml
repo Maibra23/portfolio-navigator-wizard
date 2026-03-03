@@ -17,7 +17,7 @@ primary_region = "arn"               # Stockholm — closest to Linnaeus Univers
   PORT              = "8080"
   REDIS_URL         = "redis://localhost:6379"
   # ALLOWED_ORIGINS: Add your frontend URL here (comma-separated if multiple)
-  ALLOWED_ORIGINS   = "https://portfolio-navigator-wizard.fly.dev"
+  ALLOWED_ORIGINS   = "https://portfolio-navigator-frontend.fly.dev,https://portfolio-navigator-wizard.fly.dev"
   # ALLOWED_HOSTS: TrustedHostMiddleware requires exact hostnames (no wildcards)
   ALLOWED_HOSTS     = "portfolio-navigator-wizard.fly.dev,localhost,127.0.0.1"
   # Non-secret env vars — set secrets separately via: fly secrets set KEY=value
