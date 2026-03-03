@@ -8,6 +8,14 @@ A sophisticated full-stack web application that combines behavioral finance prin
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat&logo=python&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-5.0+-DC382D?style=flat&logo=redis&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?style=flat&logo=tailwind-css&logoColor=white)
+![Fly.io](https://img.shields.io/badge/Fly.io-Deployed-8B5CF6?style=flat&logo=fly.io&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat)
+
+## 🔗 Live Demo
+
+**[portfolio-navigator-wizard.fly.dev](https://portfolio-navigator-wizard.fly.dev)** *(Backend API)*
+
+> **Note:** This is an academic project developed as part of a university course at Linnaeus University. The frontend is served separately or can be run locally.
 
 ## 🌟 Overview
 
@@ -73,12 +81,14 @@ Before running the app, make sure you have:
 ### One-Command Setup
 ```bash
 # Clone the repository
-git clone <YOUR_REPOSITORY_URL>
+git clone https://github.com/your-username/portfolio-navigator-wizard.git
 cd portfolio-navigator-wizard
 
 # Install dependencies and start the app
 make dev
 ```
+
+> **Note:** Replace `your-username` with your actual GitHub username after forking.
 
 That's it! Your app will be running at **http://localhost:8080**
 
@@ -387,11 +397,9 @@ portfolio-navigator-wizard/
 │   └── requirements.txt               # Python dependencies
 │
 ├── docs/                              # Documentation
-│   ├── RISK_PROFILING_QUESTIONNAIRE_AND_LOGIC.md  # Question pools
-│   ├── DECISION_FRAMEWORK_FLOW.md                # Optimization decisions
-│   ├── OPTIMIZE_BUTTON_FLOW.md                   # Optimization workflow
-│   ├── PORTFOLIOS_IN_REDIS.md                    # Portfolio catalog
-│   └── API-DOCUMENTATION.md                      # API specifications
+│   ├── BACKEND_UTILS_REFERENCE.md     # Complete backend utilities reference
+│   ├── PURE_STRATEGY_PORTFOLIOS.md    # Strategy portfolios technical docs
+│   └── PROJECT_COMPLETE_ANALYSIS.md   # Project completion analysis
 │
 ├── Makefile                           # Build and run commands
 ├── package.json                       # Root package configuration
@@ -1123,7 +1131,58 @@ redis-server
 
 ### Production Deployment
 
-#### Option 1: Traditional Server (VPS/Dedicated)
+#### Option 1: Fly.io (Recommended - Current Deployment)
+
+This project is deployed on **Fly.io** using a single-container architecture with bundled Redis.
+
+**Prerequisites:**
+- [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/) installed
+- Fly.io account
+
+**1. Deploy to Fly.io:**
+```bash
+# Login to Fly.io
+fly auth login
+
+# Deploy (uses existing fly.toml and Dockerfile)
+fly deploy --remote-only
+```
+
+**2. Set Secrets (before first deploy):**
+```bash
+# Required for admin endpoints
+fly secrets set ADMIN_API_KEY=your-strong-random-key
+
+# Optional: Email notifications
+fly secrets set SMTP_USER=your@email.com SMTP_PASSWORD=app-password TTL_NOTIFICATION_EMAIL=notify@email.com
+```
+
+**3. Configuration Files:**
+- `fly.toml` - Fly.io configuration (region: Stockholm, 1GB RAM, HTTP health checks)
+- `Dockerfile` - Single container with Redis + FastAPI backend
+
+**Key fly.toml settings:**
+```toml
+app = "portfolio-navigator-wizard"
+primary_region = "arn"  # Stockholm
+
+[env]
+ENVIRONMENT = "production"
+ALLOWED_ORIGINS = "https://portfolio-navigator-wizard.fly.dev"
+
+[[http_service.checks]]
+path = "/healthz"
+grace_period = "30s"
+```
+
+**4. Health Check:**
+```bash
+curl https://portfolio-navigator-wizard.fly.dev/healthz
+```
+
+---
+
+#### Option 2: Traditional Server (VPS/Dedicated)
 
 **1. Server Setup:**
 ```bash
@@ -1134,7 +1193,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install python3.10 python3-pip nodejs npm redis-server nginx -y
 
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/your-username/portfolio-navigator-wizard.git
 cd portfolio-navigator-wizard
 ```
 
@@ -1233,7 +1292,7 @@ sudo certbot --nginx -d your-domain.com
 sudo systemctl reload nginx
 ```
 
-#### Option 2: Docker Deployment
+#### Option 3: Docker Deployment
 
 **docker-compose.yml:**
 ```yaml
@@ -1311,32 +1370,16 @@ CMD ["nginx", "-g", "daemon off;"]
 docker-compose up -d
 ```
 
-#### Option 3: Cloud Platforms
+#### Option 4: Other Cloud Platforms
+
+> **Note:** This project is currently deployed on Fly.io (Option 1). The following are alternative deployment options.
 
 **Heroku:**
 ```bash
-# Install Heroku CLI
 heroku login
 heroku create portfolio-navigator
-
-# Add Redis add-on
 heroku addons:create heroku-redis:hobby-dev
-
-# Deploy
 git push heroku main
-```
-
-**AWS (Elastic Beanstalk):**
-```bash
-# Install EB CLI
-pip install awsebcli
-
-# Initialize
-eb init -p python-3.10 portfolio-navigator
-eb create portfolio-navigator-env
-
-# Add Redis (ElastiCache)
-# Configure via AWS Console
 ```
 
 **DigitalOcean App Platform:**
@@ -1629,22 +1672,22 @@ The monitoring system provides:
 
 All alerts go to a **single recipient** (TTL_NOTIFICATION_EMAIL) via SMTP. Gmail is supported (smtp.gmail.com:587 with an app password).
 
-### When does cold start happen (Railway)
+### When does cold start happen (Fly.io)
 
-Cold start here means: the app starts and finds **Redis empty** (no cached data). The app then runs full cache warm-up and sends an email alert. You get a cold start whenever the thing that holds Redis loses its data and the backend starts up.
+Cold start here means: the app starts and finds **Redis empty** (no cached data). The app then runs full cache warm-up and sends an email alert. You get a cold start whenever the container that holds Redis loses its data and the backend starts up.
 
-**When does the backend container restart?**  
-- **Every deploy** – You push code or click Deploy; Railway replaces the running container. So the backend process restarts at least as often as you deploy.  
-- **Platform restarts** – Railway may restart your service for maintenance or host updates (no fixed schedule; could be rare).  
-- **Crashes** – If the app or Redis process exits with an error, Railway restarts the service.  
-- **Scale-to-zero** (if enabled) – No traffic for a while can stop the service; the next request starts it again.
+**When does the backend container restart?**
+- **Every deploy** – You run `fly deploy`; Fly replaces the running container. So the backend process restarts at least as often as you deploy.
+- **Platform restarts** – Fly.io may restart your service for maintenance or host updates (no fixed schedule; could be rare).
+- **Crashes** – If the app or Redis process exits with an error, Fly restarts the service.
+- **Scale-to-zero** (if enabled) – No traffic for a while can stop the service; the next request starts it again. Note: `auto_stop_machines = false` in fly.toml keeps the app always-on.
 
-**Backend vs Redis:**  
-- **Backend container** – Restarts on every deploy and on the cases above. Its in-memory state (e.g. email throttle counters) is lost each time. Cold-start **detection** runs when this process starts and checks Redis.  
-- **Redis** – If Redis is a **separate Railway service** (e.g. Redis plugin), it has its own lifecycle. Your backend can restart many times while Redis keeps running and keeps data. You see “Redis empty” (cold start) only when **Redis itself** restarts or is recreated (e.g. Redis service redeploy or platform restart).  
-- If Redis runs **inside the same container** as the backend, every time that container restarts (deploy, crash, etc.) Redis is recreated and all data is lost, so you get a cold start on every such restart.
+**Backend vs Redis (Bundled Architecture):**
+- This project uses a **single-container** architecture where Redis runs inside the same container as the backend.
+- Every time the container restarts (deploy, crash, etc.), Redis is recreated and all data is lost, triggering a cold start.
+- The startup logic handles this by automatically warming the cache in the background.
 
-**Summary:** Cold start (empty Redis) is not on a fixed schedule. It happens whenever the Redis instance is restarted or recreated. With a separate Redis service on Railway, that is usually less often than your app deploys; with Redis in the same container, it happens on every deploy and every restart of that container.
+**Summary:** Cold start (empty Redis) happens on every deploy and every restart of the container. The monitoring system detects this and regenerates all cached data automatically.
 
 ### Components
 
@@ -1693,7 +1736,7 @@ Cold start here means: the app starts and finds **Redis empty** (no cached data)
 
 ### Enabling and verifying
 
-1. Set TTL_EMAIL_NOTIFICATIONS=true, TTL_NOTIFICATION_EMAIL, and SMTP_* in backend .env or host env (e.g. in Railway env or backend .env).
+1. Set TTL_EMAIL_NOTIFICATIONS=true, TTL_NOTIFICATION_EMAIL, and SMTP_* in backend .env or via Fly secrets (`fly secrets set ...`).
 2. Restart the backend. On a cold Redis you should see “Cold start detected - Redis empty” by email, then “Eligible tickers cache ready” and “Portfolio generation completed” when background jobs finish.
 3. To test 5xx: trigger an endpoint that returns 500; you should get “HTTP 5xx detected” by email (rate-limited).
 4. Redis down: after 3 failed pings you get “Redis connectivity lost”; when Redis is back, “Redis connectivity restored”.
@@ -1866,11 +1909,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 5. **Request Features** - Open an issue with the "enhancement" label
 
 **Contact:**
-- **Issues**: [GitHub Issues](https://github.com/your-username/portfolio-navigator-wizard/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/portfolio-navigator-wizard/discussions)
+- **Issues**: Open an issue in the repository
+- **Discussions**: Start a discussion in the repository
+
+> **Academic Project:** This project was developed as part of coursework at Linnaeus University, Sweden.
 
 ---
 
 **Built with ❤️ using React, FastAPI, and Modern Portfolio Theory**
 
-*Last Updated: February 2026*
+*Last Updated: March 2026*
+
+---
+
+## 📂 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [BACKEND_UTILS_REFERENCE.md](docs/BACKEND_UTILS_REFERENCE.md) | Complete backend utilities reference (31 modules) |
+| [PURE_STRATEGY_PORTFOLIOS.md](docs/PURE_STRATEGY_PORTFOLIOS.md) | Strategy portfolios technical reference |
+| [PROJECT_COMPLETE_ANALYSIS.md](docs/PROJECT_COMPLETE_ANALYSIS.md) | Project completion analysis and status |
+| [Swagger UI](http://localhost:8000/docs) | Interactive API documentation (when running locally) |
+| [ReDoc](http://localhost:8000/redoc) | Alternative API documentation format |
