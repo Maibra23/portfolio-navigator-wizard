@@ -1,3 +1,8 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "flymcp": {
+      "command": "/Users/Brook/Library/CloudStorage/OneDrive-Linnéuniversitetet/portfolio-navigator-wizard/flymcp/flymcp",
+      "args": []
+    }
+  }
 }
