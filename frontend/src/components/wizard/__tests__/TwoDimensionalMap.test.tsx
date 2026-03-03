@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TwoDimensionalMap } from '../TwoDimensionalMap';
+
+vi.mock('@/hooks/useTheme', () => ({
+  useTheme: () => ({ theme: 'original', toggleTheme: () => {}, setTheme: () => {}, themeConfig: { className: '' }, isApplying: false }),
+  default: () => ({ theme: 'original', toggleTheme: () => {}, setTheme: () => {}, themeConfig: { className: '' }, isApplying: false }),
+}));
 
 describe('TwoDimensionalMap', () => {
   describe('Gamified path (under-19)', () => {

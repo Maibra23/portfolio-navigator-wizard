@@ -24,7 +24,11 @@ export const ScreeningContradiction: React.FC<ScreeningContradictionProps> = ({
   className,
 }) => {
   return (
-    <Card className={cn("w-full border border-border", className)}>
+    <Card
+      role="dialog"
+      aria-label="Clarify your profile"
+      className={cn("w-full border border-border", className)}
+    >
       <StepCardHeader
         icon={
           <div className="mx-auto w-12 h-12 bg-amber-50 dark:bg-amber-950/40 rounded-full flex items-center justify-center">

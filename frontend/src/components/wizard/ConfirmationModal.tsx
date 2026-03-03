@@ -40,7 +40,11 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   );
 
   return (
-    <Card className={cn("w-full border border-border", className)}>
+    <Card
+      role="dialog"
+      aria-label={ExtremeProfileModalContent.title}
+      className={cn("w-full border border-border", className)}
+    >
       <StepCardHeader
         icon={
           <div className="mx-auto w-12 h-12 bg-blue-50 dark:bg-blue-950/40 rounded-full flex items-center justify-center">

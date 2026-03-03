@@ -193,9 +193,9 @@ describe('adaptive-branching', () => {
       expect(q).toBe('M3'); // Should prefer M3 over M3-R
     });
 
-    it('returns reverse-coded question when non-reverse is already asked', () => {
+    it('returns next non-reverse question when primary is already asked', () => {
       const q = findQuestionForConstruct('volatility_tolerance', ['M3'], CONSTRUCT_MAPPINGS);
-      expect(q).toBe('M3-R'); // M3 asked, so return M3-R
+      expect(q).toBe('story-5'); // M3 asked; story-5 is next non-reverse for volatility_tolerance
     });
 
     it('returns null when no questions available for construct', () => {

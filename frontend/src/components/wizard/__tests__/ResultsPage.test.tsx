@@ -5,6 +5,11 @@ import { ResultsPage } from '../ResultsPage';
 import type { ConfidenceBand } from '../confidence-calculator';
 import type { SafeguardResult } from '../safeguards';
 
+vi.mock('@/hooks/useTheme', () => ({
+  useTheme: () => ({ theme: 'original', toggleTheme: () => {}, setTheme: () => {}, themeConfig: { className: '' }, isApplying: false }),
+  default: () => ({ theme: 'original', toggleTheme: () => {}, setTheme: () => {}, themeConfig: { className: '' }, isApplying: false }),
+}));
+
 const mockConfidenceBand: ConfidenceBand = {
   lower: 45,
   upper: 55,

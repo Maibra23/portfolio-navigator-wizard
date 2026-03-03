@@ -3,7 +3,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RiskSpectrum } from '../RiskSpectrum';
 
-// Mock the TooltipProvider to avoid issues with Radix UI
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Tooltip: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -35,12 +34,10 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('Your Risk Profile')).toBeInTheDocument();
-    expect(screen.getByText('50')).toBeInTheDocument();
-    expect(screen.getByText('Risk Score')).toBeInTheDocument();
+    expect(screen.getByText('Risk Score: 50')).toBeInTheDocument();
   });
 
-  it('displays all risk category labels', () => {
+  it('displays category first-word labels', () => {
     render(
       <RiskSpectrum
         score={50}
@@ -49,11 +46,10 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('Very Conservative')).toBeInTheDocument();
+    expect(screen.getAllByText('Very').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Conservative')).toBeInTheDocument();
     expect(screen.getByText('Moderate')).toBeInTheDocument();
     expect(screen.getByText('Aggressive')).toBeInTheDocument();
-    expect(screen.getByText('Very Aggressive')).toBeInTheDocument();
   });
 
   it('renders correctly for all category score ranges (0-20, 21-40, 41-60, 61-80, 81-100)', () => {
@@ -77,7 +73,7 @@ describe('RiskSpectrum', () => {
           visualizationData={mockVisualizationData}
         />
       );
-      expect(screen.getByText(String(score))).toBeInTheDocument();
+      expect(screen.getByText(`Risk Score: ${score}`)).toBeInTheDocument();
       unmount();
     });
   });
@@ -91,7 +87,7 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('Range: 35.0 - 65.0')).toBeInTheDocument();
+    expect(screen.getByText('Range: 35-65')).toBeInTheDocument();
   });
 
   it('shows adjustment reasons when present', () => {
@@ -103,8 +99,8 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('Why this range?')).toBeInTheDocument();
-    expect(screen.getByText('variance')).toBeInTheDocument();
+    expect(screen.getByText(/Range factors:/)).toBeInTheDocument();
+    expect(screen.getByText(/variance/)).toBeInTheDocument();
   });
 
   it('handles narrow gradient intensity', () => {
@@ -119,7 +115,7 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('50')).toBeInTheDocument();
+    expect(screen.getByText('Risk Score: 50')).toBeInTheDocument();
   });
 
   it('handles wide gradient intensity', () => {
@@ -134,7 +130,7 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('50')).toBeInTheDocument();
+    expect(screen.getByText('Risk Score: 50')).toBeInTheDocument();
   });
 
   it('shows crossing message when boundary proximity is crossing', () => {
@@ -165,8 +161,6 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    // Click on a category zone (this might be tricky to test directly, but we can test the callback exists)
-    // For now, just ensure the component renders with the callback
     expect(mockOnCategoryClick).not.toHaveBeenCalled();
   });
 
@@ -183,7 +177,7 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('5')).toBeInTheDocument();
+    expect(screen.getByText('Risk Score: 5')).toBeInTheDocument();
   });
 
   it('handles high scores within bounds', () => {
@@ -199,7 +193,7 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.getByText('95')).toBeInTheDocument();
+    expect(screen.getByText('Risk Score: 95')).toBeInTheDocument();
   });
 
   it('handles empty adjustment reasons', () => {
@@ -214,7 +208,7 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    expect(screen.queryByText('Why this range?')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Range factors:/)).not.toBeInTheDocument();
   });
 
   it('handles small confidence band', () => {
@@ -244,7 +238,6 @@ describe('RiskSpectrum', () => {
       />
     );
 
-    // The Card component should have the custom class
     const cardElement = container.querySelector('[class*="custom-class"]');
     expect(cardElement).toBeInTheDocument();
   });

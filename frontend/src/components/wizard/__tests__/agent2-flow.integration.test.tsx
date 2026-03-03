@@ -4,7 +4,7 @@
  * Covers: gamified (under-19), conservative, aggressive, extreme profile, high uncertainty
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, userEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ScreeningContradiction, checkScreeningContradiction } from '../ScreeningContradiction';
 import { TemporalAnchoringPrompt } from '../TemporalAnchoringPrompt';
@@ -12,6 +12,11 @@ import { QuestionDisplay } from '../QuestionDisplay';
 import { ResultsPage } from '../ResultsPage';
 import type { ConfidenceBand } from '../confidence-calculator';
 import type { SafeguardResult } from '../safeguards';
+
+vi.mock('@/hooks/useTheme', () => ({
+  useTheme: () => ({ theme: 'original', toggleTheme: () => {}, setTheme: () => {}, themeConfig: { className: '' }, isApplying: false }),
+  default: () => ({ theme: 'original', toggleTheme: () => {}, setTheme: () => {}, themeConfig: { className: '' }, isApplying: false }),
+}));
 
 const mockConfidenceBand: ConfidenceBand = {
   lower: 45,
