@@ -141,7 +141,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
             <Card className="shadow-sm border-muted h-fit">
               <CardContent className="p-4 space-y-3">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-500">
+                  <div className="text-2xl font-bold text-blue-500 dark:text-blue-400">
                     {Math.round(normalized_mpt)}
                   </div>
                   <div className="text-[10px] text-muted-foreground uppercase tracking-wide">

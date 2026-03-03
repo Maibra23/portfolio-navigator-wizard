@@ -42,4 +42,40 @@ export default defineConfig(() => ({
       "@": path.resolve("./src"),
     },
   },
+  // Build optimizations for production
+  build: {
+    // Increase chunk size warning limit (optional)
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Manual chunk splitting for better caching and smaller initial load
+        manualChunks: {
+          // Vendor chunks - rarely change, cached long-term
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-ui": [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-tabs",
+            "@radix-ui/react-tooltip",
+            "@radix-ui/react-collapsible",
+            "@radix-ui/react-select",
+            "@radix-ui/react-slot",
+            "@radix-ui/react-label",
+            "@radix-ui/react-checkbox",
+            "@radix-ui/react-radio-group",
+            "@radix-ui/react-switch",
+            "@radix-ui/react-slider",
+            "@radix-ui/react-alert-dialog",
+          ],
+          "vendor-charts": ["recharts", "d3-scale", "d3-shape", "d3-path"],
+          "vendor-motion": ["framer-motion"],
+          "vendor-utils": ["clsx", "tailwind-merge", "class-variance-authority", "date-fns"],
+        },
+      },
+    },
+    // Enable source maps for production debugging (optional)
+    sourcemap: false,
+    // Minification settings
+    minify: "esbuild" as const,
+    target: "es2020",
+  },
 }));

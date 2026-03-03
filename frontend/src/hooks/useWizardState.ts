@@ -70,8 +70,10 @@ function loadInitialState(): WizardFlowState {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<WizardFlowState>;
+      // Always start at step 0 (Welcome) so user can choose to continue or start fresh
+      // The wizardData is preserved so "Continue" can restore progress
       return {
-        currentStep: typeof parsed.currentStep === "number" ? parsed.currentStep : 0,
+        currentStep: 0, // Always show Welcome step first
         wizardData: {
           ...initialWizardData,
           ...(parsed.wizardData && typeof parsed.wizardData === "object"

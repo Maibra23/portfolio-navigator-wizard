@@ -120,24 +120,24 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
   const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
 
   const getPerformanceColor = (sharpeRatio: number) => {
-    if (sharpeRatio >= 1.0) return "bg-green-500";
-    if (sharpeRatio >= 0.5) return "bg-blue-500";
-    if (sharpeRatio >= 0.0) return "bg-yellow-500";
-    return "bg-red-500";
+    if (sharpeRatio >= 1.0) return "bg-green-500 dark:bg-green-400";
+    if (sharpeRatio >= 0.5) return "bg-blue-500 dark:bg-blue-400";
+    if (sharpeRatio >= 0.0) return "bg-yellow-500 dark:bg-yellow-400";
+    return "bg-red-500 dark:bg-red-400";
   };
 
   const getRiskColor = (risk: number) => {
-    if (risk <= 0.15) return "bg-green-500";
-    if (risk <= 0.25) return "bg-yellow-500";
-    if (risk <= 0.35) return "bg-orange-500";
-    return "bg-red-500";
+    if (risk <= 0.15) return "bg-green-500 dark:bg-green-400";
+    if (risk <= 0.25) return "bg-yellow-500 dark:bg-yellow-400";
+    if (risk <= 0.35) return "bg-orange-500 dark:bg-orange-400";
+    return "bg-red-500 dark:bg-red-400";
   };
 
   const getDiversificationColor = (score: number) => {
-    if (score >= 0.7) return "bg-green-500";
-    if (score >= 0.4) return "bg-blue-500";
-    if (score >= 0.2) return "bg-yellow-500";
-    return "bg-red-500";
+    if (score >= 0.7) return "bg-green-500 dark:bg-green-400";
+    if (score >= 0.4) return "bg-blue-500 dark:bg-blue-400";
+    if (score >= 0.2) return "bg-yellow-500 dark:bg-yellow-400";
+    return "bg-red-500 dark:bg-red-400";
   };
 
   return (

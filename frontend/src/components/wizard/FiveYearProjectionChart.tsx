@@ -4,7 +4,7 @@
  * - X-axis: Year (0, 1, 2, 3, 4, 5). Year 0 = initial capital.
  * - Y-axis: Portfolio value in SEK. Values are shown as k (thousands) or M (millions) when large.
  * - Three lines: Optimistic (expectedReturn + 0.5*risk), Base (expectedReturn), Pessimistic (expectedReturn - 0.5*risk).
- * - Backend applies Swedish tax (ISK/KF/AF) and Avanza courtage each year; net value is projected.
+ * - Backend applies Swedish tax (ISK/KF/AF) and transaction fees (courtage) each year; net value is projected.
  */
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -240,7 +240,7 @@ export const FiveYearProjectionChart: React.FC<
                   {value.toLocaleString("sv-SE", { maximumFractionDigits: 0 })}{" "}
                   SEK
                 </p>
-                <p className={growth >= 0 ? "text-green-600" : "text-red-600"}>
+                <p className={growth >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                   {growth >= 0 ? "+" : ""}
                   {growth.toLocaleString("sv-SE", {
                     maximumFractionDigits: 0,
@@ -276,17 +276,17 @@ export const FiveYearProjectionChart: React.FC<
                 </p>
                 <ul className="list-disc ml-4 space-y-1">
                   <li>
-                    <span className="text-green-600 font-semibold">
+                    <span className="text-green-600 dark:text-green-400 font-semibold">
                       Optimistic:
                     </span>{" "}
                     Expected return + 50% of risk (upside scenario)
                   </li>
                   <li>
-                    <span className="text-blue-600 font-semibold">Base:</span>{" "}
+                    <span className="text-blue-600 dark:text-blue-400 font-semibold">Base:</span>{" "}
                     Expected return (most likely scenario)
                   </li>
                   <li>
-                    <span className="text-red-600 font-semibold">
+                    <span className="text-red-600 dark:text-red-400 font-semibold">
                       Pessimistic:
                     </span>{" "}
                     Expected return - 50% of risk (downside scenario)
@@ -323,23 +323,23 @@ export const FiveYearProjectionChart: React.FC<
         )}
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Card className="border-green-200 bg-green-50/50">
+          <Card className="border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/40">
             <CardContent className="pt-4 pb-3">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <TrendingUp className="h-3.5 w-3.5 text-green-600" />
-                    <p className="text-xs font-medium text-green-700">
+                    <TrendingUp className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    <p className="text-xs font-medium text-green-700 dark:text-green-400">
                       Optimistic
                     </p>
                   </div>
-                  <p className="text-xl font-bold text-green-700">
+                  <p className="text-xl font-bold text-green-700 dark:text-green-400">
                     {finalOptimisticValue.toLocaleString("sv-SE", {
                       maximumFractionDigits: 0,
                     })}{" "}
                     SEK
                   </p>
-                  <p className="text-xs text-green-600 mt-0.5">
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
                     +
                     {totalGrowthOptimistic.toLocaleString("sv-SE", {
                       maximumFractionDigits: 0,
@@ -351,23 +351,23 @@ export const FiveYearProjectionChart: React.FC<
             </CardContent>
           </Card>
 
-          <Card className="border-blue-200 bg-blue-50/50">
+          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/40">
             <CardContent className="pt-4 pb-3">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Minus className="h-3.5 w-3.5 text-blue-600" />
-                    <p className="text-xs font-medium text-blue-700">
+                    <Minus className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
                       Base Scenario
                     </p>
                   </div>
-                  <p className="text-xl font-bold text-blue-700">
+                  <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
                     {finalBaseValue.toLocaleString("sv-SE", {
                       maximumFractionDigits: 0,
                     })}{" "}
                     SEK
                   </p>
-                  <p className="text-xs text-blue-600 mt-0.5">
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
                     +
                     {totalGrowthBase.toLocaleString("sv-SE", {
                       maximumFractionDigits: 0,
@@ -382,23 +382,23 @@ export const FiveYearProjectionChart: React.FC<
             </CardContent>
           </Card>
 
-          <Card className="border-red-200 bg-red-50/50">
+          <Card className="border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/40">
             <CardContent className="pt-4 pb-3">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <TrendingDown className="h-3.5 w-3.5 text-red-600" />
-                    <p className="text-xs font-medium text-red-700">
+                    <TrendingDown className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                    <p className="text-xs font-medium text-red-700 dark:text-red-400">
                       Pessimistic
                     </p>
                   </div>
-                  <p className="text-xl font-bold text-red-700">
+                  <p className="text-xl font-bold text-red-700 dark:text-red-400">
                     {finalPessimisticValue.toLocaleString("sv-SE", {
                       maximumFractionDigits: 0,
                     })}{" "}
                     SEK
                   </p>
-                  <p className="text-xs text-red-600 mt-0.5">
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
                     {totalGrowthPessimistic >= 0 ? "+" : ""}
                     {totalGrowthPessimistic.toLocaleString("sv-SE", {
                       maximumFractionDigits: 0,
@@ -412,9 +412,9 @@ export const FiveYearProjectionChart: React.FC<
         </div>
 
         {/* Alert explaining what scenarios mean */}
-        <Alert className="bg-blue-50 border-blue-200">
-          <Info className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-xs text-blue-900">
+        <Alert className="bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800">
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <AlertDescription className="text-xs text-blue-900 dark:text-blue-100">
             <strong>Understanding the scenarios:</strong> These projections use
             your portfolio's expected return (
             {(expectedReturn * 100).toFixed(1)}%) and risk (

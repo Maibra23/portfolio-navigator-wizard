@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { colors, bgColors, borderColors, getValueColor } from "@/utils/semanticColors";
 
 // ---------------------------------------------------------------------------
 // Types (aligned with PortfolioOptimization / triple optimization API)
@@ -307,10 +308,10 @@ export const PerformanceSummaryCard = ({
 // ---------------------------------------------------------------------------
 
 const getScoreColor = (score: number) => {
-  if (score >= 80) return "text-green-500";
-  if (score >= 60) return "text-blue-500";
-  if (score >= 40) return "text-amber-500";
-  return "text-red-500";
+  if (score >= 80) return "text-green-500 dark:text-green-400";
+  if (score >= 60) return "text-blue-500 dark:text-blue-400";
+  if (score >= 40) return "text-amber-500 dark:text-amber-400";
+  return "text-red-500 dark:text-red-400";
 };
 
 const getScoreBarColor = (score: number) => {
@@ -393,10 +394,10 @@ export const QualityScoreCard = ({
   ];
 
   return (
-    <Card className="border-2 border-purple-200">
+    <Card className="border-2 border-purple-200 dark:border-purple-700">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Award className="h-5 w-5 text-purple-600" />
+          <Award className={`h-5 w-5 ${colors.secondary}`} />
           Multi-Factor Quality Analysis
         </CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -506,32 +507,32 @@ export const QualityScoreCard = ({
             </h4>
             <div className="grid grid-cols-3 gap-3">
               <div
-                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "current" ? "border-red-500 bg-red-500/10" : "border-border"}`}
+                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "current" ? "border-red-500 dark:border-red-400 bg-red-500/10 dark:bg-red-950/40" : "border-border"}`}
               >
                 <div className="text-xs text-muted-foreground mb-1">
                   Current
                 </div>
-                <div className="text-lg font-bold text-red-600">
+                <div className={`text-lg font-bold ${colors.negative}`}>
                   {tripleQuality.current.composite_score.toFixed(0)}
                 </div>
               </div>
               <div
-                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "weights" ? "border-blue-500 bg-blue-500/10" : "border-border"}`}
+                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "weights" ? "border-blue-500 dark:border-blue-400 bg-blue-500/10 dark:bg-blue-950/40" : "border-border"}`}
               >
                 <div className="text-xs text-muted-foreground mb-1">
                   Weights-Opt
                 </div>
-                <div className="text-lg font-bold text-blue-600">
+                <div className={`text-lg font-bold ${colors.info}`}>
                   {tripleQuality.weights.composite_score.toFixed(0)}
                 </div>
               </div>
               <div
-                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "market" ? "border-green-500 bg-green-500/10" : "border-border"}`}
+                className={`p-3 rounded-lg border-2 ${selectedPortfolio === "market" ? "border-green-500 dark:border-green-400 bg-green-500/10 dark:bg-green-950/40" : "border-border"}`}
               >
                 <div className="text-xs text-muted-foreground mb-1">
                   Market-Opt
                 </div>
-                <div className="text-lg font-bold text-green-600">
+                <div className={`text-lg font-bold ${colors.positive}`}>
                   {tripleQuality.market.composite_score.toFixed(0)}
                 </div>
               </div>
@@ -647,10 +648,10 @@ export const MonteCarloCard = ({
   };
 
   return (
-    <Card className="border-2 border-blue-200">
+    <Card className="border-2 border-blue-200 dark:border-blue-700">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Activity className="h-5 w-5 text-blue-600" />
+          <Activity className={`h-5 w-5 ${colors.info}`} />
           Monte Carlo Risk Analysis
         </CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -686,14 +687,14 @@ export const MonteCarloCard = ({
                     <th className="text-left p-2 font-medium border-b border-border rounded-tl-lg">
                       Percentile
                     </th>
-                    <th className="text-center p-2 font-medium border-b border-border text-red-500">
+                    <th className="text-center p-2 font-medium border-b border-border text-red-500 dark:text-red-400">
                       Current
                     </th>
-                    <th className="text-center p-2 font-medium border-b border-border text-blue-500">
+                    <th className="text-center p-2 font-medium border-b border-border text-blue-500 dark:text-blue-400">
                       Weights-Opt
                     </th>
                     {tripleMonteCarlo.market?.percentiles != null && (
-                      <th className="text-center p-2 font-medium border-b border-border text-green-700 rounded-tr-lg">
+                      <th className="text-center p-2 font-medium border-b border-border text-green-700 dark:text-green-400 rounded-tr-lg">
                         Market-Opt
                       </th>
                     )}
@@ -704,20 +705,20 @@ export const MonteCarloCard = ({
                     <td className="p-2 text-muted-foreground">
                       5th (worst 5%)
                     </td>
-                    <td className="p-2 text-center font-medium text-red-800">
+                    <td className="p-2 text-center font-medium text-red-800 dark:text-red-300">
                       {(
                         (tripleMonteCarlo.current.percentiles?.p5 ?? 0) * 100
                       ).toFixed(1)}
                       %
                     </td>
-                    <td className="p-2 text-center font-medium text-blue-800">
+                    <td className="p-2 text-center font-medium text-blue-800 dark:text-blue-300">
                       {(
                         (tripleMonteCarlo.weights.percentiles?.p5 ?? 0) * 100
                       ).toFixed(1)}
                       %
                     </td>
                     {tripleMonteCarlo.market?.percentiles != null && (
-                      <td className="p-2 text-center font-medium text-green-800">
+                      <td className="p-2 text-center font-medium text-green-800 dark:text-green-300">
                         {(
                           (tripleMonteCarlo.market.percentiles?.p5 ?? 0) * 100
                         ).toFixed(1)}
@@ -727,20 +728,20 @@ export const MonteCarloCard = ({
                   </tr>
                   <tr className="border-b border-border">
                     <td className="p-2 text-muted-foreground">50th (median)</td>
-                    <td className="p-2 text-center font-medium text-red-800">
+                    <td className="p-2 text-center font-medium text-red-800 dark:text-red-300">
                       {(
                         (tripleMonteCarlo.current.percentiles?.p50 ?? 0) * 100
                       ).toFixed(1)}
                       %
                     </td>
-                    <td className="p-2 text-center font-medium text-blue-800">
+                    <td className="p-2 text-center font-medium text-blue-800 dark:text-blue-300">
                       {(
                         (tripleMonteCarlo.weights.percentiles?.p50 ?? 0) * 100
                       ).toFixed(1)}
                       %
                     </td>
                     {tripleMonteCarlo.market?.percentiles != null && (
-                      <td className="p-2 text-center font-medium text-green-800">
+                      <td className="p-2 text-center font-medium text-green-800 dark:text-green-300">
                         {(
                           (tripleMonteCarlo.market.percentiles?.p50 ?? 0) * 100
                         ).toFixed(1)}
@@ -752,20 +753,20 @@ export const MonteCarloCard = ({
                     <td className="p-2 text-muted-foreground rounded-bl-lg">
                       95th (best 5%)
                     </td>
-                    <td className="p-2 text-center font-medium text-red-800">
+                    <td className="p-2 text-center font-medium text-red-800 dark:text-red-300">
                       {(
                         (tripleMonteCarlo.current.percentiles?.p95 ?? 0) * 100
                       ).toFixed(1)}
                       %
                     </td>
-                    <td className="p-2 text-center font-medium text-blue-800">
+                    <td className="p-2 text-center font-medium text-blue-800 dark:text-blue-300">
                       {(
                         (tripleMonteCarlo.weights.percentiles?.p95 ?? 0) * 100
                       ).toFixed(1)}
                       %
                     </td>
                     {tripleMonteCarlo.market?.percentiles != null && (
-                      <td className="p-2 text-center font-medium text-green-800 rounded-br-lg">
+                      <td className="p-2 text-center font-medium text-green-800 dark:text-green-300 rounded-br-lg">
                         {(
                           (tripleMonteCarlo.market.percentiles?.p95 ?? 0) * 100
                         ).toFixed(1)}
@@ -784,45 +785,45 @@ export const MonteCarloCard = ({
           </>
         ) : (
           <div className="grid grid-cols-3 gap-4">
-            <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+            <div className="p-4 rounded-lg bg-red-500/10 dark:bg-red-950/40 border border-red-500/30 dark:border-red-800">
               <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <span className="text-xs font-medium text-red-500">
+                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <span className="text-xs font-medium text-red-500 dark:text-red-400">
                   5th percentile return (worst 5%)
                 </span>
               </div>
-              <div className="text-2xl font-bold text-red-800">
+              <div className="text-2xl font-bold text-red-800 dark:text-red-300">
                 {(var95 * 100).toFixed(1)}%
               </div>
-              <div className="text-xs text-red-600 mt-1">
+              <div className="text-xs text-red-600 dark:text-red-400 mt-1">
                 Worst 5% of simulated outcomes
               </div>
             </div>
-            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+            <div className="p-4 rounded-lg bg-blue-500/10 dark:bg-blue-950/40 border border-blue-500/30 dark:border-blue-800">
               <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="h-4 w-4 text-blue-600" />
-                <span className="text-xs font-medium text-blue-500">
+                <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-xs font-medium text-blue-500 dark:text-blue-400">
                   Median return (50th percentile)
                 </span>
               </div>
-              <div className="text-2xl font-bold text-blue-800">
+              <div className="text-2xl font-bold text-blue-800 dark:text-blue-300">
                 {(expectedReturn * 100).toFixed(1)}%
               </div>
-              <div className="text-xs text-blue-600 mt-1">
+              <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                 Center of simulated outcomes
               </div>
             </div>
-            <div className="p-4 rounded-lg bg-green-500/10 border border-green-200">
+            <div className="p-4 rounded-lg bg-green-500/10 dark:bg-green-950/40 border border-green-200 dark:border-green-800">
               <div className="flex items-center gap-2 mb-2">
-                <Activity className="h-4 w-4 text-green-600" />
-                <span className="text-xs font-medium text-green-700">
+                <Activity className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <span className="text-xs font-medium text-green-700 dark:text-green-400">
                   Best Case (95%)
                 </span>
               </div>
-              <div className="text-2xl font-bold text-green-800">
+              <div className="text-2xl font-bold text-green-800 dark:text-green-300">
                 {(bestCase * 100).toFixed(1)}%
               </div>
-              <div className="text-xs text-green-600 mt-1">
+              <div className="text-xs text-green-600 dark:text-green-400 mt-1">
                 Optimistic scenario
               </div>
             </div>
@@ -1171,7 +1172,7 @@ export const MonteCarloCard = ({
               onClick={() => toggleVisibility("current")}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                 returnScenarioVisibility.current
-                  ? "border-red-300 bg-red-500/10 hover:bg-red-500/20"
+                  ? "border-red-300 dark:border-red-700 bg-red-500/10 dark:bg-red-950/40 hover:bg-red-500/20 dark:hover:bg-red-900/50"
                   : "border-border bg-muted opacity-50"
               }`}
               title={
@@ -1181,19 +1182,19 @@ export const MonteCarloCard = ({
               }
             >
               {returnScenarioVisibility.current ? (
-                <Eye className="h-4 w-4 text-red-600" />
+                <Eye className="h-4 w-4 text-red-600 dark:text-red-400" />
               ) : (
                 <EyeOff className="h-4 w-4 text-muted-foreground" />
               )}
-              <div className="w-3 h-3 rounded-full bg-red-600" />
-              <span className="font-medium text-red-500">Current</span>
+              <div className="w-3 h-3 rounded-full bg-red-600 dark:bg-red-500" />
+              <span className="font-medium text-red-500 dark:text-red-400">Current</span>
             </button>
             <button
               type="button"
               onClick={() => toggleVisibility("weights")}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                 returnScenarioVisibility.weights
-                  ? "border-blue-300 bg-blue-500/10 hover:bg-blue-500/20"
+                  ? "border-blue-300 dark:border-blue-700 bg-blue-500/10 dark:bg-blue-950/40 hover:bg-blue-500/20 dark:hover:bg-blue-900/50"
                   : "border-border bg-muted opacity-50"
               }`}
               title={
@@ -1203,12 +1204,12 @@ export const MonteCarloCard = ({
               }
             >
               {returnScenarioVisibility.weights ? (
-                <Eye className="h-4 w-4 text-blue-600" />
+                <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               ) : (
                 <EyeOff className="h-4 w-4 text-muted-foreground" />
               )}
-              <div className="w-3 h-3 rounded-full bg-blue-600" />
-              <span className="font-medium text-blue-500">Weights-Opt</span>
+              <div className="w-3 h-3 rounded-full bg-blue-600 dark:bg-blue-500" />
+              <span className="font-medium text-blue-500 dark:text-blue-400">Weights-Opt</span>
             </button>
             {tripleMonteCarlo.market && (
               <button
@@ -1216,7 +1217,7 @@ export const MonteCarloCard = ({
                 onClick={() => toggleVisibility("market")}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                   returnScenarioVisibility.market
-                    ? "border-green-300 bg-green-500/10 hover:bg-green-100"
+                    ? "border-green-300 dark:border-green-700 bg-green-500/10 dark:bg-green-950/40 hover:bg-green-100 dark:hover:bg-green-900/50"
                     : "border-border bg-muted opacity-50"
                 }`}
                 title={
@@ -1226,12 +1227,12 @@ export const MonteCarloCard = ({
                 }
               >
                 {returnScenarioVisibility.market ? (
-                  <Eye className="h-4 w-4 text-green-600" />
+                  <Eye className="h-4 w-4 text-green-600 dark:text-green-400" />
                 ) : (
                   <EyeOff className="h-4 w-4 text-muted-foreground" />
                 )}
-                <div className="w-3 h-3 rounded-full bg-green-600" />
-                <span className="font-medium text-green-700">Market-Opt</span>
+                <div className="w-3 h-3 rounded-full bg-green-600 dark:bg-green-500" />
+                <span className="font-medium text-green-700 dark:text-green-400">Market-Opt</span>
               </button>
             )}
           </div>
@@ -1266,7 +1267,7 @@ export const MonteCarloCard = ({
                   }
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                     isSelected
-                      ? "border-blue-400 bg-blue-500/10 text-foreground"
+                      ? "border-blue-400 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-950/40 text-foreground"
                       : "border-border bg-muted/50 text-muted-foreground hover:bg-muted opacity-70 hover:opacity-100"
                   }`}
                   title={
@@ -1379,45 +1380,45 @@ export const MonteCarloCard = ({
             </TooltipProvider>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-              <div className="text-xs font-medium text-red-500 mb-2">
+            <div className="p-3 rounded-lg bg-red-500/10 dark:bg-red-950/40 border border-red-500/30 dark:border-red-800">
+              <div className="text-xs font-medium text-red-500 dark:text-red-400 mb-2">
                 10% Loss Threshold
               </div>
-              <div className="text-2xl font-bold text-red-800">
+              <div className="text-2xl font-bold text-red-800 dark:text-red-300">
                 {selectedMonteCarlo.probability_loss_thresholds?.loss_10pct?.toFixed(
                   1,
                 ) ?? 0}
                 %
               </div>
-              <div className="text-xs text-red-600 mt-1">
+              <div className="text-xs text-red-600 dark:text-red-400 mt-1">
                 Probability of 10%+ loss
               </div>
             </div>
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-              <div className="text-xs font-medium text-red-500 mb-2">
+            <div className="p-3 rounded-lg bg-red-500/10 dark:bg-red-950/40 border border-red-500/30 dark:border-red-800">
+              <div className="text-xs font-medium text-red-500 dark:text-red-400 mb-2">
                 20% Loss Threshold
               </div>
-              <div className="text-2xl font-bold text-red-800">
+              <div className="text-2xl font-bold text-red-800 dark:text-red-300">
                 {selectedMonteCarlo.probability_loss_thresholds?.loss_20pct?.toFixed(
                   1,
                 ) ?? 0}
                 %
               </div>
-              <div className="text-xs text-red-600 mt-1">
+              <div className="text-xs text-red-600 dark:text-red-400 mt-1">
                 Probability of 20%+ loss
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+        <div className="p-4 rounded-lg bg-blue-500/10 dark:bg-blue-950/40 border border-blue-500/30 dark:border-blue-800">
           <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <div className="font-medium text-blue-900 mb-2">
+              <div className="font-medium text-blue-900 dark:text-blue-200 mb-2">
                 Risk Assessment
               </div>
-              <div className="text-sm text-blue-800 space-y-1">
+              <div className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
                 <p>
                   • Probability of positive returns:{" "}
                   <span className="font-semibold">

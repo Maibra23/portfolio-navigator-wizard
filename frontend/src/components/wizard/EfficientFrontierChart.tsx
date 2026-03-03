@@ -1080,7 +1080,7 @@ export const EfficientFrontierChart = ({
                                 Δ Return:
                               </span>
                               <span
-                                className={`font-semibold ${displayReturn > currentPortfolioMetrics.return ? "text-green-500" : "text-red-500"}`}
+                                className={`font-semibold ${displayReturn > currentPortfolioMetrics.return ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                               >
                                 {displayReturn > currentPortfolioMetrics.return
                                   ? "+"
@@ -1098,7 +1098,7 @@ export const EfficientFrontierChart = ({
                                 Δ Risk:
                               </span>
                               <span
-                                className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? "text-green-500" : "text-red-500"}`}
+                                className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                               >
                                 {data.risk < currentPortfolioMetrics.risk
                                   ? ""

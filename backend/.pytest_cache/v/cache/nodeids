@@ -23,5 +23,10 @@
   "test_visualization_real_portfolios.py::test_consolidated_with_multiple_portfolios",
   "test_visualization_real_portfolios.py::test_correlation_with_real_portfolios",
   "test_visualization_real_portfolios.py::test_cross_portfolio_comparison",
-  "test_visualization_real_portfolios.py::test_sector_allocation_with_real_portfolios"
+  "test_visualization_real_portfolios.py::test_sector_allocation_with_real_portfolios",
+  "tests/test_export_stress_always_included.py::test_export_csv_without_stress_results_includes_stress_file_when_run_on_fly",
+  "tests/test_export_stress_always_included.py::test_export_pdf_single_holding_no_stress_section",
+  "tests/test_export_stress_always_included.py::test_export_pdf_with_stress_results_unchanged",
+  "tests/test_export_stress_always_included.py::test_export_pdf_without_stress_includes_stress_section_when_stress_run_on_fly",
+  "tests/test_export_stress_always_included.py::test_export_pdf_without_stress_results_returns_200_and_pdf"
 ]

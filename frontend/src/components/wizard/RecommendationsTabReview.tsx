@@ -266,14 +266,14 @@ const PrimaryRecommendationCard = ({
   return (
     <Card className="border border-border bg-muted">
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2 text-blue-900">
+        <CardTitle className="text-lg flex items-center gap-2 text-blue-900 dark:text-blue-100">
           <Target className="h-5 w-5" />
           Primary Recommendation
         </CardTitle>
       </CardHeader>
       <CardContent>
         {/* Content based on sharpeDiffPercent thresholds */}
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 dark:text-gray-400">
           Current Sharpe: {currentSharpe.toFixed(2)} → Selected:{" "}
           {optimizedSharpe.toFixed(2)}({sharpeDiffPercent > 0 ? "+" : ""}
           {sharpeDiffPercent.toFixed(0)}%)
@@ -387,32 +387,32 @@ const PerformanceSummaryCard = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Current → Selected Comparison */}
           <div className="p-4 rounded-lg bg-muted border border-border">
-            <div className="text-sm font-medium text-gray-600 mb-2">
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
               Current → {selectedLabel}
             </div>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Return</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Return</span>
                 <span
-                  className={`font-semibold ${returnDiff >= 0 ? "text-green-600" : "text-red-600"}`}
+                  className={`font-semibold ${returnDiff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                 >
                   {returnDiff >= 0 ? "+" : ""}
                   {(returnDiff * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Risk</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Risk</span>
                 <span
-                  className={`font-semibold ${riskDiff <= 0 ? "text-green-600" : "text-red-600"}`}
+                  className={`font-semibold ${riskDiff <= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                 >
                   {riskDiff <= 0 ? "" : "+"}
                   {(riskDiff * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Sharpe</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Sharpe</span>
                 <span
-                  className={`font-semibold ${sharpeDiff >= 0 ? "text-green-600" : "text-red-600"}`}
+                  className={`font-semibold ${sharpeDiff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                 >
                   {sharpeDiff >= 0 ? "+" : ""}
                   {sharpeDiff.toFixed(2)}
@@ -423,26 +423,26 @@ const PerformanceSummaryCard = ({
 
           {/* Risk Profile Compliance */}
           <div className="p-4 rounded-lg bg-muted border border-border">
-            <div className="text-sm font-medium text-gray-600 mb-2">
+            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
               Risk Profile Compliance
             </div>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Max Allowed</span>
-                <span className="font-semibold text-indigo-600">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Max Allowed</span>
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                   {(maxRisk * 100).toFixed(0)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Your Risk</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Your Risk</span>
                 <span
-                  className={`font-semibold ${isCompliant ? "text-green-600" : "text-red-600"}`}
+                  className={`font-semibold ${isCompliant ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                 >
                   {(selectedRisk * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Status</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">Status</span>
                 <Badge
                   variant={isCompliant ? "default" : "destructive"}
                   className={isCompliant ? "bg-green-500" : ""}
@@ -486,10 +486,10 @@ const QualityScoreCard = ({
 }) => {
   // ... implementation
   return (
-    <Card className="border-2 border-purple-200">
+    <Card className="border-2 border-purple-200 dark:border-purple-700">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Award className="h-5 w-5 text-purple-600" />
+          <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
           Multi-Factor Quality Score
         </CardTitle>
       </CardHeader>
@@ -527,10 +527,10 @@ const MonteCarloCard = ({
 }) => {
   // ... implementation
   return (
-    <Card className="border-2 border-blue-200">
+    <Card className="border-2 border-blue-200 dark:border-blue-700">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Activity className="h-5 w-5 text-blue-600" />
+          <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
           Monte Carlo Simulation
         </CardTitle>
       </CardHeader>

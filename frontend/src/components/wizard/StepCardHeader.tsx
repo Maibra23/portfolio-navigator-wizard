@@ -28,11 +28,11 @@ export function StepCardHeader({
   return (
     <CardHeader className={cn("pb-2", centered && "text-center", className)}>
       {icon && <div className={cn("mb-2", centered && "mx-auto")}>{icon}</div>}
-      <CardTitle className="text-xl font-semibold leading-none tracking-tight">
+      <CardTitle className="text-lg md:text-xl font-semibold leading-none tracking-tight">
         {title}
       </CardTitle>
       {subtitle != null && (
-        <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <p className="text-sm md:text-base text-muted-foreground">{subtitle}</p>
       )}
       {metadata != null && (
         <div

@@ -1943,7 +1943,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-sm">
                           <p className="font-medium mb-1">
-                            Avanza courtage (transaction fees) – how it is
+                            Courtage class (transaction fees) – how it is
                             calculated
                           </p>
                           <p className="text-xs mb-1">

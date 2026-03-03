@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,9 @@ import {
   FileText,
 } from "lucide-react";
 import { useWizardState } from "@/hooks/useWizardState";
+import { useReducedMotion, getMotionTransition } from "@/hooks/useReducedMotion";
+import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 import type {
   RiskProfile,
   WizardData,
@@ -45,22 +48,23 @@ const STEPS = [
   { id: "thank-you", title: "Complete", icon: CheckCircle },
 ];
 
-const stepTransition = {
+// Motion-aware step transition factory
+const createStepTransition = (prefersReducedMotion: boolean) => ({
   initial: (direction: number) => ({
     opacity: 0,
-    x: direction > 0 ? 80 : -80,
+    x: prefersReducedMotion ? 0 : direction > 0 ? 80 : -80,
   }),
   animate: {
     opacity: 1,
     x: 0,
-    transition: { duration: 0.3, ease: "easeOut" },
+    transition: getMotionTransition(prefersReducedMotion, 0.3),
   },
   exit: (direction: number) => ({
     opacity: 0,
-    x: direction > 0 ? -80 : 80,
-    transition: { duration: 0.25, ease: "easeIn" },
+    x: prefersReducedMotion ? 0 : direction > 0 ? -80 : 80,
+    transition: getMotionTransition(prefersReducedMotion, 0.25),
   }),
-};
+});
 
 export const PortfolioWizard = () => {
   const {
@@ -71,8 +75,14 @@ export const PortfolioWizard = () => {
     resetWizardState,
   } = useWizardState();
   const directionRef = useRef(1);
+  const prefersReducedMotion = useReducedMotion();
+  const stepTransition = createStepTransition(prefersReducedMotion);
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
+
+  // Memoized navigation handlers for keyboard/swipe
+  const canGoNext = currentStep < STEPS.length - 1;
+  const canGoPrev = currentStep > 0;
 
   useEffect(() => {
     const validation = validateStepRequirements(currentStep, wizardData);
@@ -101,7 +111,7 @@ export const PortfolioWizard = () => {
     }
   };
 
-  const updateWizardData = (data: Partial<WizardData>) => {
+  const updateWizardData = useCallback((data: Partial<WizardData>) => {
     setWizardDataRaw((prev) => {
       let next = prev;
       for (const key of Object.keys(data) as (keyof WizardData)[]) {
@@ -111,7 +121,57 @@ export const PortfolioWizard = () => {
       }
       return next;
     });
+  }, [setWizardDataRaw]);
+
+  // Keyboard navigation (arrow keys for step navigation)
+  // Only enable on steps that don't have complex interactions
+  const isSimpleStep = currentStep === 0 || currentStep === STEPS.length - 1;
+  useKeyboardNavigation({
+    onNext: canGoNext && isSimpleStep ? nextStep : undefined,
+    onPrev: canGoPrev && isSimpleStep ? prevStep : undefined,
+    enabled: isSimpleStep,
+  });
+
+  // Swipe navigation for mobile
+  const swipeContainerRef = useSwipeNavigation({
+    onSwipeLeft: canGoNext && isSimpleStep ? nextStep : undefined,
+    onSwipeRight: canGoPrev && isSimpleStep ? prevStep : undefined,
+    enabled: isSimpleStep,
+    threshold: 75,
+  });
+
+  // Detect if user has saved progress (for Welcome Back prompt)
+  // Check wizardData for actual progress since currentStep is always reset to 0
+  const hasProgress = Boolean(
+    wizardData.riskProfile || 
+    wizardData.capital > 0 || 
+    wizardData.selectedStocks.length > 0
+  );
+  
+  // Determine which step the user would resume to based on their data
+  const getSavedStepIndex = (): number => {
+    if (wizardData.selectedPortfolio) return 5; // stress-test
+    if (wizardData.selectedStocks.length > 0) return 4; // optimization
+    if (wizardData.capital > 0) return 3; // stocks
+    if (wizardData.riskProfile) return 2; // capital
+    return 1; // risk
   };
+  
+  const savedStepIndex = hasProgress ? getSavedStepIndex() : 0;
+  const savedStepName = hasProgress 
+    ? STEPS[Math.min(savedStepIndex, STEPS.length - 1)]?.title 
+    : undefined;
+
+  const handleContinueProgress = useCallback(() => {
+    if (hasProgress && savedStepIndex > 0) {
+      directionRef.current = 1;
+      updateStep(savedStepIndex);
+    }
+  }, [hasProgress, savedStepIndex, updateStep]);
+
+  const handleStartFresh = useCallback(() => {
+    resetWizardState();
+  }, [resetWizardState]);
 
   const renderStep = () => {
     const stepId = STEPS[currentStep].id;
@@ -121,7 +181,13 @@ export const PortfolioWizard = () => {
       case "welcome":
         return (
           <WizardStepErrorBoundary stepName={stepTitle}>
-            <WelcomeStep onNext={nextStep} />
+            <WelcomeStep
+              onNext={nextStep}
+              hasProgress={hasProgress}
+              savedStepName={savedStepName}
+              onContinue={handleContinueProgress}
+              onStartFresh={handleStartFresh}
+            />
           </WizardStepErrorBoundary>
         );
       case "risk":
@@ -254,31 +320,50 @@ export const PortfolioWizard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" ref={swipeContainerRef}>
       <ThemeSelector />
 
-      <div className="max-w-4xl mx-auto px-4 py-4">
-        <div className="mb-3">
-          <div className="flex items-center justify-center gap-2 mb-1.5">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-4">
+        {/* Progress header with auto-save indicator */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-foreground">
+              <h2 className="text-lg md:text-xl font-semibold text-foreground">
                 {STEPS[currentStep].title}
               </h2>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs md:text-sm text-muted-foreground">
                 Step {currentStep + 1} of {STEPS.length}
               </span>
             </div>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {Math.round(progress)}%
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs md:text-sm text-muted-foreground tabular-nums">
+                {Math.round(progress)}%
+              </span>
+            </div>
           </div>
-          <div className="relative h-1 w-full overflow-hidden rounded-full bg-secondary">
+          <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
             <motion.div
               className="h-full bg-primary rounded-full"
               initial={false}
               animate={{ width: `${progress}%` }}
               transition={{ type: "spring", stiffness: 100, damping: 18 }}
             />
+          </div>
+          {/* Step indicator dots with completion animation */}
+          <div className="flex justify-between mt-1.5 gap-0.5" aria-hidden="true">
+            {STEPS.map((step, i) => (
+              <div
+                key={i}
+                className={`h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-300 ${
+                  i < currentStep
+                    ? "bg-primary animate-check scale-110"
+                    : i === currentStep
+                    ? "bg-primary ring-2 ring-primary/30"
+                    : "bg-muted"
+                }`}
+                title={step.title}
+              />
+            ))}
           </div>
         </div>
 

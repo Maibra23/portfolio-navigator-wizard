@@ -78,7 +78,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
             if (savings > 0) {
               recs.push({
                 type: "success",
-                icon: <CheckCircle className="h-4 w-4 text-green-600" />,
+                icon: <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />,
                 title: "Switch to 2026 Tax Year for Significant Savings",
                 description: `Your capital (${capital.toLocaleString("sv-SE")} SEK) is below the 2026 tax-free level (300,000 SEK). By switching to tax year 2026, you could save approximately ${savings.toLocaleString("sv-SE", { maximumFractionDigits: 0 })} SEK per year. Over 5 years, that's ${(savings * 5).toLocaleString("sv-SE", { maximumFractionDigits: 0 })} SEK more for your investments!`,
                 savings: savings * 5,
@@ -160,7 +160,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
               if (savings > 100) {
                 recs.push({
                   type: "info",
-                  icon: <Coins className="h-4 w-4 text-blue-600" />,
+                  icon: <Coins className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
                   title: `Consider ${bestOption.class.charAt(0).toUpperCase() + bestOption.class.slice(1)} Courtage Class`,
                   description: `With your capital and trading pattern, switching from ${courtagClass} to ${bestOption.class} courtage could save you approximately ${savings.toLocaleString("sv-SE", { maximumFractionDigits: 0 })} SEK over 5 years in transaction costs.`,
                   savings,
@@ -178,7 +178,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
         ) {
           recs.push({
             type: "warning",
-            icon: <AlertTriangle className="h-4 w-4 text-amber-600" />,
+            icon: <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
             title: "Consider AF Account for Lower Expected Returns",
             description: `Your expected return (${(expectedReturn * 100).toFixed(1)}%) is below the current schablonränta (~3.5%). With AF (Aktie- och Fondkonto), you'd only pay tax on actual gains, which could be more favorable for conservative portfolios or if you plan to hold long-term without rebalancing.`,
             savings: undefined,
@@ -200,7 +200,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
           if (savings > 1000) {
             recs.push({
               type: "success",
-              icon: <DollarSign className="h-4 w-4 text-green-600" />,
+              icon: <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />,
               title: "Great Choice for High-Return Portfolio",
               description: `With your expected return of ${(expectedReturn * 100).toFixed(1)}%, using ${accountType} is optimal. If you were using AF instead, you'd pay approximately ${savings.toLocaleString("sv-SE", { maximumFractionDigits: 0 })} SEK more per year in taxes on realized gains. You're saving money with schablonbeskattning!`,
               savings,
@@ -218,7 +218,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
           if (capital > taxFreeLevel && percentDiff < 20) {
             recs.push({
               type: "info",
-              icon: <Sparkles className="h-4 w-4 text-purple-600" />,
+              icon: <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />,
               title: "Near Tax-Free Threshold",
               description: `Your capital (${capital.toLocaleString("sv-SE")} SEK) is just above the tax-free level (${taxFreeLevel.toLocaleString("sv-SE")} SEK). Consider this when adding more capital - staying below the threshold means zero tax!`,
               savings: undefined,
@@ -231,7 +231,7 @@ export const SmartRecommendations: React.FC<SmartRecommendationsProps> = ({
         if (courtagClass === "start" && capital > 50000) {
           recs.push({
             type: "warning",
-            icon: <AlertTriangle className="h-4 w-4 text-amber-600" />,
+            icon: <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
             title: "Start Courtage Free Trade Limit",
             description: `You're using Start courtage with ${capital.toLocaleString("sv-SE")} SEK. Remember that Start class provides free trades up to 50,000 SEK or 500 trades. After that, each trade costs money. Plan your trades carefully or consider upgrading to a class with better rates for your capital level.`,
             savings: undefined,

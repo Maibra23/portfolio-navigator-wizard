@@ -3,15 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { Shield } from "lucide-react";
 
 function getResilienceColor(score: number): string {
-  if (score >= 70) return "text-green-500";
-  if (score >= 50) return "text-yellow-500";
-  return "text-red-500";
+  if (score >= 70) return "text-green-500 dark:text-green-400";
+  if (score >= 50) return "text-yellow-500 dark:text-yellow-400";
+  return "text-red-500 dark:text-red-400";
 }
 
 function getResilienceBadgeColor(score: number): string {
-  if (score >= 70) return "bg-green-500";
-  if (score >= 50) return "bg-yellow-500";
-  return "bg-red-500";
+  if (score >= 70) return "bg-green-500 dark:bg-green-400";
+  if (score >= 50) return "bg-yellow-500 dark:bg-yellow-400";
+  return "bg-red-500 dark:bg-red-400";
 }
 
 function getResilienceLabel(score: number): string {
@@ -36,7 +36,7 @@ export function ResilienceScore({ score, assessment }: ResilienceScoreProps) {
     <Card className="border-2 border-green-500/30">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Shield className="h-5 w-5 text-green-500" />
+          <Shield className="h-5 w-5 text-green-500 dark:text-green-400" />
           Portfolio Resilience Score
         </CardTitle>
       </CardHeader>

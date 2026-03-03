@@ -29,7 +29,7 @@ export function AllocationSummaryCard({
         </div>
         <div>
           <div
-            className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}
+            className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
           >
             {totalAllocation.toFixed(1)}%
           </div>
@@ -37,7 +37,7 @@ export function AllocationSummaryCard({
         </div>
         <div>
           <div
-            className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600' : 'text-green-600'}`}
+            className={`text-xl font-bold ${totalAllocation > 100 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}
           >
             {totalAllocation > 100 ? '✗' : '✓'}
           </div>
@@ -45,7 +45,7 @@ export function AllocationSummaryCard({
         </div>
       </div>
       <div
-        className={`mt-2 text-center text-xs ${totalAllocation > 100 ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}
+        className={`mt-2 text-center text-xs ${totalAllocation > 100 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-muted-foreground'}`}
       >
         Total Allocation: {totalAllocation.toFixed(1)}%
       </div>

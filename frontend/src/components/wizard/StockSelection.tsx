@@ -59,6 +59,7 @@ import { PortfolioCardSkeleton, MetricsSkeleton } from "./skeletons";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { PortfolioBuilder } from "./PortfolioBuilder";
 import { Reorder } from "framer-motion";
+import { colors, bgColors, borderColors, getValueColor } from "@/utils/semanticColors";
 
 interface StockSelectionProps {
   onNext: () => void;
@@ -2312,14 +2313,9 @@ export const StockSelection = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4">
-      <Card className="relative overflow-hidden">
-        <div
-          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg bg-gradient-to-b from-primary/30 via-primary/20 to-transparent"
-          aria-hidden="true"
-        />
+    <div>
+      <Card className="shadow-sm border-t-2 border-t-primary/30">
         <StepCardHeader
-          className="pl-4"
           title="Portfolio Construction"
           subtitle={`Build your portfolio with ${capital.toLocaleString()} SEK · Risk profile: ${getRiskProfileDisplay()}`}
         />
@@ -2337,7 +2333,7 @@ export const StockSelection = ({
               )
             }
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1">
               <TabsTrigger
                 value="mini-lesson"
                 className="flex items-center gap-2"
@@ -2366,7 +2362,7 @@ export const StockSelection = ({
             <TabsContent value="mini-lesson" className="space-y-4">
               <div className="bg-muted rounded-lg p-4 border border-border">
                 <div className="flex items-center gap-2 mb-3">
-                  <Lightbulb className="h-5 w-5 text-blue-600" />
+                  <Lightbulb className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   <h3 className="text-lg font-semibold text-foreground">
                     How Risk and Return Trade Off
                   </h3>
@@ -2440,13 +2436,13 @@ export const StockSelection = ({
 
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-blue-600">
+                                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
                                     {pair.ticker1}
                                   </span>
                                   <span className="text-xs text-muted-foreground">
                                     vs
                                   </span>
-                                  <span className="text-sm font-medium text-amber-600">
+                                  <span className="text-sm font-medium text-amber-600 dark:text-amber-400">
                                     {pair.ticker2}
                                   </span>
                                 </div>
@@ -2521,7 +2517,7 @@ export const StockSelection = ({
                             <span className="text-muted-foreground">
                               Annual Return:
                             </span>
-                            <span className="font-medium text-green-600">
+                            <span className="font-medium text-green-600 dark:text-green-400">
                               {(
                                 twoAssetAnalysis.asset1_stats
                                   .annualized_return * 100
@@ -2533,7 +2529,7 @@ export const StockSelection = ({
                             <span className="text-muted-foreground">
                               Volatility:
                             </span>
-                            <span className="font-medium text-orange-600">
+                            <span className="font-medium text-orange-600 dark:text-orange-400">
                               {(
                                 twoAssetAnalysis.asset1_stats
                                   .annualized_volatility * 100
@@ -2546,7 +2542,7 @@ export const StockSelection = ({
                               <span className="text-muted-foreground">
                                 Sector:
                               </span>
-                              <span className="font-medium text-blue-600">
+                              <span className="font-medium text-blue-600 dark:text-blue-400">
                                 {twoAssetAnalysis.asset1_stats.sector}
                               </span>
                             </div>
@@ -2575,7 +2571,7 @@ export const StockSelection = ({
                             <span className="text-muted-foreground">
                               Annual Return:
                             </span>
-                            <span className="font-medium text-green-600">
+                            <span className="font-medium text-green-600 dark:text-green-400">
                               {(
                                 twoAssetAnalysis.asset2_stats
                                   .annualized_return * 100
@@ -2587,7 +2583,7 @@ export const StockSelection = ({
                             <span className="text-muted-foreground">
                               Volatility:
                             </span>
-                            <span className="font-medium text-orange-600">
+                            <span className="font-medium text-orange-600 dark:text-orange-400">
                               {(
                                 twoAssetAnalysis.asset2_stats
                                   .annualized_volatility * 100
@@ -2600,7 +2596,7 @@ export const StockSelection = ({
                               <span className="text-muted-foreground">
                                 Sector:
                               </span>
-                              <span className="font-medium text-blue-600">
+                              <span className="font-medium text-blue-600 dark:text-blue-400">
                                 {twoAssetAnalysis.asset2_stats.sector}
                               </span>
                             </div>
@@ -2688,10 +2684,10 @@ export const StockSelection = ({
                     <Card className="bg-card border border-border">
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center gap-2 text-foreground">
-                          <BarChart3 className="h-5 w-5 text-blue-600" />
+                          <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           Your Portfolio Metrics
                         </CardTitle>
-                        <p className="text-xs text-slate-600 mt-1">
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                           Real-time metrics based on your current allocation and
                           market data
                         </p>
@@ -2700,18 +2696,18 @@ export const StockSelection = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {/* Expected Return */}
                           <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-200 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-200 dark:bg-emerald-800/40 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-1.5 mb-1.5">
-                                <TrendingUp className="h-4 w-4 text-emerald-600" />
-                                <span className="text-xs font-medium text-emerald-700">
+                                <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
                                   Expected Return
                                 </span>
                               </div>
-                              <div className="text-2xl font-bold text-emerald-800 mb-0.5">
+                              <div className="text-2xl font-bold text-emerald-800 dark:text-emerald-200 mb-0.5">
                                 {(customPortfolio.return * 100).toFixed(1)}%
                               </div>
-                              <div className="text-xs text-emerald-600">
+                              <div className="text-xs text-emerald-600 dark:text-emerald-400">
                                 Annualized projection
                               </div>
                             </div>
@@ -2719,18 +2715,18 @@ export const StockSelection = ({
 
                           {/* Risk Level */}
                           <div className="relative overflow-hidden rounded-lg bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-200 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-200 dark:bg-amber-800/40 rounded-full -translate-y-8 translate-x-8 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-1.5 mb-1.5">
-                                <Shield className="h-4 w-4 text-amber-600" />
-                                <span className="text-xs font-medium text-amber-700">
+                                <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
                                   Risk (Volatility)
                                 </span>
                               </div>
-                              <div className="text-2xl font-bold text-amber-800 mb-0.5">
+                              <div className="text-2xl font-bold text-amber-800 dark:text-amber-200 mb-0.5">
                                 {(customPortfolio.risk * 100).toFixed(1)}%
                               </div>
-                              <div className="text-xs text-amber-600">
+                              <div className="text-xs text-amber-600 dark:text-amber-400">
                                 Volatility measure
                               </div>
                             </div>
@@ -2861,7 +2857,7 @@ export const StockSelection = ({
                             <div className="text-muted-foreground mb-0.5">
                               Expected Return
                             </div>
-                            <div className="font-semibold text-green-600">
+                            <div className="font-semibold text-green-600 dark:text-green-400">
                               {(recommendation.expectedReturn * 100).toFixed(1)}
                               %
                             </div>
@@ -2870,7 +2866,7 @@ export const StockSelection = ({
                             <div className="text-muted-foreground mb-0.5">
                               Risk Level
                             </div>
-                            <div className="font-semibold text-orange-600">
+                            <div className="font-semibold text-orange-600 dark:text-orange-400">
                               {(recommendation.risk * 100).toFixed(1)}%
                             </div>
                           </div>
@@ -3022,7 +3018,7 @@ export const StockSelection = ({
                   <Card className="bg-card border border-border">
                     <CardHeader className="pb-4">
                       <CardTitle className="text-xl flex items-center gap-3 text-foreground">
-                        <BarChart3 className="h-6 w-6 text-blue-600" />
+                        <BarChart3 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                         Your Portfolio Performance
                         {isLoadingMetrics && (
                           <div className="ml-2">
@@ -3030,7 +3026,7 @@ export const StockSelection = ({
                           </div>
                         )}
                       </CardTitle>
-                      <p className="text-slate-600">
+                      <p className="text-slate-600 dark:text-slate-400">
                         {isLoadingMetrics
                           ? "Calculating metrics..."
                           : "Real-time metrics based on your current allocation and market data"}
@@ -3043,22 +3039,22 @@ export const StockSelection = ({
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {/* Expected Return */}
                           <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 dark:bg-emerald-800/40 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
-                                <TrendingUp className="h-5 w-5 text-emerald-600" />
-                                <span className="text-sm font-medium text-emerald-700">
+                                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
                                   Expected Return
                                 </span>
                               </div>
-                              <div className="text-3xl font-bold text-emerald-800 mb-1">
+                              <div className="text-3xl font-bold text-emerald-800 dark:text-emerald-200 mb-1">
                                 <AnimatedNumber
                                   value={portfolioMetrics.expectedReturn}
                                   format="percent"
                                   decimals={1}
                                 />
                               </div>
-                              <div className="text-xs text-emerald-600">
+                              <div className="text-xs text-emerald-600 dark:text-emerald-400">
                                 Annualized projection
                               </div>
                             </div>
@@ -3066,22 +3062,22 @@ export const StockSelection = ({
 
                           {/* Risk Level */}
                           <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 dark:bg-amber-800/40 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
-                                <Shield className="h-5 w-5 text-amber-600" />
-                                <span className="text-sm font-medium text-amber-700">
+                                <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
                                   Risk Level
                                 </span>
                               </div>
-                              <div className="text-3xl font-bold text-amber-800 mb-1">
+                              <div className="text-3xl font-bold text-amber-800 dark:text-amber-200 mb-1">
                                 <AnimatedNumber
                                   value={portfolioMetrics.risk}
                                   format="percent"
                                   decimals={1}
                                 />
                               </div>
-                              <div className="text-xs text-amber-600">
+                              <div className="text-xs text-amber-600 dark:text-amber-400">
                                 Volatility measure
                               </div>
                             </div>
@@ -3089,15 +3085,15 @@ export const StockSelection = ({
 
                           {/* Diversification Score */}
                           <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 dark:bg-violet-800/40 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
-                                <PieChart className="h-5 w-5 text-violet-600" />
-                                <span className="text-sm font-medium text-violet-700">
+                                <PieChart className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                                <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
                                   Diversification
                                 </span>
                               </div>
-                              <div className="text-3xl font-bold text-violet-800 mb-1">
+                              <div className="text-3xl font-bold text-violet-800 dark:text-violet-200 mb-1">
                                 <AnimatedNumber
                                   value={
                                     portfolioMetrics.diversificationScore / 100
@@ -3106,7 +3102,7 @@ export const StockSelection = ({
                                   decimals={0}
                                 />
                               </div>
-                              <div className="text-xs text-violet-600">
+                              <div className="text-xs text-violet-600 dark:text-violet-400">
                                 Portfolio balance
                               </div>
                             </div>
@@ -3115,7 +3111,7 @@ export const StockSelection = ({
                       ) : (
                         <div className="flex items-center justify-center py-4">
                           <div className="text-center">
-                            <div className="text-slate-500 mb-2">
+                            <div className="text-slate-500 dark:text-slate-400 mb-2">
                               No metrics available
                             </div>
                             <div className="text-sm text-slate-400">
@@ -3162,7 +3158,7 @@ export const StockSelection = ({
                   <Card className="bg-card border border-border">
                     <CardHeader className="pb-4">
                       <CardTitle className="text-xl flex items-center gap-3 text-foreground">
-                        <BarChart3 className="h-6 w-6 text-blue-600" />
+                        <BarChart3 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                         Your Portfolio Performance
                         {isLoadingMetrics && (
                           <div className="ml-2">
@@ -3170,7 +3166,7 @@ export const StockSelection = ({
                           </div>
                         )}
                       </CardTitle>
-                      <p className="text-slate-600">
+                      <p className="text-slate-600 dark:text-slate-400">
                         {isLoadingMetrics
                           ? "Calculating metrics..."
                           : "Real-time metrics based on your current allocation and market data"}
@@ -3183,22 +3179,22 @@ export const StockSelection = ({
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {/* Expected Return */}
                           <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 dark:bg-emerald-800/40 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
-                                <TrendingUp className="h-5 w-5 text-emerald-600" />
-                                <span className="text-sm font-medium text-emerald-700">
+                                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
                                   Expected Return
                                 </span>
                               </div>
-                              <div className="text-3xl font-bold text-emerald-800 mb-1">
+                              <div className="text-3xl font-bold text-emerald-800 dark:text-emerald-200 mb-1">
                                 <AnimatedNumber
                                   value={portfolioMetrics.expectedReturn}
                                   format="percent"
                                   decimals={1}
                                 />
                               </div>
-                              <div className="text-xs text-emerald-600">
+                              <div className="text-xs text-emerald-600 dark:text-emerald-400">
                                 Annualized projection
                               </div>
                             </div>
@@ -3206,22 +3202,22 @@ export const StockSelection = ({
 
                           {/* Risk Level */}
                           <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200 dark:bg-amber-800/40 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
-                                <Shield className="h-5 w-5 text-amber-600" />
-                                <span className="text-sm font-medium text-amber-700">
+                                <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
                                   Risk Level
                                 </span>
                               </div>
-                              <div className="text-3xl font-bold text-amber-800 mb-1">
+                              <div className="text-3xl font-bold text-amber-800 dark:text-amber-200 mb-1">
                                 <AnimatedNumber
                                   value={portfolioMetrics.risk}
                                   format="percent"
                                   decimals={1}
                                 />
                               </div>
-                              <div className="text-xs text-amber-600">
+                              <div className="text-xs text-amber-600 dark:text-amber-400">
                                 Volatility measure
                               </div>
                             </div>
@@ -3229,15 +3225,15 @@ export const StockSelection = ({
 
                           {/* Diversification Score */}
                           <div className="relative overflow-hidden rounded-xl bg-muted p-4 border border-border">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200 dark:bg-violet-800/40 rounded-full -translate-y-10 translate-x-10 opacity-20"></div>
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
-                                <PieChart className="h-5 w-5 text-violet-600" />
-                                <span className="text-sm font-medium text-violet-700">
+                                <PieChart className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                                <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
                                   Diversification
                                 </span>
                               </div>
-                              <div className="text-3xl font-bold text-violet-800 mb-1">
+                              <div className="text-3xl font-bold text-violet-800 dark:text-violet-200 mb-1">
                                 <AnimatedNumber
                                   value={
                                     portfolioMetrics.diversificationScore / 100
@@ -3246,7 +3242,7 @@ export const StockSelection = ({
                                   decimals={0}
                                 />
                               </div>
-                              <div className="text-xs text-violet-600">
+                              <div className="text-xs text-violet-600 dark:text-violet-400">
                                 Portfolio balance
                               </div>
                             </div>
@@ -3255,7 +3251,7 @@ export const StockSelection = ({
                       ) : (
                         <div className="flex items-center justify-center py-4">
                           <div className="text-center">
-                            <div className="text-slate-500 mb-2">
+                            <div className="text-slate-500 dark:text-slate-400 mb-2">
                               No metrics available
                             </div>
                             <div className="text-sm text-slate-400">
@@ -3345,8 +3341,8 @@ export const StockSelection = ({
                     {/* Error message display */}
                     {error && (
                       <Alert className="alert-error border text-xs">
-                        <AlertTriangle className="h-4 w-4 text-red-600" />
-                        <AlertDescription className="text-red-800">
+                        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        <AlertDescription className="text-red-800 dark:text-red-200">
                           {error}
                         </AlertDescription>
                       </Alert>
@@ -3354,9 +3350,9 @@ export const StockSelection = ({
 
                     {/* Success message display */}
                     {successMessage && (
-                      <Alert className="bg-green-50 border-green-200 text-xs">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-800">
+                      <Alert className="bg-green-50 border-green-200 dark:bg-green-950/40 dark:border-green-800 text-xs">
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        <AlertDescription className="text-green-800 dark:text-green-200">
                           {successMessage}
                         </AlertDescription>
                       </Alert>
@@ -3372,7 +3368,7 @@ export const StockSelection = ({
                             className={`p-3 border rounded-lg cursor-pointer transition-all ${
                               selectedStrategy === "diversification"
                                 ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                : "border-gray-200 hover:border-gray-300"
+                                : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                             }`}
                             onClick={() =>
                               setSelectedStrategy("diversification")
@@ -3389,7 +3385,7 @@ export const StockSelection = ({
                             className={`p-3 border rounded-lg cursor-pointer transition-all ${
                               selectedStrategy === "risk"
                                 ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                : "border-gray-200 hover:border-gray-300"
+                                : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                             }`}
                             onClick={() => setSelectedStrategy("risk")}
                           >
@@ -3404,7 +3400,7 @@ export const StockSelection = ({
                             className={`p-3 border rounded-lg cursor-pointer transition-all ${
                               selectedStrategy === "return"
                                 ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                : "border-gray-200 hover:border-gray-300"
+                                : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                             }`}
                             onClick={() => setSelectedStrategy("return")}
                           >
@@ -3424,7 +3420,7 @@ export const StockSelection = ({
                           <div className="alert-warning border rounded-lg p-3 text-xs">
                             <div className="flex items-start gap-2">
                               <svg
-                                className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0"
+                                className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0"
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -3435,10 +3431,10 @@ export const StockSelection = ({
                                 />
                               </svg>
                               <div className="flex-1">
-                                <p className="font-medium text-amber-800 mb-1.5">
+                                <p className="font-medium text-amber-800 dark:text-amber-200 mb-1.5">
                                   Generation Limit Reached
                                 </p>
-                                <p className="text-amber-700 mb-2">
+                                <p className="text-amber-700 dark:text-amber-300 mb-2">
                                   You have used all 2 generations for the{" "}
                                   <span className="font-medium">
                                     {selectedStrategy.charAt(0).toUpperCase() +
@@ -3448,11 +3444,11 @@ export const StockSelection = ({
                                   focused set of high-quality portfolio options
                                   to choose from.
                                 </p>
-                                <div className="bg-amber-100/50 rounded p-2 mt-2">
-                                  <p className="text-amber-800 font-medium mb-1">
+                                <div className="bg-amber-100/50 dark:bg-amber-900/30 rounded p-2 mt-2">
+                                  <p className="text-amber-800 dark:text-amber-200 font-medium mb-1">
                                     What to do next:
                                   </p>
-                                  <ul className="list-disc list-inside space-y-0.5 text-amber-700">
+                                  <ul className="list-disc list-inside space-y-0.5 text-amber-700 dark:text-amber-300">
                                     <li>
                                       Review the{" "}
                                       {allGeneratedPortfolios[selectedStrategy]
@@ -3483,7 +3479,7 @@ export const StockSelection = ({
                           <div className="alert-info border rounded-lg p-3 text-xs">
                             <div className="flex items-start gap-2">
                               <svg
-                                className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"
+                                className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0"
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -3494,10 +3490,10 @@ export const StockSelection = ({
                                 />
                               </svg>
                               <div>
-                                <p className="font-medium text-blue-800 mb-1">
+                                <p className="font-medium text-blue-800 dark:text-blue-200 mb-1">
                                   One Generation Remaining
                                 </p>
-                                <p className="text-blue-700">
+                                <p className="text-blue-700 dark:text-blue-300">
                                   You have used 1 of 2 generations for this
                                   strategy. You can generate portfolios one more
                                   time before reaching the limit.
@@ -3580,7 +3576,7 @@ export const StockSelection = ({
                             selectedStrategy.slice(1)}{" "}
                           Strategy Portfolios
                           {(generationCounts[selectedStrategy] || 0) >= 2 && (
-                            <span className="ml-2 text-xs text-amber-600 font-normal">
+                            <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">
                               ({strategyPortfolios.length} total - Select one to
                               proceed)
                             </span>
@@ -3625,7 +3621,7 @@ export const StockSelection = ({
                                     <div className="text-muted-foreground mb-0.5">
                                       Expected Return
                                     </div>
-                                    <div className="font-semibold text-green-600">
+                                    <div className="font-semibold text-green-600 dark:text-green-400">
                                       {(portfolio.expectedReturn * 100).toFixed(
                                         1,
                                       )}
@@ -3636,7 +3632,7 @@ export const StockSelection = ({
                                     <div className="text-muted-foreground mb-0.5">
                                       Risk Level
                                     </div>
-                                    <div className="font-semibold text-orange-600">
+                                    <div className="font-semibold text-orange-600 dark:text-orange-400">
                                       {(portfolio.risk * 100).toFixed(1)}%
                                     </div>
                                   </div>
@@ -3739,8 +3735,8 @@ export const StockSelection = ({
 
           {/* Success Message Display */}
           {successMessage && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center gap-2 text-green-800">
+            <div className="bg-green-50 border border-green-200 dark:bg-green-950/40 dark:border-green-800 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
                 <CheckCircle className="h-5 w-5" />
                 <span className="font-medium">{successMessage}</span>
               </div>
@@ -3748,8 +3744,8 @@ export const StockSelection = ({
           )}
 
           {/* Navigation */}
-          <div className="flex justify-between pt-6">
-            <Button variant="outline" onClick={onPrev}>
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-between pt-6">
+            <Button variant="outline" onClick={onPrev} aria-label="Go to previous step">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Previous
             </Button>
@@ -3758,8 +3754,8 @@ export const StockSelection = ({
               disabled={!canContinue}
               className={
                 canContinue
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-gray-300 cursor-not-allowed"
+                  ? "bg-primary hover:bg-primary/90"
+                  : "bg-muted cursor-not-allowed text-muted-foreground"
               }
             >
               {canContinue ? (

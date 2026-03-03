@@ -1461,11 +1461,11 @@ export const Portfolio3PartVisualization: React.FC<
                 {error.includes("Missing tickers") ||
                 error.includes("missing") ||
                 error.includes("price data") ? (
-                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                    <p className="font-medium text-yellow-800 mb-1">
+                  <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800 rounded text-xs">
+                    <p className="font-medium text-yellow-800 dark:text-yellow-400 mb-1">
                       💡 How to fix:
                     </p>
-                    <ul className="list-disc list-inside text-yellow-700 space-y-1">
+                    <ul className="list-disc list-inside text-yellow-700 dark:text-yellow-400 space-y-1">
                       <li>Click "Refresh" to warm up all ticker data</li>
                       <li>
                         If the issue persists, try selecting a different

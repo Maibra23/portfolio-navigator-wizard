@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks, Body, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Dict, Optional, Any, Literal, Union
+from typing import List, Dict, Optional, Any, Literal, Union, Tuple
 import logging
 import math
 import json
@@ -26,6 +26,7 @@ from utils.csv_export_generator import CSVExportGenerator
 from utils.shareable_link_generator import ShareableLinkGenerator
 from utils.five_year_projection import run_five_year_projection
 from utils.redis_ttl_monitor import RedisTTLMonitor
+from utils.stress_test_analyzer import StressTestAnalyzer
 from utils.timestamp_utils import normalize_ticker_format
 from middleware.rate_limiting import limiter, RateLimits
 from pypfopt import EfficientFrontier
@@ -4197,85 +4198,9 @@ def run_stress_test(request: Dict[str, Any]):
         if not scenario_results:
             raise HTTPException(status_code=500, detail="Failed to run any stress test scenarios")
         
-        # Calculate resilience score
-        # Resilience Score Formula (0-100 scale):
-        # - Drawdown Score (40%): Based on maximum drawdown during crisis
-        #   - 0% drawdown = 100 points (perfect)
-        #   - 10% drawdown = 90 points
-        #   - 30% drawdown = 70 points
-        #   - 50% drawdown = 50 points
-        #   Formula: 100 - (abs(drawdown) * 100)
-        #
-        # - Recovery Score (40%): Based on recovery time
-        #   - Instant recovery (0 months) = 100 points
-        #   - 3 months = 94 points (100 - 3*2)
-        #   - 6 months = 88 points
-        #   - 12+ months = 76 points (capped)
-        #   Formula: 100 - (recovery_months * 2), max 100, min 0
-        #
-        # - Volatility Score (20%): Based on volatility ratio vs normal
-        #   - 1.0x (normal) = 100 points
-        #   - 1.5x = 75 points (100 - (1.5-1)*50)
-        #   - 2.0x = 50 points
-        #   - 0.5x = 100 points (capped - less volatile is good)
-        #   Formula: max(0, 100 - ((volatility_ratio - 1) * 50)), capped at 100
-        
-        resilience_scores = []
-        for scenario_name, scenario_data in scenario_results.items():
-            metrics = scenario_data.get('metrics', {})
-            max_drawdown = metrics.get('max_drawdown', 0)  # Negative value (e.g., -0.30 for 30% loss)
-            recovery_months = metrics.get('recovery_months')
-            volatility_ratio = metrics.get('volatility_ratio', 1.0)
-            recovered = metrics.get('recovered', False)
-            
-            # Drawdown score: Convert negative drawdown to positive loss percentage
-            # max_drawdown is negative (e.g., -0.30 for 30% loss)
-            # Score = 100 - (loss percentage * 100)
-            # Example: -0.30 drawdown = 30% loss = 70 points
-            drawdown_loss_pct = abs(max_drawdown)  # Convert to positive percentage
-            drawdown_score = max(0, min(100, 100 - (drawdown_loss_pct * 100)))
-            
-            # Recovery score: Penalize longer recovery times
-            # 0 months = 100 points, 1 month = 98 points, 6 months = 88 points, 12+ months = 76 points
-            if recovered and recovery_months is not None and recovery_months >= 0:
-                recovery_score = max(0, min(100, 100 - (recovery_months * 2)))
-            elif not recovered:
-                # Not recovered: Use projected recovery time if available
-                trajectory_projections = metrics.get('trajectory_projections', {})
-                projected_months = trajectory_projections.get('realistic_months')
-                if projected_months is not None and projected_months >= 0:
-                    # Penalize projected recovery time more heavily (factor of 2.5 instead of 2)
-                    recovery_score = max(0, min(100, 100 - (projected_months * 2.5)))
-                else:
-                    # No recovery projection available: assign low score
-                    recovery_score = 20  # Low score for no recovery
-            else:
-                recovery_score = 0
-            
-            # Volatility score: Penalize higher volatility during crisis
-            # Normal volatility (1.0x) = 100 points
-            # Higher volatility reduces score
-            # Lower volatility (good) is capped at 100
-            volatility_penalty = max(0, (volatility_ratio - 1) * 50)  # Penalty for volatility > 1.0
-            volatility_score = max(0, min(100, 100 - volatility_penalty))
-            
-            # Scenario score: weighted average of three components
-            scenario_score = (drawdown_score * 0.4 + recovery_score * 0.4 + volatility_score * 0.2)
-            # Ensure score is between 0 and 100
-            scenario_score = max(0, min(100, scenario_score))
-            resilience_scores.append(scenario_score)
-        
-        # Overall resilience score - average of scenario scores, capped at 100
-        resilience_score = max(0, min(100, sum(resilience_scores) / len(resilience_scores) if resilience_scores else 0.0))
-        
-        # Generate overall assessment
-        if resilience_score >= 70:
-            assessment = f"Your portfolio shows strong resilience (score: {resilience_score:.0f}/100). It has demonstrated good performance during historical market crises."
-        elif resilience_score >= 50:
-            assessment = f"Your portfolio shows moderate resilience (score: {resilience_score:.0f}/100). Consider reviewing the stress test results to understand potential risks."
-        else:
-            assessment = f"Your portfolio shows weak resilience (score: {resilience_score:.0f}/100). The stress test reveals significant vulnerabilities. Consider adjusting your portfolio composition or risk profile."
-        
+        # Calculate resilience score (shared with export)
+        resilience_score, assessment = _calculate_resilience_score(scenario_results)
+
         # Portfolio summary (from optimization step data if available)
         portfolio_summary = {
             'tickers': tickers,
@@ -10569,6 +10494,99 @@ def _enrich_export_portfolio_sectors(portfolio_list: List[Dict[str, Any]]) -> Li
     return out
 
 
+def _calculate_resilience_score(scenario_results: Dict[str, Any]) -> Tuple[float, str]:
+    """
+    Compute resilience score (0-100) and overall_assessment from scenario_results.
+    Reused by /stress-test and _run_stress_test_for_export.
+    """
+    resilience_scores = []
+    for scenario_name, scenario_data in scenario_results.items():
+        metrics = scenario_data.get('metrics', {}) if isinstance(scenario_data, dict) else {}
+        max_drawdown = metrics.get('max_drawdown', 0)
+        recovery_months = metrics.get('recovery_months')
+        volatility_ratio = metrics.get('volatility_ratio', 1.0)
+        recovered = metrics.get('recovered', False)
+
+        drawdown_loss_pct = abs(max_drawdown)
+        drawdown_score = max(0, min(100, 100 - (drawdown_loss_pct * 100)))
+
+        if recovered and recovery_months is not None and recovery_months >= 0:
+            recovery_score = max(0, min(100, 100 - (recovery_months * 2)))
+        elif not recovered:
+            trajectory_projections = metrics.get('trajectory_projections', {}) or {}
+            projected_months = trajectory_projections.get('realistic_months')
+            if projected_months is not None and projected_months >= 0:
+                recovery_score = max(0, min(100, 100 - (projected_months * 2.5)))
+            else:
+                recovery_score = 20
+        else:
+            recovery_score = 0
+
+        volatility_penalty = max(0, (volatility_ratio - 1) * 50)
+        volatility_score = max(0, min(100, 100 - volatility_penalty))
+
+        scenario_score = (drawdown_score * 0.4 + recovery_score * 0.4 + volatility_score * 0.2)
+        scenario_score = max(0, min(100, scenario_score))
+        resilience_scores.append(scenario_score)
+
+    resilience_score = max(0, min(100, sum(resilience_scores) / len(resilience_scores) if resilience_scores else 0.0))
+
+    if resilience_score >= 70:
+        assessment = f"Your portfolio shows strong resilience (score: {resilience_score:.0f}/100). It has demonstrated good performance during historical market crises."
+    elif resilience_score >= 50:
+        assessment = f"Your portfolio shows moderate resilience (score: {resilience_score:.0f}/100). Consider reviewing the stress test results to understand potential risks."
+    else:
+        assessment = f"Your portfolio shows weak resilience (score: {resilience_score:.0f}/100). The stress test reveals significant vulnerabilities. Consider adjusting your portfolio composition or risk profile."
+
+    return resilience_score, assessment
+
+
+def _run_stress_test_for_export(portfolio_list: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    Run COVID-19 and 2008 crisis stress scenarios for export when user did not run the stress step.
+    Returns same shape as /stress-test: scenarios, resilience_score, overall_assessment, portfolio_summary.
+    Returns None if portfolio invalid or both scenario calls fail.
+    """
+    if not portfolio_list or len(portfolio_list) < 2:
+        return None
+    tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
+    weights = {h.get('ticker', h.get('symbol', '')): h.get('allocation', h.get('weight', 0)) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
+    total_weight = sum(weights.values())
+    if total_weight <= 0:
+        return None
+    if abs(total_weight - 1.0) > 0.01:
+        weights = {t: w / total_weight for t, w in weights.items()}
+
+    scenario_results = {}
+    try:
+        analyzer = StressTestAnalyzer()
+        for scenario in ('covid19', '2008_crisis'):
+            try:
+                if scenario == 'covid19':
+                    result = analyzer.analyze_covid19_scenario(tickers, weights)
+                    scenario_results['covid19'] = result
+                else:
+                    result = analyzer.analyze_2008_crisis_scenario(tickers, weights)
+                    scenario_results['2008_crisis'] = result
+            except Exception as scenario_err:
+                logger.warning("Export stress test scenario %s failed: %s", scenario, scenario_err)
+    except Exception as e:
+        logger.warning("Export stress test failed: %s", e)
+        return None
+
+    if not scenario_results:
+        return None
+
+    resilience_score, assessment = _calculate_resilience_score(scenario_results)
+    portfolio_summary = {'tickers': tickers, 'weights': weights, 'capital': None, 'risk_profile': None}
+    return {
+        'scenarios': scenario_results,
+        'resilience_score': round(resilience_score, 1),
+        'overall_assessment': assessment,
+        'portfolio_summary': portfolio_summary,
+    }
+
+
 # Pydantic models for PDF export
 class PDFExportRequest(BaseModel):
     portfolio: Union[List[Dict[str, Any]], Dict[str, Any]]
@@ -10622,9 +10640,15 @@ async def export_pdf(request: Request, body: PDFExportRequest):
         portfolio_list = _normalize_export_portfolio(body.portfolio)
         portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
 
-        # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) are included in PDF
-        # for the peak-to-trough drawdown chart, even if user only ran one scenario interactively
         stress_test_results = body.stressTestResults
+        # Run stress test on the fly when user did not run the stress step, so graph is always in PDF
+        if (stress_test_results is None or not (stress_test_results.get('scenarios'))) and len(portfolio_list) >= 2:
+            on_the_fly = _run_stress_test_for_export(portfolio_list)
+            if on_the_fly:
+                stress_test_results = on_the_fly
+                logger.info("PDF Export: Ran stress test on the fly for drawdown chart")
+
+        # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) when user ran only one interactively
         if stress_test_results and body.includeSections.get('stressTest', False):
             scenarios = stress_test_results.get('scenarios', {})
             required_scenarios = {'covid19', '2008_crisis'}
@@ -10633,44 +10657,38 @@ async def export_pdf(request: Request, body: PDFExportRequest):
 
             if missing_scenarios and portfolio_list:
                 try:
-                    from utils.stress_test_analyzer import StressTestAnalyzer
-                    # Extract tickers and weights from portfolio
-                    # Note: _normalize_export_portfolio stores weights in 'allocation' field (0-1 scale)
                     tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
                     weights = {h.get('ticker', h.get('symbol', '')): h.get('allocation', h.get('weight', 0)) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
-
-                    # Normalize weights if needed
                     total_weight = sum(weights.values())
                     if total_weight > 0 and abs(total_weight - 1.0) > 0.01:
                         weights = {t: w / total_weight for t, w in weights.items()}
 
                     if len(tickers) >= 2 and total_weight > 0:
                         analyzer = StressTestAnalyzer()
-                        logger.info(f"📊 PDF Export: Fetching missing stress test scenarios: {missing_scenarios}")
-
+                        logger.info("PDF Export: Fetching missing stress test scenarios: %s", missing_scenarios)
                         for scenario in missing_scenarios:
                             try:
                                 if scenario == 'covid19':
                                     result = analyzer.analyze_covid19_scenario(tickers, weights)
                                     scenarios['covid19'] = result
-                                    logger.info("✅ Added COVID-19 scenario for PDF drawdown chart")
                                 elif scenario == '2008_crisis':
                                     result = analyzer.analyze_2008_crisis_scenario(tickers, weights)
                                     scenarios['2008_crisis'] = result
-                                    logger.info("✅ Added 2008 Financial Crisis scenario for PDF drawdown chart")
                             except Exception as scenario_err:
-                                logger.warning(f"⚠️ Could not fetch {scenario} for PDF: {scenario_err}")
-
-                        # Update stress test results with both scenarios
+                                logger.warning("Could not fetch %s for PDF: %s", scenario, scenario_err)
                         stress_test_results = {**stress_test_results, 'scenarios': scenarios}
                 except Exception as stress_err:
-                    logger.warning(f"⚠️ Could not enrich stress test data for PDF: {stress_err}")
+                    logger.warning("Could not enrich stress test data for PDF: %s", stress_err)
+
+        include_sections = dict(body.includeSections)
+        if stress_test_results is not None:
+            include_sections['stressTest'] = True
 
         # Prepare data for PDF generation
         pdf_data = {
             "portfolio": portfolio_list,
             "portfolioName": body.portfolioName or "Investment Portfolio",
-            "includeSections": body.includeSections,
+            "includeSections": include_sections,
             "optimizationResults": body.optimizationResults,
             "projectionMetrics": body.projectionMetrics,
             "taxData": body.taxData or {},
@@ -10761,9 +10779,15 @@ async def export_csv(request: Request, body: CSVExportRequest):
         portfolio_list = _normalize_export_portfolio(body.portfolio)
         portfolio_list = _enrich_export_portfolio_sectors(portfolio_list)
 
-        # Ensure both stress test scenarios (COVID-19 and 2008 Crisis) are included
-        # for the peak-to-trough drawdown chart, even if user only ran one scenario interactively
         stress_test_results = body.stressTestResults
+        # Run stress test on the fly when user did not run the stress step, so stress CSV is always available
+        if (stress_test_results is None or not (stress_test_results.get('scenarios'))) and len(portfolio_list) >= 2:
+            on_the_fly = _run_stress_test_for_export(portfolio_list)
+            if on_the_fly:
+                stress_test_results = on_the_fly
+                logger.info("CSV Export: Ran stress test on the fly for stress_test_results.csv")
+
+        # Ensure both stress test scenarios when user ran only one interactively
         if stress_test_results and "stressTest" in body.includeFiles:
             scenarios = stress_test_results.get('scenarios', {})
             required_scenarios = {'covid19', '2008_crisis'}
@@ -10772,35 +10796,28 @@ async def export_csv(request: Request, body: CSVExportRequest):
 
             if missing_scenarios and portfolio_list:
                 try:
-                    from utils.stress_test_analyzer import StressTestAnalyzer
-                    # Note: _normalize_export_portfolio stores weights in 'allocation' field (0-1 scale)
                     tickers = [h.get('ticker', h.get('symbol', '')) for h in portfolio_list if h.get('ticker') or h.get('symbol')]
                     weights = {h.get('ticker', h.get('symbol', '')): h.get('allocation', h.get('weight', 0)) for h in portfolio_list if h.get('ticker') or h.get('symbol')}
-
                     total_weight = sum(weights.values())
                     if total_weight > 0 and abs(total_weight - 1.0) > 0.01:
                         weights = {t: w / total_weight for t, w in weights.items()}
 
                     if len(tickers) >= 2 and total_weight > 0:
                         analyzer = StressTestAnalyzer()
-                        logger.info(f"📊 CSV Export: Fetching missing stress test scenarios: {missing_scenarios}")
-
+                        logger.info("CSV Export: Fetching missing stress test scenarios: %s", missing_scenarios)
                         for scenario in missing_scenarios:
                             try:
                                 if scenario == 'covid19':
                                     result = analyzer.analyze_covid19_scenario(tickers, weights)
                                     scenarios['covid19'] = result
-                                    logger.info("✅ Added COVID-19 scenario for CSV drawdown chart")
                                 elif scenario == '2008_crisis':
                                     result = analyzer.analyze_2008_crisis_scenario(tickers, weights)
                                     scenarios['2008_crisis'] = result
-                                    logger.info("✅ Added 2008 Financial Crisis scenario for CSV drawdown chart")
                             except Exception as scenario_err:
-                                logger.warning(f"⚠️ Could not fetch {scenario} for CSV: {scenario_err}")
-
+                                logger.warning("Could not fetch %s for CSV: %s", scenario, scenario_err)
                         stress_test_results = {**stress_test_results, 'scenarios': scenarios}
                 except Exception as stress_err:
-                    logger.warning(f"⚠️ Could not enrich stress test data for CSV: {stress_err}")
+                    logger.warning("Could not enrich stress test data for CSV: %s", stress_err)
 
         # Executive summary (same info as PDF Section 1) - include when we have core data
         if body.portfolioValue is not None and body.accountType and body.taxYear is not None:

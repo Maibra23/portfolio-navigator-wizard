@@ -85,19 +85,19 @@ export const ThankYouStep = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <Card>
+    <div>
+      <Card className="shadow-sm border-t-2 border-t-primary/30">
         <StepCardHeader
           icon={<StepHeaderIcon icon={CheckCircle} size="lg" />}
           title="Thank you"
           subtitle="You have completed the Portfolio Navigator Wizard. Your portfolio is set up and you can export your report anytime from the Tax & Summary step."
         />
         <CardContent className="text-center space-y-3 pt-0">
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-sm md:text-base font-medium text-foreground">
             Good luck with your investments.
           </p>
           {autoRedirectEnabled && countdown !== null && countdown > 0 && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs md:text-sm text-muted-foreground">
               Starting over in {countdown} seconds.{" "}
               <button
                 type="button"
@@ -108,16 +108,17 @@ export const ThankYouStep = ({
               </button>
             </p>
           )}
-          <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+          <div className="flex flex-col sm:flex-row gap-2 justify-center pt-4">
             <Button
               variant="outline"
               onClick={onBackToSummary}
-              className="gap-2"
+              className="gap-2 min-h-[44px]"
+              aria-label="Back to Tax & Summary"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to summary
             </Button>
-            <Button onClick={onStartOver} className="gap-2">
+            <Button onClick={onStartOver} className="gap-2 min-h-[44px]" aria-label="Start wizard over">
               <RotateCcw className="h-4 w-4" />
               Start over
             </Button>

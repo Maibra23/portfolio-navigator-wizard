@@ -108,21 +108,21 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
 
   const getPerformanceColor = (rating: string) => {
     switch (rating) {
-      case 'Excellent': return 'bg-green-500';
-      case 'Good': return 'bg-blue-500';
-      case 'Fair': return 'bg-yellow-500';
-      case 'Poor': return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 'Excellent': return 'bg-green-500 dark:bg-green-400';
+      case 'Good': return 'bg-blue-500 dark:bg-blue-400';
+      case 'Fair': return 'bg-yellow-500 dark:bg-yellow-400';
+      case 'Poor': return 'bg-red-500 dark:bg-red-400';
+      default: return 'bg-gray-500 dark:bg-gray-400';
     }
   };
 
   const getRiskColor = (rating: string) => {
     switch (rating) {
-      case 'Low': return 'bg-green-500';
-      case 'Medium': return 'bg-yellow-500';
-      case 'High': return 'bg-orange-500';
-      case 'Very High': return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 'Low': return 'bg-green-500 dark:bg-green-400';
+      case 'Medium': return 'bg-yellow-500 dark:bg-yellow-400';
+      case 'High': return 'bg-orange-500 dark:bg-orange-400';
+      case 'Very High': return 'bg-red-500 dark:bg-red-400';
+      default: return 'bg-gray-500 dark:bg-gray-400';
     }
   };
 
@@ -246,7 +246,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
                 {market_overview.best_performing_sector && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Best Performing</span>
-                    <Badge variant="secondary" className="bg-green-500">
+                    <Badge variant="secondary" className="bg-green-500 dark:bg-green-400">
                       {market_overview.best_performing_sector}
                     </Badge>
                   </div>
@@ -254,7 +254,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
                 {market_overview.highest_risk_sector && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Highest Risk</span>
-                    <Badge variant="secondary" className="bg-red-500">
+                    <Badge variant="secondary" className="bg-red-500 dark:bg-red-400">
                       {market_overview.highest_risk_sector}
                     </Badge>
                   </div>
@@ -262,7 +262,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
                 {market_overview.most_diversified_sector && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Most Diversified</span>
-                    <Badge variant="secondary" className="bg-blue-500">
+                    <Badge variant="secondary" className="bg-blue-500 dark:bg-blue-400">
                       {market_overview.most_diversified_sector}
                     </Badge>
                   </div>

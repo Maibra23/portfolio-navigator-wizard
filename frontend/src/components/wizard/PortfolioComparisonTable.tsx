@@ -256,7 +256,7 @@ export const PortfolioComparisonTable: React.FC<
                   </span>
                   {tripleOptimizationResults.comparison?.weights_vs_current && (
                     <span
-                      className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.return_difference >= 0 ? "text-green-500" : "text-red-500"}`}
+                      className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.return_difference >= 0 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                     >
                       (
                       {tripleOptimizationResults.comparison.weights_vs_current
@@ -289,7 +289,7 @@ export const PortfolioComparisonTable: React.FC<
                       {tripleOptimizationResults.comparison
                         ?.market_vs_current && (
                         <span
-                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.return_difference >= 0 ? "text-green-500" : "text-red-500"}`}
+                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.return_difference >= 0 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                         >
                           (
                           {tripleOptimizationResults.comparison
@@ -338,7 +338,7 @@ export const PortfolioComparisonTable: React.FC<
                   </span>
                   {tripleOptimizationResults.comparison?.weights_vs_current && (
                     <span
-                      className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.risk_difference <= 0 ? "text-green-500" : "text-red-500"}`}
+                      className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.risk_difference <= 0 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                     >
                       (
                       {tripleOptimizationResults.comparison.weights_vs_current
@@ -371,7 +371,7 @@ export const PortfolioComparisonTable: React.FC<
                       {tripleOptimizationResults.comparison
                         ?.market_vs_current && (
                         <span
-                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.risk_difference <= 0 ? "text-green-500" : "text-red-500"}`}
+                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.risk_difference <= 0 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                         >
                           (
                           {tripleOptimizationResults.comparison
@@ -423,7 +423,7 @@ export const PortfolioComparisonTable: React.FC<
                   </span>
                   {tripleOptimizationResults.comparison?.weights_vs_current && (
                     <span
-                      className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.sharpe_difference >= 0 ? "text-green-500" : "text-red-500"}`}
+                      className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.sharpe_difference >= 0 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                     >
                       (
                       {tripleOptimizationResults.comparison.weights_vs_current
@@ -458,7 +458,7 @@ export const PortfolioComparisonTable: React.FC<
                       {tripleOptimizationResults.comparison
                         ?.market_vs_current && (
                         <span
-                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.sharpe_difference >= 0 ? "text-green-500" : "text-red-500"}`}
+                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.sharpe_difference >= 0 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
                         >
                           (
                           {tripleOptimizationResults.comparison

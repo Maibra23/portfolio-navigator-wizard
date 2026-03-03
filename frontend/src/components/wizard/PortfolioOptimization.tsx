@@ -86,6 +86,7 @@ import {
   getVisualizationPalette,
 } from "@/utils/chartThemes";
 import { Skeleton } from "@/components/ui/skeleton";
+import { colors, bgColors, borderColors, getValueColor } from "@/utils/semanticColors";
 
 // Layout constants (theme-independent)
 const layoutConstants = {
@@ -114,7 +115,7 @@ interface PortfolioMetrics {
 
 // Selected portfolio data to pass to next step
 interface SelectedPortfolioData {
-  source: "current" | "optimized";
+  source: "current" | "weights" | "market";
   tickers: string[];
   weights: Record<string, number>;
   metrics: {
@@ -3057,8 +3058,8 @@ export const PortfolioOptimization = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4">
-      <Card>
+    <div>
+      <Card className="shadow-sm border-t-2 border-t-primary/30">
         <StepCardHeader
           icon={<StepHeaderIcon icon={BarChart3} size="md" />}
           title="Portfolio Optimization"
@@ -3093,7 +3094,7 @@ export const PortfolioOptimization = ({
               setActiveTab(value as any);
             }}
           >
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Info className="h-4 w-4" />
                 Overview
@@ -3130,7 +3131,7 @@ export const PortfolioOptimization = ({
             <TabsContent value="overview" className="space-y-4">
               <div className="bg-muted rounded-lg p-3 border border-border">
                 <div className="flex items-center gap-2 mb-1">
-                  <Lightbulb className="h-4 w-4 text-blue-600" />
+                  <Lightbulb className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <h3 className="text-base font-semibold text-foreground">
                     Portfolio Optimization
                   </h3>
@@ -3163,8 +3164,8 @@ export const PortfolioOptimization = ({
                             className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
                           >
                             <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-medium text-blue-600">
+                              <div className="w-7 h-7 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
                                   {index + 1}
                                 </span>
                               </div>
@@ -3204,32 +3205,32 @@ export const PortfolioOptimization = ({
                     {currentMetrics && (
                       <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
                         <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                          <div className="text-xl font-bold text-emerald-700">
+                          <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
                             {(
                               (currentMetrics.expectedReturn || 0) * 100
                             ).toFixed(1)}
                             %
                           </div>
-                          <div className="text-xs text-emerald-600 mt-0.5">
+                          <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
                             Expected Return
                           </div>
                         </div>
                         <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                          <div className="text-xl font-bold text-amber-700">
+                          <div className="text-xl font-bold text-amber-700 dark:text-amber-300">
                             {((currentMetrics.risk || 0) * 100).toFixed(1)}%
                           </div>
-                          <div className="text-xs text-amber-600 mt-0.5">
+                          <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
                             Risk Level
                           </div>
                         </div>
                         <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                          <div className="text-xl font-bold text-purple-700">
+                          <div className="text-xl font-bold text-purple-700 dark:text-purple-300">
                             {(currentMetrics.diversificationScore || 0).toFixed(
                               0,
                             )}
                             %
                           </div>
-                          <div className="text-xs text-purple-600 mt-0.5">
+                          <div className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
                             Diversification
                           </div>
                         </div>
@@ -3800,8 +3801,8 @@ export const PortfolioOptimization = ({
                         </CollapsibleContent>
                       </Collapsible>
                       {/* Info: Always optimizes from market tickers */}
-                      <div className="flex items-center justify-center gap-2 p-3 bg-blue-500/10/50 rounded-lg border border-blue-200">
-                        <Info className="h-4 w-4 text-blue-600" />
+                      <div className="flex items-center justify-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         <span className="text-sm text-blue-400">
                           Optimizes portfolio from eligible market tickers
                           matching your risk profile
@@ -3851,7 +3852,7 @@ export const PortfolioOptimization = ({
                       )}
 
                       {successMessage && (
-                        <Alert className="bg-green-500/10 border-green-200 text-green-400 mt-4">
+                        <Alert className="bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800 text-green-400 mt-4">
                           <CheckCircle className="h-4 w-4" />
                           <AlertDescription>{successMessage}</AlertDescription>
                         </Alert>
@@ -4745,7 +4746,7 @@ export const PortfolioOptimization = ({
                                               Δ Return:
                                             </span>
                                             <span
-                                              className={`font-semibold ${data.return > currentPortfolioMetrics.expected_return ? "text-green-600" : "text-red-600"}`}
+                                              className={`font-semibold ${data.return > currentPortfolioMetrics.expected_return ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                             >
                                               {data.return >
                                               currentPortfolioMetrics.expected_return
@@ -4767,7 +4768,7 @@ export const PortfolioOptimization = ({
                                               Δ Risk:
                                             </span>
                                             <span
-                                              className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? "text-green-600" : "text-red-600"}`}
+                                              className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                             >
                                               {data.risk <
                                               currentPortfolioMetrics.risk
@@ -5567,7 +5568,7 @@ export const PortfolioOptimization = ({
                         {tripleOptimizationResults ? (
                           <>
                             <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded-full bg-red-500/100 border-2 border-background shadow"></div>
+                              <div className="w-4 h-4 rounded-full bg-red-50 dark:bg-red-950/40 border-2 border-background shadow"></div>
                               <span
                                 style={{ color: chartTheme.text.secondary }}
                               >
@@ -5612,7 +5613,7 @@ export const PortfolioOptimization = ({
                           <>
                             {mvoResults.current_portfolio && (
                               <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 rounded-full bg-red-500/100 border-2 border-background shadow"></div>
+                                <div className="w-4 h-4 rounded-full bg-red-50 dark:bg-red-950/40 border-2 border-background shadow"></div>
                                 <span
                                   style={{ color: chartTheme.text.secondary }}
                                 >
@@ -5674,7 +5675,7 @@ export const PortfolioOptimization = ({
                                     }}
                                   >
                                     <div className="flex flex-col items-center gap-1">
-                                      <div className="w-3 h-3 rounded-full bg-red-500/100 border border-background shadow-sm"></div>
+                                      <div className="w-3 h-3 rounded-full bg-red-50 dark:bg-red-950/40 border border-background shadow-sm"></div>
                                       <span
                                         className="font-medium text-sm"
                                         style={{
@@ -5846,7 +5847,7 @@ export const PortfolioOptimization = ({
                                       {tripleOptimizationResults.comparison
                                         ?.weights_vs_current && (
                                         <span
-                                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.return_difference >= 0 ? "text-green-600" : "text-red-600"}`}
+                                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.return_difference >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                         >
                                           (
                                           {tripleOptimizationResults.comparison
@@ -5885,7 +5886,7 @@ export const PortfolioOptimization = ({
                                         {tripleOptimizationResults.comparison
                                           ?.market_vs_current && (
                                           <span
-                                            className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.return_difference >= 0 ? "text-green-600" : "text-red-600"}`}
+                                            className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.return_difference >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                           >
                                             (
                                             {tripleOptimizationResults
@@ -5947,7 +5948,7 @@ export const PortfolioOptimization = ({
                                       {tripleOptimizationResults.comparison
                                         ?.weights_vs_current && (
                                         <span
-                                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.risk_difference <= 0 ? "text-green-600" : "text-red-600"}`}
+                                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.risk_difference <= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                         >
                                           (
                                           {tripleOptimizationResults.comparison
@@ -5986,7 +5987,7 @@ export const PortfolioOptimization = ({
                                         {tripleOptimizationResults.comparison
                                           ?.market_vs_current && (
                                           <span
-                                            className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.risk_difference <= 0 ? "text-green-600" : "text-red-600"}`}
+                                            className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.risk_difference <= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                           >
                                             (
                                             {tripleOptimizationResults
@@ -6042,7 +6043,7 @@ export const PortfolioOptimization = ({
                                       {tripleOptimizationResults.comparison
                                         ?.weights_vs_current && (
                                         <span
-                                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.sharpe_difference >= 0 ? "text-green-600" : "text-red-600"}`}
+                                          className={`ml-1 text-xs ${tripleOptimizationResults.comparison.weights_vs_current.sharpe_difference >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                         >
                                           (
                                           {tripleOptimizationResults.comparison
@@ -6075,7 +6076,7 @@ export const PortfolioOptimization = ({
                                         {tripleOptimizationResults.comparison
                                           ?.market_vs_current && (
                                           <span
-                                            className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.sharpe_difference >= 0 ? "text-green-600" : "text-red-600"}`}
+                                            className={`ml-1 text-xs ${tripleOptimizationResults.comparison.market_vs_current.sharpe_difference >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                           >
                                             (
                                             {tripleOptimizationResults
@@ -6385,7 +6386,7 @@ export const PortfolioOptimization = ({
                             <div className="mb-4 p-3 rounded-lg bg-muted border border-border">
                               <div className="flex items-start gap-2">
                                 <svg
-                                  className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0"
+                                  className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
                                 >
@@ -6396,10 +6397,10 @@ export const PortfolioOptimization = ({
                                   />
                                 </svg>
                                 <div className="flex-1">
-                                  <div className="font-semibold text-amber-800 mb-1">
+                                  <div className="font-semibold text-amber-800 dark:text-amber-200 mb-1">
                                     Data Quality Notice
                                   </div>
-                                  <div className="text-sm text-amber-700 space-y-1">
+                                  <div className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
                                     {dualOptimizationResults.comparison.reliability_reasons?.map(
                                       (reason: string, idx: number) => (
                                         <div key={idx}>• {reason}</div>
@@ -6454,8 +6455,8 @@ export const PortfolioOptimization = ({
                                 </div>
                                 {dualOptimizationResults.comparison
                                   .current_metrics_unreliable && (
-                                  <div className="mt-2 pt-2 border-t border-slate-300">
-                                    <div className="font-semibold text-amber-700">
+                                  <div className="mt-2 pt-2 border-t border-slate-300 dark:border-slate-600">
+                                    <div className="font-semibold text-amber-700 dark:text-amber-300">
                                       ⚠️ Current portfolio metrics appear
                                       unreliable.
                                     </div>
@@ -6488,31 +6489,31 @@ export const PortfolioOptimization = ({
                                   if (s < 0)
                                     return {
                                       label: "Poor",
-                                      color: "text-red-600",
-                                      bg: "bg-red-100",
+                                      color: "text-red-600 dark:text-red-400",
+                                      bg: "bg-red-100 dark:bg-red-900/50",
                                     };
                                   if (s < 0.5)
                                     return {
                                       label: "Below Avg",
-                                      color: "text-orange-600",
-                                      bg: "bg-orange-100",
+                                      color: "text-orange-600 dark:text-orange-400",
+                                      bg: "bg-orange-100 dark:bg-orange-900/50",
                                     };
                                   if (s < 1.0)
                                     return {
                                       label: "Good",
-                                      color: "text-blue-600",
-                                      bg: "bg-blue-100",
+                                      color: "text-blue-600 dark:text-blue-400",
+                                      bg: "bg-blue-100 dark:bg-blue-900/50",
                                     };
                                   if (s < 2.0)
                                     return {
                                       label: "Very Good",
-                                      color: "text-green-600",
-                                      bg: "bg-green-100",
+                                      color: "text-green-600 dark:text-green-400",
+                                      bg: "bg-green-100 dark:bg-green-900/50",
                                     };
                                   return {
                                     label: "Excellent",
-                                    color: "text-purple-600",
-                                    bg: "bg-purple-100",
+                                    color: "text-purple-600 dark:text-purple-400",
+                                    bg: "bg-purple-100 dark:bg-purple-900/50",
                                   };
                                 };
 
@@ -6532,12 +6533,12 @@ export const PortfolioOptimization = ({
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                      <div className="flex-1 flex items-center justify-between px-2 py-1.5 rounded border border-red-200 bg-red-500/10">
-                                        <span className="text-xs text-red-500">
+                                      <div className="flex-1 flex items-center justify-between px-2 py-1.5 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
+                                        <span className="text-xs text-red-500 dark:text-red-400">
                                           Current
                                         </span>
                                         <div className="flex items-center gap-1.5">
-                                          <span className="font-bold text-red-800">
+                                          <span className="font-bold text-red-800 dark:text-red-200">
                                             {currentSharpe.toFixed(2)}
                                           </span>
                                           <span
@@ -6547,8 +6548,8 @@ export const PortfolioOptimization = ({
                                           </span>
                                         </div>
                                       </div>
-                                      <div className="flex-1 flex items-center justify-between px-2 py-1.5 rounded border border-green-200 bg-green-500/10">
-                                        <span className="text-xs text-green-700">
+                                      <div className="flex-1 flex items-center justify-between px-2 py-1.5 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40">
+                                        <span className="text-xs text-green-700 dark:text-green-300">
                                           Optimized
                                         </span>
                                         <div className="flex items-center gap-1.5">
@@ -6573,41 +6574,41 @@ export const PortfolioOptimization = ({
                                             : `Your current portfolio performs well.`}
                                     </p>
                                     <div className="grid grid-cols-5 gap-1 text-xs text-muted-foreground">
-                                      <div className="text-center px-1 py-0.5 rounded bg-red-500/10 border border-red-100">
-                                        <div className="font-medium text-red-500">
+                                      <div className="text-center px-1 py-0.5 rounded bg-red-50 dark:bg-red-950/40 border border-red-100">
+                                        <div className="font-medium text-red-500 dark:text-red-400">
                                           &lt; 0
                                         </div>
-                                        <div className="text-red-600">Poor</div>
+                                        <div className="text-red-600 dark:text-red-400">Poor</div>
                                       </div>
-                                      <div className="text-center px-1 py-0.5 rounded bg-orange-50 border border-orange-100">
-                                        <div className="font-medium text-orange-700">
+                                      <div className="text-center px-1 py-0.5 rounded bg-orange-50 dark:bg-orange-950/40 border border-orange-100 dark:border-orange-800">
+                                        <div className="font-medium text-orange-700 dark:text-orange-300">
                                           0-0.5
                                         </div>
-                                        <div className="text-orange-600">
+                                        <div className="text-orange-600 dark:text-orange-400">
                                           Below Avg
                                         </div>
                                       </div>
-                                      <div className="text-center px-1 py-0.5 rounded bg-blue-500/10 border border-blue-100">
-                                        <div className="font-medium text-blue-500">
+                                      <div className="text-center px-1 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-100">
+                                        <div className="font-medium text-blue-500 dark:text-blue-400">
                                           0.5-1.0
                                         </div>
-                                        <div className="text-blue-600">
+                                        <div className="text-blue-600 dark:text-blue-400">
                                           Good
                                         </div>
                                       </div>
-                                      <div className="text-center px-1 py-0.5 rounded bg-green-500/10 border border-green-100">
-                                        <div className="font-medium text-green-700">
+                                      <div className="text-center px-1 py-0.5 rounded bg-green-50 dark:bg-green-950/40 border border-green-100">
+                                        <div className="font-medium text-green-700 dark:text-green-300">
                                           1.0-2.0
                                         </div>
-                                        <div className="text-green-600">
+                                        <div className="text-green-600 dark:text-green-400">
                                           Very Good
                                         </div>
                                       </div>
-                                      <div className="text-center px-1 py-0.5 rounded bg-purple-50 border border-purple-100">
-                                        <div className="font-medium text-purple-700">
+                                      <div className="text-center px-1 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 border border-purple-100">
+                                        <div className="font-medium text-purple-700 dark:text-purple-300">
                                           &gt; 2.0
                                         </div>
-                                        <div className="text-purple-600">
+                                        <div className="text-purple-600 dark:text-purple-400">
                                           Exceptional
                                         </div>
                                       </div>
@@ -6659,8 +6660,8 @@ export const PortfolioOptimization = ({
                                     className="flex items-center justify-between p-3 border rounded-lg bg-muted border-border"
                                   >
                                     <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                                        <span className="text-sm font-medium text-green-600">
+                                      <div className="w-8 h-8 bg-green-100 dark:bg-green-900/50 rounded-full flex items-center justify-center">
+                                        <span className="text-sm font-medium text-green-600 dark:text-green-400">
                                           {index + 1}
                                         </span>
                                       </div>
@@ -6668,16 +6669,16 @@ export const PortfolioOptimization = ({
                                         <div className="font-medium text-green-900">
                                           {ticker}
                                         </div>
-                                        <div className="text-xs text-green-700">
+                                        <div className="text-xs text-green-700 dark:text-green-300">
                                           Market Selection
                                         </div>
                                       </div>
                                     </div>
                                     <div className="text-right">
-                                      <div className="font-semibold text-green-700">
+                                      <div className="font-semibold text-green-700 dark:text-green-300">
                                         {((weight as number) * 100).toFixed(1)}%
                                       </div>
-                                      <div className="text-xs text-green-600">
+                                      <div className="text-xs text-green-600 dark:text-green-400">
                                         {(
                                           (weight as number) * capital
                                         ).toLocaleString()}{" "}
@@ -6723,7 +6724,7 @@ export const PortfolioOptimization = ({
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Current vs Optimized - Uses Triple or Dual Results */}
                         <div className="p-6 rounded-lg bg-muted border border-border">
-                          <div className="text-base font-semibold text-gray-700 mb-4">
+                          <div className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-4">
                             {tripleOptimizationResults
                               ? "Current → Recommended"
                               : "Current → Optimized"}
@@ -6786,7 +6787,7 @@ export const PortfolioOptimization = ({
                                 <>
                                   <div className="flex justify-between items-center py-1 group relative">
                                     <div className="flex items-center gap-1">
-                                      <span className="text-sm font-medium text-gray-700">
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                         Expected Return
                                       </span>
                                       <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
@@ -6804,7 +6805,7 @@ export const PortfolioOptimization = ({
                                       <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                     <span
-                                      className={`text-lg font-bold ${returnDiff >= 0 ? "text-green-600" : "text-red-600"}`}
+                                      className={`text-lg font-bold ${returnDiff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                     >
                                       {returnDiff >= 0 ? "+" : ""}
                                       {(returnDiff * 100).toFixed(1)}%
@@ -6812,7 +6813,7 @@ export const PortfolioOptimization = ({
                                   </div>
                                   <div className="flex justify-between items-center py-1 group relative">
                                     <div className="flex items-center gap-1">
-                                      <span className="text-sm font-medium text-gray-700">
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                         Risk (Volatility)
                                       </span>
                                       <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
@@ -6831,7 +6832,7 @@ export const PortfolioOptimization = ({
                                       <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                     <span
-                                      className={`text-lg font-bold ${riskDiff <= 0 ? "text-green-600" : "text-red-600"}`}
+                                      className={`text-lg font-bold ${riskDiff <= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                     >
                                       {riskDiff <= 0 ? "" : "+"}
                                       {(riskDiff * 100).toFixed(1)}%
@@ -6839,7 +6840,7 @@ export const PortfolioOptimization = ({
                                   </div>
                                   <div className="flex justify-between items-center py-1 group relative border-t border-border pt-2 mt-2">
                                     <div className="flex items-center gap-1">
-                                      <span className="text-sm font-medium text-gray-700">
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                         Sharpe Ratio
                                       </span>
                                       <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
@@ -6859,7 +6860,7 @@ export const PortfolioOptimization = ({
                                       <Info className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                     <span
-                                      className={`text-lg font-bold ${sharpeDiff >= 0 ? "text-green-600" : "text-red-600"}`}
+                                      className={`text-lg font-bold ${sharpeDiff >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                     >
                                       {sharpeDiff >= 0 ? "+" : ""}
                                       {sharpeDiff.toFixed(2)}
@@ -6873,7 +6874,7 @@ export const PortfolioOptimization = ({
 
                         {/* Risk Profile Compliance */}
                         <div className="p-6 rounded-lg bg-muted border border-border">
-                          <div className="text-base font-semibold text-gray-700 mb-4 flex items-center gap-1 group relative">
+                          <div className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-1 group relative">
                             Risk Profile Compliance
                             <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                               <div className="font-semibold mb-1">
@@ -6940,31 +6941,31 @@ export const PortfolioOptimization = ({
                               return (
                                 <>
                                   <div className="flex justify-between items-center py-1">
-                                    <span className="text-sm font-medium text-gray-700">
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                       Max Allowed
                                     </span>
-                                    <span className="text-lg font-bold text-indigo-600">
+                                    <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
                                       {(maxRisk * 100).toFixed(0)}%
                                     </span>
                                   </div>
                                   <div className="flex justify-between items-center py-1">
-                                    <span className="text-sm font-medium text-gray-700">
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                       Portfolio Risk
                                     </span>
                                     <span
-                                      className={`text-lg font-bold ${isCompliant ? "text-green-600" : "text-red-600"}`}
+                                      className={`text-lg font-bold ${isCompliant ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                     >
                                       {(optimizedRisk * 100).toFixed(1)}%
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                                     {isCompliant ? (
-                                      <CheckCircle className="h-5 w-5 text-green-600" />
+                                      <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                                     ) : (
-                                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                                      <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
                                     )}
                                     <span
-                                      className={`text-sm font-semibold ${isCompliant ? "text-green-600" : "text-red-600"}`}
+                                      className={`text-sm font-semibold ${isCompliant ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
                                     >
                                       {isCompliant
                                         ? "✓ Compliant"
@@ -7082,10 +7083,10 @@ export const PortfolioOptimization = ({
                       ];
 
                       const getScoreColor = (score: number) => {
-                        if (score >= 80) return "text-green-600";
-                        if (score >= 60) return "text-blue-600";
-                        if (score >= 40) return "text-amber-600";
-                        return "text-red-600";
+                        if (score >= 80) return "text-green-600 dark:text-green-400";
+                        if (score >= 60) return "text-blue-600 dark:text-blue-400";
+                        if (score >= 40) return "text-amber-600 dark:text-amber-400";
+                        return "text-red-600 dark:text-red-400";
                       };
 
                       const getScoreBarColor = (score: number) => {
@@ -7103,10 +7104,10 @@ export const PortfolioOptimization = ({
                             : "green";
 
                       return (
-                        <Card className="border-2 border-purple-200">
+                        <Card className="border-2 border-purple-200 dark:border-purple-700">
                           <CardHeader>
                             <CardTitle className="text-lg flex items-center gap-2">
-                              <Award className="h-5 w-5 text-purple-600" />
+                              <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                               Multi-Factor Quality Analysis
                             </CardTitle>
                             <p className="text-sm text-muted-foreground">
@@ -7174,7 +7175,7 @@ export const PortfolioOptimization = ({
 
                             {/* Factor Breakdown */}
                             <div className="space-y-4">
-                              <h4 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
+                              <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                 <Info className="h-4 w-4" />
                                 Factor Breakdown
                               </h4>
@@ -7186,7 +7187,7 @@ export const PortfolioOptimization = ({
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2 group relative">
                                         <Icon className="h-4 w-4 text-muted-foreground" />
-                                        <span className="text-sm font-medium text-gray-700">
+                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                           {factor.name}
                                         </span>
                                         <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
@@ -7236,29 +7237,29 @@ export const PortfolioOptimization = ({
                                 };
                                 return (
                                   <div className="pt-4 border-t border-border">
-                                    <h4 className="font-semibold text-sm text-gray-700 mb-3">
+                                    <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-300 mb-3">
                                       Quality Score Comparison
                                     </h4>
                                     <div className="grid grid-cols-3 gap-3">
                                       <div
-                                        className={`p-3 rounded-lg border-2 ${selected === "current" ? "border-red-500 bg-red-500/10" : "border-border"}`}
+                                        className={`p-3 rounded-lg border-2 ${selected === "current" ? "border-red-500 bg-red-50 dark:bg-red-950/40" : "border-border"}`}
                                       >
                                         <div className="text-xs text-muted-foreground mb-1">
                                           Current
                                         </div>
-                                        <div className="text-lg font-bold text-red-600">
+                                        <div className="text-lg font-bold text-red-600 dark:text-red-400">
                                           {tripleQuality.current.composite_score.toFixed(
                                             0,
                                           )}
                                         </div>
                                       </div>
                                       <div
-                                        className={`p-3 rounded-lg border-2 ${selected === "weights" ? "border-blue-500 bg-blue-500/10" : "border-border"}`}
+                                        className={`p-3 rounded-lg border-2 ${selected === "weights" ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-border"}`}
                                       >
                                         <div className="text-xs text-muted-foreground mb-1">
                                           Weights-Opt
                                         </div>
-                                        <div className="text-lg font-bold text-blue-600">
+                                        <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
                                           {tripleQuality.weights.composite_score.toFixed(
                                             0,
                                           )}
@@ -7266,12 +7267,12 @@ export const PortfolioOptimization = ({
                                       </div>
                                       {tripleQuality.market && (
                                         <div
-                                          className={`p-3 rounded-lg border-2 ${selected === "market" ? "border-green-500 bg-green-500/10" : "border-border"}`}
+                                          className={`p-3 rounded-lg border-2 ${selected === "market" ? "border-green-500 bg-green-50 dark:bg-green-950/40" : "border-border"}`}
                                         >
                                           <div className="text-xs text-muted-foreground mb-1">
                                             Market-Opt
                                           </div>
-                                          <div className="text-lg font-bold text-green-600">
+                                          <div className="text-lg font-bold text-green-600 dark:text-green-400">
                                             {tripleQuality.market.composite_score.toFixed(
                                               0,
                                             )}
@@ -7340,10 +7341,10 @@ export const PortfolioOptimization = ({
                       const bestCase = selectedMonteCarlo.percentiles?.p95 || 0;
 
                       return (
-                        <Card className="border-2 border-blue-200">
+                        <Card className="border-2 border-blue-200 dark:border-blue-800">
                           <CardHeader>
                             <CardTitle className="text-lg flex items-center gap-2">
-                              <Activity className="h-5 w-5 text-blue-600" />
+                              <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                               Monte Carlo Risk Analysis
                             </CardTitle>
                             <p className="text-sm text-muted-foreground">
@@ -7377,7 +7378,7 @@ export const PortfolioOptimization = ({
                             monteCarloData.current?.percentiles != null &&
                             monteCarloData.weights?.percentiles != null ? (
                               <>
-                                <div className="text-sm font-medium text-gray-700 mb-2">
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                   Return distribution comparison (5th, 50th,
                                   95th percentiles)
                                 </div>
@@ -7388,15 +7389,15 @@ export const PortfolioOptimization = ({
                                         <th className="text-left p-2 font-medium border-b border-border rounded-tl-lg">
                                           Percentile
                                         </th>
-                                        <th className="text-center p-2 font-medium border-b border-border text-red-500">
+                                        <th className="text-center p-2 font-medium border-b border-border text-red-500 dark:text-red-400">
                                           Current
                                         </th>
-                                        <th className="text-center p-2 font-medium border-b border-border text-blue-500">
+                                        <th className="text-center p-2 font-medium border-b border-border text-blue-500 dark:text-blue-400">
                                           Weights-Opt
                                         </th>
                                         {monteCarloData.market?.percentiles !=
                                           null && (
-                                          <th className="text-center p-2 font-medium border-b border-border text-green-700 rounded-tr-lg">
+                                          <th className="text-center p-2 font-medium border-b border-border text-green-700 dark:text-green-300 rounded-tr-lg">
                                             Market-Opt
                                           </th>
                                         )}
@@ -7407,7 +7408,7 @@ export const PortfolioOptimization = ({
                                         <td className="p-2 text-muted-foreground">
                                           5th (worst 5%)
                                         </td>
-                                        <td className="p-2 text-center font-medium text-red-800">
+                                        <td className="p-2 text-center font-medium text-red-800 dark:text-red-200">
                                           {(
                                             (monteCarloData.current.percentiles
                                               ?.p5 ?? 0) * 100
@@ -7436,7 +7437,7 @@ export const PortfolioOptimization = ({
                                         <td className="p-2 text-muted-foreground">
                                           50th (median)
                                         </td>
-                                        <td className="p-2 text-center font-medium text-red-800">
+                                        <td className="p-2 text-center font-medium text-red-800 dark:text-red-200">
                                           {(
                                             (monteCarloData.current.percentiles
                                               ?.p50 ?? 0) * 100
@@ -7465,7 +7466,7 @@ export const PortfolioOptimization = ({
                                         <td className="p-2 text-muted-foreground rounded-bl-lg">
                                           95th (best 5%)
                                         </td>
-                                        <td className="p-2 text-center font-medium text-red-800">
+                                        <td className="p-2 text-center font-medium text-red-800 dark:text-red-200">
                                           {(
                                             (monteCarloData.current.percentiles
                                               ?.p95 ?? 0) * 100
@@ -7503,47 +7504,47 @@ export const PortfolioOptimization = ({
                               </>
                             ) : (
                               <div className="grid grid-cols-3 gap-4">
-                                <div className="p-4 rounded-lg bg-red-500/10 border border-red-200">
+                                <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <AlertCircle className="h-4 w-4 text-red-600" />
-                                    <span className="text-xs font-medium text-red-500">
+                                    <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                                    <span className="text-xs font-medium text-red-500 dark:text-red-400">
                                       5th percentile return (worst 5%)
                                     </span>
                                   </div>
-                                  <div className="text-2xl font-bold text-red-800">
+                                  <div className="text-2xl font-bold text-red-800 dark:text-red-200">
                                     {(var95 * 100).toFixed(1)}%
                                   </div>
-                                  <div className="text-xs text-red-600 mt-1">
+                                  <div className="text-xs text-red-600 dark:text-red-400 mt-1">
                                     Worst 5% of simulated outcomes
                                   </div>
                                 </div>
 
-                                <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-200">
+                                <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <TrendingUp className="h-4 w-4 text-blue-600" />
-                                    <span className="text-xs font-medium text-blue-500">
+                                    <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                    <span className="text-xs font-medium text-blue-500 dark:text-blue-400">
                                       Median return (50th percentile)
                                     </span>
                                   </div>
                                   <div className="text-2xl font-bold text-blue-400">
                                     {(expectedReturn * 100).toFixed(1)}%
                                   </div>
-                                  <div className="text-xs text-blue-600 mt-1">
+                                  <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                                     Center of simulated outcomes
                                   </div>
                                 </div>
 
-                                <div className="p-4 rounded-lg bg-green-500/10 border border-green-200">
+                                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800">
                                   <div className="flex items-center gap-2 mb-2">
-                                    <Activity className="h-4 w-4 text-green-600" />
-                                    <span className="text-xs font-medium text-green-700">
+                                    <Activity className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                    <span className="text-xs font-medium text-green-700 dark:text-green-300">
                                       Best Case (95%)
                                     </span>
                                   </div>
                                   <div className="text-2xl font-bold text-green-400">
                                     {(bestCase * 100).toFixed(1)}%
                                   </div>
-                                  <div className="text-xs text-green-600 mt-1">
+                                  <div className="text-xs text-green-600 dark:text-green-400 mt-1">
                                     Optimistic scenario
                                   </div>
                                 </div>
@@ -7552,7 +7553,7 @@ export const PortfolioOptimization = ({
 
                             {/* Return Distribution Area Chart with Multiple Portfolios */}
                             <div className="space-y-2">
-                              <div className="text-sm font-medium text-gray-700">
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 Return Distribution
                               </div>
                               <div className="h-64 w-full">
@@ -8154,7 +8155,7 @@ export const PortfolioOptimization = ({
                                         }
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                                           returnScenarioVisibility.current
-                                            ? "border-red-300 bg-red-500/10 hover:bg-red-100"
+                                            ? "border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50"
                                             : "border-border bg-muted opacity-50"
                                         }`}
                                         title={
@@ -8164,12 +8165,12 @@ export const PortfolioOptimization = ({
                                         }
                                       >
                                         {returnScenarioVisibility.current ? (
-                                          <Eye className="h-4 w-4 text-red-600" />
+                                          <Eye className="h-4 w-4 text-red-600 dark:text-red-400" />
                                         ) : (
                                           <EyeOff className="h-4 w-4 text-muted-foreground" />
                                         )}
                                         <div className="w-3 h-3 rounded-full bg-red-600" />
-                                        <span className="font-medium text-red-500">
+                                        <span className="font-medium text-red-500 dark:text-red-400">
                                           Current
                                         </span>
                                       </button>
@@ -8181,7 +8182,7 @@ export const PortfolioOptimization = ({
                                         }
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                                           returnScenarioVisibility.weights
-                                            ? "border-blue-300 bg-blue-500/10 hover:bg-blue-100"
+                                            ? "border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50"
                                             : "border-border bg-muted opacity-50"
                                         }`}
                                         title={
@@ -8191,12 +8192,12 @@ export const PortfolioOptimization = ({
                                         }
                                       >
                                         {returnScenarioVisibility.weights ? (
-                                          <Eye className="h-4 w-4 text-blue-600" />
+                                          <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                         ) : (
                                           <EyeOff className="h-4 w-4 text-muted-foreground" />
                                         )}
                                         <div className="w-3 h-3 rounded-full bg-blue-600" />
-                                        <span className="font-medium text-blue-500">
+                                        <span className="font-medium text-blue-500 dark:text-blue-400">
                                           Weights-Opt
                                         </span>
                                       </button>
@@ -8209,7 +8210,7 @@ export const PortfolioOptimization = ({
                                           }
                                           className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs transition-all ${
                                             returnScenarioVisibility.market
-                                              ? "border-green-300 bg-green-500/10 hover:bg-green-100"
+                                              ? "border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-950/40 hover:bg-green-100 dark:hover:bg-green-900/50"
                                               : "border-border bg-muted opacity-50"
                                           }`}
                                           title={
@@ -8219,12 +8220,12 @@ export const PortfolioOptimization = ({
                                           }
                                         >
                                           {returnScenarioVisibility.market ? (
-                                            <Eye className="h-4 w-4 text-green-600" />
+                                            <Eye className="h-4 w-4 text-green-600 dark:text-green-400" />
                                           ) : (
                                             <EyeOff className="h-4 w-4 text-muted-foreground" />
                                           )}
                                           <div className="w-3 h-3 rounded-full bg-green-600" />
-                                          <span className="font-medium text-green-700">
+                                          <span className="font-medium text-green-700 dark:text-green-300">
                                             Market-Opt
                                           </span>
                                         </button>
@@ -8234,7 +8235,7 @@ export const PortfolioOptimization = ({
                                 })()}
 
                               {/* Return Scenarios - Compact percentile toggles; click to show that percentile for all portfolio distributions */}
-                              <div className="text-sm font-medium text-gray-700">
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 Return Scenarios
                               </div>
                               <div className="text-xs text-muted-foreground mb-2">
@@ -8283,7 +8284,7 @@ export const PortfolioOptimization = ({
                                       }
                                       className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
                                         isSelected
-                                          ? "border-blue-400 bg-blue-500/10 text-foreground"
+                                          ? "border-blue-400 bg-blue-50 dark:bg-blue-950/40 text-foreground"
                                           : "border-border bg-muted/50 text-muted-foreground hover:bg-muted opacity-70 hover:opacity-100"
                                       }`}
                                       title={
@@ -8401,7 +8402,7 @@ export const PortfolioOptimization = ({
                                   if (v === undefined) return null;
                                   return (
                                     <div className="flex justify-center text-xs mt-2 py-2 border-t border-border/50">
-                                      <span className="font-semibold text-gray-700">
+                                      <span className="font-semibold text-gray-700 dark:text-gray-300">
                                         {(v * 100).toFixed(1)}%
                                       </span>
                                     </div>
@@ -8411,7 +8412,7 @@ export const PortfolioOptimization = ({
 
                             {/* Loss Probability Scenarios */}
                             <div className="space-y-3">
-                              <div className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
                                 Loss Probability Scenarios
                                 <TooltipProvider>
                                   <Tooltip>
@@ -8441,13 +8442,13 @@ export const PortfolioOptimization = ({
                                 </TooltipProvider>
                               </div>
                               <div className="grid grid-cols-2 gap-3">
-                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-200">
-                                  <div className="text-xs font-medium text-red-500 mb-2 flex items-center gap-1">
+                                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
+                                  <div className="text-xs font-medium text-red-500 dark:text-red-400 mb-2 flex items-center gap-1">
                                     10% Loss Threshold
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <Info className="h-3 w-3 text-red-500 cursor-help" />
+                                          <Info className="h-3 w-3 text-red-500 dark:text-red-400 cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent
                                           side="right"
@@ -8467,23 +8468,23 @@ export const PortfolioOptimization = ({
                                       </Tooltip>
                                     </TooltipProvider>
                                   </div>
-                                  <div className="text-2xl font-bold text-red-800">
+                                  <div className="text-2xl font-bold text-red-800 dark:text-red-200">
                                     {selectedMonteCarlo.probability_loss_thresholds?.loss_10pct?.toFixed(
                                       1,
                                     ) || 0}
                                     %
                                   </div>
-                                  <div className="text-xs text-red-600 mt-1">
+                                  <div className="text-xs text-red-600 dark:text-red-400 mt-1">
                                     Probability of 10%+ loss
                                   </div>
                                 </div>
-                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-200">
-                                  <div className="text-xs font-medium text-red-500 mb-2 flex items-center gap-1">
+                                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
+                                  <div className="text-xs font-medium text-red-500 dark:text-red-400 mb-2 flex items-center gap-1">
                                     20% Loss Threshold
                                     <TooltipProvider>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <Info className="h-3 w-3 text-red-500 cursor-help" />
+                                          <Info className="h-3 w-3 text-red-500 dark:text-red-400 cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent
                                           side="right"
@@ -8503,13 +8504,13 @@ export const PortfolioOptimization = ({
                                       </Tooltip>
                                     </TooltipProvider>
                                   </div>
-                                  <div className="text-2xl font-bold text-red-800">
+                                  <div className="text-2xl font-bold text-red-800 dark:text-red-200">
                                     {selectedMonteCarlo.probability_loss_thresholds?.loss_20pct?.toFixed(
                                       1,
                                     ) || 0}
                                     %
                                   </div>
-                                  <div className="text-xs text-red-600 mt-1">
+                                  <div className="text-xs text-red-600 dark:text-red-400 mt-1">
                                     Probability of 20%+ loss
                                   </div>
                                 </div>
@@ -8517,9 +8518,9 @@ export const PortfolioOptimization = ({
                             </div>
 
                             {/* Risk Assessment Summary */}
-                            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-200">
+                            <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
                               <div className="flex items-start gap-3">
-                                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
                                   <div className="font-medium text-foreground mb-2">
                                     Risk Assessment
@@ -8578,13 +8579,13 @@ export const PortfolioOptimization = ({
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="flex items-start gap-3 p-4 bg-blue-500/10 rounded-lg border border-blue-200">
-                      <Info className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
                       <div>
                         <div className="font-medium text-blue-400">
                           Step 1: Run Optimization
                         </div>
-                        <div className="text-sm text-blue-500">
+                        <div className="text-sm text-blue-500 dark:text-blue-400">
                           Go to the "Optimization" tab and click "Optimize &
                           Compare" to analyze your portfolio against the best
                           available options.
@@ -8598,7 +8599,7 @@ export const PortfolioOptimization = ({
                         General Tips for {getRiskProfileDisplay(riskProfile)}{" "}
                         Investors
                       </h4>
-                      <div className="text-sm text-indigo-800 space-y-2">
+                      <div className="text-sm text-indigo-800 dark:text-indigo-200 space-y-2">
                         {riskProfile === "very-conservative" && (
                           <>
                             <p>
@@ -8663,8 +8664,8 @@ export const PortfolioOptimization = ({
           </Tabs>
 
           {/* Navigation */}
-          <div className="flex justify-between pt-6">
-            <Button variant="outline" onClick={onPrev}>
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-between pt-6">
+            <Button variant="outline" onClick={onPrev} aria-label="Go to previous step">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Previous
             </Button>

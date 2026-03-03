@@ -22,6 +22,32 @@ import {
   Wallet,
   Shuffle,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+/** Compare two portfolio snapshots (tickers + allocations). Order-independent; allocation tolerance 0.01. */
+function portfolioSnapshotEquals(
+  a: PortfolioAllocation[],
+  b: PortfolioAllocation[]
+): boolean {
+  if (a.length !== b.length) return false;
+  const ALLOC_TOLERANCE = 0.01;
+  const bySymbol = (arr: PortfolioAllocation[]) =>
+    new Map(arr.map((x) => [x.symbol, x.allocation ?? 0]));
+  const mapA = bySymbol(a);
+  const mapB = bySymbol(b);
+  if (mapA.size !== mapB.size) return false;
+  for (const [sym, allocA] of mapA) {
+    const allocB = mapB.get(sym);
+    if (allocB === undefined || Math.abs(allocA - allocB) > ALLOC_TOLERANCE)
+      return false;
+  }
+  return true;
+}
 
 export interface PortfolioAllocation {
   symbol: string;
@@ -98,6 +124,16 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
     regionLabels: string[];
   } | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const initialSnapshotRef = useRef<PortfolioAllocation[] | null>(null);
+  const lastConfirmedRef = useRef<PortfolioAllocation[] | null>(null);
+
+  if (initialSnapshotRef.current === null) {
+    initialSnapshotRef.current = JSON.parse(JSON.stringify(selectedStocks));
+  }
+
+  const baseline =
+    lastConfirmedRef.current ?? initialSnapshotRef.current ?? [];
+  const hasChanges = !portfolioSnapshotEquals(selectedStocks, baseline);
 
   useEffect(() => {
     let cancelled = false;
@@ -402,6 +438,8 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       onStocksUpdate(selectedStocks);
     }
 
+    lastConfirmedRef.current = JSON.parse(JSON.stringify(nextStocks));
+
     // When showMetricsAfterDone is false (e.g. Recommendations), parent refreshes metrics in onDone; avoid duplicate POST.
     if (!showMetricsAfterDone && onDone) {
       onDone(nextStocks);
@@ -531,8 +569,8 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-emerald-500/10">
-                <Wallet className="h-4 w-4 text-emerald-600" />
+              <div className="p-1.5 rounded-md bg-accent/10">
+                <Wallet className="h-4 w-4 text-accent" />
               </div>
               <CardTitle className="text-sm font-semibold">
                 Your Portfolio
@@ -541,7 +579,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
             <div className="flex items-center gap-2">
               <Badge
                 variant={isValidStockCount ? "default" : "secondary"}
-                className={`text-xs ${isValidStockCount ? "bg-emerald-500/90" : ""}`}
+                className={`text-xs ${isValidStockCount ? "bg-accent text-accent-foreground" : ""}`}
               >
                 {selectedStocks.length} of {minStocks}-{maxStocks} stocks
               </Badge>
@@ -555,7 +593,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Stock Selection</span>
                 <span
-                  className={`font-medium ${isValidStockCount ? "text-emerald-600" : "text-amber-600"}`}
+                  className={`font-medium ${isValidStockCount ? "text-accent" : "text-muted-foreground"}`}
                 >
                   {selectedStocks.length}/{maxStocks}
                 </span>
@@ -566,14 +604,14 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Allocation</span>
                 <span
-                  className={`font-medium ${isValidAllocation ? "text-emerald-600" : totalAllocation > 100 ? "text-red-600" : "text-amber-600"}`}
+                  className={`font-medium ${isValidAllocation ? "text-accent" : totalAllocation > 100 ? "text-destructive" : "text-muted-foreground"}`}
                 >
                   {totalAllocation.toFixed(1)}%
                 </span>
               </div>
               <Progress
                 value={allocationProgress}
-                className={`h-1.5 ${totalAllocation > 100 ? "[&>div]:bg-red-500" : ""}`}
+                className={`h-1.5 ${totalAllocation > 100 ? "[&>div]:bg-destructive" : ""}`}
               />
             </div>
           </div>
@@ -625,7 +663,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
                               updateAllocation(stock.symbol, 0);
                             }
                           }}
-                          className={`w-16 h-8 text-center text-sm ${stock.allocation > 100 ? "border-red-500 bg-red-50" : ""}`}
+                          className={`w-16 h-8 text-center text-sm ${stock.allocation > 100 ? "border-destructive bg-destructive/10" : ""}`}
                           min="0"
                           max="100"
                           step="0.1"
@@ -642,7 +680,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
                       onClick={() => removeStock(stock.symbol)}
                       size="sm"
                       variant="ghost"
-                      className="h-8 w-8 p-0 opacity-50 group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 transition-all"
+                      className="h-8 w-8 p-0 opacity-50 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -707,7 +745,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
           {showValidation && selectedStocks.length > 0 && (
             <div className="space-y-2 pt-2">
               {!isValidStockCount && (
-                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
                   <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
                   <span>
                     {selectedStocks.length < minStocks
@@ -718,7 +756,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               )}
 
               {isValidStockCount && !isValidAllocation && (
-                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
                   <Info className="h-3.5 w-3.5 flex-shrink-0" />
                   <span>
                     {totalAllocation > 100
@@ -729,7 +767,7 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               )}
 
               {isValid && (
-                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-xs text-accent bg-accent/10 rounded-md px-3 py-2 animate-in fade-in slide-in-from-top-1 duration-200">
                   <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
                   <span>
                     Portfolio ready - {selectedStocks.length} stocks, 100%
@@ -747,8 +785,8 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
         <Card className="border-border/60 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-purple-500/10">
-                <TrendingUp className="h-4 w-4 text-purple-600" />
+              <div className="p-1.5 rounded-md bg-primary/10">
+                <TrendingUp className="h-4 w-4 text-primary" />
               </div>
               <CardTitle className="text-sm font-semibold">
                 Portfolio Metrics
@@ -763,33 +801,33 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-3">
-                <div className="text-center p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                  <div className="text-lg font-bold text-emerald-700">
+                <div className="text-center p-3 rounded-lg bg-accent/10 border border-accent/20">
+                  <div className="text-lg font-bold text-accent">
                     {(portfolioMetrics.expectedReturn * 100).toFixed(1)}%
                   </div>
-                  <div className="text-xs text-emerald-600/80">
+                  <div className="text-xs text-accent/80">
                     Expected Return
                   </div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-amber-50 border border-amber-100">
-                  <div className="text-lg font-bold text-amber-700">
+                <div className="text-center p-3 rounded-lg bg-muted border border-border">
+                  <div className="text-lg font-bold text-muted-foreground">
                     {(portfolioMetrics.risk * 100).toFixed(1)}%
                   </div>
-                  <div className="text-xs text-amber-600/80">Risk</div>
+                  <div className="text-xs text-muted-foreground">Risk</div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-blue-50 border border-blue-100">
-                  <div className="text-lg font-bold text-blue-700">
+                <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="text-lg font-bold text-primary">
                     {portfolioMetrics.diversificationScore.toFixed(0)}%
                   </div>
-                  <div className="text-xs text-blue-600/80">
+                  <div className="text-xs text-primary/80">
                     Diversification
                   </div>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-purple-50 border border-purple-100">
-                  <div className="text-lg font-bold text-purple-700">
+                <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="text-lg font-bold text-primary">
                     {portfolioMetrics.sharpeRatio.toFixed(2)}
                   </div>
-                  <div className="text-xs text-purple-600/80">Sharpe Ratio</div>
+                  <div className="text-xs text-primary/80">Sharpe Ratio</div>
                 </div>
               </div>
             )}
@@ -798,16 +836,23 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
       )}
 
       {/* Done Button - Prominent call to action (hidden in recommendations Customize context) */}
-      {showDoneButton && (
-        <div className="flex justify-end">
+      {showDoneButton && (() => {
+        const disabled =
+          !isValidStockCount ||
+          isLoadingMetrics ||
+          selectedStocks.length === 0 ||
+          !hasChanges;
+        const disabledDueToNoChanges =
+          isValidStockCount &&
+          selectedStocks.length > 0 &&
+          !isLoadingMetrics &&
+          !hasChanges;
+
+        const button = (
           <Button
             type="button"
             onClick={handleDone}
-            disabled={
-              !isValidStockCount ||
-              isLoadingMetrics ||
-              selectedStocks.length === 0
-            }
+            disabled={disabled}
             size="lg"
             className="px-8 bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm hover:shadow-md"
           >
@@ -823,8 +868,28 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               </>
             )}
           </Button>
-        </div>
-      )}
+        );
+
+        return (
+          <div className="flex justify-end">
+            {disabledDueToNoChanges ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-block">{button}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[240px]">
+                    No changes to confirm yet. Adjust allocations or tickers
+                    first.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              button
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };

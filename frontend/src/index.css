@@ -164,3 +164,288 @@ All colors MUST be HSL.
     border-color: hsl(38 92% 50% / 0.35);
   }
 }
+
+/* ============================================================================
+   CROSS-BROWSER COMPATIBILITY
+   ============================================================================ */
+
+@layer base {
+  /* Firefox scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+
+  /* Webkit scrollbar styling (Chrome, Safari, Edge) */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+
+  /* Safari backdrop-filter fallback */
+  @supports not (backdrop-filter: blur(10px)) {
+    .backdrop-blur-sm,
+    .backdrop-blur-md,
+    .backdrop-blur-lg {
+      background-color: hsl(var(--background) / 0.95);
+    }
+  }
+}
+
+/* ============================================================================
+   REDUCED MOTION - Accessibility
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Keep essential transitions but make them instant */
+  html,
+  body,
+  .card,
+  [class*="bg-"],
+  [class*="text-"],
+  button {
+    transition: none !important;
+  }
+}
+
+/* ============================================================================
+   PRINT STYLES - For PDF-friendly portfolio summaries
+   ============================================================================ */
+
+@media print {
+  /* Reset background and text colors for print */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  /* Hide non-essential UI elements */
+  .no-print,
+  button:not(.print-visible),
+  nav,
+  .sticky-nav,
+  .theme-selector,
+  [role="progressbar"],
+  .confetti-canvas {
+    display: none !important;
+  }
+
+  /* Force white backgrounds for cards */
+  .card,
+  [class*="bg-"] {
+    background: white !important;
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+
+  /* Ensure text is readable */
+  [class*="text-muted"],
+  [class*="text-gray"],
+  [class*="text-slate"] {
+    color: #666 !important;
+  }
+
+  /* Chart and visualization adjustments */
+  .recharts-wrapper {
+    page-break-inside: avoid;
+  }
+
+  /* Page break controls */
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  .page-break-after {
+    page-break-after: always;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+
+  /* Print-specific header */
+  @page {
+    margin: 2cm;
+    size: A4;
+  }
+
+  /* Ensure links show their URLs */
+  a[href]:after {
+    content: " (" attr(href) ")";
+    font-size: 10pt;
+    color: #666;
+  }
+
+  /* Don't show URL for internal links */
+  a[href^="#"]:after,
+  a[href^="/"]:after {
+    content: "";
+  }
+}
+
+/* ============================================================================
+   VISUAL APPEAL ENHANCEMENTS
+   ============================================================================ */
+
+@layer utilities {
+  /* Gradient text utility */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-text-primary {
+    background: linear-gradient(135deg, hsl(214 84% 56%), hsl(214 100% 70%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Card hover elevation */
+  .hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px hsl(var(--primary) / 0.15);
+  }
+
+  /* Subtle pulse animation for icons */
+  .icon-pulse {
+    animation: icon-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes icon-pulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.05);
+      opacity: 0.9;
+    }
+  }
+
+  /* Success checkmark animation */
+  .animate-check {
+    animation: check-pop 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  @keyframes check-pop {
+    0% {
+      transform: scale(0);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.2);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Skeleton loading animation */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--muted-foreground) / 0.1) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Focus visible ring for accessibility */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* Touch-friendly target size */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Smooth scroll container */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .smooth-scroll {
+      scroll-behavior: auto;
+    }
+  }
+}
+
+/* ============================================================================
+   CHART ANIMATION ENHANCEMENTS
+   ============================================================================ */
+
+@layer components {
+  /* Recharts animation optimization */
+  .recharts-surface {
+    overflow: visible;
+  }
+
+  /* Animate chart bars on load */
+  .recharts-bar-rectangle {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+
+  /* Animate pie chart slices */
+  .recharts-pie-sector {
+    transition: transform 0.2s ease;
+  }
+
+  .recharts-pie-sector:hover {
+    transform: scale(1.02);
+  }
+
+  /* Line chart hover effect */
+  .recharts-line-curve {
+    transition: stroke-width 0.2s ease;
+  }
+
+  .recharts-line-curve:hover {
+    stroke-width: 3;
+  }
+}

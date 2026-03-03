@@ -162,12 +162,12 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
 
         {/* Equity style guidance (stock-only, no bonds) */}
         <div className="flex items-center gap-2 text-xs bg-muted rounded-md p-2 border border-border">
-          <span className="font-semibold text-blue-900">Style:</span>
-          <span className="text-blue-800">{content.typical_allocation}</span>
+          <span className="font-semibold text-blue-900 dark:text-blue-100">Style:</span>
+          <span className="text-blue-800 dark:text-blue-200">{content.typical_allocation}</span>
         </div>
 
         {secondaryCategory && (
-          <div className="text-xs text-amber-700 bg-amber-50 rounded-md p-2 border border-amber-200">
+          <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded-md p-2 border border-amber-200 dark:border-amber-800">
             Also shares traits with{' '}
             <span className="font-semibold">
               {CATEGORY_CONTENT[secondaryCategory as keyof typeof CATEGORY_CONTENT]?.title || secondaryCategory}

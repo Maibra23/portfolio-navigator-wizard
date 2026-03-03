@@ -1,5 +1,8 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { StepCardHeader } from "@/components/wizard/StepCardHeader";
+import { StepHeaderIcon } from "@/components/wizard/StepHeaderIcon";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   ArrowRight,
   Search,
@@ -8,13 +11,30 @@ import {
   Target,
   Calculator,
   Flame,
+  TrendingUp,
+  RotateCcw,
+  PlayCircle,
 } from "lucide-react";
 
 interface WelcomeStepProps {
   onNext: () => void;
+  /** Whether user has saved progress from a previous session */
+  hasProgress?: boolean;
+  /** The step name where user left off */
+  savedStepName?: string;
+  /** Callback to clear progress and start fresh */
+  onStartFresh?: () => void;
+  /** Callback to continue from saved progress */
+  onContinue?: () => void;
 }
 
-export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
+export const WelcomeStep = ({
+  onNext,
+  hasProgress = false,
+  savedStepName,
+  onStartFresh,
+  onContinue,
+}: WelcomeStepProps) => {
   const features = [
     {
       icon: Shield,
@@ -54,36 +74,66 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto relative">
-      <Card>
-        <CardHeader className="text-center pb-3">
-          <CardTitle className="text-2xl mb-2">
-            Welcome to Portfolio Wizard
-          </CardTitle>
-          <p className="text-muted-foreground text-base max-w-2xl mx-auto">
-            A smart, end to end platform for building, optimizing, and
-            validating your investment portfolio. Move step by step from
-            defining your risk profile to rigorously testing your strategy
-            against real world market conditions.
-          </p>
-        </CardHeader>
+    <div className="relative">
+      <Card className="shadow-sm border-t-2 border-t-primary/30">
+        <StepCardHeader
+          icon={<StepHeaderIcon icon={TrendingUp} size="lg" />}
+          title="Welcome to Portfolio Wizard"
+          subtitle="A smart, end to end platform for building, optimizing, and validating your investment portfolio. Move step by step from defining your risk profile to rigorously testing your strategy against real world market conditions."
+        />
 
         <CardContent>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+          {/* Welcome Back prompt for returning users */}
+          {hasProgress && onContinue && onStartFresh && (
+            <Alert className="mb-4 bg-primary/5 dark:bg-primary/10 border-primary/20">
+              <PlayCircle className="h-4 w-4 text-primary" />
+              <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <span className="text-sm text-foreground">
+                  <strong>Welcome back!</strong> You have saved progress
+                  {savedStepName && (
+                    <span className="text-muted-foreground">
+                      {" "}(left off at: {savedStepName})
+                    </span>
+                  )}
+                </span>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onStartFresh}
+                    className="min-h-[36px]"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                    Start Fresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={onContinue}
+                    className="min-h-[36px]"
+                  >
+                    <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+                    Continue
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
             {features.map((feature, index) => {
               const Icon = feature.icon;
               return (
                 <div
                   key={index}
-                  className="flex flex-col items-center text-center p-3 rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+                  className="flex flex-col items-center text-center p-3 rounded-lg bg-muted hover:bg-muted/80 hover:border-primary/30 border border-transparent transition-all duration-200"
                 >
                   <div className="w-9 h-9 bg-muted rounded-full flex items-center justify-center mb-2 border border-border">
                     <Icon className="h-4 w-4 text-primary" />
                   </div>
-                  <h3 className="font-semibold text-sm mb-1">
+                  <h3 className="font-semibold text-sm md:text-base mb-1">
                     {feature.title}
                   </h3>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs md:text-sm text-muted-foreground">
                     {feature.description}
                   </p>
                 </div>
@@ -92,10 +142,10 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           </div>
 
           <div className="bg-muted rounded-lg p-4 mb-4 border border-border">
-            <h3 className="font-semibold text-foreground text-sm mb-1.5">
+            <h3 className="font-semibold text-foreground text-base md:text-lg mb-1.5">
               What You'll Learn
             </h3>
-            <ul className="space-y-1 text-sm">
+            <ul className="space-y-1 text-sm md:text-base">
               <li className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-primary rounded-full" />
                 Your personal risk tolerance and investment style
@@ -118,13 +168,14 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           <div className="text-center">
             <Button
               onClick={onNext}
-              size="sm"
-              className="bg-primary hover:bg-primary/90 transition-colors"
+              size="lg"
+              className="bg-primary hover:bg-primary/90 transition-colors min-h-[44px] px-6"
+              aria-label="Start building your portfolio"
             >
               Start Building Your Portfolio
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-xs md:text-sm text-muted-foreground mt-2">
               This process takes about 10-15 minutes to complete
             </p>
           </div>

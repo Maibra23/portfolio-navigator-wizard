@@ -2107,7 +2107,7 @@ export const RiskProfiler = ({
   if (step === "screening") {
     if (showContradictionPrompt) {
       return (
-        <div className="max-w-2xl mx-auto py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="py-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <ScreeningContradiction
             onKeepBeginner={() => {
               setShowContradictionPrompt(false);
@@ -2125,8 +2125,8 @@ export const RiskProfiler = ({
       screeningData.knowledge;
 
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card>
+      <div>
+        <Card className="shadow-sm border-t-2 border-t-primary/30">
           <StepCardHeader
             title="Investment Profile Screening"
             subtitle="Let's start with a few quick questions to personalize your experience"
@@ -2147,7 +2147,7 @@ export const RiskProfiler = ({
                   }))
                 }
               >
-                <div className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="flex items-center space-x-2 p-3 min-h-[44px] rounded-lg hover:bg-muted/50 transition-colors">
                   <RadioGroupItem value="under-19" id="age-under-19" />
                   <Label
                     htmlFor="age-under-19"
@@ -2156,7 +2156,7 @@ export const RiskProfiler = ({
                     Under 19 years old
                   </Label>
                 </div>
-                <div className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="flex items-center space-x-2 p-3 min-h-[44px] rounded-lg hover:bg-muted/50 transition-colors">
                   <RadioGroupItem value="above-19" id="age-above-19" />
                   <Label
                     htmlFor="age-above-19"
@@ -2190,7 +2190,7 @@ export const RiskProfiler = ({
                 ].map((option) => (
                   <div
                     key={option.value}
-                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                    className="flex items-center space-x-2 p-3 min-h-[44px] rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <RadioGroupItem
                       value={option.value}
@@ -2240,7 +2240,7 @@ export const RiskProfiler = ({
                 ].map((option) => (
                   <div
                     key={option.value}
-                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                    className="flex items-center space-x-2 p-3 min-h-[44px] rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <RadioGroupItem
                       value={option.value}
@@ -2257,7 +2257,7 @@ export const RiskProfiler = ({
               </RadioGroup>
             </div>
 
-            <div className="flex gap-2 justify-center pt-3 border-t">
+            <div className="flex flex-col sm:flex-row gap-2 justify-center sm:justify-center pt-3 border-t">
               <Button variant="outline" onClick={onPrev}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Previous
@@ -2311,8 +2311,8 @@ export const RiskProfiler = ({
     // Show feedback overlay for storyline
     if (showFeedback && isUnder19) {
       return (
-        <div className="max-w-2xl mx-auto">
-          <Card className="bg-muted border border-border">
+        <div>
+          <Card className="bg-muted border border-border shadow-sm border-t-2 border-t-primary/30">
             <CardContent className="text-center py-6">
               <div className="text-4xl mb-2">✨</div>
               <h3 className="text-lg font-bold mb-2 text-foreground">
@@ -2333,19 +2333,18 @@ export const RiskProfiler = ({
     }
 
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader className="text-center pb-2">
-            <CardTitle className="text-xl mb-1">
-              {isUnder19 ? "Your Adventure Continues!" : "Risk Assessment"}
-            </CardTitle>
-            <p className="text-muted-foreground text-sm mb-2">
-              {isUnder19
+      <div>
+        <Card className="shadow-sm border-t-2 border-t-primary/30">
+          <StepCardHeader
+            title={isUnder19 ? "Your Adventure Continues!" : "Risk Assessment"}
+            subtitle={
+              isUnder19
                 ? `Chapter ${currentIndex} of 5`
-                : `Question ${currentIndex} of 12`}
-            </p>
-            <Progress value={progress} className="w-full h-1" />
-          </CardHeader>
+                : `Question ${currentIndex} of 12`
+            }
+          >
+            <Progress value={progress} className="w-full h-1 mt-2" />
+          </StepCardHeader>
 
           <CardContent className="space-y-4">
             {isUnder19 && fullQuestion.storylineData ? (
@@ -2421,7 +2420,7 @@ export const RiskProfiler = ({
                   {shuffledOptionsForQuestion.map((option) => (
                     <div
                       key={option.value}
-                      className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                      className="flex items-center space-x-2 p-3 min-h-[44px] rounded-lg hover:bg-muted/50 transition-colors"
                     >
                       <RadioGroupItem
                         value={String(option.value)}
@@ -2440,7 +2439,7 @@ export const RiskProfiler = ({
             )}
 
             {!isUnder19 && (
-              <div className="flex gap-2 justify-center pt-3 border-t">
+              <div className="flex flex-col sm:flex-row gap-2 justify-center sm:justify-center pt-3 border-t">
                 <Button
                   onClick={() =>
                     handleAnswerSubmit(answers[currentQuestion.id] || 1)
@@ -2465,7 +2464,7 @@ export const RiskProfiler = ({
   if (step === "result" && result) {
     const isGamifiedPath = result.branching_metadata?.path === "gamified";
     return (
-      <div className="max-w-2xl mx-auto">
+      <div>
         <ResultsPage
           scoringResult={{
             normalized_score: result.normalized_score,

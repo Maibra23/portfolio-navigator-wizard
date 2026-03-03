@@ -51,8 +51,8 @@ export const CapitalInput = ({
   const isValid = capitalValue >= 1000;
 
   return (
-    <div className="max-w-md mx-auto">
-      <Card>
+    <div>
+      <Card className="shadow-sm border-t-2 border-t-primary/30">
         <StepCardHeader
           icon={<StepHeaderIcon icon={DollarSign} size="md" />}
           title="Investment Capital"
@@ -61,7 +61,7 @@ export const CapitalInput = ({
 
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="capital" className="text-sm font-medium">
+            <Label htmlFor="capital" className="text-xs md:text-sm font-medium">
               Investment Amount (SEK)
             </Label>
             <div className="relative">
@@ -77,7 +77,7 @@ export const CapitalInput = ({
                     handleNext();
                   }
                 }}
-                className="text-sm h-10 pl-8"
+                className="text-sm md:text-base min-h-[44px] pl-8"
                 style={{ fontFamily: "inherit", fontWeight: "normal" }}
                 min="1000"
                 step="1000"
@@ -114,7 +114,7 @@ export const CapitalInput = ({
           )}
 
           <div className="bg-muted/50 rounded-lg p-3">
-            <h4 className="font-medium text-sm mb-1.5">
+            <h4 className="font-medium text-xs md:text-sm mb-1.5">
               Investment Guidelines
             </h4>
             <ul className="text-xs text-muted-foreground space-y-0.5">
@@ -125,12 +125,12 @@ export const CapitalInput = ({
             </ul>
           </div>
 
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={onPrev} className="flex-1">
+          <div className="flex flex-col sm:flex-row gap-2 pt-4">
+            <Button variant="outline" onClick={onPrev} className="flex-1 min-h-[44px]" aria-label="Go to previous step">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Previous
             </Button>
-            <Button onClick={handleNext} className="flex-1" disabled={!isValid}>
+            <Button onClick={handleNext} className="flex-1 min-h-[44px]" disabled={!isValid} aria-label="Continue to next step">
               Continue
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

@@ -85,7 +85,7 @@ export function ScenarioSelector({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       {isSelected && (
-                        <CheckCircle className="h-5 w-5 text-blue-600" />
+                        <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       )}
                       <Icon className="h-5 w-5 text-blue-600 dark:text-amber-500" />
                       <h3 className="font-semibold text-lg">
