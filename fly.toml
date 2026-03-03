@@ -1,50 +1,23 @@
-# fly.toml — Portfolio Navigator Wizard
-# Deploy: fly deploy --remote-only
-# First deploy: fly launch --no-deploy (to set app name), then fly deploy
+# fly.toml app configuration file generated for portfolio-navigator-wizard on 2026-03-03T09:57:24Z
 #
-# Sensitive env vars (ADMIN_API_KEY, SMTP_PASSWORD, etc.) go in Fly secrets:
-#   fly secrets set ADMIN_API_KEY=your-key SMTP_USER=you@gmail.com SMTP_PASSWORD=app-password
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "portfolio-navigator-wizard"   # change to your actual Fly app name
-primary_region = "arn"               # Stockholm — closest to Linnaeus University
+app = 'portfolio-navigator-wizard'
+primary_region = 'ams'
 
 [build]
-  # Uses the root-level Dockerfile (bundles Redis + backend)
-  dockerfile = "Dockerfile"
-
-[env]
-  ENVIRONMENT       = "production"
-  PORT              = "8080"
-  REDIS_URL         = "redis://localhost:6379"
-  # ALLOWED_ORIGINS: Add your frontend URL here (comma-separated if multiple)
-  ALLOWED_ORIGINS   = "https://portfolio-navigator-wizard.fly.dev"
-  # Non-secret env vars — set secrets separately via: fly secrets set KEY=value
-  USE_LIVE_DATA                  = "true"
-  MANUAL_REGENERATION_REQUIRED   = "false"
 
 [http_service]
-  internal_port        = 8080
-  force_https          = true
-  auto_stop_machines   = false   # Keep always-on (no cold starts for users)
-  auto_start_machines  = true
-  min_machines_running = 1
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
-  [http_service.concurrency]
-    type       = "requests"
-    soft_limit = 50
-    hard_limit = 100
-
-  # HTTP health check (recommended for cold-start reliability)
-  [[http_service.checks]]
-    grace_period = "30s"
-    interval     = "30s"
-    method       = "GET"
-    path         = "/healthz"
-    timeout      = "5s"
-
-# Machine size: same VM runs Redis + FastAPI (numpy/pandas/scipy/reportlab).
-# 512mb = minimal (dev); 1gb = recommended production; 2gb if you see OOM or heavy background jobs.
 [[vm]]
-  memory = "1gb"
-  cpu_kind = "shared"
+  memory = '1gb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 1024
