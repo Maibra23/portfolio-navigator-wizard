@@ -1,0 +1,39 @@
+# fly.toml — Portfolio Navigator Wizard Frontend
+# Deploy: cd frontend && fly deploy
+#
+# This serves the React SPA via nginx
+
+app = "portfolio-navigator-frontend"
+primary_region = "arn"               # Stockholm — same region as backend
+
+[build]
+  dockerfile = "Dockerfile"
+  [build.args]
+    VITE_API_BASE_URL = "https://portfolio-navigator-wizard.fly.dev"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port        = 8080
+  force_https          = true
+  auto_stop_machines   = true    # Frontend can stop when idle (static files)
+  auto_start_machines  = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type       = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "30s"
+    method       = "GET"
+    path         = "/healthz"
+    timeout      = "5s"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
