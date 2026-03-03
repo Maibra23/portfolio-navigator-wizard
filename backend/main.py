@@ -1119,14 +1119,26 @@ app.add_middleware(
 logger.info("🔒 Security headers middleware enabled")
 
 # TrustedHostMiddleware in production (fly.io, Railway, etc.)
+# Custom wrapper to bypass host validation for health check paths (Fly.io probes may use internal IPs)
+class HealthCheckAwareTrustedHostMiddleware(TrustedHostMiddleware):
+    """TrustedHostMiddleware that bypasses validation for /health and /healthz paths."""
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path in ("/health", "/healthz", "/metrics"):
+                # Bypass host validation for health/metrics endpoints
+                await self.app(scope, receive, send)
+                return
+        await super().__call__(scope, receive, send)
+
 if is_production():
     _allowed_hosts_env = os.getenv(
         "ALLOWED_HOSTS",
-        "*.fly.dev,*.railway.app,localhost,127.0.0.1",
+        "portfolio-navigator-wizard.fly.dev,localhost,127.0.0.1",
     )
     _allowed_hosts = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
-    logger.info("🔒 TrustedHostMiddleware enabled: %s", _allowed_hosts)
+    app.add_middleware(HealthCheckAwareTrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+    logger.info("🔒 TrustedHostMiddleware enabled (health paths bypassed): %s", _allowed_hosts)
 
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
