@@ -1,22 +1,26 @@
-# Portfolio Navigator Wizard — Fly.io Single-Container Deployment
-# Bundles Redis + FastAPI backend in one image (no external Redis service needed).
+# Portfolio Navigator Wizard — Fly.io Deployment with External Redis (Upstash)
+# Connects to Upstash Redis for persistent data storage.
 #
 # Usage:
 #   fly deploy --remote-only       (no local Docker required)
 #   docker build -t portfolio-wizard .   (local build)
 #
-# Environment variables required at runtime (set in fly.toml [env] or Fly secrets):
-#   REDIS_URL=redis://localhost:6379   (already set below — matches bundled Redis)
+# Environment variables required at runtime:
+#   REDIS_URL=rediss://default:xxx@xxx.upstash.io:6379  (set via fly secrets)
 #   ALLOWED_ORIGINS=https://yourdomain.com
 #   ADMIN_API_KEY=<strong-random-key>
 #   For email alerts: TTL_EMAIL_NOTIFICATIONS, TTL_NOTIFICATION_EMAIL, SMTP_USER, SMTP_PASSWORD
 #   See backend/.env.example for full list
+#
+# Migration from bundled Redis:
+#   1. Create Upstash database at https://console.upstash.com (choose eu-central-1)
+#   2. Set secret: fly secrets set REDIS_URL="rediss://default:xxx@xxx.upstash.io:6379"
+#   3. Deploy: fly deploy --remote-only
 
 FROM python:3.11-slim
 
-# Install Redis server (lightweight Alpine Redis on slim Debian base)
+# Install only build dependencies (no Redis server needed with Upstash)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    redis-server \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
@@ -32,8 +36,9 @@ COPY backend/ .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Tell the app to connect to the bundled Redis on localhost
-ENV REDIS_URL=redis://localhost:6379
+# REDIS_URL is now provided via fly secrets (Upstash connection string)
+# Fallback for local development only
+ENV REDIS_URL=${REDIS_URL:-redis://localhost:6379}
 
 # Fly.io injects PORT — fall back to 8080 for local runs (aligned with fly.toml)
 ENV PORT=8080
@@ -44,16 +49,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 EXPOSE 8080
 
-# Start Redis as a background daemon, then hand PID 1 to uvicorn via exec.
-# redis-server --daemonize yes returns only after Redis is accepting connections,
-# so there is no race condition.
-CMD redis-server --daemonize yes \
-        --save "" \
-        --appendonly no \
-        --maxmemory 256mb \
-        --maxmemory-policy allkeys-lru \
-        --loglevel warning \
-    && exec uvicorn main:app \
-        --host 0.0.0.0 \
-        --port "${PORT:-8080}" \
-        --workers 1
+# Start uvicorn directly (no bundled Redis — using Upstash)
+CMD exec uvicorn main:app \
+    --host 0.0.0.0 \
+    --port "${PORT:-8080}" \
+    --workers 1

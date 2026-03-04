@@ -2,20 +2,24 @@
 # Deploy: fly deploy --remote-only
 # First deploy: fly launch --no-deploy (to set app name), then fly deploy
 #
-# Sensitive env vars (ADMIN_API_KEY, SMTP_PASSWORD, etc.) go in Fly secrets:
+# Redis: Using Upstash (external managed Redis with persistence)
+#   Set the connection URL as a secret (NOT in [env] for security):
+#   fly secrets set REDIS_URL="rediss://default:xxx@xxx.upstash.io:6379"
+#
+# Other sensitive env vars go in Fly secrets:
 #   fly secrets set ADMIN_API_KEY=your-key SMTP_USER=you@gmail.com SMTP_PASSWORD=app-password
 
 app = "portfolio-navigator-wizard"   # change to your actual Fly app name
 primary_region = "arn"               # Stockholm — closest to Linnaeus University
 
 [build]
-  # Uses the root-level Dockerfile (bundles Redis + backend)
+  # Uses the root-level Dockerfile (connects to Upstash Redis)
   dockerfile = "Dockerfile"
 
 [env]
   ENVIRONMENT       = "production"
   PORT              = "8080"
-  REDIS_URL         = "redis://localhost:6379"
+  # REDIS_URL is set via fly secrets (Upstash connection string - contains password)
   # ALLOWED_ORIGINS: Add your frontend URL here (comma-separated if multiple)
   ALLOWED_ORIGINS   = "https://portfolio-navigator-frontend.fly.dev,https://portfolio-navigator-wizard.fly.dev"
   # ALLOWED_HOSTS: TrustedHostMiddleware requires exact hostnames (no wildcards)
@@ -44,8 +48,8 @@ primary_region = "arn"               # Stockholm — closest to Linnaeus Univers
     path         = "/healthz"
     timeout      = "5s"
 
-# Machine size: same VM runs Redis + FastAPI (numpy/pandas/scipy/reportlab).
-# 512mb = minimal (dev); 1gb = recommended production; 2gb if you see OOM or heavy background jobs.
+# Machine size: FastAPI only (no bundled Redis — using Upstash)
+# 512mb = minimal (dev); 1gb = recommended production with scipy/numpy/pandas
 [[vm]]
   memory = "1gb"
   cpu_kind = "shared"

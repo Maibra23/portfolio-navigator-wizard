@@ -247,17 +247,9 @@ class RedisFirstDataService:
                             logger.warning(f"⚠️ Failed to load cached tickers from {ticker_key}: {e}")
                             continue
                 
-                # If no Redis key found, try to get from cached tickers in Redis
-                try:
-                    cached_tickers_list = self.list_cached_tickers()
-                    if cached_tickers_list and len(cached_tickers_list) > 0:
-                        self._ticker_list = cached_tickers_list
-                        logger.debug(f"✅ Loaded {len(self._ticker_list)} tickers from cached ticker data")
-                        return self._ticker_list
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to load from cached tickers: {e}")
-
-                # Fallback to CSV backup (permanent source when Redis master list empty)
+                # PRIMARY FALLBACK: CSV master list (authoritative source when Redis empty)
+                # This is checked BEFORE cached price tickers to ensure we use the
+                # validated master list, not an incomplete set from price cache
                 csv_path = os.path.join(
                     os.path.dirname(os.path.dirname(__file__)),
                     "scripts", "reports", "fetchable_master_list_validated_latest.csv"
@@ -274,7 +266,7 @@ class RedisFirstDataService:
                                     tickers_from_csv.append(row[0].strip())
                         if tickers_from_csv:
                             self._ticker_list = tickers_from_csv
-                            logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from CSV backup ({csv_path})")
+                            logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from CSV master list ({csv_path})")
                             # Seed Redis so next load uses Redis
                             if self.redis_client:
                                 try:
@@ -290,7 +282,18 @@ class RedisFirstDataService:
                                     logger.warning(f"⚠️ Failed to seed Redis from CSV: {seed_err}")
                             return self._ticker_list
                 except Exception as e:
-                    logger.debug(f"Could not load from CSV backup: {e}")
+                    logger.debug(f"Could not load from CSV master list: {e}")
+
+                # SECONDARY FALLBACK: Cached tickers from price data in Redis
+                # Only used if CSV is missing or unreadable
+                try:
+                    cached_tickers_list = self.list_cached_tickers()
+                    if cached_tickers_list and len(cached_tickers_list) > 0:
+                        self._ticker_list = cached_tickers_list
+                        logger.info(f"✅ Loaded {len(self._ticker_list)} tickers from cached price data (CSV not available)")
+                        return self._ticker_list
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load from cached tickers: {e}")
 
                 # Fallback to EnhancedDataFetcher (S&P 500 + NASDAQ + ETFs)
                 if self.enhanced_data_fetcher:
