@@ -14,7 +14,7 @@ export const validateTab = (
   const warnings: string[] = [];
 
   switch (tabId) {
-    case "builder":
+    case "builder": {
       // Tab 1 validation: 3-4 stocks required to proceed; 100% allocation recommended
       const stockCount = state.constructedPortfolio.length;
       const totalAllocation = state.constructedPortfolio.reduce(
@@ -42,6 +42,7 @@ export const validateTab = (
       }
 
       break;
+    }
 
     case "optimize":
       // Tab 2 validation: Optimization must be completed

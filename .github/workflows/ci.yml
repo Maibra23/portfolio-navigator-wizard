@@ -26,7 +26,7 @@ jobs:
       - name: Run backend tests
         run: |
           . venv/bin/activate
-          pytest
+          pytest tests/ -v --tb=short
 
   frontend:
     runs-on: ubuntu-latest
