@@ -203,15 +203,17 @@ class RedisFirstDataService:
 
     @property
     def enhanced_data_fetcher(self):
-        """Lazy initialization of EnhancedDataFetcher"""
+        """Reuse the global EnhancedDataFetcher instance (avoid duplicate auto-warm threads)"""
         if self._enhanced_data_fetcher is None:
             try:
-                from .enhanced_data_fetcher import EnhancedDataFetcher
-                logger.info("🔄 Lazy initializing EnhancedDataFetcher...")
-                self._enhanced_data_fetcher = EnhancedDataFetcher()
-                logger.info("✅ EnhancedDataFetcher initialized")
+                # Import the GLOBAL instance, not the class - avoids creating duplicate instances
+                # which would trigger duplicate auto-warm background threads
+                from .enhanced_data_fetcher import enhanced_data_fetcher as global_fetcher
+                logger.info("🔄 Using global EnhancedDataFetcher instance...")
+                self._enhanced_data_fetcher = global_fetcher
+                logger.info("✅ EnhancedDataFetcher assigned (reusing global instance)")
             except Exception as e:
-                logger.error(f"❌ Failed to initialize EnhancedDataFetcher: {e}")
+                logger.error(f"❌ Failed to get EnhancedDataFetcher: {e}")
                 return None
         return self._enhanced_data_fetcher
     
@@ -328,89 +330,134 @@ class RedisFirstDataService:
             return False
         key = self._get_cache_key(ticker, data_type)
         return self.redis_client.exists(key)
-    
+
+    def _get_cached_tickers_pipelined(self) -> List[str]:
+        """
+        Get all tickers that have both prices and sector cached using Redis pipelining.
+        This is much faster than checking each ticker individually (1 round-trip vs 1600+).
+        """
+        if not self.redis_client:
+            return []
+
+        all_tickers = self.all_tickers
+        if not all_tickers:
+            return []
+
+        try:
+            # Use pipeline to batch all EXISTS checks into a single round-trip
+            pipe = self.redis_client.pipeline(transaction=False)
+            for ticker in all_tickers:
+                pipe.exists(self._get_cache_key(ticker, 'prices'))
+                pipe.exists(self._get_cache_key(ticker, 'sector'))
+
+            # Execute all checks in one round-trip
+            results = pipe.execute()
+
+            # Filter tickers where both prices AND sector exist
+            cached = []
+            for i, ticker in enumerate(all_tickers):
+                prices_exists = results[i * 2]
+                sector_exists = results[i * 2 + 1]
+                if prices_exists and sector_exists:
+                    cached.append(ticker)
+
+            logger.debug(f"Pipeline cached check: {len(cached)}/{len(all_tickers)} tickers have complete data")
+            return cached
+        except Exception as e:
+            logger.warning(f"Pipeline cached check failed, falling back to sequential: {e}")
+            # Fallback to sequential (slower but reliable)
+            if not all_tickers:
+                return []
+            try:
+                return [t for t in all_tickers if self._is_cached(t, 'prices') and self._is_cached(t, 'sector')]
+            except Exception as fallback_error:
+                logger.error(f"Fallback sequential check also failed: {fallback_error}")
+                return []
+
     def _load_from_cache(self, ticker: str, data_type: str = 'prices') -> Optional[Any]:
         """Load ticker data from Redis cache"""
         if not self.redis_client:
             return None
-        
+
         try:
             key = self._get_cache_key(ticker, data_type)
-            if self.redis_client.exists(key):
-                raw = self.redis_client.get(key)
-                
-                if data_type == 'prices':
-                    # ENHANCED: Robust gzip decompression with fallback handling
+            # Optimized: GET returns None if key doesn't exist, no need for separate EXISTS call
+            raw = self.redis_client.get(key)
+            if raw is None:
+                return None
+
+            if data_type == 'prices':
+                # ENHANCED: Robust gzip decompression with fallback handling
+                try:
+                    # First try to decompress as gzipped data
+                    decompressed_data = gzip.decompress(raw).decode()
+                    data_dict = json.loads(decompressed_data)
+                    logger.debug(f"✅ {ticker}: Successfully decompressed gzipped price data")
+                except (gzip.BadGzipFile, OSError) as gzip_error:
+                    # If gzip fails, try direct JSON parsing (for non-gzipped data)
+                    logger.debug(f"⚠️ {ticker}: Gzip decompression failed ({gzip_error}), trying direct JSON parsing")
                     try:
-                        # First try to decompress as gzipped data
-                        decompressed_data = gzip.decompress(raw).decode()
-                        data_dict = json.loads(decompressed_data)
-                        logger.debug(f"✅ {ticker}: Successfully decompressed gzipped price data")
-                    except (gzip.BadGzipFile, OSError) as gzip_error:
-                        # If gzip fails, try direct JSON parsing (for non-gzipped data)
-                        logger.debug(f"⚠️ {ticker}: Gzip decompression failed ({gzip_error}), trying direct JSON parsing")
+                        # Try direct JSON parsing for non-gzipped data
+                        data_dict = json.loads(raw.decode())
+                        logger.debug(f"✅ {ticker}: Successfully parsed non-gzipped price data")
+                    except json.JSONDecodeError as json_error:
+                        # If both fail, try parsing as double-encoded JSON (some cached data might be double-encoded)
+                        logger.debug(f"⚠️ {ticker}: Direct JSON parsing failed ({json_error}), trying double-encoded JSON")
                         try:
-                            # Try direct JSON parsing for non-gzipped data
-                            data_dict = json.loads(raw.decode())
-                            logger.debug(f"✅ {ticker}: Successfully parsed non-gzipped price data")
-                        except json.JSONDecodeError as json_error:
-                            # If both fail, try parsing as double-encoded JSON (some cached data might be double-encoded)
-                            logger.debug(f"⚠️ {ticker}: Direct JSON parsing failed ({json_error}), trying double-encoded JSON")
+                            inner_json = json.loads(raw.decode())
+                            data_dict = json.loads(inner_json)
+                            logger.debug(f"✅ {ticker}: Successfully parsed double-encoded JSON price data")
+                        except Exception as double_error:
+                            logger.error(f"❌ Failed to load {ticker} prices from cache: All parsing methods failed - gzip: {gzip_error}, json: {json_error}, double-json: {double_error}")
+                            return None
+                except Exception as e:
+                    logger.error(f"❌ Failed to load {ticker} prices from cache: {e}")
+                    return None
+
+                # Convert back to Series
+                data = pd.Series(data_dict)
+                # ENHANCED: Use robust timestamp parsing for all formats
+                try:
+                    # Parse timestamps using our robust utility
+                    parsed_dates = []
+                    for date_str in data.index:
+                        # First try to normalize the timestamp
+                        normalized = normalize_timestamp(date_str)
+                        if normalized:
                             try:
-                                inner_json = json.loads(raw.decode())
-                                data_dict = json.loads(inner_json)
-                                logger.debug(f"✅ {ticker}: Successfully parsed double-encoded JSON price data")
-                            except Exception as double_error:
-                                logger.error(f"❌ Failed to load {ticker} prices from cache: All parsing methods failed - gzip: {gzip_error}, json: {json_error}, double-json: {double_error}")
-                                return None
-                    except Exception as e:
-                        logger.error(f"❌ Failed to load {ticker} prices from cache: {e}")
-                        return None
-                    
-                    # Convert back to Series
-                    data = pd.Series(data_dict)
-                    # ENHANCED: Use robust timestamp parsing for all formats
-                    try:
-                        # Parse timestamps using our robust utility
-                        parsed_dates = []
-                        for date_str in data.index:
-                            # First try to normalize the timestamp
-                            normalized = normalize_timestamp(date_str)
-                            if normalized:
+                                parsed_date = pd.to_datetime(normalized)
+                                parsed_dates.append(parsed_date)
+                            except Exception as e:
+                                logger.warning(f"⚠️ Failed to parse normalized date {normalized} for {ticker}: {e}")
+                                # Fallback to direct parsing
                                 try:
-                                    parsed_date = pd.to_datetime(normalized)
+                                    parsed_date = pd.to_datetime(date_str)
                                     parsed_dates.append(parsed_date)
-                                except Exception as e:
-                                    logger.warning(f"⚠️ Failed to parse normalized date {normalized} for {ticker}: {e}")
-                                    # Fallback to direct parsing
-                                    try:
-                                        parsed_date = pd.to_datetime(date_str)
-                                        parsed_dates.append(parsed_date)
-                                    except Exception as e2:
-                                        logger.error(f"❌ Failed to parse date {date_str} for {ticker}: {e2}")
-                                        return None
-                            else:
-                                logger.error(f"❌ Could not normalize date {date_str} for {ticker}")
-                                return None
-                        
-                        data.index = pd.DatetimeIndex(parsed_dates)
-                        return data
-                    except Exception as e:
-                        logger.error(f"❌ Failed to parse timestamps for {ticker}: {e}")
-                        return None
-                else:  # sector, metrics, or other metadata
-                    try:
-                        decoded = json.loads(raw.decode())
-                        # Handle case where value is just a string like "Unknown" instead of a dict
-                        if isinstance(decoded, str):
-                            # Convert simple string values to dict
-                            if data_type == 'sector':
-                                return {'sector': decoded, 'industry': 'Unknown', 'country': 'Unknown', 'companyName': ticker}
-                            return decoded
+                                except Exception as e2:
+                                    logger.error(f"❌ Failed to parse date {date_str} for {ticker}: {e2}")
+                                    return None
+                        else:
+                            logger.error(f"❌ Could not normalize date {date_str} for {ticker}")
+                            return None
+
+                    data.index = pd.DatetimeIndex(parsed_dates)
+                    return data
+                except Exception as e:
+                    logger.error(f"❌ Failed to parse timestamps for {ticker}: {e}")
+                    return None
+            else:  # sector, metrics, or other metadata
+                try:
+                    decoded = json.loads(raw.decode())
+                    # Handle case where value is just a string like "Unknown" instead of a dict
+                    if isinstance(decoded, str):
+                        # Convert simple string values to dict
+                        if data_type == 'sector':
+                            return {'sector': decoded, 'industry': 'Unknown', 'country': 'Unknown', 'companyName': ticker}
                         return decoded
-                    except json.JSONDecodeError as e:
-                        logger.error(f"❌ Failed to load {ticker} {data_type} from cache: JSON decode error - {e}")
-                        return None
+                    return decoded
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Failed to load {ticker} {data_type} from cache: JSON decode error - {e}")
+                    return None
         except Exception as e:
             logger.error(f"❌ Failed to load {ticker} {data_type} from cache: {e}")
         return None
@@ -558,15 +605,16 @@ class RedisFirstDataService:
         q = query.strip().lower()
         if not q:
             return []
-        
+
         q_upper = q.upper()
         sector_filter = filters.get('sector', None) if filters else None
         risk_filter = filters.get('risk_profile', None) if filters else None
 
+        # Get cached tickers once (single pipelined round-trip), reuse for both fast and full search paths
+        cached_tickers = self._get_cached_tickers_pipelined()
+
         # Fast path: query looks like a single ticker (e.g. AAPL, MTRS.ST) - direct Redis lookup
         if len(q) <= 10 and q.replace(".", "").replace("-", "").isalnum():
-            all_tickers = self.all_tickers
-            cached_tickers = [t for t in all_tickers if self._is_cached(t, 'prices') and self._is_cached(t, 'sector')]
             if q_upper in cached_tickers:
                 ticker_info = self.get_ticker_info(q_upper)
                 if ticker_info:
@@ -593,10 +641,9 @@ class RedisFirstDataService:
                             return result[:limit]
 
         results = []
-        all_tickers = self.all_tickers
-        cached_tickers = [t for t in all_tickers if self._is_cached(t, 'prices') and self._is_cached(t, 'sector')]
-        
-        logger.debug("Searching '%s' through %s cached tickers (out of %s total)", query, len(cached_tickers), len(all_tickers))
+        # cached_tickers already fetched at function start via pipelined call
+
+        logger.debug("Searching '%s' through %s cached tickers (out of %s total)", query, len(cached_tickers), len(self.all_tickers))
         
         # SMART PRE-FILTERING: Only check tickers that might match AND are cached
         candidate_tickers = []
