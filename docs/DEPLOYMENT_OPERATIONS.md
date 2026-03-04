@@ -21,6 +21,7 @@
 7. [Auto-Stop Behavior (Why Frontend Shows "Suspended")](#auto-stop-behavior)
 8. [Manual Data Population](#manual-data-population)
 9. [Monitoring and Maintenance](#monitoring-and-maintenance)
+10. [Quick Deploy Guide: After Committing Changes](#quick-deploy-guide-after-committing-changes)
 
 ---
 
@@ -1405,16 +1406,172 @@ cd /path/to/project/frontend && fly deploy -a portfolio-navigator-frontend
 
 ---
 
+## Quick Deploy Guide: After Committing Changes
+
+This is the step-by-step process to deploy your changes and see them live immediately.
+
+### Prerequisites
+
+- Fly CLI installed (`brew install flyctl` or see https://fly.io/docs/hands-on/install-flyctl/)
+- Logged in to Fly.io (`fly auth login`)
+- Changes committed to git (recommended but not required for deploy)
+
+### Step 1: Determine What Changed
+
+| If you changed... | Deploy... |
+|-------------------|-----------|
+| Frontend only (`frontend/src/`, `frontend/public/`) | Frontend only |
+| Backend only (`backend/`, `Dockerfile`, `fly.toml`) | Backend only |
+| Both frontend and backend | Both (backend first recommended) |
+
+### Step 2: Deploy
+
+**Frontend only:**
+```bash
+cd frontend
+fly deploy --remote-only
+```
+
+**Backend only:**
+```bash
+cd /path/to/portfolio-navigator-wizard
+fly deploy --remote-only
+```
+
+**Both (run in sequence):**
+```bash
+# Backend first (contains API changes)
+fly deploy --remote-only
+
+# Then frontend
+cd frontend
+fly deploy --remote-only
+```
+
+### Step 3: Verify Deployment
+
+```bash
+# Check backend status and health
+fly status -a portfolio-navigator-wizard
+curl https://portfolio-navigator-wizard.fly.dev/healthz
+
+# Check frontend status
+fly status -a portfolio-navigator-frontend
+
+# Visit the app
+open https://portfolio-navigator-frontend.fly.dev
+```
+
+### Step 4: Monitor (if needed)
+
+```bash
+# Watch backend logs in real-time
+fly logs -a portfolio-navigator-wizard
+
+# Watch frontend logs
+fly logs -a portfolio-navigator-frontend
+```
+
+### Complete Example Workflow
+
+```bash
+# 1. Make your code changes
+# 2. Test locally (optional but recommended)
+npm run dev  # frontend
+uvicorn main:app --reload  # backend
+
+# 3. Commit changes
+git add .
+git commit -m "feat: add new portfolio feature"
+
+# 4. Deploy backend (if changed)
+cd /path/to/portfolio-navigator-wizard
+fly deploy --remote-only
+
+# 5. Deploy frontend (if changed)
+cd frontend
+fly deploy --remote-only
+
+# 6. Verify
+curl https://portfolio-navigator-wizard.fly.dev/healthz
+open https://portfolio-navigator-frontend.fly.dev
+
+# 7. (Optional) Push to GitHub
+git push origin main
+```
+
+### Deployment Times
+
+| Service | Typical Deploy Time |
+|---------|---------------------|
+| Frontend | 1-2 minutes |
+| Backend | 2-3 minutes |
+
+### Troubleshooting
+
+**Deploy fails with build error:**
+```bash
+# Check build logs in detail
+fly logs -a portfolio-navigator-wizard
+
+# Try rebuilding without cache
+fly deploy --remote-only --no-cache
+```
+
+**App shows "stopped" or "suspended" after deploy:**
+
+This is normal for the **frontend** (auto-stops when idle). It will auto-start on first request.
+
+For the **backend**, it should always be running. If stopped:
+```bash
+fly machine start -a portfolio-navigator-wizard
+```
+
+**Health check failing:**
+```bash
+# Check what's happening
+fly logs -a portfolio-navigator-wizard
+
+# SSH in to debug
+fly ssh console -a portfolio-navigator-wizard
+```
+
+**Changes not visible in browser:**
+1. Hard refresh: `Cmd+Shift+R` (Mac) or `Ctrl+Shift+R` (Windows)
+2. Clear browser cache
+3. Check the correct version deployed: `fly releases -a portfolio-navigator-frontend`
+
+### Configuration Reference
+
+The deployment behavior is controlled by `fly.toml`:
+
+**Backend (`fly.toml`):**
+```toml
+[http_service]
+  auto_stop_machines = 'off'    # Never stops
+  min_machines_running = 1      # Always keep 1 running
+```
+
+**Frontend (`frontend/fly.toml`):**
+```toml
+[http_service]
+  auto_stop_machines = true     # Stops when idle (saves money)
+  min_machines_running = 0      # Can stop all machines
+```
+
+---
+
 ## Summary: What Happens When...
 
 | Scenario | Frontend | Backend | Redis Data |
 |----------|----------|---------|------------|
-| No visitors for 30 min | Stops (suspended) | Keeps running | Preserved |
+| No visitors for 30 min | Stops (suspended) | Keeps running | Preserved (Upstash) |
 | User visits after idle | Auto-starts (2-3s delay) | Already running | Preserved |
-| You run `fly deploy` | Restarts | Restarts | **LOST** |
-| Machine crashes | Auto-restarts | Auto-restarts | **LOST** |
+| You run `fly deploy` frontend | Restarts | Unaffected | Preserved |
+| You run `fly deploy` backend | Unaffected | Restarts | Preserved (Upstash) |
+| Machine crashes | Auto-restarts | Auto-restarts | Preserved (Upstash) |
 | Memory limit hit | N/A | LRU eviction | Oldest keys removed |
 
 ---
 
-*Last Updated: 2026-03-03*
+*Last Updated: 2026-03-04*
