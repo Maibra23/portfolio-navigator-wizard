@@ -36,6 +36,7 @@ import {
   getPortfolioColors,
   getRechartsTheme,
 } from "@/utils/chartThemes";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface PortfolioPoint {
   risk: number;
@@ -489,13 +490,14 @@ export const EfficientFrontierChart = ({
   }, [currentPortfolio, optimalPortfolio]);
 
   return (
-    <Card
-      className={className}
-      style={{
-        background: chartTheme.cardBackground,
-        borderColor: chartTheme.border,
-      }}
-    >
+    <LandscapeHint storageKey="efficient-frontier-landscape-hint">
+      <Card
+        className={className}
+        style={{
+          background: chartTheme.cardBackground,
+          borderColor: chartTheme.border,
+        }}
+      >
       <CardHeader className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div className="flex-1 text-center">
@@ -682,7 +684,7 @@ export const EfficientFrontierChart = ({
               >
                 <div
                   className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: "#ef4444" }}
+                  style={{ backgroundColor: portfolioColors.current }}
                 />
                 <span className="font-medium text-foreground">Current</span>
               </button>
@@ -705,7 +707,7 @@ export const EfficientFrontierChart = ({
               >
                 <div
                   className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: "#3b82f6" }}
+                  style={{ backgroundColor: portfolioColors.weightsOptimized }}
                 />
                 <span className="font-medium text-foreground">Weights</span>
               </button>
@@ -729,7 +731,7 @@ export const EfficientFrontierChart = ({
                 <svg width="12" height="12" viewBox="0 0 16 16">
                   <polygon
                     points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6"
-                    fill="#22c55e"
+                    fill={portfolioColors.marketOptimized}
                     stroke="#fff"
                     strokeWidth="0.5"
                   />
@@ -1227,14 +1229,14 @@ export const EfficientFrontierChart = ({
                   />
                 )}
 
-              {/* Current Portfolio - RED circle with white dot */}
+              {/* Current Portfolio - circle with white dot */}
               {hasCurrentPortfolio && (
                 <Scatter
                   name="Current Portfolio"
                   data={[
                     clampedPortfolioPoints.find((p) => p.type === "current")!,
                   ]}
-                  fill="#ef4444"
+                  fill={portfolioColors.current}
                   fillOpacity={1}
                   shape={(props: any) => {
                     if (props.isOffScaleHigh) {
@@ -1244,14 +1246,14 @@ export const EfficientFrontierChart = ({
                             cx={props.cx}
                             cy={props.cy}
                             r={6}
-                            fill="#ef4444"
+                            fill={portfolioColors.current}
                             fillOpacity={0.2}
-                            stroke="#ef4444"
+                            stroke={portfolioColors.current}
                             strokeWidth={1}
                           />
                           <polygon
                             points={`${props.cx},${props.cy - 13} ${props.cx - 7},${props.cy - 3} ${props.cx + 7},${props.cy - 3}`}
-                            fill="#ef4444"
+                            fill={portfolioColors.current}
                             stroke="#fff"
                             strokeWidth={1.5}
                           />
@@ -1265,14 +1267,14 @@ export const EfficientFrontierChart = ({
                             cx={props.cx}
                             cy={props.cy}
                             r={6}
-                            fill="#ef4444"
+                            fill={portfolioColors.current}
                             fillOpacity={0.2}
-                            stroke="#ef4444"
+                            stroke={portfolioColors.current}
                             strokeWidth={1}
                           />
                           <polygon
                             points={`${props.cx},${props.cy + 13} ${props.cx - 7},${props.cy + 3} ${props.cx + 7},${props.cy + 3}`}
-                            fill="#ef4444"
+                            fill={portfolioColors.current}
                             stroke="#fff"
                             strokeWidth={1.5}
                           />
@@ -1285,14 +1287,14 @@ export const EfficientFrontierChart = ({
                           cx={props.cx}
                           cy={props.cy}
                           r={14}
-                          fill="#ef4444"
+                          fill={portfolioColors.current}
                           fillOpacity={0.2}
                         />
                         <circle
                           cx={props.cx}
                           cy={props.cy}
                           r={10}
-                          fill="#ef4444"
+                          fill={portfolioColors.current}
                           stroke="#fff"
                           strokeWidth={3}
                         />
@@ -1303,7 +1305,7 @@ export const EfficientFrontierChart = ({
                 />
               )}
 
-              {/* Weights-Optimized Portfolio - BLUE diamond */}
+              {/* Weights-Optimized Portfolio - diamond */}
               {hasWeightsOptimized && (
                 <Scatter
                   name="Weights-Optimized Portfolio"
@@ -1312,7 +1314,7 @@ export const EfficientFrontierChart = ({
                       (p) => p.type === "weights-optimized",
                     )!,
                   ]}
-                  fill="#3b82f6"
+                  fill={portfolioColors.weightsOptimized}
                   fillOpacity={1}
                   shape={(props: any) => {
                     if (props.isOffScaleHigh) {
@@ -1322,14 +1324,14 @@ export const EfficientFrontierChart = ({
                             cx={props.cx}
                             cy={props.cy}
                             r={6}
-                            fill="#3b82f6"
+                            fill={portfolioColors.weightsOptimized}
                             fillOpacity={0.2}
-                            stroke="#3b82f6"
+                            stroke={portfolioColors.weightsOptimized}
                             strokeWidth={1}
                           />
                           <polygon
                             points={`${props.cx},${props.cy - 13} ${props.cx - 7},${props.cy - 3} ${props.cx + 7},${props.cy - 3}`}
-                            fill="#3b82f6"
+                            fill={portfolioColors.weightsOptimized}
                             stroke="#fff"
                             strokeWidth={1.5}
                           />
@@ -1343,14 +1345,14 @@ export const EfficientFrontierChart = ({
                             cx={props.cx}
                             cy={props.cy}
                             r={6}
-                            fill="#3b82f6"
+                            fill={portfolioColors.weightsOptimized}
                             fillOpacity={0.2}
-                            stroke="#3b82f6"
+                            stroke={portfolioColors.weightsOptimized}
                             strokeWidth={1}
                           />
                           <polygon
                             points={`${props.cx},${props.cy + 13} ${props.cx - 7},${props.cy + 3} ${props.cx + 7},${props.cy + 3}`}
-                            fill="#3b82f6"
+                            fill={portfolioColors.weightsOptimized}
                             stroke="#fff"
                             strokeWidth={1.5}
                           />
@@ -1364,7 +1366,7 @@ export const EfficientFrontierChart = ({
                           cx={props.cx}
                           cy={props.cy}
                           r={14}
-                          fill="#3b82f6"
+                          fill={portfolioColors.weightsOptimized}
                           fillOpacity={0.2}
                         />
                         <polygon
@@ -1374,7 +1376,7 @@ export const EfficientFrontierChart = ({
                             `${props.cx},${props.cy + size}`,
                             `${props.cx - size},${props.cy}`,
                           ].join(" ")}
-                          fill="#3b82f6"
+                          fill={portfolioColors.weightsOptimized}
                           stroke="#fff"
                           strokeWidth={2}
                         />
@@ -1384,7 +1386,7 @@ export const EfficientFrontierChart = ({
                 />
               )}
 
-              {/* Market-Optimized Portfolio - GREEN star */}
+              {/* Market-Optimized Portfolio - star */}
               {hasMarketOptimized && (
                 <Scatter
                   name="Market-Optimized Portfolio"
@@ -1393,7 +1395,7 @@ export const EfficientFrontierChart = ({
                       (p) => p.type === "market-optimized",
                     )!,
                   ]}
-                  fill="#22c55e"
+                  fill={portfolioColors.marketOptimized}
                   fillOpacity={1}
                   shape={(props: any) => {
                     if (props.isOffScaleHigh) {
@@ -1403,14 +1405,14 @@ export const EfficientFrontierChart = ({
                             cx={props.cx}
                             cy={props.cy}
                             r={6}
-                            fill="#22c55e"
+                            fill={portfolioColors.marketOptimized}
                             fillOpacity={0.2}
-                            stroke="#22c55e"
+                            stroke={portfolioColors.marketOptimized}
                             strokeWidth={1}
                           />
                           <polygon
                             points={`${props.cx},${props.cy - 13} ${props.cx - 7},${props.cy - 3} ${props.cx + 7},${props.cy - 3}`}
-                            fill="#22c55e"
+                            fill={portfolioColors.marketOptimized}
                             stroke="#fff"
                             strokeWidth={1.5}
                           />
@@ -1424,14 +1426,14 @@ export const EfficientFrontierChart = ({
                             cx={props.cx}
                             cy={props.cy}
                             r={6}
-                            fill="#22c55e"
+                            fill={portfolioColors.marketOptimized}
                             fillOpacity={0.2}
-                            stroke="#22c55e"
+                            stroke={portfolioColors.marketOptimized}
                             strokeWidth={1}
                           />
                           <polygon
                             points={`${props.cx},${props.cy + 13} ${props.cx - 7},${props.cy + 3} ${props.cx + 7},${props.cy + 3}`}
-                            fill="#22c55e"
+                            fill={portfolioColors.marketOptimized}
                             stroke="#fff"
                             strokeWidth={1.5}
                           />
@@ -1454,12 +1456,12 @@ export const EfficientFrontierChart = ({
                           cx={props.cx}
                           cy={props.cy}
                           r={16}
-                          fill="#22c55e"
+                          fill={portfolioColors.marketOptimized}
                           fillOpacity={0.2}
                         />
                         <polygon
                           points={starPoints.join(" ")}
-                          fill="#22c55e"
+                          fill={portfolioColors.marketOptimized}
                           stroke="#fff"
                           strokeWidth={2}
                         />
@@ -1740,7 +1742,7 @@ export const EfficientFrontierChart = ({
                 <svg width="14" height="14" viewBox="0 0 16 16">
                   <polygon
                     points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6"
-                    fill="#22c55e"
+                    fill={portfolioColors.marketOptimized}
                     stroke="#fff"
                     strokeWidth="0.5"
                   />
@@ -1753,6 +1755,7 @@ export const EfficientFrontierChart = ({
           </div>
         </div>
       )}
-    </Card>
+      </Card>
+    </LandscapeHint>
   );
 };

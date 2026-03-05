@@ -1387,7 +1387,7 @@ export const StockSelection = ({
 
       if (tickers.length === 0) {
         setError(
-          `No stocks found for "${query}". The stock may not be in our database. Try a different search term.`,
+          `No stocks found for "${query}". Search includes 1,400+ pre-validated US stocks. Try a different ticker or company name.`,
         );
         setSearchResults([]);
         return;

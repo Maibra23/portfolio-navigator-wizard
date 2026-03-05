@@ -28,5 +28,7 @@
   "tests/test_export_stress_always_included.py::test_export_pdf_single_holding_no_stress_section",
   "tests/test_export_stress_always_included.py::test_export_pdf_with_stress_results_unchanged",
   "tests/test_export_stress_always_included.py::test_export_pdf_without_stress_includes_stress_section_when_stress_run_on_fly",
-  "tests/test_export_stress_always_included.py::test_export_pdf_without_stress_results_returns_200_and_pdf"
+  "tests/test_export_stress_always_included.py::test_export_pdf_without_stress_results_returns_200_and_pdf",
+  "tests/test_sanity.py::test_imports_work",
+  "tests/test_sanity.py::test_python_works"
 ]

@@ -113,23 +113,49 @@ Scenario: Your journey has taught you a lot. A friend just got $500. What advice
 
 ---
 
-## 4. Question Selection (19+ only): MPT vs Prospect mix
+## 4. Question Selection (19+ only): Adaptive Branching System
 
-For users 19 or older, the system selects **12 questions** from the MPT and Prospect pools. The mix depends on age and experience points.
+For users 19 or older, the system uses an **adaptive branching** approach rather than random selection. Questions are presented in a fixed, phased sequence that adapts based on the user's responses.
 
-- **Experience points:**  
-  `experiencePoints = experienceMap[S2] + knowledgeMap[S3]` (range 0–5).
+### 4.1 Three-Phase Adaptive Flow
 
-- **Rules:**
-  - If **under 19:** use gamified storyline (Section 3); no pool selection.
-  - If **19+ and experiencePoints ≥ 3:** MPT 80%, Prospect 20%  
-    → `mptCount = round(12 * 0.8) = 10`, `prospectCount = 12 - 10 = 2`.
-  - If **19+ and experiencePoints < 3:** MPT 30%, Prospect 70%  
-    → `mptCount = round(12 * 0.3) = 4`, `prospectCount = 12 - 4 = 8`.
+**Phase 1 – Anchor Questions (Always First)**
+Four anchor questions are always asked first in a fixed order:
+- M2 (time_horizon)
+- M3 (volatility_tolerance)
+- PT-2 (loss_aversion)
+- PT-6 (drawdown_behavior)
 
-- **Selection:** From `MPT_QUESTIONS` and `PROSPECT_QUESTIONS`, questions are filtered by `group === 'MPT'` and `group === 'PROSPECT'`. Each pool is shuffled randomly; then `mptCount` MPT and `prospectCount` Prospect questions are taken. The 12 selected questions are combined and shuffled again. Option order within each question can also be shuffled for display.
+These establish a baseline risk profile from which the system determines the next phase.
 
-- **Result:** The user sees exactly 12 questions, each with known `id`, `group`, and `maxScore`. Only these 12 (and their answers) are passed into the scoring function; screening answers are not.
+**Phase 2 – Adaptive Refinement**
+Based on the Phase 1 responses, the system selects one of three question pools:
+- **Conservative Confirming:** M5, M8, PT-1, PT-4 (for users showing conservative tendencies)
+- **Aggressive Confirming:** M4, M11, PT-8, PT-10 (for users showing aggressive tendencies)
+- **Discriminating/Moderate:** M6, M10, PT-3, PT-7 (for users with mixed responses)
+
+**Phase 3 – Gap Filling and Consistency**
+The system then:
+1. Identifies any missing constructs and adds questions to cover them
+2. Asks PT-13 if not already covered
+3. Adds consistency-check pairs (reverse-coded questions like M3-R and PT-2-R) to verify response reliability
+
+### 4.2 Answer Option Order
+
+- **Under-19 (gamified path):** Options are shown in fixed source order
+- **Above-19 (adaptive path):** Options are **randomized** per question using `sort(() => Math.random() - 0.5)` to prevent pattern memorization
+
+### 4.3 Why Adaptive Branching?
+
+The adaptive system provides several advantages over random selection:
+- **More accurate profiling:** Questions are tailored to refine the user's specific risk tendencies
+- **Consistency validation:** Reverse-coded questions detect unreliable responses
+- **Efficient coverage:** Ensures all relevant constructs are assessed without redundancy
+- **Deterministic behavior:** The question sequence is reproducible given the same responses
+
+### 4.4 Scoring Independence
+
+Scoring is **order-independent** and uses `answersMap[question.id]` for lookup. The adaptive question order does not affect final scores—only the selected questions and their answers matter.
 
 ---
 
@@ -268,10 +294,12 @@ Boundaries are exclusive on the left (e.g. 20 is very-conservative, 20.01 is con
 
 1. **Screening:** User answers S1 (age), S2 (experience), S3 (knowledge). No points; only routing.
 2. **Routing:**
-   - If under 19 → select 5 gamified storyline steps (mapped to PROSPECT, maxScore 4).
-   - If 19+ → compute experience points from S2+S3; choose MPT/Prospect ratio (80/20 or 30/70); select 12 questions from pools (shuffle, then take by count); optionally shuffle option order.
-3. **Questions:** User answers each selected question (one value per question, 1 to maxScore).
-4. **Scoring:** For the selected set and answers: exclude screening; compute raw score (legacy); compute 0-based adjusted sums and max sums overall and per group; get normalized_score, normalized_mpt, normalized_prospect; map normalized_score to risk_category and color_code.
+   - If under 19 → select 5 gamified storyline steps in fixed order (story-1 through story-5, mapped to PROSPECT, maxScore 4).
+   - If 19+ → enter the adaptive branching flow (Phase 1 → Phase 2 → Phase 3 as described in Section 4).
+3. **Questions:** 
+   - Under-19: Options shown in fixed order.
+   - 19+: Options are **randomized** per question to prevent pattern memorization. Questions follow the adaptive sequence.
+4. **Scoring:** For the selected set and answers: exclude screening; compute raw score (legacy); compute 0-based adjusted sums and max sums overall and per group; get normalized_score, normalized_mpt, normalized_prospect; map normalized_score to risk_category and color_code. Scoring is order-independent.
 5. **Result:** Show risk category, description, and optionally MPT/Prospect sub-scores. The same pipeline supports both gamified and traditional paths because storyline steps are represented as PROSPECT questions with maxScore 4 and the same normalization is applied.
 
 ---

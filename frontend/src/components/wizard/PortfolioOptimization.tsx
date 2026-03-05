@@ -4112,7 +4112,7 @@ export const PortfolioOptimization = ({
                       >
                         <div
                           className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: "#ef4444" }}
+                          style={{ backgroundColor: portfolioColors.current }}
                         />
                         <span
                           className="font-medium"
@@ -4140,7 +4140,7 @@ export const PortfolioOptimization = ({
                       >
                         <div
                           className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: "#3b82f6" }}
+                          style={{ backgroundColor: portfolioColors.weightsOptimized }}
                         />
                         <span
                           className="font-medium"
@@ -4168,7 +4168,7 @@ export const PortfolioOptimization = ({
                       >
                         <div
                           className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: "#22c55e" }}
+                          style={{ backgroundColor: portfolioColors.marketOptimized }}
                         />
                         <span
                           className="font-medium"
@@ -5003,10 +5003,10 @@ export const PortfolioOptimization = ({
                                     type: "current" as const,
                                   },
                                 ]}
-                                fill="#ef4444"
+                                fill={portfolioColors.current}
                                 fillOpacity={1}
                                 shape={(props) => {
-                                  // Large red circle with white ring for maximum visibility
+                                  // Large circle with white ring for maximum visibility
                                   return (
                                     <g>
                                       {/* Outer glow effect */}
@@ -5014,7 +5014,7 @@ export const PortfolioOptimization = ({
                                         cx={props.cx}
                                         cy={props.cy}
                                         r={14}
-                                        fill="#ef4444"
+                                        fill={portfolioColors.current}
                                         fillOpacity={0.2}
                                       />
                                       {/* Main circle */}
@@ -5022,7 +5022,7 @@ export const PortfolioOptimization = ({
                                         cx={props.cx}
                                         cy={props.cy}
                                         r={10}
-                                        fill="#ef4444"
+                                        fill={portfolioColors.current}
                                         stroke="#fff"
                                         strokeWidth={3}
                                       />
@@ -5039,7 +5039,7 @@ export const PortfolioOptimization = ({
                               />
                             )}
 
-                          {/* Weights-Optimized Portfolio - BLUE diamond shape */}
+                          {/* Weights-Optimized Portfolio - diamond shape */}
                           {visibleSeries.weightsOptimized &&
                             portfolioPointsWithJitter.find(
                               (p) => p.type === "weights_optimized",
@@ -5051,10 +5051,10 @@ export const PortfolioOptimization = ({
                                     (p) => p.type === "weights_optimized",
                                   )!,
                                 ]}
-                                fill="#3b82f6"
+                                fill={portfolioColors.weightsOptimized}
                                 fillOpacity={1}
                                 shape={(props) => {
-                                  // Blue diamond (rotated square)
+                                  // Diamond (rotated square)
                                   const size = 10;
                                   return (
                                     <g>
@@ -5063,7 +5063,7 @@ export const PortfolioOptimization = ({
                                         cx={props.cx}
                                         cy={props.cy}
                                         r={14}
-                                        fill="#3b82f6"
+                                        fill={portfolioColors.weightsOptimized}
                                         fillOpacity={0.2}
                                       />
                                       {/* Diamond shape */}
@@ -5074,7 +5074,7 @@ export const PortfolioOptimization = ({
                                           `${props.cx},${props.cy + size}`,
                                           `${props.cx - size},${props.cy}`,
                                         ].join(" ")}
-                                        fill="#3b82f6"
+                                        fill={portfolioColors.weightsOptimized}
                                         stroke="#fff"
                                         strokeWidth={2}
                                       />
@@ -5084,7 +5084,7 @@ export const PortfolioOptimization = ({
                               />
                             )}
 
-                          {/* Market-Optimized Portfolio - GREEN star shape */}
+                          {/* Market-Optimized Portfolio - star shape */}
                           {visibleSeries.marketOptimized &&
                             portfolioPointsWithJitter.find(
                               (p) => p.type === "market_optimized",
@@ -5096,10 +5096,10 @@ export const PortfolioOptimization = ({
                                     (p) => p.type === "market_optimized",
                                   )!,
                                 ]}
-                                fill="#22c55e"
+                                fill={portfolioColors.marketOptimized}
                                 fillOpacity={1}
                                 shape={(props) => {
-                                  // 5-point star in green for market-optimized portfolio
+                                  // 5-point star for market-optimized portfolio
                                   const outerR = 12;
                                   const innerR = 5;
                                   const points = [];
@@ -5118,13 +5118,13 @@ export const PortfolioOptimization = ({
                                         cx={props.cx}
                                         cy={props.cy}
                                         r={16}
-                                        fill="#22c55e"
+                                        fill={portfolioColors.marketOptimized}
                                         fillOpacity={0.2}
                                       />
                                       {/* Star shape */}
                                       <polygon
                                         points={points.join(" ")}
-                                        fill="#22c55e"
+                                        fill={portfolioColors.marketOptimized}
                                         stroke="#fff"
                                         strokeWidth={2}
                                       />
@@ -5146,7 +5146,7 @@ export const PortfolioOptimization = ({
                                     (p) => p.type === "optimized",
                                   )!,
                                 ]}
-                                fill="#22c55e"
+                                fill={portfolioColors.marketOptimized}
                                 fillOpacity={1}
                                 shape={(props) => {
                                   const outerR = 12;
@@ -5166,12 +5166,12 @@ export const PortfolioOptimization = ({
                                         cx={props.cx}
                                         cy={props.cy}
                                         r={16}
-                                        fill="#22c55e"
+                                        fill={portfolioColors.marketOptimized}
                                         fillOpacity={0.2}
                                       />
                                       <polygon
                                         points={points.join(" ")}
-                                        fill="#22c55e"
+                                        fill={portfolioColors.marketOptimized}
                                         stroke="#fff"
                                         strokeWidth={2}
                                       />
@@ -5581,7 +5581,7 @@ export const PortfolioOptimization = ({
                                 style={{
                                   width: "12px",
                                   height: "12px",
-                                  backgroundColor: "#3b82f6",
+                                  backgroundColor: portfolioColors.weightsOptimized,
                                   border: "2px solid white",
                                 }}
                               ></div>
@@ -5596,7 +5596,7 @@ export const PortfolioOptimization = ({
                                 <svg width="14" height="14" viewBox="0 0 16 16">
                                   <polygon
                                     points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6"
-                                    fill="#22c55e"
+                                    fill={portfolioColors.marketOptimized}
                                     stroke="#fff"
                                     strokeWidth="0.5"
                                   />
@@ -5689,7 +5689,7 @@ export const PortfolioOptimization = ({
                                         ?.recommendation === "current" && (
                                         <span
                                           className="text-xs font-medium"
-                                          style={{ color: "#ef4444" }}
+                                          style={{ color: portfolioColors.current }}
                                         >
                                           Recommended
                                         </span>
@@ -5703,7 +5703,7 @@ export const PortfolioOptimization = ({
                                         tripleOptimizationResults
                                           .optimization_metadata
                                           ?.recommendation === "weights"
-                                          ? "3px solid #3b82f6"
+                                          ? `3px solid ${portfolioColors.weightsOptimized}`
                                           : "1px solid " + chartTheme.border,
                                     }}
                                   >
@@ -5713,7 +5713,7 @@ export const PortfolioOptimization = ({
                                         style={{
                                           width: "12px",
                                           height: "12px",
-                                          backgroundColor: "#3b82f6",
+                                          backgroundColor: portfolioColors.weightsOptimized,
                                           border: "2px solid white",
                                         }}
                                       ></div>
@@ -5730,7 +5730,7 @@ export const PortfolioOptimization = ({
                                         ?.recommendation === "weights" && (
                                         <span
                                           className="text-xs font-medium"
-                                          style={{ color: "#3b82f6" }}
+                                          style={{ color: portfolioColors.weightsOptimized }}
                                         >
                                           Recommended
                                         </span>
@@ -5746,7 +5746,7 @@ export const PortfolioOptimization = ({
                                           tripleOptimizationResults
                                             .optimization_metadata
                                             ?.recommendation === "market"
-                                            ? "3px solid #22c55e"
+                                            ? `3px solid ${portfolioColors.marketOptimized}`
                                             : "1px solid " + chartTheme.border,
                                       }}
                                     >
@@ -5758,7 +5758,7 @@ export const PortfolioOptimization = ({
                                         >
                                           <polygon
                                             points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6"
-                                            fill="#22c55e"
+                                            fill={portfolioColors.marketOptimized}
                                             stroke="#fff"
                                             strokeWidth="0.5"
                                           />
@@ -5793,7 +5793,7 @@ export const PortfolioOptimization = ({
                                           ?.recommendation === "market" && (
                                           <span
                                             className="text-xs font-medium"
-                                            style={{ color: "#22c55e" }}
+                                            style={{ color: portfolioColors.marketOptimized }}
                                           >
                                             Recommended
                                           </span>
@@ -6638,7 +6638,7 @@ export const PortfolioOptimization = ({
                               <svg width="16" height="16" viewBox="0 0 16 16">
                                 <polygon
                                   points="8,1 10,6 15,6 11,9 13,15 8,11 3,15 5,9 1,6 6,6"
-                                  fill="#22c55e"
+                                  fill={portfolioColors.marketOptimized}
                                   stroke="#fff"
                                   strokeWidth="1"
                                 />

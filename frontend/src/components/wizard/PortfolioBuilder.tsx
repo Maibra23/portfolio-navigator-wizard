@@ -489,6 +489,9 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </div>
+          <p className="text-xs text-muted-foreground/70 mt-1.5 ml-1">
+            Searching 1,400+ pre-validated US stocks
+          </p>
 
           {/* Error Display */}
           {error && (
@@ -558,6 +561,9 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
               <p className="text-sm">No stocks found for "{searchTerm}"</p>
               <p className="text-xs mt-1">
                 Try a different ticker or company name
+              </p>
+              <p className="text-xs mt-2 opacity-70">
+                Search includes pre-validated US stocks only
               </p>
             </div>
           )}

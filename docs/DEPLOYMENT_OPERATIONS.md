@@ -29,7 +29,7 @@
 
 | Service | URL | Always Running? |
 |---------|-----|-----------------|
-| **Frontend** | https://portfolio-navigator-frontend.fly.dev | No (auto-stops when idle) |
+| **Frontend** | https://portfolio-navigator.fly.dev | No (auto-stops when idle) |
 | **Backend** | https://portfolio-navigator-wizard.fly.dev | Yes (always on) |
 | **API Docs** | https://portfolio-navigator-wizard.fly.dev/docs | Yes |
 
@@ -70,7 +70,7 @@
 
 ### Request Flow Example
 
-1. **User opens** `https://portfolio-navigator-frontend.fly.dev`
+1. **User opens** `https://portfolio-navigator.fly.dev`
 2. **Frontend serves** React SPA (index.html, JS, CSS)
 3. **User clicks** "Get Portfolio Recommendations"
 4. **Frontend calls** `https://portfolio-navigator-wizard.fly.dev/api/v1/portfolio/recommendations/moderate`
@@ -1386,7 +1386,7 @@ Consider setting up a cron job or Fly.io scheduled machine to:
 fly logs -a portfolio-navigator-wizard
 
 # View frontend logs
-fly logs -a portfolio-navigator-frontend
+fly logs -a portfolio-navigator
 
 # SSH into backend
 fly ssh console -a portfolio-navigator-wizard
@@ -1401,7 +1401,7 @@ fly secrets list -a portfolio-navigator-wizard
 cd /path/to/project && fly deploy -a portfolio-navigator-wizard
 
 # Deploy frontend
-cd /path/to/project/frontend && fly deploy -a portfolio-navigator-frontend
+cd /path/to/project/frontend && fly deploy -a portfolio-navigator
 ```
 
 ---
@@ -1456,10 +1456,10 @@ fly status -a portfolio-navigator-wizard
 curl https://portfolio-navigator-wizard.fly.dev/healthz
 
 # Check frontend status
-fly status -a portfolio-navigator-frontend
+fly status -a portfolio-navigator
 
 # Visit the app
-open https://portfolio-navigator-frontend.fly.dev
+open https://portfolio-navigator.fly.dev
 ```
 
 ### Step 4: Monitor (if needed)
@@ -1469,7 +1469,7 @@ open https://portfolio-navigator-frontend.fly.dev
 fly logs -a portfolio-navigator-wizard
 
 # Watch frontend logs
-fly logs -a portfolio-navigator-frontend
+fly logs -a portfolio-navigator
 ```
 
 ### Complete Example Workflow
@@ -1494,7 +1494,7 @@ fly deploy --remote-only
 
 # 6. Verify
 curl https://portfolio-navigator-wizard.fly.dev/healthz
-open https://portfolio-navigator-frontend.fly.dev
+open https://portfolio-navigator.fly.dev
 
 # 7. (Optional) Push to GitHub
 git push origin main
@@ -1539,7 +1539,7 @@ fly ssh console -a portfolio-navigator-wizard
 **Changes not visible in browser:**
 1. Hard refresh: `Cmd+Shift+R` (Mac) or `Ctrl+Shift+R` (Windows)
 2. Clear browser cache
-3. Check the correct version deployed: `fly releases -a portfolio-navigator-frontend`
+3. Check the correct version deployed: `fly releases -a portfolio-navigator`
 
 ### Configuration Reference
 
