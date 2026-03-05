@@ -3,7 +3,7 @@
 #
 # This serves the React SPA via nginx
 
-app = "portfolio-navigator-frontend"
+app = "portfolio-navigator"
 primary_region = "arn"               # Stockholm — same region as backend
 
 [build]
@@ -17,9 +17,9 @@ primary_region = "arn"               # Stockholm — same region as backend
 [http_service]
   internal_port        = 8080
   force_https          = true
-  auto_stop_machines   = true    # Frontend can stop when idle (static files)
+  auto_stop_machines   = true    # Idle machines can stop, but min 1 stays running
   auto_start_machines  = true
-  min_machines_running = 0
+  min_machines_running = 1       # Keep 1 machine always running to avoid cold start
 
   [http_service.concurrency]
     type       = "requests"

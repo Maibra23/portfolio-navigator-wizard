@@ -2,9 +2,10 @@
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-# Redis: Using Upstash (external managed Redis with persistence)
+# Redis: Using Redis Cloud (external managed Redis with persistence)
 #   Set the connection URL as a secret (NOT in [env] for security):
-#   fly secrets set REDIS_URL="rediss://default:xxx@xxx.upstash.io:6379"
+#   fly secrets set REDIS_URL="redis://default:xxx@redis-xxxxx.cloud.redislabs.com:xxxxx"
+#   Current: database-Wizard (eu-north-1) — 30MB free tier, unlimited commands
 #
 # Other sensitive env vars go in Fly secrets:
 #   fly secrets set ADMIN_API_KEY=your-key SMTP_USER=you@gmail.com SMTP_PASSWORD=app-password
@@ -13,15 +14,15 @@ app = 'portfolio-navigator-wizard'
 primary_region = 'ams'
 
 [build]
-  # Uses the root-level Dockerfile (connects to Upstash Redis)
+  # Uses the root-level Dockerfile (connects to Redis Cloud)
   dockerfile = "Dockerfile"
 
 [env]
   ENVIRONMENT       = "production"
   PORT              = "8080"
-  # REDIS_URL is set via fly secrets (Upstash connection string - contains password)
+  # REDIS_URL is set via fly secrets (Redis Cloud connection string - contains password)
   # ALLOWED_ORIGINS: Add your frontend URL here (comma-separated if multiple)
-  ALLOWED_ORIGINS   = "https://portfolio-navigator-frontend.fly.dev,https://portfolio-navigator-wizard.fly.dev"
+  ALLOWED_ORIGINS   = "https://portfolio-navigator.fly.dev,https://portfolio-navigator-wizard.fly.dev"
   # ALLOWED_HOSTS: TrustedHostMiddleware requires exact hostnames (no wildcards)
   ALLOWED_HOSTS     = "portfolio-navigator-wizard.fly.dev,localhost,127.0.0.1"
   # Non-secret env vars — set secrets separately via: fly secrets set KEY=value
@@ -49,7 +50,7 @@ primary_region = 'ams'
     path         = "/healthz"
     timeout      = "5s"
 
-# Machine size: FastAPI only (no bundled Redis — using Upstash)
+# Machine size: FastAPI only (no bundled Redis — using Redis Cloud)
 # 512mb = minimal (dev); 1gb = recommended production with scipy/numpy/pandas
 [[vm]]
   memory = '1gb'
