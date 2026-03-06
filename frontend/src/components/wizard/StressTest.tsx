@@ -60,6 +60,7 @@ import {
 import { ScenarioSelector, type ScenarioId } from "./ScenarioSelector";
 import { ResilienceScore } from "./ResilienceScore";
 import { TimelineScrollReveal } from "./TimelineScrollReveal";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface SelectedPortfolioData {
   source: "current" | "weights" | "market";
@@ -340,6 +341,7 @@ export const StressTest: React.FC<StressTestProps> = ({
   // Export removed - not needed for one-time stress test flow
 
   return (
+    <LandscapeHint storageKey="stress-test-landscape-hint">
     <div className="max-w-6xl mx-auto p-4">
       <Card>
         <CardHeader className="pb-2">
@@ -5049,5 +5051,6 @@ export const StressTest: React.FC<StressTestProps> = ({
         </CardContent>
       </Card>
     </div>
+    </LandscapeHint>
   );
 };

@@ -46,6 +46,7 @@ import {
 } from "recharts";
 import type { TooltipProps, ValueType, NameType } from "recharts";
 import { API_ENDPOINTS } from "@/config/api";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 import {
   ArrowLeft,
   ArrowRight,
@@ -3058,6 +3059,7 @@ export const PortfolioOptimization = ({
   };
 
   return (
+    <LandscapeHint storageKey="portfolio-optimization-landscape-hint">
     <div>
       <Card className="shadow-sm border-t-2 border-t-primary/30">
         <StepCardHeader
@@ -8824,5 +8826,6 @@ export const PortfolioOptimization = ({
         </CardContent>
       </Card>
     </div>
+    </LandscapeHint>
   );
 };

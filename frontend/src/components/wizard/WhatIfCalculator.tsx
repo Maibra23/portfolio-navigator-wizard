@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Calculator, Info, RefreshCw } from "lucide-react";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Tooltip,
   TooltipContent,
@@ -34,10 +35,13 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
   const [taxResults, setTaxResults] = useState<TaxResult[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Calculate taxes for all three account types
+  const debouncedCapital = useDebounce(simulatedCapital, 300);
+  const debouncedTaxYear = useDebounce(simulatedTaxYear, 300);
+
+  // Calculate taxes for all three account types (debounced to reduce API calls)
   useEffect(() => {
     const calculateTaxes = async () => {
-      if (simulatedCapital <= 0) {
+      if (debouncedCapital <= 0) {
         setTaxResults([]);
         return;
       }
@@ -49,13 +53,13 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
         const promises = accountTypes.map(async (accountType) => {
           const requestBody: any = {
             accountType,
-            taxYear: simulatedTaxYear,
+            taxYear: debouncedTaxYear,
           };
 
           if (accountType === "ISK" || accountType === "KF") {
-            requestBody.portfolioValue = simulatedCapital;
+            requestBody.portfolioValue = debouncedCapital;
           } else {
-            const estimatedGains = simulatedCapital * expectedReturn;
+            const estimatedGains = debouncedCapital * expectedReturn;
             requestBody.realizedGains = estimatedGains;
             requestBody.dividends = 0;
             requestBody.fundHoldings = 0;
@@ -74,8 +78,8 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
           const result = await response.json();
           const annualTax = result.annualTax || 0;
           const effectiveRate =
-            accountType === "AF" && simulatedCapital > 0
-              ? (annualTax / simulatedCapital) * 100
+            accountType === "AF" && debouncedCapital > 0
+              ? (annualTax / debouncedCapital) * 100
               : (result.effectiveTaxRate ?? 0);
           return {
             accountType,
@@ -96,7 +100,7 @@ export const WhatIfCalculator: React.FC<WhatIfCalculatorProps> = ({
     };
 
     calculateTaxes();
-  }, [simulatedCapital, simulatedTaxYear, expectedReturn]);
+  }, [debouncedCapital, debouncedTaxYear, expectedReturn]);
 
   const handleReset = () => {
     setSimulatedCapital(initialCapital);

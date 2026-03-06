@@ -27,6 +27,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface FiveYearProjectionChartProps {
   weights: Record<string, number>;
@@ -257,6 +258,7 @@ export const FiveYearProjectionChart: React.FC<
   };
 
   return (
+    <LandscapeHint storageKey="five-year-projection-landscape-hint">
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
@@ -513,5 +515,6 @@ export const FiveYearProjectionChart: React.FC<
         </div>
       </CardContent>
     </Card>
+    </LandscapeHint>
   );
 };

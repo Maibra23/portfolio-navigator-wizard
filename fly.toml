@@ -48,7 +48,7 @@ primary_region = 'ams'
     interval     = "30s"
     method       = "GET"
     path         = "/healthz"
-    timeout      = "5s"
+    timeout      = "10s"
 
 # Machine size: FastAPI only (no bundled Redis — using Redis Cloud)
 # 512mb = minimal (dev); 1gb = recommended production with scipy/numpy/pandas

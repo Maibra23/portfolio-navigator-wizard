@@ -16,6 +16,7 @@ import { Button } from "../ui/button";
 import { Plus, Minus, RotateCcw } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface Asset {
   ticker: string;
@@ -141,6 +142,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
   };
 
   return (
+    <LandscapeHint storageKey="risk-return-landscape-hint">
     <Card className="w-full">
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -358,6 +360,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
         </div>
       </CardContent>
     </Card>
+    </LandscapeHint>
   );
 };
 

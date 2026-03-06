@@ -1141,8 +1141,12 @@ if is_production():
     logger.info("🔒 TrustedHostMiddleware enabled (health paths bypassed): %s", _allowed_hosts)
 
 
+# Paths to exclude from request metrics and logging (health checks, metrics endpoint)
+_HEALTH_AND_METRICS_PATHS = frozenset({"/healthz", "/health", "/metrics"})
+
+
 class PrometheusMiddleware(BaseHTTPMiddleware):
-    """Record request count and latency for Prometheus."""
+    """Record request count and latency for Prometheus. Skip health and metrics paths."""
 
     async def dispatch(self, request: Request, call_next):
         start = time.perf_counter()
@@ -1151,8 +1155,9 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration = time.perf_counter() - start
         status = response.status_code
-        REQUEST_LATENCY.labels(method=method, path=path).observe(duration)
-        REQUEST_COUNT.labels(method=method, path=path, status=status).inc()
+        if path not in _HEALTH_AND_METRICS_PATHS:
+            REQUEST_LATENCY.labels(method=method, path=path).observe(duration)
+            REQUEST_COUNT.labels(method=method, path=path, status=status).inc()
         return response
 
 
@@ -1212,7 +1217,31 @@ app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio",
 app.include_router(strategy_buckets.router, prefix="/api/v1/strategy-buckets", tags=["strategy-buckets"])
 
 # Health check endpoints (/health and /healthz for load balancers and Kubernetes)
+# Lightweight: ping-only for fast load balancer checks (no portfolio enumeration)
+@app.get("/healthz")
+async def healthz():
+    """Lightweight health check for load balancers (Redis ping only)."""
+    try:
+        if redis_first_data_service and redis_first_data_service._async_client:
+            ok = await redis_first_data_service.ping_async()
+            if ok:
+                return {"status": "healthy"}
+            return {"status": "unhealthy", "reason": "redis_ping_failed"}
+        return {"status": "degraded", "reason": "redis_unavailable"}
+    except Exception as e:
+        if is_production():
+            return {"status": "unhealthy"}
+        return {"status": "unhealthy", "error": str(e)}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint (same lightweight check as /healthz)."""
+    return await healthz()
+
+
 async def _health_response():
+    """Detailed health with portfolio bucket status (for diagnostics only)."""
     try:
         if redis_manager:
             portfolio_status = redis_manager.get_all_portfolio_buckets_status()
@@ -1236,15 +1265,9 @@ async def _health_response():
         return {"status": "unhealthy", "error": str(e)}
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return await _health_response()
-
-
-@app.get("/healthz")
-async def healthz():
-    """Kubernetes-style health check (same as /health)."""
+@app.get("/health/detailed")
+async def health_detailed():
+    """Detailed health check with portfolio status (for diagnostics)."""
     return await _health_response()
 
 # Portfolio bucket status endpoint

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme, getVisualizationPalette } from "@/utils/chartThemes";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface TaxComparisonChartProps {
   capital: number;
@@ -60,6 +62,10 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const debouncedCapital = useDebounce(capital, 300);
+  const debouncedTaxYear = useDebounce(taxYear, 300);
+  const debouncedExpectedReturn = useDebounce(expectedReturn, 300);
+
   useEffect(() => {
     if (comparisonDataProp && comparisonDataProp.length > 0) {
       setData(
@@ -76,7 +82,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
     }
 
     const fetchComparisons = async () => {
-      if (capital <= 0) {
+      if (debouncedCapital <= 0) {
         setData([]);
         return;
       }
@@ -87,11 +93,11 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       try {
         const accountTypes = ["ISK", "KF", "AF"];
         const promises = accountTypes.map(async (accountType) => {
-          const requestBody: any = { accountType, taxYear };
+          const requestBody: any = { accountType, taxYear: debouncedTaxYear };
           if (accountType === "ISK" || accountType === "KF") {
-            requestBody.portfolioValue = capital;
+            requestBody.portfolioValue = debouncedCapital;
           } else {
-            requestBody.realizedGains = capital * expectedReturn;
+            requestBody.realizedGains = debouncedCapital * debouncedExpectedReturn;
             requestBody.dividends = 0;
             requestBody.fundHoldings = 0;
           }
@@ -105,8 +111,8 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
           const result = await response.json();
           const annualTax = result.annualTax || 0;
           const effectiveRate =
-            accountType === "AF" && capital > 0
-              ? (annualTax / capital) * 100
+            accountType === "AF" && debouncedCapital > 0
+              ? (annualTax / debouncedCapital) * 100
               : (result.effectiveTaxRate ?? 0);
           return {
             accountType,
@@ -126,7 +132,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
     };
 
     fetchComparisons();
-  }, [capital, taxYear, expectedReturn, comparisonDataProp]);
+  }, [debouncedCapital, debouncedTaxYear, debouncedExpectedReturn, comparisonDataProp]);
 
   if (loading) {
     const loadingContent = (
@@ -336,6 +342,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
 
   if (noCard) return chartContent;
   return (
+    <LandscapeHint storageKey="tax-comparison-landscape-hint">
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
@@ -375,5 +382,6 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       </CardHeader>
       <CardContent>{chartContent}</CardContent>
     </Card>
+    </LandscapeHint>
   );
 };

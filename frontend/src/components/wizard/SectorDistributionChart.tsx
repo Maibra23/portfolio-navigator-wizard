@@ -19,6 +19,7 @@ import { Button } from '../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
+import { LandscapeHint } from '@/components/ui/landscape-hint';
 
 interface Sector {
   sector: string;
@@ -144,6 +145,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
   };
 
   return (
+    <LandscapeHint storageKey="sector-distribution-landscape-hint">
     <Card className="w-full">
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -354,6 +356,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
         </div>
       </CardContent>
     </Card>
+    </LandscapeHint>
   );
 };
 

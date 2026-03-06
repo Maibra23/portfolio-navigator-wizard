@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface TwoDimensionalMapProps {
   mptScore: number;
@@ -223,6 +224,7 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
 
   return (
     <TooltipProvider>
+      <LandscapeHint storageKey="two-dimensional-map-landscape-hint">
       <Card className={cn("w-full", className)}>
         <CardHeader className="pb-3 text-center">
           <CardTitle className="text-base font-semibold">
@@ -260,6 +262,7 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
           )}
         </CardContent>
       </Card>
+      </LandscapeHint>
     </TooltipProvider>
   );
 };
