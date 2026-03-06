@@ -49,8 +49,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 EXPOSE 8080
 
-# Start uvicorn directly (no bundled Redis — using Upstash)
+# Start uvicorn with 2 workers for better concurrency
+# If one worker is blocked by heavy operations, the other handles health checks
 CMD exec uvicorn main:app \
     --host 0.0.0.0 \
     --port "${PORT:-8080}" \
-    --workers 1
+    --workers 2

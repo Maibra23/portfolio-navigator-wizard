@@ -50,10 +50,10 @@ primary_region = 'ams'
     path         = "/healthz"
     timeout      = "20s"
 
-# Machine size: FastAPI only (no bundled Redis — using Redis Cloud)
-# 512mb = minimal (dev); 1gb = recommended production with scipy/numpy/pandas
+# Machine size: FastAPI with 2 workers (using Redis Cloud)
+# 2 workers need ~1.5GB total; 2GB gives headroom for numpy/scipy operations
 [[vm]]
-  memory = '1gb'
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 1024
+  memory_mb = 2048
