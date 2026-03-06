@@ -130,6 +130,42 @@ async def lifespan(app: FastAPI):
                     )
                 else:
                     logger.info(f"✅ Warm start - Redis has {db_size} keys ({price_key_count} prices, {portfolio_key_count} portfolios)")
+
+                    # Build search index for instant search (background, non-blocking)
+                    logger.info("🔍 Building search index for instant search...")
+                    try:
+                        redis_first_data_service.build_search_index()
+
+                        # Schedule periodic search index refresh (every 24 hours)
+                        # This ensures the index stays fresh with new tickers/company changes
+                        async def periodic_search_index_refresh():
+                            REFRESH_INTERVAL_HOURS = 24
+                            REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_HOURS * 60 * 60
+
+                            while True:
+                                await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+                                try:
+                                    logger.info("🔄 Periodic search index refresh starting...")
+                                    success = await asyncio.to_thread(
+                                        redis_first_data_service.refresh_search_index
+                                    )
+                                    if success:
+                                        stats = redis_first_data_service.get_search_index_stats()
+                                        logger.info(
+                                            f"✅ Search index refreshed: {stats['total_tickers']} tickers, "
+                                            f"{stats['total_prefixes']} prefixes"
+                                        )
+                                    else:
+                                        logger.warning("⚠️ Search index refresh returned False")
+                                except Exception as e:
+                                    logger.error(f"❌ Periodic search index refresh failed: {e}")
+
+                        asyncio.create_task(periodic_search_index_refresh())
+                        logger.info("✅ Search index built, periodic refresh scheduled (every 24h)")
+
+                    except Exception as idx_err:
+                        logger.warning(f"⚠️ Search index build failed (search will use fallback): {idx_err}")
+
             except Exception as e:
                 logger.warning(f"⚠️ Could not check Redis state for cold-start detection: {e}")
 

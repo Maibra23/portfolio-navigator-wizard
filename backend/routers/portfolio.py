@@ -620,6 +620,85 @@ async def search_suggestions(
             detail=safe_error_message(e, "Suggestions failed")
         )
 
+
+@portfolios_router.get("/popular-tickers")
+@limiter.limit(RateLimits.READ)
+async def get_popular_tickers(
+    request: Request,
+    limit: int = Query(20, description="Maximum tickers to return")
+):
+    """Get popular/trending tickers for quick selection."""
+    try:
+        tickers = _rds.get_popular_tickers(limit)
+        return {
+            'success': True,
+            'total': len(tickers),
+            'tickers': tickers
+        }
+    except Exception as e:
+        logger.error(f"Error getting popular tickers: {e}")
+        raise HTTPException(status_code=500, detail=safe_error_message(e, "Failed to get popular tickers"))
+
+
+@portfolios_router.get("/sectors")
+@limiter.limit(RateLimits.READ)
+async def get_all_sectors(request: Request):
+    """Get list of all available sectors for browsing."""
+    try:
+        sectors = _rds.get_all_sectors()
+        # Format sector names nicely
+        formatted_sectors = []
+        sector_icons = {
+            'technology': '💻',
+            'healthcare': '🏥',
+            'financial services': '💰',
+            'consumer cyclical': '🛒',
+            'consumer defensive': '🛡️',
+            'industrials': '🏭',
+            'energy': '⚡',
+            'utilities': '💡',
+            'real estate': '🏠',
+            'communication services': '📡',
+            'basic materials': '⛏️',
+        }
+        for sector in sorted(sectors):
+            icon = sector_icons.get(sector, '📊')
+            formatted_sectors.append({
+                'id': sector,
+                'name': sector.title(),
+                'icon': icon
+            })
+        return {
+            'success': True,
+            'total': len(formatted_sectors),
+            'sectors': formatted_sectors
+        }
+    except Exception as e:
+        logger.error(f"Error getting sectors: {e}")
+        raise HTTPException(status_code=500, detail=safe_error_message(e, "Failed to get sectors"))
+
+
+@portfolios_router.get("/sectors/{sector}/tickers")
+@limiter.limit(RateLimits.READ)
+async def get_tickers_by_sector(
+    request: Request,
+    sector: str,
+    limit: int = Query(30, description="Maximum tickers to return")
+):
+    """Get tickers for a specific sector."""
+    try:
+        tickers = _rds.get_tickers_by_sector(sector, limit)
+        return {
+            'success': True,
+            'sector': sector,
+            'total': len(tickers),
+            'tickers': tickers
+        }
+    except Exception as e:
+        logger.error(f"Error getting tickers for sector {sector}: {e}")
+        raise HTTPException(status_code=500, detail=safe_error_message(e, f"Failed to get tickers for {sector}"))
+
+
 @portfolios_router.get("/ticker-info/{ticker}")
 def get_ticker_info(ticker: str):
     """Get comprehensive ticker information with Redis-first approach"""
