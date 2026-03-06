@@ -315,21 +315,40 @@ time curl -s "http://localhost:8000/api/v1/portfolio/search-tickers?q=micro&limi
 
 ## Implemented Improvements (2026-03-06)
 
-### 1. Periodic Index Refresh (IMPLEMENTED)
-The search index now refreshes automatically every 24 hours to pick up:
-- New tickers added to the master list
-- Company name changes
-- Sector reclassifications
+### 1. TTL-Aware Index Refresh (IMPLEMENTED)
+The search index refreshes automatically in three scenarios:
+
+| Trigger | When | Why |
+|---------|------|-----|
+| **TTL Data Refresh** | After `refresh_expiring_tickers()` | Ticker data changed in Redis |
+| **Cold Start Recovery** | After eligible tickers pre-computation | Data now available after empty Redis |
+| **24h Safety Net** | Every 24 hours | Catch any missed updates |
 
 **Implementation:**
 - `redis_first_data_service.py`: Added `refresh_search_index()` and `get_search_index_stats()` methods
-- `main.py`: Background task runs `periodic_search_index_refresh()` every 24h
+- `main.py:700-716`: Refresh index after TTL monitoring refreshes ticker data
+- `main.py:403-412`: Build index after cold start data load completes
+- `main.py:141-163`: Background task runs `periodic_search_index_refresh()` every 24h
+
+**How it works:**
+```
+Redis TTL Expiring → TTL Monitor Refreshes Data → Search Index Refreshed
+                                                          ↓
+Cold Start (empty Redis) → Data Pre-computation → Search Index Built
+                                                          ↓
+Safety Net: Every 24 hours → Periodic Refresh → Search Index Refreshed
+```
 
 **Monitoring:**
 ```bash
-# Check logs for periodic refresh
-fly logs | grep "Periodic search index refresh"
-# Expected: "Search index refreshed: 1400 tickers, 500 prefixes"
+# Check logs for index refresh triggers
+fly logs | grep "Search index"
+
+# Expected patterns:
+# "Search index built: 1415 tickers, 8309 prefixes in 0.25s"  (startup)
+# "Refreshing search index after ticker data update..."       (TTL trigger)
+# "Search index built (cold start): 1415 tickers"            (cold start)
+# "Periodic search index refresh starting..."                 (24h safety)
 ```
 
 ### 2. Redis Caching for Search Results (ASSESSED - NOT IMPLEMENTED)

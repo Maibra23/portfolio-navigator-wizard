@@ -402,6 +402,16 @@ async def lifespan(app: FastAPI):
                             min_interval_seconds=120,
                         )
 
+                        # Build search index now that ticker data is available (cold start recovery)
+                        if not redis_first_data_service._search_index_built:
+                            logger.info("🔍 Building search index after cold start data load...")
+                            try:
+                                redis_first_data_service.build_search_index()
+                                stats = redis_first_data_service.get_search_index_stats()
+                                logger.info(f"✅ Search index built (cold start): {stats['total_tickers']} tickers")
+                            except Exception as idx_err:
+                                logger.warning(f"⚠️ Search index build failed: {idx_err}")
+
                     except Exception as e:
                         logger.error(f"❌ Background eligible tickers pre-computation failed: {e}")
                         import traceback
@@ -704,6 +714,17 @@ async def lifespan(app: FastAPI):
                             logger.info(
                                 f"✅ Auto-refresh complete: {result['refreshed']}/{result['total_expiring']} tickers"
                             )
+
+                            # Refresh search index after ticker data changes
+                            if result['refreshed'] > 0:
+                                logger.info("🔄 Refreshing search index after ticker data update...")
+                                try:
+                                    await asyncio.to_thread(redis_first_data_service.refresh_search_index)
+                                    stats = redis_first_data_service.get_search_index_stats()
+                                    logger.info(f"✅ Search index refreshed: {stats['total_tickers']} tickers")
+                                except Exception as idx_err:
+                                    logger.warning(f"⚠️ Search index refresh failed: {idx_err}")
+
                             send_notification(
                                 title="Ticker cache auto-refresh completed",
                                 severity="SUCCESS",
