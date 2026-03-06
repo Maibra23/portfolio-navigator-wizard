@@ -980,7 +980,7 @@ class StrategyPortfolioOptimizer:
             expected_return = self._calculate_expected_return(allocations, strategy)
             risk = self._calculate_portfolio_risk(allocations, strategy)
             # Use the same risk-free rate as the main analytics system for consistency
-            risk_free_rate = getattr(self.portfolio_analytics, 'risk_free_rate', 0.02)
+            risk_free_rate = getattr(self.portfolio_analytics, 'risk_free_rate', 0.038)
             
             if risk > 0:
                 return (expected_return - risk_free_rate) / risk

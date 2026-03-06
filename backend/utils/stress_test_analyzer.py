@@ -1,6 +1,10 @@
 """
-Stress Test Analyzer Module
-Analyzes portfolio performance during historical market crises
+Stress test analyzer — historical crisis scenarios and recovery metrics.
+
+Uses cached monthly prices (source: Yahoo Finance via Redis). Scenarios include COVID-19
+(Feb–Apr 2020) and 2008 crisis (Sep 2008–Mar 2010). Computes peak, trough, recovery
+(≥95% of pre-crisis peak), volatility over period; portfolio value = sum(price*weight)
+over aligned dates, normalized to 100 at start. Full methodology: docs/DATA_SOURCES_AND_METHODOLOGY.md (Section 4.9).
 """
 
 import pandas as pd

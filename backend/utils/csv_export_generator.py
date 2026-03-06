@@ -790,7 +790,7 @@ class CSVExportGenerator:
         # Data Sources
         writer.writerow(['=== DATA SOURCES ==='])
         writer.writerow(['Category', 'Source', 'Notes'])
-        writer.writerow(['Historical Prices', 'Market data providers', 'Typically 3-5 years of daily returns'])
+        writer.writerow(['Historical Prices', 'Yahoo Finance (yfinance / yahooquery)', 'Monthly adjusted close, up to 20 years. Historical data for educational purposes only.'])
         writer.writerow(['Expected Return', 'Weighted average of historical annualized returns', 'Based on your portfolio allocation'])
         writer.writerow(['Risk (Volatility)', 'Portfolio variance from correlation matrix', 'Accounts for diversification effects'])
         writer.writerow(['Tax Rates', 'Swedish Tax Agency (Skatteverket)', 'Official rates for ISK/KF/AF accounts'])

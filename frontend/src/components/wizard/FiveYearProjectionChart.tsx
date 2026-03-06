@@ -28,6 +28,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
+import { DataSourceAttribution } from "./DataSourceAttribution";
 
 interface FiveYearProjectionChartProps {
   weights: Record<string, number>;
@@ -513,6 +514,7 @@ export const FiveYearProjectionChart: React.FC<
             </li>
           </ul>
         </div>
+        <DataSourceAttribution />
       </CardContent>
     </Card>
     </LandscapeHint>

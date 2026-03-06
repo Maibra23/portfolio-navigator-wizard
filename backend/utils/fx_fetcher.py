@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-FX Rate Fetcher - USD Price Normalization
+FX Rate Fetcher — USD price normalization for non-USD tickers.
 
-Fetches historical FX rates from Yahoo Finance (via yahooquery) and caches in Redis.
-Used to convert non-USD ticker prices to USD at storage time.
+Data source: Yahoo Finance (yahooquery). Pairs: EUR, GBP, SEK, CHF, NOK, DKK, PLN vs USD
+(tickers e.g. SEKUSD=X). Historical daily rates; missing dates (weekends/holidays) are
+forward-filled when converting price series. Cached in Redis with 24h TTL (fx_rates:{CURRENCY}:USD).
+Used at storage time in EnhancedDataFetcher to normalize all prices to USD.
+
+Full methodology: docs/DATA_SOURCES_AND_METHODOLOGY.md (Section 3.3, Section 1.3).
 """
 
 import json

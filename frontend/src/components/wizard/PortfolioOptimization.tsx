@@ -47,6 +47,7 @@ import {
 import type { TooltipProps, ValueType, NameType } from "recharts";
 import { API_ENDPOINTS } from "@/config/api";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
+import { DataSourceAttribution } from "./DataSourceAttribution";
 import {
   ArrowLeft,
   ArrowRight,
@@ -8823,6 +8824,7 @@ export const PortfolioOptimization = ({
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
+          <DataSourceAttribution />
         </CardContent>
       </Card>
     </div>

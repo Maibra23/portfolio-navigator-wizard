@@ -36,9 +36,9 @@ def calculate_metrics_for_ticker(data_service: RedisFirstDataService, ticker: st
             logger.warning(f"⚠️ {ticker}: Insufficient returns data")
             return False
         
-        # Calculate annualized return (assuming monthly data)
+        # Calculate annualized return (compound, consistent with port_analytics and DATA_SOURCES_AND_METHODOLOGY.md)
         mean_return = returns.mean()
-        annual_return = mean_return * 12
+        annual_return = (1 + mean_return) ** 12 - 1
         
         # Calculate annualized volatility (risk)
         std_return = returns.std()

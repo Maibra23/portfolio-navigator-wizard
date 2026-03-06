@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-Portfolio Mean-Variance Optimization (MVO) Engine
-Uses PyPortfolioOpt for advanced portfolio optimization
-Integrates with Agent 1 endpoints for data preparation
+Portfolio Mean-Variance Optimization (MVO) engine using PyPortfolioOpt.
+
+Uses expected returns and covariance from monthly price data (Redis/cache, source: Yahoo Finance).
+Objectives: max Sharpe, min variance, target return/risk. Default risk-free rate 3.8%;
+min overlap for alignment 12 months. Integrates with data preparation endpoints for ticker
+metrics and covariance. Full methodology: docs/DATA_SOURCES_AND_METHODOLOGY.md (Section 4.8).
 """
 
 import logging

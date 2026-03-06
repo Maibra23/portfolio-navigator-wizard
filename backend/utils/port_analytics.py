@@ -1,3 +1,13 @@
+"""
+Portfolio analytics — return, risk, Sharpe, drawdown, diversification, MVO.
+
+Input: monthly adjusted close prices (typically from Redis/cache, ultimately Yahoo Finance).
+Formulas: compound annual return (1+r)^12-1; annualized volatility = monthly_std * sqrt(12);
+max drawdown from cumulative returns; Sharpe with risk_free_rate=0.038. Data quality:
+'good' if >= 180 months, else 'limited'. Used for two-asset analysis, risk portfolios,
+efficient frontier, and optimization. Risk-free rate and annualization are documented in
+docs/DATA_SOURCES_AND_METHODOLOGY.md (Section 4).
+"""
 import quantstats as qs
 import pypfopt
 from pypfopt import EfficientFrontier, risk_models, expected_returns

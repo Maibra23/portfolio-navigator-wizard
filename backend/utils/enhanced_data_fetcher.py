@@ -1,3 +1,14 @@
+"""
+Enhanced Data Fetcher — Yahoo Finance ingestion and validation.
+
+Data source: Yahoo Finance (yfinance 0.2.66, yahooquery >= 2.4.1). Fetches up to 20 years
+of monthly adjusted close prices and sector/metadata. Rate-limited (batch 20, 1.3–4 s delay,
+~2000 req/day). Validation: min 12 data points, missing < 20%, price range 0.01–10,000.
+Non-USD prices are converted to USD via FXRateFetcher before storage. Ticker universe:
+master list from Redis/CSV or Wikipedia (S&P 500, NASDAQ 100) plus 15 hardcoded ETFs.
+
+Full data provenance and methodology: see docs/DATA_SOURCES_AND_METHODOLOGY.md
+"""
 import pandas as pd
 import yfinance as yf
 from yahooquery import Ticker as YQTicker
@@ -529,12 +540,8 @@ class EnhancedDataFetcher:
             monthly_return = returns.mean()
             monthly_risk = returns.std()
             
-            # Annualize metrics - use simple multiplication for consistency with system expectations
-            # For small returns, compound and simple are similar; for large returns, simple is more stable
-            if abs(monthly_return) < 0.1:  # Small returns, compound is fine
-                annual_return = (1 + monthly_return) ** 12 - 1
-            else:  # Large returns, use simple multiplication to avoid extreme values
-                annual_return = monthly_return * 12
+            # Annualize return (compound), consistent with port_analytics and docs/DATA_SOURCES_AND_METHODOLOGY.md
+            annual_return = (1 + monthly_return) ** 12 - 1
             
             annual_risk = monthly_risk * (12 ** 0.5)  # Annualized volatility
             

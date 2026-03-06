@@ -61,6 +61,7 @@ import { ScenarioSelector, type ScenarioId } from "./ScenarioSelector";
 import { ResilienceScore } from "./ResilienceScore";
 import { TimelineScrollReveal } from "./TimelineScrollReveal";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
+import { DataSourceAttribution } from "./DataSourceAttribution";
 
 interface SelectedPortfolioData {
   source: "current" | "weights" | "market";
@@ -5048,6 +5049,7 @@ export const StressTest: React.FC<StressTestProps> = ({
               )}
             </Button>
           </div>
+          <DataSourceAttribution />
         </CardContent>
       </Card>
     </div>

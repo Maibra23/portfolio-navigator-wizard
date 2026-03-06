@@ -60,6 +60,7 @@ Simply click the theme toggle button (☀️/🌙) in the top-right corner on th
 - [How to Run the App](#how-to-run-the-app)
 - [Project Structure](#project-structure)
 - [Architecture](#architecture)
+- [Data Sources](#data-sources)
 - [Adding New Features](#adding-new-features)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
@@ -552,6 +553,10 @@ User Portfolio → Current Analysis
 - **Package Managers:** npm (frontend), pip (backend)
 - **Build System:** Make
 - **Code Quality:** ESLint, TypeScript strict mode
+
+## Data Sources
+
+This project uses publicly available market data from Yahoo Finance (via yfinance and yahooquery), including monthly adjusted close prices for approximately 1,432 validated tickers across S&P 500, NASDAQ 100, and 15 major ETFs. See [docs/DATA_SOURCES_AND_METHODOLOGY.md](docs/DATA_SOURCES_AND_METHODOLOGY.md) for full details on data sources, processing methodology, validation rules, and assumptions.
 
 ## 🛠️ Adding New Features
 

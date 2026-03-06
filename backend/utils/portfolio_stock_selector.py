@@ -430,7 +430,8 @@ class PortfolioStockSelector:
                     current_price = price_series.iloc[-1] if not price_series.empty else 0
                     returns = price_series.pct_change().dropna()
                     volatility = returns.std() * np.sqrt(12) if len(returns) > 0 else 0
-                    annual_return = returns.mean() * 12 if len(returns) > 0 else 0
+                    # Compound annualization, consistent with port_analytics and DATA_SOURCES_AND_METHODOLOGY.md
+                    annual_return = ((1 + returns.mean()) ** 12 - 1) if len(returns) > 0 else 0
                 else:
                     return None
             else:

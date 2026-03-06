@@ -6232,8 +6232,8 @@ def generate_efficient_frontier_points(returns_data: Dict[str, pd.Series], selec
         portfolio_return = (returns_df.mean() * weights).sum() * 12  # Annualized
         portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 12, weights)))
         
-        # Calculate Sharpe ratio
-        risk_free_rate = 0.02
+        # Calculate Sharpe ratio (project standard risk-free rate 0.038, see docs/DATA_SOURCES_AND_METHODOLOGY.md)
+        risk_free_rate = 0.038
         sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
         
         frontier_points.append({
@@ -6320,8 +6320,8 @@ async def risk_return_analysis(request: PortfolioAnalyticsRequest):
             asset_risks = np.array([asset_metrics[ticker]["risk"] for ticker in tickers])
             portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(correlation_matrix * np.outer(asset_risks, asset_risks), weights)))
             
-            # Calculate portfolio Sharpe ratio
-            risk_free_rate = 0.02
+            # Calculate portfolio Sharpe ratio (project standard risk-free rate 0.038, see docs/DATA_SOURCES_AND_METHODOLOGY.md)
+            risk_free_rate = 0.038
             portfolio_sharpe = (portfolio_return - risk_free_rate) / portfolio_risk if portfolio_risk > 0 else 0
             
             # Calculate diversification score
@@ -7776,7 +7776,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
             asset_performance[ticker] = {
                 'annual_return': annual_return,
                 'annual_risk': annual_risk,
-                'sharpe_ratio': (annual_return - 0.02) / annual_risk if annual_risk > 0 else 0,
+                'sharpe_ratio': (annual_return - 0.038) / annual_risk if annual_risk > 0 else 0,
                 'data_points': len(returns)
             }
         
@@ -7816,7 +7816,7 @@ async def performance_attribution(portfolio_id: str = None, allocations: str = N
                 risk_contribution_pct = (risk_contribution / portfolio_risk) * 100 if portfolio_risk != 0 else 0
                 
                 # Information ratio (excess return per unit of risk)
-                excess_return = asset_return - 0.038  # Assuming 2% risk-free rate
+                excess_return = asset_return - 0.038
                 information_ratio = excess_return / asset_performance[ticker]['annual_risk'] if asset_performance[ticker]['annual_risk'] > 0 else 0
                 
                 attribution_analysis.append({
