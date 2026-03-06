@@ -42,13 +42,13 @@ primary_region = 'ams'
     soft_limit = 50
     hard_limit = 100
 
-  # HTTP health check (recommended for cold-start reliability)
+  # HTTP health check (increased timeout for heavy concurrent operations)
   [[http_service.checks]]
-    grace_period = "30s"
+    grace_period = "60s"
     interval     = "30s"
     method       = "GET"
     path         = "/healthz"
-    timeout      = "10s"
+    timeout      = "20s"
 
 # Machine size: FastAPI only (no bundled Redis — using Redis Cloud)
 # 512mb = minimal (dev); 1gb = recommended production with scipy/numpy/pandas
