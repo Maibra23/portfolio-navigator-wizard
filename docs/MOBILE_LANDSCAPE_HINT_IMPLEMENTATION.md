@@ -147,14 +147,23 @@ const isLandscape =
 | User clicks "Continue anyway" | Hide for current session only |
 | User clicks "Don't show again" | Hide permanently (localStorage) |
 
-### Dismissal Persistence
+### Dismissal Persistence (Hybrid – Option C)
+
+Dismissal uses two keys so the hint is not repeated on every chart:
+
+- **Continue anyway** → stored in `sessionStorage` under `landscape-hint-dismissed-session`. The hint is hidden for the rest of the current browser session only; it can show again on the next visit.
+- **Don't show again** → stored in `localStorage` under `landscape-hint-dismissed-global`. The hint is hidden everywhere, across all chart components and future sessions, until the user clears site data.
+
+All `LandscapeHint` instances check both keys. If either is set, the overlay is not shown. This avoids showing the same message on every step (e.g. Optimization, then Stress Test, then Visual Charts) in one flow.
 
 ```typescript
-// Per-component storage keys prevent one dismissal affecting others
-localStorage.setItem("efficient-frontier-landscape-hint", "true");
-localStorage.setItem("stress-test-landscape-hint", "true");
-// etc.
+// landscape-hint.tsx
+const GLOBAL_DISMISS_KEY = "landscape-hint-dismissed-global";
+const SESSION_DISMISS_KEY = "landscape-hint-dismissed-session";
+// Show when: isMobile && isPortrait && !globalDismissed && !sessionDismissed
 ```
+
+The per-component `storageKey` prop is still accepted for API compatibility but is not used for dismiss logic; one global and one session key apply to all hints.
 
 ---
 

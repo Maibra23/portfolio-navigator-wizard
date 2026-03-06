@@ -4,9 +4,23 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useOrientation } from "@/hooks/use-orientation";
 import { Button } from "@/components/ui/button";
 
+const GLOBAL_DISMISS_KEY = "landscape-hint-dismissed-global";
+const SESSION_DISMISS_KEY = "landscape-hint-dismissed-session";
+
 interface LandscapeHintProps {
+  /** Kept for API compatibility; hybrid uses global + session keys. */
   storageKey?: string;
   children: React.ReactNode;
+}
+
+function getGlobalDismissed(): boolean {
+  if (typeof window === "undefined") return true;
+  return localStorage.getItem(GLOBAL_DISMISS_KEY) === "true";
+}
+
+function getSessionDismissed(): boolean {
+  if (typeof window === "undefined") return true;
+  return sessionStorage.getItem(SESSION_DISMISS_KEY) === "true";
 }
 
 export function LandscapeHint({
@@ -15,13 +29,16 @@ export function LandscapeHint({
 }: LandscapeHintProps) {
   const isMobile = useIsMobile();
   const { isPortrait } = useOrientation();
-  const [isDismissed, setIsDismissed] = useState(true);
+  const [globalDismissed, setGlobalDismissed] = useState(true);
+  const [sessionDismissed, setSessionDismissed] = useState(true);
   const [showHint, setShowHint] = useState(false);
 
   useEffect(() => {
-    const dismissed = localStorage.getItem(storageKey);
-    setIsDismissed(dismissed === "true");
-  }, [storageKey]);
+    setGlobalDismissed(getGlobalDismissed());
+    setSessionDismissed(getSessionDismissed());
+  }, []);
+
+  const isDismissed = globalDismissed || sessionDismissed;
 
   useEffect(() => {
     if (isMobile && isPortrait && !isDismissed) {
@@ -34,12 +51,18 @@ export function LandscapeHint({
 
   const handleDismiss = () => {
     setShowHint(false);
-    setIsDismissed(true);
-    localStorage.setItem(storageKey, "true");
+    setGlobalDismissed(true);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(GLOBAL_DISMISS_KEY, "true");
+    }
   };
 
   const handleDismissOnce = () => {
     setShowHint(false);
+    setSessionDismissed(true);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(SESSION_DISMISS_KEY, "true");
+    }
   };
 
   return (

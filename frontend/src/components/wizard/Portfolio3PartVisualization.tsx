@@ -32,6 +32,7 @@ import {
   getPortfolioColors,
 } from "@/utils/chartThemes";
 import { getAdminKeyHeaders } from "@/config/api";
+import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 // Layout constants (theme-independent)
 const layoutConstants = {
@@ -1350,6 +1351,7 @@ export const Portfolio3PartVisualization: React.FC<
     selectedStocks.length >= 3;
 
   return (
+    <LandscapeHint storageKey="visual-charts-analysis-landscape-hint">
     <div
       className="space-y-6"
       style={{
@@ -2527,5 +2529,6 @@ export const Portfolio3PartVisualization: React.FC<
         )}
       </div>
     </div>
+    </LandscapeHint>
   );
 };
