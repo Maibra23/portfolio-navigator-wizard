@@ -5,16 +5,22 @@
 
 ---
 
+## Accuracy of doc mentions
+
+Verified 2026-03-06: All file paths in this review exist. Root PORTFOLIOS_IN_REDIS.md is the latest (mtime) and is the one written by backend/utils/redis_portfolio_manager.py (project_root). backend/ and backend/scripts/ copies are older duplicates. .claude file is "project overview.md" (space in name; cleanup command uses escaped space). Frontend paths: frontend/src/components/wizard/ for API-DOCUMENTATION.md and SPRINT-2-INTEGRATION-VERIFICATION.md.
+
+---
+
 ## Summary
 
 | Category | Count | Action |
 |----------|-------|--------|
 | Essential - Keep | 12 | Maintain and update |
-| Reference - Keep | 5 | Keep for developer reference |
+| Reference - Keep | 7 | Keep (incl. BACKEND_PERFORMANCE_INVESTIGATION, REDIS_MEMORY_ANALYSIS) |
 | Outdated - Remove | 11 | Delete (superseded or completed) |
-| Duplicates - Remove | 3 | Delete (consolidate) |
-| One-time Analysis - Remove | 5 | Delete or archive |
-| Feature Docs - Review | 4 | Check if still relevant |
+| Duplicates - Remove | 2 | Delete backend + backend/scripts copies only |
+| One-time Analysis - Remove | 4 | Delete or archive |
+| Feature Docs - Review | 5 | See recommendations below |
 
 ---
 
@@ -50,6 +56,8 @@ Useful for specific features or edge cases.
 | THEME_SWITCHING_GUIDE.md | root | Theme system docs | Keep if using themes |
 | MOBILE_LANDSCAPE_HINT_IMPLEMENTATION.md | docs/ | Mobile UX feature | Keep for feature reference |
 | PURE_STRATEGY_PORTFOLIOS.md | docs/ | Strategy logic docs | Keep for feature reference |
+| BACKEND_PERFORMANCE_INVESTIGATION.md | docs/ | Health check, Fly config, Redis latency | Keep for ops/troubleshooting |
+| REDIS_MEMORY_ANALYSIS.md | docs/ | Key namespaces, size estimates | Keep; add caveat re Redis Cloud vs 256MB local |
 
 ---
 
@@ -73,45 +81,44 @@ These files reference old infrastructure or completed migrations.
 
 ---
 
-## REMOVE - Duplicate Files (3 files)
+## REMOVE - Duplicate Files (2 files to delete)
 
-Same content in multiple locations.
+Same content in multiple locations. Root is the canonical location: backend/utils/redis_portfolio_manager.py writes to project root.
 
-| File | Location | Keep Instead |
-|------|----------|--------------|
-| PORTFOLIOS_IN_REDIS.md | root | Auto-generated, can be regenerated |
-| PORTFOLIOS_IN_REDIS.md | backend/ | Duplicate |
-| PORTFOLIOS_IN_REDIS.md | backend/scripts/ | Duplicate |
+| File | Location | Action |
+|------|----------|--------|
+| PORTFOLIOS_IN_REDIS.md | root | **KEEP** (latest; code writes here) |
+| PORTFOLIOS_IN_REDIS.md | backend/ | DELETE (duplicate) |
+| PORTFOLIOS_IN_REDIS.md | backend/scripts/ | DELETE (duplicate) |
 
-**Note:** These are auto-generated snapshots. Delete all three; regenerate on-demand if needed.
+**Note:** Keep only root. Delete backend/ and backend/scripts/ copies. Regenerate on-demand via backend if needed.
 
 ---
 
-## REMOVE - One-time Analysis (5 files)
+## REMOVE - One-time Analysis (4 files)
 
-Historical investigation/analysis documents with limited ongoing value.
+Historical investigation/analysis with limited ongoing value.
 
 | File | Location | Reason |
 |------|----------|--------|
 | BACKEND-UPGRADE-REPORT.md | root | Historical upgrade report |
-| BACKEND_PERFORMANCE_INVESTIGATION.md | docs/ | Investigation complete |
 | PROJECT_COMPLETE_ANALYSIS.md | docs/ | One-time analysis |
 | RISK_PROFILE_CONSTRAINTS_ANALYSIS.md | root | Analysis complete, issues fixed |
 | PORTFOLIO_POSITION_ANALYSIS.md | root | One-time analysis |
 
+**Keep:** BACKEND_PERFORMANCE_INVESTIGATION.md (docs/) — operational value: health check config, Fly.toml, Redis latency, mobile UX; useful for troubleshooting and tuning.
+
 ---
 
-## REVIEW - Feature/Sprint Documentation (4 files)
+## REVIEW - Feature/Sprint Documentation (5 files)
 
-Check if still relevant to current implementation.
-
-| File | Location | Review Notes |
-|------|----------|--------------|
-| API-DOCUMENTATION.md | frontend/.../wizard/ | Check if API docs are current |
-| SPRINT-2-INTEGRATION-VERIFICATION.md | frontend/.../wizard/ | Sprint completed, likely delete |
-| REDIS_MEMORY_ANALYSIS.md | docs/ | May be outdated, review |
-| flymcp/README.md | flymcp/ | Check if flymcp is still used |
-| mcp-redis-cloud/README.md | mcp-redis-cloud/ | Check if still used |
+| File | Location | Recommendation |
+|------|----------|-----------------|
+| API-DOCUMENTATION.md | frontend/src/components/wizard/ | Keep if API docs are maintained; else remove |
+| SPRINT-2-INTEGRATION-VERIFICATION.md | frontend/src/components/wizard/ | Remove (sprint completed) |
+| REDIS_MEMORY_ANALYSIS.md | docs/ | Keep for key-namespace and size reference; note: written for 256MB local Redis; project uses Redis Cloud (30MB) — update or add caveat if kept |
+| flymcp/README.md | flymcp/ | Keep (MCP in use) |
+| mcp-redis-cloud/README.md | mcp-redis-cloud/ | Keep (MCP in use) |
 
 ---
 
@@ -126,6 +133,7 @@ portfolio-navigator-wizard/
 ├── OPTIMIZE_BUTTON_FLOW.md                # Feature reference
 ├── THEME_SWITCHING_GUIDE.md               # Theme docs
 ├── TICKER_UPDATE_WORKFLOW.md              # Operations
+├── PORTFOLIOS_IN_REDIS.md                 # Auto-generated; keep root copy only
 │
 ├── docs/
 │   ├── DEPLOYMENT_OPERATIONS.md           # Operations runbook
@@ -135,14 +143,16 @@ portfolio-navigator-wizard/
 │   ├── DATA_DICTIONARY.md                 # Data reference
 │   ├── DATA_SOURCES_AND_METHODOLOGY.md    # Data provenance
 │   ├── BACKEND_UTILS_REFERENCE.md         # Developer reference
+│   ├── BACKEND_PERFORMANCE_INVESTIGATION.md # Ops/troubleshooting
 │   ├── PURE_STRATEGY_PORTFOLIOS.md        # Strategy docs
-│   └── MOBILE_LANDSCAPE_HINT_IMPLEMENTATION.md  # Mobile UX
+│   ├── MOBILE_LANDSCAPE_HINT_IMPLEMENTATION.md  # Mobile UX
+│   └── REDIS_MEMORY_ANALYSIS.md           # Key namespaces (caveat: Redis Cloud vs 256MB local)
 │
 └── backend/scripts/
     └── README.md                          # Scripts docs
 ```
 
-**Result:** 17 files instead of 40 (57% reduction)
+**Result:** ~19–20 files (root + docs + backend/scripts + optional frontend/flymcp/mcp READMEs). PORTFOLIOS_IN_REDIS.md kept at root only.
 
 ---
 
@@ -163,14 +173,12 @@ rm Upstash-to-redis.md
 rm QUICK_REFERENCE.md
 rm docs/Upstash-console.md
 
-# Duplicates
-rm PORTFOLIOS_IN_REDIS.md
+# Duplicates (keep root PORTFOLIOS_IN_REDIS.md; code writes there)
 rm backend/PORTFOLIOS_IN_REDIS.md
 rm backend/scripts/PORTFOLIOS_IN_REDIS.md
 
-# One-time analysis
+# One-time analysis (BACKEND_PERFORMANCE_INVESTIGATION kept for ops value)
 rm BACKEND-UPGRADE-REPORT.md
-rm docs/BACKEND_PERFORMANCE_INVESTIGATION.md
 rm docs/PROJECT_COMPLETE_ANALYSIS.md
 rm RISK_PROFILE_CONSTRAINTS_ANALYSIS.md
 rm PORTFOLIO_POSITION_ANALYSIS.md
