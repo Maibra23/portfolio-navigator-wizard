@@ -152,7 +152,7 @@ portfolio-navigator-wizard/
     └── README.md                          # Scripts docs
 ```
 
-**Result:** ~19–20 files (root + docs + backend/scripts + optional frontend/flymcp/mcp READMEs). PORTFOLIOS_IN_REDIS.md kept at root only.
+**Result:** All project docs are now in docs/. Root README.md is a short pointer to docs/. Backend writes PORTFOLIOS_IN_REDIS.md to docs/. flymcp/ and mcp-redis-cloud/ keep their READMEs in place.
 
 ---
 

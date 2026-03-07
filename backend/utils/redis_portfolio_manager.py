@@ -602,7 +602,7 @@ class RedisPortfolioManager:
             # Write to file (relative to project root)
             import os
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            markdown_path = os.path.join(project_root, "PORTFOLIOS_IN_REDIS.md")
+            markdown_path = os.path.join(project_root, "docs", "PORTFOLIOS_IN_REDIS.md")
             
             with open(markdown_path, 'w') as f:
                 f.write('\n'.join(lines))
