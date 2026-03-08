@@ -62,6 +62,7 @@ import { ResilienceScore } from "./ResilienceScore";
 import { TimelineScrollReveal } from "./TimelineScrollReveal";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 import { DataSourceAttribution } from "./DataSourceAttribution";
+import { FinanceTooltip } from "@/components/ui/finance-tooltip";
 
 interface SelectedPortfolioData {
   source: "current" | "weights" | "market";
@@ -133,6 +134,7 @@ export const StressTest: React.FC<StressTestProps> = ({
   const [activeView, setActiveView] = useState<
     "overview" | "timeline" | "monte-carlo" | "hypothetical"
   >("overview");
+  const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [selectedTimelineEvent, setSelectedTimelineEvent] = useState<any>(null);
   // Toggle states for Monte Carlo percentile lines
   const [visiblePercentiles, setVisiblePercentiles] = useState({
@@ -398,7 +400,13 @@ export const StressTest: React.FC<StressTestProps> = ({
                 value={activeView}
                 onValueChange={(v) => setActiveView(v as any)}
               >
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList
+                  className={
+                    showDetailedAnalysis
+                      ? "grid w-full grid-cols-4"
+                      : "grid w-full grid-cols-1"
+                  }
+                >
                   <TabsTrigger
                     value="overview"
                     className="flex items-center gap-1 text-xs"
@@ -406,28 +414,46 @@ export const StressTest: React.FC<StressTestProps> = ({
                     <FileText className="h-3 w-3" />
                     Overview
                   </TabsTrigger>
-                  <TabsTrigger
-                    value="timeline"
-                    className="flex items-center gap-1 text-xs"
-                  >
-                    <Calendar className="h-3 w-3" />
-                    Timeline
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="monte-carlo"
-                    className="flex items-center gap-1 text-xs"
-                  >
-                    <BarChart3 className="h-3 w-3" />
-                    Monte Carlo
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="hypothetical"
-                    className="flex items-center gap-1 text-xs"
-                  >
-                    <AlertTriangle className="h-3 w-3" />
-                    Scenarios
-                  </TabsTrigger>
+                  {showDetailedAnalysis && (
+                    <>
+                      <TabsTrigger
+                        value="timeline"
+                        className="flex items-center gap-1 text-xs"
+                      >
+                        <Calendar className="h-3 w-3" />
+                        Timeline
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="monte-carlo"
+                        className="flex items-center gap-1 text-xs"
+                      >
+                        <BarChart3 className="h-3 w-3" />
+                        Monte Carlo
+                        <FinanceTooltip term="monte_carlo" className="text-foreground" />
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="hypothetical"
+                        className="flex items-center gap-1 text-xs"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Scenarios
+                      </TabsTrigger>
+                    </>
+                  )}
                 </TabsList>
+                {!showDetailedAnalysis && (
+                  <div className="flex justify-center mt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDetailedAnalysis(true)}
+                      className="text-xs"
+                    >
+                      <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+                      Show detailed analysis
+                    </Button>
+                  </div>
+                )}
 
                 {/* Overview Tab */}
                 <TabsContent value="overview" className="space-y-6 mt-6">
@@ -508,6 +534,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                               <span className="text-xs font-medium text-violet-700">
                                 Sharpe Ratio
                               </span>
+                              <FinanceTooltip term="sharpe_ratio" className="text-violet-600" />
                             </div>
                             <div className="text-2xl font-bold text-violet-800 mb-0.5">
                               {selectedPortfolio!.metrics.sharpe_ratio.toFixed(
@@ -573,8 +600,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                             </div>
 
                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-orange-50 border border-orange-200">
-                              <span className="text-xs text-orange-700 font-medium">
+                              <span className="text-xs text-orange-700 font-medium flex items-center gap-1">
                                 Max Drawdown
+                                <FinanceTooltip term="max_drawdown" className="text-orange-500" />
                               </span>
                               <UITooltip>
                                 <TooltipTrigger asChild>
@@ -1913,8 +1941,9 @@ export const StressTest: React.FC<StressTestProps> = ({
                             </div>
 
                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-orange-50 border border-orange-200">
-                              <span className="text-xs text-orange-700 font-medium">
+                              <span className="text-xs text-orange-700 font-medium flex items-center gap-1">
                                 Max Drawdown
+                                <FinanceTooltip term="max_drawdown" className="text-orange-500" />
                               </span>
                               <UITooltip>
                                 <TooltipTrigger asChild>
@@ -3288,6 +3317,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           <div className="p-3 rounded-lg bg-red-50 border border-red-200">
                             <div className="text-xs text-red-700 mb-1 flex items-center gap-1">
                               VaR (95%)
+                              <FinanceTooltip term="var" className="text-red-500" />
                               <UITooltip>
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-red-500 cursor-help" />
@@ -3317,6 +3347,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                           <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
                             <div className="text-xs text-orange-700 mb-1 flex items-center gap-1">
                               CVaR (95%)
+                              <FinanceTooltip term="cvar" className="text-orange-500" />
                               <UITooltip>
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-orange-500 cursor-help" />

@@ -48,6 +48,7 @@ import type { TooltipProps, ValueType, NameType } from "recharts";
 import { API_ENDPOINTS } from "@/config/api";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 import { DataSourceAttribution } from "./DataSourceAttribution";
+import { FinanceTooltip } from "@/components/ui/finance-tooltip";
 import {
   ArrowLeft,
   ArrowRight,
@@ -509,6 +510,12 @@ export const PortfolioOptimization = ({
   const [efficientFrontierOriginalDomain, setEfficientFrontierOriginalDomain] =
     useState<{ y: [number, number] } | null>(null);
 
+  // "Understanding this chart" collapsed by default; user can expand to read
+  const [understandingChartOpen, setUnderstandingChartOpen] = useState(false);
+  const handleUnderstandingChartOpenChange = useCallback((open: boolean) => {
+    setUnderstandingChartOpen(open);
+  }, []);
+
   // Visibility toggles for efficient frontier chart series
   const [visibleSeries, setVisibleSeries] = useState({
     randomPortfolios: true,
@@ -950,100 +957,97 @@ export const PortfolioOptimization = ({
     };
   }, [tripleOptimizationResults, mvoResults, currentMetrics]);
 
-  // Calculate default domain ranges for zoom
+  // Calculate default domain ranges for zoom (percentile-based so chart focuses on main cluster, not outliers)
   const eligibleTickersDomain = useMemo(() => {
     try {
       const volatilities: number[] = [];
       const returns: number[] = [];
+      const portfolioVols: number[] = [];
+      const portfolioRets: number[] = [];
 
-      // Include eligible tickers (filtered to limits: X-axis max 1.1, Y-axis max 1.0)
+      const addPortfolio = (vol: number, ret: number) => {
+        if (isFinite(vol) && vol >= 0) {
+          volatilities.push(vol);
+          portfolioVols.push(vol);
+        }
+        if (isFinite(ret) && ret > 0) {
+          returns.push(ret);
+          portfolioRets.push(ret);
+        }
+      };
+
+      // Include eligible tickers
       if (eligibleTickers && eligibleTickers.length > 0) {
         eligibleTickers.forEach((t) => {
           const vol = typeof t?.volatility === "number" ? t.volatility : null;
           const ret =
             typeof t?.expected_return === "number" ? t.expected_return : null;
-          // Only include values within limits
           if (
             vol !== null &&
             !isNaN(vol) &&
             isFinite(vol) &&
-            vol >= 0 &&
-            vol <= 1.1
+            vol >= 0
           ) {
             volatilities.push(vol);
           }
-          // Exclude zero or negative returns
           if (
             ret !== null &&
             !isNaN(ret) &&
             isFinite(ret) &&
-            ret > 0 &&
-            ret <= 1.0
+            ret > 0
           ) {
             returns.push(ret);
           }
         });
       }
 
-      // CRITICAL FIX: Include actual current portfolio metrics in domain calculation
-      // This ensures the chart ranges include the user's actual selected portfolio
+      // Current portfolio metrics (must be in domain)
       if (
         currentMetrics &&
         typeof currentMetrics.risk === "number" &&
         typeof currentMetrics.expectedReturn === "number" &&
-        !isNaN(currentMetrics.risk) &&
-        !isNaN(currentMetrics.expectedReturn) &&
         isFinite(currentMetrics.risk) &&
-        isFinite(currentMetrics.expectedReturn)
+        isFinite(currentMetrics.expectedReturn) &&
+        currentMetrics.expectedReturn > 0
       ) {
-        // Only include if within limits
-        if (currentMetrics.risk >= 0 && currentMetrics.risk <= 1.1) {
-          volatilities.push(currentMetrics.risk);
-        }
-        // Exclude zero or negative returns
-        if (
-          currentMetrics.expectedReturn > 0 &&
-          currentMetrics.expectedReturn <= 1.0
-        ) {
-          returns.push(currentMetrics.expectedReturn);
-        }
+        addPortfolio(currentMetrics.risk, currentMetrics.expectedReturn);
       }
 
-      // Also include portfolio tickers data if available (filtered to limits)
+      // Portfolio tickers (must be in domain)
       if (portfolioTickersData && portfolioTickersData.length > 0) {
         portfolioTickersData.forEach((t) => {
           const vol = typeof t?.volatility === "number" ? t.volatility : null;
           const ret =
             typeof t?.expected_return === "number" ? t.expected_return : null;
-          // Only include values within limits
-          if (
-            vol !== null &&
-            !isNaN(vol) &&
-            isFinite(vol) &&
-            vol >= 0 &&
-            vol <= 1.1
-          ) {
-            volatilities.push(vol);
-          }
-          // Exclude zero or negative returns
-          if (
-            ret !== null &&
-            !isNaN(ret) &&
-            isFinite(ret) &&
-            ret > 0 &&
-            ret <= 1.0
-          ) {
-            returns.push(ret);
+          if (vol != null && ret != null) {
+            addPortfolio(vol, ret);
           }
         });
       }
 
       if (volatilities.length === 0 || returns.length === 0) return null;
 
-      const minVol = Math.min(...volatilities);
-      const maxVol = Math.max(...volatilities);
-      const minRet = Math.min(...returns);
-      const maxRet = Math.max(...returns);
+      const pct = (arr: number[], p: number) => {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const i = (p / 100) * (sorted.length - 1);
+        const lo = Math.floor(i);
+        const hi = Math.ceil(i);
+        if (lo === hi) return sorted[lo];
+        return sorted[lo] + (i - lo) * (sorted[hi] - sorted[lo]);
+      };
+
+      // Use 5th–95th percentile so chart focuses on main cluster; outliers don't stretch axes
+      const volP5 = pct(volatilities, 5);
+      const volP95 = pct(volatilities, 95);
+      const retP5 = pct(returns, 5);
+      const retP95 = pct(returns, 95);
+
+      // Expand to include all portfolio points so they're never clipped
+      const minVol = Math.min(volP5, ...portfolioVols);
+      const maxVol = Math.max(volP95, ...portfolioVols);
+      const minRet = Math.min(retP5, ...portfolioRets);
+      const maxRet = Math.max(retP95, ...portfolioRets);
 
       if (
         !isFinite(minVol) ||
@@ -1054,18 +1058,19 @@ export const PortfolioOptimization = ({
         return null;
       }
 
-      // Ensure there's a valid range
       const volRange = maxVol - minVol;
       const retRange = maxRet - minRet;
-
       if (volRange <= 0 || retRange <= 0) return null;
 
-      // Dynamic range, capped at filter limits.
-      // X-axis (Risk): linear 0 → maxX, capped at 110% (1.1)
-      // Y-axis (Return): log-scale-safe minY → maxY, capped at 100% (1.0)
-      const maxX = Math.min(maxVol, 1.1); // Cap at 110%
-      const maxY = Math.min(Math.max(maxRet, 0.01), 1.0); // Cap at 100%, minimum 0.01
-      const minY = Math.max(minRet, 0.01); // Avoid 0 for log scale on Y
+      const padding = 0.12;
+      const RISK_AXIS_CAP = 1.5; // 150% - max X axis; domain remains dynamic from data
+      const maxX = Math.min(maxVol + volRange * padding, RISK_AXIS_CAP);
+      const RETURN_AXIS_CAP = 3.0; // 300% - avoid misleading users with unrealistic expectations
+      const maxY = Math.min(
+        Math.max(maxRet + retRange * padding, 0.01),
+        RETURN_AXIS_CAP,
+      );
+      const minY = Math.max(minRet - retRange * padding, 0.01);
 
       const domain = {
         x: [0, maxX] as [number, number],
@@ -1234,6 +1239,7 @@ export const PortfolioOptimization = ({
   const efficientFrontierDomain = useMemo(() => {
     try {
       const allPoints: Array<{ risk: number; return: number }> = [];
+      const portfolioPointsForMargin: Array<{ risk: number; return: number }> = [];
 
       // Get risk-free rate for CML origin
       const riskFreeRate = mvoResults?.metadata?.risk_free_rate ?? 0.038; // Default 3.8%
@@ -1328,6 +1334,7 @@ export const PortfolioOptimization = ({
             ret >= 0
           ) {
             allPoints.push({ risk, return: ret });
+            portfolioPointsForMargin.push({ risk, return: ret });
           }
         } else if (mvoResults?.current_portfolio?.metrics) {
           const risk = mvoResults.current_portfolio.metrics.risk;
@@ -1342,6 +1349,7 @@ export const PortfolioOptimization = ({
             ret >= 0
           ) {
             allPoints.push({ risk, return: ret });
+            portfolioPointsForMargin.push({ risk, return: ret });
           }
         } else if (
           currentMetrics &&
@@ -1354,6 +1362,10 @@ export const PortfolioOptimization = ({
           currentMetrics.expectedReturn >= 0
         ) {
           allPoints.push({
+            risk: currentMetrics.risk,
+            return: currentMetrics.expectedReturn,
+          });
+          portfolioPointsForMargin.push({
             risk: currentMetrics.risk,
             return: currentMetrics.expectedReturn,
           });
@@ -1382,6 +1394,7 @@ export const PortfolioOptimization = ({
           ret >= 0
         ) {
           allPoints.push({ risk, return: ret });
+          portfolioPointsForMargin.push({ risk, return: ret });
         }
       }
 
@@ -1407,6 +1420,7 @@ export const PortfolioOptimization = ({
           ret >= 0
         ) {
           allPoints.push({ risk, return: ret });
+          portfolioPointsForMargin.push({ risk, return: ret });
         }
       }
 
@@ -1433,19 +1447,143 @@ export const PortfolioOptimization = ({
         });
       }
 
-      if (allPoints.length === 0) return null;
+      const defaultDomain = {
+        x: [0, 0.5] as [number, number],
+        y: [0, 0.3] as [number, number],
+      };
+
+      if (allPoints.length === 0) {
+        // Build domain from portfolio only when no other data
+        const portfolioOnly: Array<{ risk: number; return: number }> = [];
+        if (tripleOptimizationResults?.current_portfolio?.metrics) {
+          const risk = tripleOptimizationResults.current_portfolio.metrics.risk;
+          const ret =
+            tripleOptimizationResults.current_portfolio.metrics.expected_return;
+          if (isFinite(risk) && isFinite(ret) && ret >= 0) {
+            portfolioOnly.push({ risk, return: ret });
+          }
+        } else if (mvoResults?.current_portfolio?.metrics) {
+          const risk = mvoResults.current_portfolio.metrics.risk;
+          const ret = mvoResults.current_portfolio.metrics.expected_return;
+          if (isFinite(risk) && isFinite(ret) && ret >= 0) {
+            portfolioOnly.push({ risk, return: ret });
+          }
+        } else if (
+          currentMetrics &&
+          typeof currentMetrics.risk === "number" &&
+          typeof currentMetrics.expectedReturn === "number" &&
+          currentMetrics.expectedReturn >= 0
+        ) {
+          portfolioOnly.push({
+            risk: currentMetrics.risk,
+            return: currentMetrics.expectedReturn,
+          });
+        }
+        if (
+          tripleOptimizationResults?.weights_optimized_portfolio
+            ?.optimized_portfolio?.metrics
+        ) {
+          const m =
+            tripleOptimizationResults.weights_optimized_portfolio
+              .optimized_portfolio.metrics;
+          if (isFinite(m.risk) && isFinite(m.expected_return) && m.expected_return >= 0) {
+            portfolioOnly.push({ risk: m.risk, return: m.expected_return });
+          }
+        }
+        if (
+          tripleOptimizationResults?.market_optimized_portfolio
+            ?.optimized_portfolio?.metrics
+        ) {
+          const m =
+            tripleOptimizationResults.market_optimized_portfolio
+              .optimized_portfolio.metrics;
+          if (isFinite(m.risk) && isFinite(m.expected_return) && m.expected_return >= 0) {
+            portfolioOnly.push({ risk: m.risk, return: m.expected_return });
+          }
+        }
+        if (portfolioOnly.length > 0) {
+          const pr = portfolioOnly.map((p) => p.risk).filter((r) => isFinite(r));
+          const pret = portfolioOnly
+            .map((p) => p.return)
+            .filter((r) => isFinite(r) && r >= 0);
+          if (pr.length > 0 && pret.length > 0) {
+            let pMinR = Math.min(...pr);
+            let pMaxR = Math.max(...pr);
+            let pMinRet = Math.max(0, Math.min(...pret));
+            let pMaxRet = Math.max(...pret);
+            let pRiskRange = pMaxR - pMinR;
+            let pRetRange = pMaxRet - pMinRet;
+            if (pRiskRange <= 0) {
+              const c = (pMinR + pMaxR) / 2;
+              pMinR = Math.max(0, c - 0.05);
+              pMaxR = c + 0.05;
+              pRiskRange = pMaxR - pMinR;
+            }
+            if (pRetRange <= 0) {
+              const c = (pMinRet + pMaxRet) / 2;
+              pMinRet = Math.max(0, c - 0.05);
+              pMaxRet = c + 0.05;
+              pRetRange = pMaxRet - pMinRet;
+            }
+            const pad = 0.35;
+            return {
+              x: [
+                Math.max(0, pMinR - pRiskRange * pad),
+                pMaxR + pRiskRange * pad,
+              ] as [number, number],
+              y: [
+                Math.max(0, pMinRet - pRetRange * pad),
+                pMaxRet + pRetRange * pad,
+              ] as [number, number],
+            };
+          }
+        }
+        return defaultDomain;
+      }
 
       const risks = allPoints.map((p) => p.risk).filter((r) => isFinite(r));
       const returns = allPoints
         .map((p) => p.return)
         .filter((r) => isFinite(r) && r >= 0); // Filter out negative returns
 
-      if (risks.length === 0 || returns.length === 0) return null;
+      if (risks.length === 0 || returns.length === 0) {
+        return defaultDomain;
+      }
 
-      const minRisk = Math.min(...risks);
-      const maxRisk = Math.max(...risks);
-      const minRet = Math.max(0, Math.min(...returns)); // Ensure minimum is at least 0
-      const maxRet = Math.max(...returns);
+      const pct = (arr: number[], p: number) => {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const i = (p / 100) * (sorted.length - 1);
+        const lo = Math.floor(i);
+        const hi = Math.ceil(i);
+        if (lo === hi) return sorted[lo];
+        return sorted[lo] + (i - lo) * (sorted[hi] - sorted[lo]);
+      };
+
+      // Percentile-based range so chart focuses on main cluster; expand to include all portfolio points
+      const riskP5 = pct(risks, 5);
+      const riskP95 = pct(risks, 95);
+      const retP5 = pct(returns, 5);
+      const retP95 = pct(returns, 95);
+      const portfolioRisks = portfolioPointsForMargin.map((p) => p.risk);
+      const portfolioRets = portfolioPointsForMargin.map((p) => p.return);
+
+      let minRisk =
+        portfolioRisks.length > 0
+          ? Math.min(riskP5, ...portfolioRisks)
+          : riskP5;
+      let maxRisk =
+        portfolioRisks.length > 0
+          ? Math.max(riskP95, ...portfolioRisks)
+          : riskP95;
+      let minRet =
+        portfolioRets.length > 0
+          ? Math.max(0, Math.min(retP5, ...portfolioRets))
+          : Math.max(0, retP5);
+      let maxRet =
+        portfolioRets.length > 0
+          ? Math.max(retP95, ...portfolioRets)
+          : retP95;
 
       if (
         !isFinite(minRisk) ||
@@ -1453,25 +1591,60 @@ export const PortfolioOptimization = ({
         !isFinite(minRet) ||
         !isFinite(maxRet)
       ) {
-        return null;
+        return defaultDomain;
       }
 
-      // Ensure there's a valid range
-      const riskRange = maxRisk - minRisk;
-      const retRange = maxRet - minRet;
-
-      if (riskRange <= 0 || retRange <= 0) return null;
+      // Ensure there's a valid range; handle zero-range (single point) with ±5% domain
+      let riskRange = maxRisk - minRisk;
+      let retRange = maxRet - minRet;
+      if (riskRange <= 0) {
+        const center = (minRisk + maxRisk) / 2;
+        minRisk = Math.max(0, center - 0.05);
+        maxRisk = center + 0.05;
+        riskRange = maxRisk - minRisk;
+      }
+      if (retRange <= 0) {
+        const center = (minRet + maxRet) / 2;
+        minRet = Math.max(0, center - 0.05);
+        maxRet = center + 0.05;
+        retRange = maxRet - minRet;
+      }
 
       // Use 35% padding for better visibility
       const padding = 0.35;
 
       // For Y-axis: Start from 0 or minimum positive return, no negative values
-      const yMin = Math.max(0, minRet - retRange * padding);
-      const yMax = maxRet + retRange * padding;
+      let yMin = Math.max(0, minRet - retRange * padding);
+      let yMax = maxRet + retRange * padding;
 
       // For X-axis: Start from 0 to show CML origin
-      const xMin = Math.max(0, minRisk - riskRange * padding);
-      const xMax = maxRisk + riskRange * padding;
+      let xMin = Math.max(0, minRisk - riskRange * padding);
+      let xMax = maxRisk + riskRange * padding;
+
+      // Portfolio margin: ensure portfolio points are at least 10% inside the domain
+      const portfolioMargin = 0.1;
+      let xSpan = xMax - xMin;
+      let ySpan = yMax - yMin;
+      for (const p of portfolioPointsForMargin) {
+        const r = p.risk;
+        const ret = p.return;
+        if (r <= xMin + xSpan * portfolioMargin) {
+          xMin = Math.max(0, r - xSpan * portfolioMargin);
+          xSpan = xMax - xMin;
+        }
+        if (r >= xMax - xSpan * portfolioMargin) {
+          xMax = r + xSpan * portfolioMargin;
+          xSpan = xMax - xMin;
+        }
+        if (ret <= yMin + ySpan * portfolioMargin) {
+          yMin = Math.max(0, ret - ySpan * portfolioMargin);
+          ySpan = yMax - yMin;
+        }
+        if (ret >= yMax - ySpan * portfolioMargin) {
+          yMax = ret + ySpan * portfolioMargin;
+          ySpan = yMax - yMin;
+        }
+      }
 
       const domain = {
         x: [xMin, xMax] as [number, number],
@@ -1481,7 +1654,10 @@ export const PortfolioOptimization = ({
       return domain;
     } catch (error) {
       console.error("Error calculating efficientFrontierDomain:", error);
-      return null;
+      return {
+        x: [0, 0.5] as [number, number],
+        y: [0, 0.3] as [number, number],
+      };
     }
   }, [
     randomPortfolios,
@@ -3254,6 +3430,55 @@ export const PortfolioOptimization = ({
                   borderRadius: layoutConstants.radius,
                 }}
               >
+                {(() => {
+                  const currentSharpe =
+                    dualOptimizationResults?.current_portfolio?.metrics?.sharpe_ratio ??
+                    currentMetrics?.sharpeRatio ??
+                    0;
+                  const optimalSharpe =
+                    mvoResults?.optimized_portfolio?.metrics?.sharpe_ratio ?? 0;
+                  const efficiencyPct =
+                    optimalSharpe > 0 && isFinite(currentSharpe)
+                      ? Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            Math.round((currentSharpe / optimalSharpe) * 100),
+                          ),
+                        )
+                      : null;
+                  const hasOptimization = efficientFrontier.length > 0;
+                  return (
+                    (efficiencyPct != null && hasOptimization) ||
+                    (!hasOptimization &&
+                      currentPortfolio &&
+                      Array.isArray(currentPortfolio) &&
+                      currentPortfolio.length >= 2) ? (
+                      <Alert
+                        className="mb-4 border-primary/30 bg-primary/5"
+                        style={{ borderColor: chartTheme.border }}
+                      >
+                        <CheckCircle
+                          className="h-4 w-4"
+                          style={{ color: chartTheme.text.primary }}
+                        />
+                        <AlertDescription>
+                          {efficiencyPct != null && hasOptimization ? (
+                            <>
+                              Your portfolio is{" "}
+                              <strong>{efficiencyPct}% efficient</strong>.
+                            </>
+                          ) : (
+                            <>
+                              You can improve your portfolio with one click
+                              below.
+                            </>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    ) : null
+                  );
+                })()}
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h3
@@ -3447,7 +3672,7 @@ export const PortfolioOptimization = ({
                     style={{
                       background: chartTheme.canvas,
                       borderRadius: layoutConstants.radius,
-                      padding: "12px",
+                      padding: "8px",
                     }}
                   >
                     {isLoadingEligibleTickers ? (
@@ -3463,7 +3688,7 @@ export const PortfolioOptimization = ({
                       eligibleTickers.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart
-                          margin={{ top: 24, right: 32, bottom: 64, left: 48 }}
+                          margin={{ top: 16, right: 24, bottom: 52, left: 44 }}
                           onMouseDown={handleEligibleTickersMouseDown}
                           onMouseMove={handleEligibleTickersMouseMove}
                           onMouseUp={handleEligibleTickersMouseUp}
@@ -3689,13 +3914,10 @@ export const PortfolioOptimization = ({
                               name="Your Portfolio"
                               data={portfolioTickersDataWithOffsets.filter(
                                 (t) => {
-                                  // Filter out zero/negative returns and values exceeding limits
-                                  // X-axis (Risk): max 110% (1.1), Y-axis (Return): max 100% (1.0), must be > 0
+                                  // Show all portfolio tickers; domain expands to fit (no upper cap)
                                   return (
                                     t.volatility >= 0 &&
-                                    t.volatility <= 1.1 &&
-                                    t.expected_return > 0 &&
-                                    t.expected_return <= 1.0
+                                    t.expected_return > 0
                                   );
                                 },
                               )}
@@ -4233,7 +4455,7 @@ export const PortfolioOptimization = ({
                     style={{
                       background: chartTheme.canvas,
                       borderRadius: layoutConstants.radius,
-                      padding: "12px",
+                      padding: "8px",
                     }}
                   >
                     {mvoResults &&
@@ -4241,7 +4463,7 @@ export const PortfolioOptimization = ({
                       randomPortfolios.length > 0) ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart
-                          margin={{ top: 24, right: 32, bottom: 64, left: 56 }}
+                          margin={{ top: 16, right: 24, bottom: 52, left: 48 }}
                           onMouseDown={(e: any) => {
                             // Use activeCoordinate if available (when hovering over data), otherwise use chartX/chartY
                             if (e?.activeCoordinate) {
@@ -4290,7 +4512,7 @@ export const PortfolioOptimization = ({
                             domain={
                               efficientFrontierCurrentDomain?.x
                                 ? efficientFrontierCurrentDomain.x
-                                : efficientFrontierDomain?.x &&
+                                : efficientFrontierDomain &&
                                     efficientFrontierOriginalDomain?.y &&
                                     efficientFrontierZoomLevel > 1
                                   ? [
@@ -4307,10 +4529,7 @@ export const PortfolioOptimization = ({
                                             1 / efficientFrontierZoomLevel)) /
                                           2,
                                     ]
-                                  : efficientFrontierDomain?.x || [
-                                      "dataMin",
-                                      "dataMax",
-                                    ]
+                                  : efficientFrontierDomain.x
                             }
                             allowDataOverflow={true}
                             label={{
@@ -4341,7 +4560,7 @@ export const PortfolioOptimization = ({
                             domain={
                               efficientFrontierCurrentDomain?.y
                                 ? efficientFrontierCurrentDomain.y
-                                : efficientFrontierDomain?.y &&
+                                : efficientFrontierDomain &&
                                     efficientFrontierOriginalDomain?.y &&
                                     efficientFrontierZoomLevel > 1
                                   ? [
@@ -4358,10 +4577,7 @@ export const PortfolioOptimization = ({
                                             1 / efficientFrontierZoomLevel)) /
                                           2,
                                     ]
-                                  : efficientFrontierDomain?.y || [
-                                      "auto",
-                                      "auto",
-                                    ] // Use 'auto' to show full data range
+                                  : efficientFrontierDomain.y
                             }
                             label={{
                               value: "Return",
@@ -5236,6 +5452,8 @@ export const PortfolioOptimization = ({
                   {/* Collapsible educational section: below graph, between chart and portfolio comparison */}
                   <div className="px-6 pb-4">
                     <Collapsible
+                      open={understandingChartOpen}
+                      onOpenChange={handleUnderstandingChartOpenChange}
                       className="group rounded-md border"
                       style={{ borderColor: chartTheme.border }}
                     >
@@ -5252,6 +5470,7 @@ export const PortfolioOptimization = ({
                             style={{ color: chartTheme.text.secondary }}
                           />
                           <span>Understanding this chart</span>
+                          <FinanceTooltip term="efficient_frontier" />
                         </div>
                         <ChevronDown
                           className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
@@ -6528,8 +6747,9 @@ export const PortfolioOptimization = ({
                                 return (
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-xs font-medium text-muted-foreground">
+                                      <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                                         Sharpe Ratio (Risk-Adjusted Return)
+                                        <FinanceTooltip term="sharpe_ratio" />
                                       </span>
                                       <span className="text-xs text-muted-foreground">
                                         Higher = Better
@@ -7056,6 +7276,7 @@ export const PortfolioOptimization = ({
                               ?.description ||
                             "Resilience during market downturns",
                           icon: TrendingDown,
+                          glossaryTerm: "sortino_ratio" as const,
                         },
                         {
                           name:
@@ -7190,8 +7411,11 @@ export const PortfolioOptimization = ({
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2 group relative">
                                         <Icon className="h-4 w-4 text-muted-foreground" />
-                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
                                           {factor.name}
+                                          {"glossaryTerm" in factor && factor.glossaryTerm && (
+                                            <FinanceTooltip term={factor.glossaryTerm} />
+                                          )}
                                         </span>
                                         <div className="absolute left-0 top-6 z-10 hidden group-hover:block max-w-xs p-2 bg-popover text-popover-foreground text-xs rounded-md shadow-md border">
                                           <div className="font-semibold mb-1">

@@ -10,6 +10,7 @@ import {
   BarChart3,
   CheckCircle,
   FileText,
+  Save,
 } from "lucide-react";
 import { useWizardState } from "@/hooks/useWizardState";
 import { useReducedMotion, getMotionTransition } from "@/hooks/useReducedMotion";
@@ -33,6 +34,7 @@ import { StressTest } from "./wizard/StressTest";
 import { FinalizePortfolio } from "./wizard/FinalizePortfolio";
 import { ThankYouStep } from "./wizard/ThankYouStep";
 import { WizardStepErrorBoundary } from "./wizard/WizardStepErrorBoundary";
+import { StepHelpButton } from "./wizard/StepHelpButton";
 import { ThemeSelector } from "@/components/ThemeSelector";
 
 export type { RiskProfile, WizardData, PortfolioAllocation, PortfolioMetrics, SelectedPortfolioData };
@@ -99,6 +101,13 @@ export const PortfolioWizard = () => {
     if (!validation.valid) {
       toast.error(`Missing: ${validation.missing.join(", ")}`);
       return;
+    }
+    if (currentStep === 1 && next === 2) {
+      toast.success("Risk profile complete! You're 25% done.");
+    } else if (currentStep === 2 && next === 3) {
+      toast.success("Capital set! Next: pick your stocks.");
+    } else if (currentStep === 3 && next === 4) {
+      toast.success("Portfolio selected! Almost there.");
     }
     directionRef.current = 1;
     updateStep(next);
@@ -325,10 +334,10 @@ export const PortfolioWizard = () => {
 
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-4">
         {/* Progress header with auto-save indicator */}
-        <div className="mb-4">
+        <div className="mb-4" data-tour="progress-bar">
           <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <h2 className="text-lg md:text-xl font-semibold text-foreground">
+              <h2 className="text-lg md:text-xl font-semibold text-foreground" data-tour="step-title">
                 {STEPS[currentStep].title}
               </h2>
               <span className="text-xs md:text-sm text-muted-foreground">
@@ -365,6 +374,12 @@ export const PortfolioWizard = () => {
               />
             ))}
           </div>
+          {currentStep > 0 && currentStep < STEPS.length - 1 && (
+            <p className="flex items-center justify-center gap-1.5 mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
+              <Save className="h-3 w-3 shrink-0" aria-hidden />
+              Progress saved automatically
+            </p>
+          )}
         </div>
 
         <AnimatePresence mode="wait" initial={false}>
@@ -379,6 +394,10 @@ export const PortfolioWizard = () => {
             {renderStep()}
           </motion.div>
         </AnimatePresence>
+      </div>
+
+      <div className="fixed bottom-4 right-4 z-40">
+        <StepHelpButton stepId={STEPS[currentStep].id} />
       </div>
     </div>
   );

@@ -60,6 +60,7 @@ import { AnimatedNumber } from "@/components/ui/animated-number";
 import { PortfolioBuilder } from "./PortfolioBuilder";
 import { Reorder } from "framer-motion";
 import { colors, bgColors, borderColors, getValueColor } from "@/utils/semanticColors";
+import { FinanceTooltip } from "@/components/ui/finance-tooltip";
 
 interface StockSelectionProps {
   onNext: () => void;
@@ -199,6 +200,7 @@ export const StockSelection = ({
       ? "recommendations"
       : "mini-lesson",
   );
+  const [showAdvancedTabs, setShowAdvancedTabs] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<StockResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -2333,7 +2335,13 @@ export const StockSelection = ({
               )
             }
           >
-            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 gap-1">
+            <TabsList
+              className={`grid w-full gap-1 ${
+                showAdvancedTabs
+                  ? "grid-cols-1 sm:grid-cols-3"
+                  : "grid-cols-1 sm:grid-cols-2"
+              }`}
+            >
               <TabsTrigger
                 value="mini-lesson"
                 className="flex items-center gap-2"
@@ -2348,15 +2356,30 @@ export const StockSelection = ({
                 <Star className="h-4 w-4" />
                 Recommendations
               </TabsTrigger>
-              <TabsTrigger
-                value="full-customization"
-                className="flex items-center gap-2"
-                disabled={activeTab !== "full-customization"}
-              >
-                <BarChart3 className="h-4 w-4" />
-                Visual Charts
-              </TabsTrigger>
+              {showAdvancedTabs && (
+                <TabsTrigger
+                  value="full-customization"
+                  className="flex items-center gap-2"
+                  disabled={activeTab !== "full-customization"}
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  Visual Charts
+                </TabsTrigger>
+              )}
             </TabsList>
+            {!showAdvancedTabs && (
+              <div className="flex justify-center mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAdvancedTabs(true)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Settings className="h-3.5 w-3.5 mr-1.5" />
+                  Show advanced options
+                </Button>
+              </div>
+            )}
 
             {/* Mini-Lesson Tab - Enhanced with Asset Selection */}
             <TabsContent value="mini-lesson" className="space-y-4">
@@ -2700,8 +2723,9 @@ export const StockSelection = ({
                             <div className="relative z-10">
                               <div className="flex items-center gap-1.5 mb-1.5">
                                 <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
                                   Expected Return
+                                  <FinanceTooltip term="expected_return" />
                                 </span>
                               </div>
                               <div className="text-2xl font-bold text-emerald-800 dark:text-emerald-200 mb-0.5">
@@ -2719,8 +2743,9 @@ export const StockSelection = ({
                             <div className="relative z-10">
                               <div className="flex items-center gap-1.5 mb-1.5">
                                 <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                                <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                                <span className="text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1">
                                   Risk (Volatility)
+                                  <FinanceTooltip term="volatility" />
                                 </span>
                               </div>
                               <div className="text-2xl font-bold text-amber-800 dark:text-amber-200 mb-0.5">
@@ -2963,7 +2988,7 @@ export const StockSelection = ({
               {activeTab === "recommendations" && (
                 <div className="text-center mt-4">
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    {!hasSelectedPortfolio && (
+                    {!hasSelectedPortfolio && showAdvancedTabs && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -3066,8 +3091,9 @@ export const StockSelection = ({
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
                                 <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                                <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                                <span className="text-sm font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1">
                                   Risk Level
+                                  <FinanceTooltip term="volatility" />
                                 </span>
                               </div>
                               <div className="text-3xl font-bold text-amber-800 dark:text-amber-200 mb-1">
@@ -3089,8 +3115,9 @@ export const StockSelection = ({
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
                                 <PieChart className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                                <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
+                                <span className="text-sm font-medium text-violet-700 dark:text-violet-300 flex items-center gap-1">
                                   Diversification
+                                  <FinanceTooltip term="diversification" />
                                 </span>
                               </div>
                               <div className="text-3xl font-bold text-violet-800 dark:text-violet-200 mb-1">
@@ -3206,8 +3233,9 @@ export const StockSelection = ({
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
                                 <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                                <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                                <span className="text-sm font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1">
                                   Risk Level
+                                  <FinanceTooltip term="volatility" />
                                 </span>
                               </div>
                               <div className="text-3xl font-bold text-amber-800 dark:text-amber-200 mb-1">
@@ -3229,8 +3257,9 @@ export const StockSelection = ({
                             <div className="relative z-10">
                               <div className="flex items-center gap-2 mb-2">
                                 <PieChart className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                                <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
+                                <span className="text-sm font-medium text-violet-700 dark:text-violet-300 flex items-center gap-1">
                                   Diversification
+                                  <FinanceTooltip term="diversification" />
                                 </span>
                               </div>
                               <div className="text-3xl font-bold text-violet-800 dark:text-violet-200 mb-1">

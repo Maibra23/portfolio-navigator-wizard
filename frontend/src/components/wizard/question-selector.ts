@@ -15,6 +15,7 @@ import {
   createInitialState,
   submitAnswer as submitAnswerToBranching,
   isBranchingComplete,
+  undoLastAnswer as undoLastAnswerBranching,
   TOTAL_ADAPTIVE_QUESTIONS
 } from './adaptive-branching';
 
@@ -33,6 +34,8 @@ export interface QuestionSelector {
   initialize(userProfile: { ageGroup: string; experiencePoints: number }): void;
   getNextQuestion(): Question | null;
   submitAnswer(questionId: string, answer: number, timeSeconds: number): void;
+  undoLastAnswer(): boolean;
+  getLastAskedQuestionId(): string | null;
   isComplete(): boolean;
   getSelectedQuestions(): Question[];
   getBranchingPath(): string;
@@ -157,6 +160,29 @@ export class QuestionSelectorImpl implements QuestionSelector {
     if (!state) return;
 
     this.branchingState = submitAnswerToBranching(state, questionId, answer, timeSeconds);
+  }
+
+  undoLastAnswer(): boolean {
+    if (this.ageGroup === 'under-19') {
+      if (this.gamifiedAsked.length === 0) return false;
+      this.gamifiedAsked.pop();
+      return true;
+    }
+    const state = this.branchingState;
+    if (!state || state.questions_asked.length === 0) return false;
+    const next = undoLastAnswerBranching(state);
+    if (!next) return false;
+    this.branchingState = next;
+    return true;
+  }
+
+  getLastAskedQuestionId(): string | null {
+    if (this.ageGroup === 'under-19') {
+      return this.gamifiedAsked.length > 0 ? this.gamifiedAsked[this.gamifiedAsked.length - 1] : null;
+    }
+    const state = this.branchingState;
+    if (!state || state.questions_asked.length === 0) return null;
+    return state.questions_asked[state.questions_asked.length - 1];
   }
 
   isComplete(): boolean {

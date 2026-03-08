@@ -4,6 +4,12 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { ChevronDown, HelpCircle, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface QuestionDisplayQuestion {
@@ -12,6 +18,8 @@ export interface QuestionDisplayQuestion {
   options: Array<{ value: number; text: string }>;
   reversed?: boolean;
   ui_note?: string;
+  /** Plain-language hint for what the question means (e.g. consequence of choices). Shown in a collapsible "What does this mean?". */
+  consequenceHint?: string;
 }
 
 export interface QuestionDisplayProps {
@@ -19,6 +27,8 @@ export interface QuestionDisplayProps {
   questionNumber: number;
   totalQuestions: number | '~12';
   onAnswer: (questionId: string, value: number) => void;
+  /** When provided and questionNumber > 1, a Previous button is shown to go back. */
+  onPrev?: () => void;
   timeTracking?: boolean;
   onTimeReport?: (questionId: string, seconds: number) => void;
   className?: string;
@@ -44,6 +54,7 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
   questionNumber,
   totalQuestions,
   onAnswer,
+  onPrev,
   timeTracking = false,
   onTimeReport,
   className
@@ -90,6 +101,22 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         <p className="text-base font-medium text-foreground leading-relaxed">
           {question.question}
         </p>
+        {question.consequenceHint && (
+          <Collapsible className="group rounded-md border border-border bg-muted/30 mt-3">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md">
+              <span className="flex items-center gap-1.5">
+                <HelpCircle className="h-3.5 w-3.5 shrink-0" />
+                What does this mean?
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <p className="px-3 pb-3 pt-0 text-sm text-muted-foreground border-t border-border/50 mt-0 pt-2">
+                {question.consequenceHint}
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-4 pt-2">
@@ -127,7 +154,18 @@ export const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
           </p>
         )}
 
-        <div className="pt-2">
+        <div className="pt-2 flex flex-wrap items-center gap-2">
+          {questionNumber > 1 && onPrev && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onPrev}
+              className="w-full sm:w-auto min-w-[120px]"
+            >
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+              Previous
+            </Button>
+          )}
           <Button
             type="button"
             onClick={handleNext}

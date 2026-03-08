@@ -8,6 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   ArrowRight,
   ArrowLeft,
   Shield,
@@ -16,6 +21,8 @@ import {
   Zap,
   Target,
   Brain,
+  ChevronDown,
+  HelpCircle,
 } from "lucide-react";
 import type { RiskProfile } from "../PortfolioWizard";
 
@@ -1936,6 +1943,17 @@ export const RiskProfiler = ({
     }
   };
 
+  const handlePrevQuestion = () => {
+    if (!questionSelector || !currentQuestion) return;
+    const ok = questionSelector.undoLastAnswer();
+    if (!ok) return;
+    const prevId = questionSelector.getLastAskedQuestionId();
+    if (prevId) {
+      const full = getFullQuestionById(prevId);
+      if (full) setCurrentQuestion(full);
+    }
+  };
+
   // Calculate risk profile (uses new scoring engine with branching metadata)
   const calculateRiskProfile = () => {
     if (!questionSelector) return;
@@ -2399,6 +2417,23 @@ export const RiskProfiler = ({
                   {fullQuestion.question ?? currentQuestion.id}
                 </h3>
 
+                {fullQuestion.gamifiedText && (
+                  <Collapsible className="group rounded-md border border-border bg-muted/30">
+                    <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <span className="flex items-center gap-1.5">
+                        <HelpCircle className="h-3.5 w-3.5" />
+                        What does this mean?
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <p className="px-3 pb-3 pt-0 text-sm text-muted-foreground border-t border-border/50 mt-0 pt-2">
+                        {fullQuestion.gamifiedText}
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
                 <RadioGroup
                   value={selectedOptionValues[currentQuestion.id] || ""}
                   onValueChange={(value) => {
@@ -2440,6 +2475,18 @@ export const RiskProfiler = ({
 
             {!isUnder19 && (
               <div className="flex flex-col sm:flex-row gap-2 justify-center sm:justify-center pt-3 border-t">
+                {questionSelector &&
+                  questionSelector.getSelectedQuestions().length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handlePrevQuestion}
+                      className="sm:order-first"
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Previous
+                    </Button>
+                  )}
                 <Button
                   onClick={() =>
                     handleAnswerSubmit(answers[currentQuestion.id] || 1)

@@ -14,6 +14,7 @@ import {
   TrendingUp,
   RotateCcw,
   PlayCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 interface WelcomeStepProps {
@@ -74,7 +75,7 @@ export const WelcomeStep = ({
   ];
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="welcome-card">
       <Card className="shadow-sm border-t-2 border-t-primary/30">
         <StepCardHeader
           icon={<StepHeaderIcon icon={TrendingUp} size="lg" />}
@@ -165,12 +166,33 @@ export const WelcomeStep = ({
             </ul>
           </div>
 
+          <div className="bg-muted/60 rounded-lg p-4 mb-4 border border-border">
+            <h3 className="font-semibold text-foreground text-base md:text-lg mb-1.5">
+              What You&apos;ll Need
+            </h3>
+            <ul className="space-y-1.5 text-sm md:text-base text-muted-foreground">
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary shrink-0" aria-hidden />
+                How much you want to invest (minimum 1,000 SEK)
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary shrink-0" aria-hidden />
+                Your comfort level with market ups and downs
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary shrink-0" aria-hidden />
+                How long you plan to invest
+              </li>
+            </ul>
+          </div>
+
           <div className="text-center">
             <Button
               onClick={onNext}
               size="lg"
               className="bg-primary hover:bg-primary/90 transition-colors min-h-[44px] px-6"
               aria-label="Start building your portfolio"
+              data-tour="start-button"
             >
               Start Building Your Portfolio
               <ArrowRight className="ml-1.5 h-4 w-4" />

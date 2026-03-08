@@ -85,6 +85,14 @@ const CATEGORY_COLORS = {
   'very-aggressive': '#ef4444'
 } as const;
 
+const SPECTRUM_ORDER = [
+  'very-conservative',
+  'conservative',
+  'moderate',
+  'aggressive',
+  'very-aggressive',
+] as const;
+
 // Icon mapping
 const ICON_COMPONENTS: Record<string, LucideIcon> = {
   shield: Shield,
@@ -148,6 +156,31 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
       </CardHeader>
 
       <CardContent className="space-y-3">
+        {/* Risk spectrum bar - You are here */}
+        <div className="space-y-1">
+          <div className="flex w-full gap-0.5 rounded-md overflow-hidden h-2 bg-muted">
+            {SPECTRUM_ORDER.map((key) => {
+              const isYou = category === key;
+              const c = CATEGORY_COLORS[key];
+              return (
+                <div
+                  key={key}
+                  className={cn(
+                    'flex-1 transition-opacity',
+                    isYou ? 'ring-2 ring-foreground ring-offset-1 ring-offset-background rounded-sm' : 'opacity-60'
+                  )}
+                  style={{ backgroundColor: c }}
+                  title={CATEGORY_CONTENT[key].title}
+                  aria-hidden
+                />
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center">
+            You are here
+          </p>
+        </div>
+
         {/* Characteristics - Compact Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {content.characteristics.map((characteristic, index) => (

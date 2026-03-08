@@ -271,3 +271,43 @@ export function submitAnswer(
 export function isBranchingComplete(state: BranchingState): boolean {
   return state.questions_asked.length >= TOTAL_ADAPTIVE_QUESTIONS;
 }
+
+/**
+ * Undoes the last answer. Returns new state with last question and its answer removed, or null if nothing to undo.
+ * If the last question was the 4th anchor (completing phase 1), reverts phase1_score, selected_path, and current_phase.
+ */
+export function undoLastAnswer(state: BranchingState): BranchingState | null {
+  if (state.questions_asked.length === 0) return null;
+  const questions_asked = state.questions_asked.slice(0, -1);
+  const lastId = state.questions_asked[state.questions_asked.length - 1];
+  const answers = new Map(state.answers);
+  answers.delete(lastId);
+
+  const wasFourthAnchor =
+    state.current_phase === 2 &&
+    state.questions_asked.length === PHASE1_SIZE &&
+    ANCHOR_QUESTIONS.includes(lastId);
+
+  let current_phase = state.current_phase;
+  let phase1_score = state.phase1_score;
+  let selected_path = state.selected_path;
+  let constructs_covered = new Set(state.constructs_covered);
+
+  if (wasFourthAnchor) {
+    current_phase = 1;
+    phase1_score = null;
+    selected_path = null;
+  } else {
+    const mapping = CONSTRUCT_MAPPINGS[lastId];
+    if (mapping) constructs_covered.delete(mapping.construct);
+  }
+
+  return {
+    current_phase,
+    questions_asked,
+    answers,
+    phase1_score,
+    selected_path,
+    constructs_covered,
+  };
+}
