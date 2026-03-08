@@ -291,7 +291,7 @@ export function undoLastAnswer(state: BranchingState): BranchingState | null {
   let current_phase = state.current_phase;
   let phase1_score = state.phase1_score;
   let selected_path = state.selected_path;
-  let constructs_covered = new Set(state.constructs_covered);
+  const constructs_covered = new Set(state.constructs_covered); // const: only mutated via .delete(), not reassigned
 
   if (wasFourthAnchor) {
     current_phase = 1;
