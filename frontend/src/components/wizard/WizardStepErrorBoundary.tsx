@@ -26,7 +26,7 @@ export class WizardStepErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
+       
       console.error('Wizard step error boundary caught:', error, errorInfo);
     }
   }
