@@ -604,38 +604,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 Max Drawdown
                                 <FinanceTooltip term="max_drawdown" className="text-orange-500" />
                               </span>
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-orange-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent
-                                  side="top"
-                                  className="max-w-[220px] p-2 text-xs"
-                                >
-                                  <div className="font-semibold mb-1">
-                                    Maximum Drawdown
-                                  </div>
-                                  <div className="mb-2">
-                                    Maximum decline from pre-crisis peak to
-                                    crisis trough.
-                                  </div>
-                                  <div className="mb-1">
-                                    <strong>Calculation:</strong> (Trough Value
-                                    - Peak Value) / Peak Value
-                                  </div>
-                                  <div className="mb-1">
-                                    <strong>Peak:</strong> Portfolio value at
-                                    crisis start (or max before crisis)
-                                  </div>
-                                  <div className="mb-1">
-                                    <strong>Trough:</strong> Minimum value
-                                    during crisis period
-                                  </div>
-                                  <div className="text-muted-foreground italic mt-2">
-                                    Only shown if drawdown exceeds 3% threshold
-                                  </div>
-                                </TooltipContent>
-                              </UITooltip>
                               <span className="text-sm font-bold text-orange-800">
                                 {(
                                   stressTestResults.scenarios.covid19.metrics
@@ -1945,38 +1913,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                                 Max Drawdown
                                 <FinanceTooltip term="max_drawdown" className="text-orange-500" />
                               </span>
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-orange-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent
-                                  side="top"
-                                  className="max-w-[220px] p-2 text-xs"
-                                >
-                                  <div className="font-semibold mb-1">
-                                    Maximum Drawdown
-                                  </div>
-                                  <div className="mb-2">
-                                    Maximum decline from pre-crisis peak to
-                                    crisis trough.
-                                  </div>
-                                  <div className="mb-1">
-                                    <strong>Calculation:</strong> (Trough Value
-                                    - Peak Value) / Peak Value
-                                  </div>
-                                  <div className="mb-1">
-                                    <strong>Peak:</strong> Portfolio value at
-                                    crisis start (or max before crisis)
-                                  </div>
-                                  <div className="mb-1">
-                                    <strong>Trough:</strong> Minimum value
-                                    during crisis period
-                                  </div>
-                                  <div className="text-muted-foreground italic mt-2">
-                                    Only shown if drawdown exceeds 3% threshold
-                                  </div>
-                                </TooltipContent>
-                              </UITooltip>
                               <span className="text-sm font-bold text-orange-800">
                                 {(
                                   stressTestResults.scenarios["2008_crisis"]
@@ -3318,19 +3254,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                             <div className="text-xs text-red-700 mb-1 flex items-center gap-1">
                               VaR (95%)
                               <FinanceTooltip term="var" className="text-red-500" />
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-red-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent
-                                  side="top"
-                                  className="max-w-[180px] p-2 text-xs"
-                                >
-                                  Value at Risk: The maximum expected loss at
-                                  95% confidence level. Represents the 5%
-                                  worst-case scenario return.
-                                </TooltipContent>
-                              </UITooltip>
                             </div>
                             <div className="text-lg font-bold text-red-800">
                               {(
@@ -3348,19 +3271,6 @@ export const StressTest: React.FC<StressTestProps> = ({
                             <div className="text-xs text-orange-700 mb-1 flex items-center gap-1">
                               CVaR (95%)
                               <FinanceTooltip term="cvar" className="text-orange-500" />
-                              <UITooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-3 w-3 text-orange-500 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent
-                                  side="top"
-                                  className="max-w-[180px] p-2 text-xs"
-                                >
-                                  Conditional Value at Risk: Expected loss
-                                  beyond VaR threshold. Average of losses in the
-                                  worst 5% of scenarios.
-                                </TooltipContent>
-                              </UITooltip>
                             </div>
                             <div className="text-lg font-bold text-orange-800">
                               {(

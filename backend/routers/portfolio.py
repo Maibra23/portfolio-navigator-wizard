@@ -10213,7 +10213,7 @@ async def estimate_transaction_costs(request: TransactionCostRequest):
         raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to estimate transaction costs"))
 
 
-# Five-year projection (regression-based, Sweden tax/costs)
+# Five-year projection (Monte Carlo or deterministic, Sweden tax/costs)
 class FiveYearProjectionRequest(BaseModel):
     weights: Dict[str, float]  # ticker -> weight (fraction, sum 1)
     capital: float
@@ -10223,20 +10223,36 @@ class FiveYearProjectionRequest(BaseModel):
     expectedReturn: float  # decimal, e.g. 0.08
     risk: float  # decimal, e.g. 0.15
     rebalancingFrequency: Literal["monthly", "quarterly", "semi-annual", "annual"] = "quarterly"
+    mode: Literal["deterministic", "monte_carlo"] = "monte_carlo"  # NEW: simulation mode
+    shockScenario: Optional[str] = None  # NEW: optional shock scenario (e.g., "mild_recession")
 
 
 class FiveYearProjectionResponse(BaseModel):
+    """Response with optional Monte Carlo confidence bands."""
     years: List[int]
-    optimistic: List[float]
-    base: List[float]
-    pessimistic: List[float]
+    optimistic: List[float]  # p75 in MC mode
+    base: List[float]  # p50 in MC mode
+    pessimistic: List[float]  # p25 in MC mode
+    # NEW: Optional fields for Monte Carlo mode
+    confidence_bands: Optional[Dict[str, List[float]]] = None  # p5, p10, p25, p50, p75, p90, p95
+    monthly_points: Optional[List[float]] = None  # Time points for smooth charting
+    probability_loss: Optional[float] = None  # % chance of losing money
+    probability_loss_20pct: Optional[float] = None  # % chance of losing 20%+
+    mode: str = "deterministic"
+    shock_scenario: Optional[str] = None
+    statistics: Optional[Dict[str, float]] = None
 
 
 @export_router.post("/projection/five-year", response_model=FiveYearProjectionResponse)
 async def projection_five_year(request: FiveYearProjectionRequest):
     """
     Five-year portfolio projection with Swedish tax and transaction costs.
-    Returns three regression-based scenarios: optimistic, base, pessimistic.
+
+    Modes:
+    - monte_carlo (default): GBM-based stochastic simulation with confidence bands
+    - deterministic: Legacy three-scenario projection
+
+    Shock scenarios can be applied to model adverse market conditions.
     """
     try:
         result = run_five_year_projection(
@@ -10248,18 +10264,44 @@ async def projection_five_year(request: FiveYearProjectionRequest):
             tax_year=request.taxYear,
             courtage_class=request.courtageClass,
             rebalancing_frequency=request.rebalancingFrequency,
+            mode=request.mode,
+            shock_scenario=request.shockScenario,
         )
         return FiveYearProjectionResponse(
             years=result["years"],
             optimistic=result["optimistic"],
             base=result["base"],
             pessimistic=result["pessimistic"],
+            confidence_bands=result.get("confidence_bands"),
+            monthly_points=result.get("monthly_points"),
+            probability_loss=result.get("probability_loss"),
+            probability_loss_20pct=result.get("probability_loss_20pct"),
+            mode=result.get("mode", "deterministic"),
+            shock_scenario=result.get("shock_scenario"),
+            statistics=result.get("statistics"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error running five-year projection: {e}")
         raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to run projection"))
+
+
+@export_router.get("/projection/shock-scenarios")
+async def list_shock_scenarios():
+    """
+    Get available shock scenarios for portfolio projections.
+
+    Returns a list of predefined macroeconomic scenarios that can be
+    applied to five-year projections to model adverse market conditions.
+    """
+    try:
+        from utils.five_year_projection import get_projection_scenarios
+        scenarios = get_projection_scenarios()
+        return {"scenarios": scenarios}
+    except Exception as e:
+        logger.error(f"Error listing shock scenarios: {e}")
+        raise HTTPException(status_code=500, detail=safe_error_detail(e, "Failed to list scenarios"))
 
 
 # Pydantic models for tax-adjusted metrics

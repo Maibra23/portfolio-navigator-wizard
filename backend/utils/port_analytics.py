@@ -2025,21 +2025,30 @@ class PortfolioAnalytics:
             - statistics: Mean, std, min, max of simulated returns
         """
         try:
-            # Generate random returns using normal distribution
-            # For simplicity, assuming returns follow normal distribution
-            # In practice, could use log-normal or more sophisticated models
-            
-            # Guard against zero or negative volatility (would make normal degenerate)
+            # Generate random returns using log-normal distribution (GBM)
+            # Log-normal is more realistic: returns are bounded at -100% (can't lose more than you have)
+            # and exhibit right-skewed distribution matching actual market behavior
+
+            # Guard against zero or negative volatility
             risk_effective = max(float(risk), 0.01) if risk is not None else 0.01
-            
-            # Annualized parameters adjusted for time horizon
-            adjusted_return = expected_return * time_horizon_years
-            adjusted_risk = risk_effective * np.sqrt(time_horizon_years)
-            
+
+            # GBM parameters with Ito correction
+            # For log-normal terminal distribution:
+            # ln(S_T/S_0) ~ N((mu - 0.5*sigma^2)*T, sigma*sqrt(T))
+            # where mu = expected_return, sigma = volatility, T = time_horizon
+            drift = (expected_return - 0.5 * risk_effective ** 2) * time_horizon_years
+            diffusion = risk_effective * np.sqrt(time_horizon_years)
+
             # Generate simulated returns (optional seed for reproducibility)
             if seed is not None:
                 np.random.seed(seed)
-            simulated_returns = np.random.normal(adjusted_return, adjusted_risk, num_simulations)
+
+            # Generate log-returns from normal distribution
+            log_returns = np.random.normal(drift, diffusion, num_simulations)
+
+            # Convert to simple returns: R = exp(log_return) - 1
+            # This ensures returns are bounded at -100% (minimum value is -1)
+            simulated_returns = np.exp(log_returns) - 1
             
             # Calculate percentiles
             percentiles = {

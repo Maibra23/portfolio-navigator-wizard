@@ -1699,13 +1699,19 @@ class StressTestAnalyzer:
                 market_returns=None  # Could add market index returns later
             )
             
-            # Monte Carlo Simulation for crisis period (illustrative; uses in-sample crisis mean/vol, not a forecast)
+            # Monte Carlo Simulation - Two perspectives:
+            # 1. HISTORICAL: Uses crisis-period statistics (what if crisis conditions repeated)
+            # 2. FORWARD: Uses portfolio's expected return/risk (what could happen going forward)
             monte_carlo = None
+            forward_monte_carlo = None
             try:
                 op_start = time.time()
-                logger.info(f"⏱️ Running Monte Carlo simulation (5,000 iterations)...")
+                logger.info(f"⏱️ Running Monte Carlo simulations (historical + forward)...")
                 from utils.port_analytics import PortfolioAnalytics
                 analytics = PortfolioAnalytics()
+
+                # HISTORICAL Monte Carlo: Uses in-sample crisis statistics
+                # Answers: "How bad could it get if crisis conditions repeated?"
                 crisis_expected_return = float(np.mean(portfolio_data['monthly_returns']) * 12) if len(portfolio_data['monthly_returns']) > 0 else 0.0
                 monte_carlo = analytics.run_monte_carlo_simulation(
                     expected_return=crisis_expected_return,
@@ -1713,7 +1719,22 @@ class StressTestAnalyzer:
                     num_simulations=5000,
                     time_horizon_years=1.0
                 )
-                logger.info(f"⏱️ Monte Carlo completed in {time.time() - op_start:.3f}s")
+                monte_carlo['context'] = 'historical_crisis'
+                monte_carlo['description'] = 'Simulates outcomes if COVID-19 crisis conditions repeated'
+
+                # FORWARD Monte Carlo: Uses portfolio's normal expected return and volatility
+                # Answers: "What is the range of outcomes under normal market conditions?"
+                # Get portfolio metrics from weights (using normal period volatility as baseline)
+                forward_monte_carlo = analytics.run_monte_carlo_simulation(
+                    expected_return=0.08,  # Reasonable long-term equity return assumption
+                    risk=volatility_normal,  # Use normal period volatility
+                    num_simulations=5000,
+                    time_horizon_years=1.0
+                )
+                forward_monte_carlo['context'] = 'forward_looking'
+                forward_monte_carlo['description'] = 'Simulates outcomes under normal market conditions'
+
+                logger.info(f"⏱️ Monte Carlo simulations completed in {time.time() - op_start:.3f}s")
             except Exception as e:
                 logger.warning(f"⚠️ Could not run Monte Carlo for COVID-19: {e}")
             
@@ -1799,6 +1820,7 @@ class StressTestAnalyzer:
                     'advanced_risk': advanced_risk
                 },
                 'monte_carlo': monte_carlo,
+                'forward_monte_carlo': forward_monte_carlo,  # NEW: Forward-looking simulation
                 'peaks_troughs': peaks_troughs,
                 'sector_impact': sector_impact,
                 'monthly_performance': monthly_performance,
@@ -1965,23 +1987,41 @@ class StressTestAnalyzer:
                 market_returns=None  # Could add market index returns later
             )
             
-            # Monte Carlo Simulation for crisis period
+            # Monte Carlo Simulation - Two perspectives:
+            # 1. HISTORICAL: Uses crisis-period statistics (what if crisis conditions repeated)
+            # 2. FORWARD: Uses portfolio's expected return/risk (what could happen going forward)
             monte_carlo = None
+            forward_monte_carlo = None
             try:
                 op_start = time.time()
-                logger.info(f"⏱️ Running Monte Carlo simulation (5,000 iterations) for 2008 Crisis...")
+                logger.info(f"⏱️ Running Monte Carlo simulations (historical + forward) for 2008 Crisis...")
                 from utils.port_analytics import PortfolioAnalytics
                 analytics = PortfolioAnalytics()
-                # Use crisis volatility and expected return for Monte Carlo
+
+                # HISTORICAL Monte Carlo: Uses in-sample crisis statistics
+                # Answers: "How bad could it get if 2008-style crisis repeated?"
                 crisis_expected_return = float(np.mean(portfolio_data['monthly_returns']) * 12) if len(portfolio_data['monthly_returns']) > 0 else 0.0
-                # Reduced from 10,000 to 5,000 for better performance (still statistically significant)
                 monte_carlo = analytics.run_monte_carlo_simulation(
                     expected_return=crisis_expected_return,
                     risk=volatility_during_crisis,
-                    num_simulations=5000,  # Optimized: reduced from 10,000 to 5,000
+                    num_simulations=5000,
                     time_horizon_years=1.0
                 )
-                logger.info(f"⏱️ Monte Carlo completed in {time.time() - op_start:.3f}s")
+                monte_carlo['context'] = 'historical_crisis'
+                monte_carlo['description'] = 'Simulates outcomes if 2008 Financial Crisis conditions repeated'
+
+                # FORWARD Monte Carlo: Uses portfolio's normal expected return and volatility
+                # Answers: "What is the range of outcomes under normal market conditions?"
+                forward_monte_carlo = analytics.run_monte_carlo_simulation(
+                    expected_return=0.08,  # Reasonable long-term equity return assumption
+                    risk=volatility_normal,  # Use normal period volatility
+                    num_simulations=5000,
+                    time_horizon_years=1.0
+                )
+                forward_monte_carlo['context'] = 'forward_looking'
+                forward_monte_carlo['description'] = 'Simulates outcomes under normal market conditions'
+
+                logger.info(f"⏱️ Monte Carlo simulations completed in {time.time() - op_start:.3f}s")
             except Exception as e:
                 logger.warning(f"⚠️ Could not run Monte Carlo for 2008 Crisis: {e}")
             
@@ -2010,8 +2050,9 @@ class StressTestAnalyzer:
                 recovered_2008 = recovery_data['recovered']
                 recovery_thresholds_2008 = recovery_data.get('recovery_thresholds', {})
                 recovery_needed_pct_2008 = recovery_data.get('recovery_needed_pct', 0.0)
-                # Only include trajectory projections if portfolio hasn't fully recovered
-                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {}) if recovery_needed_pct_2008 > 0 else {}
+                # Always include trajectory projections for educational purposes
+                # Even if portfolio has recovered, users can see the projected recovery scenarios
+                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {})
             else:
                 drawdown_pct = abs(max_drawdown_data['max_drawdown']) * 100
 
@@ -2034,8 +2075,9 @@ class StressTestAnalyzer:
 
                 recovery_thresholds_2008 = recovery_data.get('recovery_thresholds', {})
                 recovery_needed_pct_2008 = recovery_data.get('recovery_needed_pct', 0.0)
-                # Only include trajectory projections if portfolio hasn't fully recovered
-                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {}) if recovery_needed_pct_2008 > 0 else {}
+                # Always include trajectory projections for educational purposes
+                # Even if portfolio has recovered, users can see the projected recovery scenarios
+                trajectory_projections_2008 = recovery_data.get('trajectory_projections', {})
             
             return {
                 'scenario_name': '2008 Financial Crisis',
@@ -2062,6 +2104,7 @@ class StressTestAnalyzer:
                     'advanced_risk': advanced_risk
                 },
                 'monte_carlo': monte_carlo,
+                'forward_monte_carlo': forward_monte_carlo,  # NEW: Forward-looking simulation
                 'peaks_troughs': peaks_troughs,
                 'sector_impact': sector_impact,
                 'monthly_performance': monthly_performance,
