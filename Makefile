@@ -127,6 +127,16 @@ dev: check-cache
 	@echo "📊 Backend: http://localhost:8000"
 	@echo "🌐 Frontend: http://localhost:8080"
 	@echo "=================================================="
+	@if lsof -i :8080 -P > /dev/null 2>&1; then \
+		echo "⚠️  Port 8080 in use - freeing it for frontend..."; \
+		lsof -ti :8080 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@if lsof -i :8000 -P > /dev/null 2>&1; then \
+		echo "⚠️  Port 8000 in use - freeing it for backend..."; \
+		lsof -ti :8000 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
 	cd backend && $(PYTHON_EXEC) -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 & \
 	cd frontend && npm run dev
 

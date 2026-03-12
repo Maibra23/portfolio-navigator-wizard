@@ -36,6 +36,7 @@ import {
   getPortfolioColors,
   getRechartsTheme,
 } from "@/utils/chartThemes";
+import { getRechartsTooltipProps, RECHARTS_CURSOR } from "@/utils/rechartsTooltipConfig";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface PortfolioPoint {
@@ -225,10 +226,10 @@ export const EfficientFrontierChart = ({
       }));
   }, [efficientFrontier, visibleSeries.efficientFrontier]);
 
-  // Sort inefficient frontier
+  // Sort inefficient frontier and connect to efficient at min-variance point so both branches meet
   const sortedInefficientFrontier = useMemo(() => {
     if (!inefficientFrontier || !visibleSeries.inefficientFrontier) return [];
-    return [...inefficientFrontier]
+    const sorted = [...inefficientFrontier]
       .sort((a, b) => (a.risk ?? 0) - (b.risk ?? 0))
       .filter(
         (p) =>
@@ -243,7 +244,13 @@ export const EfficientFrontierChart = ({
         ...point,
         type: "inefficient_frontier" as const,
       }));
-  }, [inefficientFrontier, visibleSeries.inefficientFrontier]);
+    if (sorted.length === 0 || sortedFrontier.length === 0) return sorted;
+    const minVarPoint = sortedFrontier[0];
+    return [
+      { ...minVarPoint, type: "inefficient_frontier" as const },
+      ...sorted.slice(1),
+    ];
+  }, [inefficientFrontier, visibleSeries.inefficientFrontier, sortedFrontier]);
 
   // Filter random portfolios
   const filteredRandomPortfolios = useMemo(() => {
@@ -811,7 +818,8 @@ export const EfficientFrontierChart = ({
                 }}
               />
               <RechartsTooltip
-                cursor={!isSelecting ? { strokeDasharray: "3 3" } : false}
+                {...getRechartsTooltipProps(theme)}
+                cursor={!isSelecting ? RECHARTS_CURSOR : false}
                 content={({
                   active,
                   payload,
@@ -872,122 +880,34 @@ export const EfficientFrontierChart = ({
 
                   if (isEfficientFrontierLine) {
                     return (
-                      <div
-                        className="rounded-lg border p-2 shadow-md max-w-xs"
-                        style={{
-                          background: chartTheme.cardBackground,
-                          borderColor: "#64748b",
-                        }}
-                      >
-                        <p
-                          className="font-semibold text-sm"
-                          style={{ color: "#64748b" }}
-                        >
-                          Efficient Frontier
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-xs" style={{ color: "#64748b" }}>Efficient Frontier</p>
+                        <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>Max return for risk level</p>
+                        <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                          Return {formatPercent(data.return)} · Risk {formatPercent(data.risk)}
+                          {data.sharpe_ratio != null && typeof data.sharpe_ratio === "number" && isFinite(data.sharpe_ratio) && ` · Sharpe ${data.sharpe_ratio.toFixed(2)}`}
                         </p>
-                        <p
-                          className="text-xs mt-1"
-                          style={{ color: chartTheme.text.secondary }}
-                        >
-                          Optimal portfolios offering maximum return for given
-                          risk levels.
-                        </p>
-                        <div
-                          className="mt-2 space-y-1 text-xs"
-                          style={{ color: chartTheme.text.primary }}
-                        >
-                          <p>
-                            Return:{" "}
-                            <span className="font-medium">
-                              {formatPercent(data.return)}
-                            </span>
-                          </p>
-                          <p>
-                            Risk:{" "}
-                            <span className="font-medium">
-                              {formatPercent(data.risk)}
-                            </span>
-                          </p>
-                          {data.sharpe_ratio != null &&
-                            typeof data.sharpe_ratio === "number" &&
-                            isFinite(data.sharpe_ratio) && (
-                              <p>
-                                Sharpe:{" "}
-                                <span className="font-medium">
-                                  {data.sharpe_ratio.toFixed(2)}
-                                </span>
-                              </p>
-                            )}
-                        </div>
                       </div>
                     );
                   }
 
                   if (isInefficientFrontierLine) {
                     return (
-                      <div
-                        className="rounded-lg border p-2 shadow-md max-w-xs"
-                        style={{
-                          background: chartTheme.cardBackground,
-                          borderColor: "#94a3b8",
-                        }}
-                      >
-                        <p
-                          className="font-semibold text-sm"
-                          style={{ color: "#94a3b8" }}
-                        >
-                          Inefficient Frontier
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-xs" style={{ color: "#94a3b8" }}>Inefficient Frontier</p>
+                        <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>Min return for risk level</p>
+                        <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                          Return {formatPercent(data.return)} · Risk {formatPercent(data.risk)}
                         </p>
-                        <p
-                          className="text-xs mt-1"
-                          style={{ color: chartTheme.text.secondary }}
-                        >
-                          Portfolios with minimum return for given risk levels
-                          (lower branch).
-                        </p>
-                        <div
-                          className="mt-2 space-y-1 text-xs"
-                          style={{ color: chartTheme.text.primary }}
-                        >
-                          <p>
-                            Return:{" "}
-                            <span className="font-medium">
-                              {formatPercent(data.return)}
-                            </span>
-                          </p>
-                          <p>
-                            Risk:{" "}
-                            <span className="font-medium">
-                              {formatPercent(data.risk)}
-                            </span>
-                          </p>
-                        </div>
                       </div>
                     );
                   }
 
                   if (isCML) {
                     return (
-                      <div
-                        className="rounded-lg border p-2 shadow-md max-w-xs"
-                        style={{
-                          background: chartTheme.cardBackground,
-                          borderColor: "#9333ea",
-                        }}
-                      >
-                        <p
-                          className="font-semibold text-sm"
-                          style={{ color: "#9333ea" }}
-                        >
-                          Capital Market Line (CML)
-                        </p>
-                        <p
-                          className="text-xs mt-1"
-                          style={{ color: chartTheme.text.secondary }}
-                        >
-                          Optimal risk-return combinations combining risk-free
-                          assets with the market portfolio.
-                        </p>
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-xs" style={{ color: "#9333ea" }}>Capital Market Line</p>
+                        <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>Risk-free + market portfolio</p>
                       </div>
                     );
                   }
@@ -996,122 +916,28 @@ export const EfficientFrontierChart = ({
                   const currentPortfolioMetrics = currentPortfolio;
                   const showComparison =
                     data.type !== "current" && currentPortfolioMetrics != null;
+                  const label =
+                    data.type === "current"
+                      ? "Current"
+                      : data.type === "weights-optimized"
+                        ? "Weights-Opt"
+                        : data.type === "market-optimized"
+                          ? "Market-Opt"
+                          : "Portfolio";
 
                   return (
-                    <div
-                      className="rounded-xl border p-3 shadow-lg max-w-xs"
-                      style={{
-                        background: chartTheme.cardBackground,
-                        borderColor: chartTheme.border,
-                      }}
-                    >
-                      <p
-                        className="font-bold text-sm pb-2 mb-2 border-b"
-                        style={{
-                          color: chartTheme.text.primary,
-                          borderColor: chartTheme.border,
-                        }}
-                      >
-                        {data.type === "current"
-                          ? "Current Portfolio"
-                          : data.type === "weights-optimized"
-                            ? "Weights-Optimized Portfolio"
-                            : data.type === "market-optimized"
-                              ? "Market-Optimized Portfolio"
-                              : "Portfolio"}
+                    <div className="space-y-0.5">
+                      <p className="font-semibold text-xs" style={{ color: chartTheme.text.primary }}>{label}</p>
+                      <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                        Return {formatPercent(displayReturn)} · Risk {formatPercent(data.risk)}
+                        {data.sharpe_ratio != null && typeof data.sharpe_ratio === "number" && isFinite(data.sharpe_ratio) && ` · Sharpe ${data.sharpe_ratio.toFixed(2)}`}
                       </p>
-                      <div className="space-y-1.5 text-xs">
-                        <div className="flex justify-between">
-                          <span style={{ color: chartTheme.text.secondary }}>
-                            Return (μ):
-                          </span>
-                          <span
-                            className="font-semibold"
-                            style={{ color: chartTheme.text.primary }}
-                          >
-                            {formatPercent(displayReturn)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span style={{ color: chartTheme.text.secondary }}>
-                            Risk (σ):
-                          </span>
-                          <span
-                            className="font-semibold"
-                            style={{ color: chartTheme.text.primary }}
-                          >
-                            {formatPercent(data.risk)}
-                          </span>
-                        </div>
-                        {data.sharpe_ratio != null &&
-                          typeof data.sharpe_ratio === "number" &&
-                          isFinite(data.sharpe_ratio) && (
-                            <div className="flex justify-between">
-                              <span
-                                style={{ color: chartTheme.text.secondary }}
-                              >
-                                Sharpe Ratio:
-                              </span>
-                              <span
-                                className="font-semibold"
-                                style={{ color: chartTheme.text.primary }}
-                              >
-                                {data.sharpe_ratio.toFixed(3)}
-                              </span>
-                            </div>
-                          )}
-                      </div>
-
-                      {/* Comparison to current portfolio */}
                       {showComparison && currentPortfolioMetrics && (
-                        <div
-                          className="mt-3 pt-2 border-t"
-                          style={{ borderColor: chartTheme.border }}
-                        >
-                          <div
-                            className="text-xs font-semibold mb-1.5"
-                            style={{ color: chartTheme.text.secondary }}
-                          >
-                            vs Current Portfolio:
-                          </div>
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between">
-                              <span
-                                style={{ color: chartTheme.text.secondary }}
-                              >
-                                Δ Return:
-                              </span>
-                              <span
-                                className={`font-semibold ${displayReturn > currentPortfolioMetrics.return ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
-                              >
-                                {displayReturn > currentPortfolioMetrics.return
-                                  ? "+"
-                                  : ""}
-                                {formatPercent(
-                                  displayReturn -
-                                    currentPortfolioMetrics.return,
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span
-                                style={{ color: chartTheme.text.secondary }}
-                              >
-                                Δ Risk:
-                              </span>
-                              <span
-                                className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}
-                              >
-                                {data.risk < currentPortfolioMetrics.risk
-                                  ? ""
-                                  : "+"}
-                                {formatPercent(
-                                  data.risk - currentPortfolioMetrics.risk,
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                        <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>
+                          vs Current: ΔRet {displayReturn >= currentPortfolioMetrics.return ? "+" : ""}
+                          {formatPercent(displayReturn - currentPortfolioMetrics.return)} · ΔRisk {data.risk < currentPortfolioMetrics.risk ? "" : "+"}
+                          {formatPercent(data.risk - currentPortfolioMetrics.risk)}
+                        </p>
                       )}
                     </div>
                   );

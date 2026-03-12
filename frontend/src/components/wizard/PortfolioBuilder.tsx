@@ -490,8 +490,26 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
             )}
           </div>
           <p className="text-xs text-muted-foreground/70 mt-1.5 ml-1">
-            Searching 1,400+ pre-validated US stocks
+            Try company names or tickers from US, European, and Swedish markets
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground mr-1">Try:</span>
+            {[
+              { query: "AAPL", label: "AAPL" },
+              { query: "MSFT", label: "MSFT" },
+              { query: "Volvo", label: "Volvo" },
+              { query: "Investor", label: "Investor" },
+            ].map(({ query, label }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setSearchTerm(query)}
+                className="text-xs px-2.5 py-1 rounded-md border border-border/60 bg-muted/20 hover:bg-muted/40 hover:border-border text-foreground transition-colors"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           {/* Error Display */}
           {error && (
@@ -708,8 +726,9 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
 
           {/* Allocation Controls */}
           {selectedStocks.length > 0 && (
-            <div className="flex items-center justify-between pt-2 border-t border-border/30">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center pt-2 border-t border-border/30">
+              <div className="flex-1 min-w-0" aria-hidden />
+              <div className="flex items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 dark:bg-primary/10 px-4 py-2.5 shrink-0">
                 <Switch
                   id="weight-editor"
                   checked={showWeightEditor}
@@ -717,33 +736,35 @@ export const PortfolioBuilder: React.FC<PortfolioBuilderProps> = ({
                 />
                 <label
                   htmlFor="weight-editor"
-                  className="text-xs text-muted-foreground cursor-pointer"
+                  className="text-sm font-medium text-primary cursor-pointer select-none"
                 >
                   Edit allocations manually
                 </label>
               </div>
-              {showWeightEditor && (
-                <div className="flex flex-col gap-1.5">
-                  <Button
-                    onClick={applyEqualAllocation}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                  >
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    Equal Split
-                  </Button>
-                  <Button
-                    onClick={applyRandomAllocation}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                  >
-                    <Shuffle className="h-3 w-3 mr-1" />
-                    Random allocation
-                  </Button>
-                </div>
-              )}
+              <div className="flex-1 flex flex-col items-end gap-1.5 min-w-0">
+                {showWeightEditor && (
+                  <>
+                    <Button
+                      onClick={applyEqualAllocation}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Equal Split
+                    </Button>
+                    <Button
+                      onClick={applyRandomAllocation}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                    >
+                      <Shuffle className="h-3 w-3 mr-1" />
+                      Random allocation
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 

@@ -32,7 +32,9 @@ import {
   Legend,
   Area,
   ReferenceLine,
+  TooltipProps,
 } from "recharts";
+import { ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import {
   Tooltip,
   TooltipContent,
@@ -46,6 +48,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { colors, bgColors, borderColors, getValueColor } from "@/utils/semanticColors";
 
 // ---------------------------------------------------------------------------
@@ -174,10 +177,13 @@ export const PerformanceSummaryCard = ({
   tripleOptimizationResults,
   selectedPortfolio,
   riskProfile,
+  noCard = false,
 }: {
   tripleOptimizationResults: TripleOptimizationResponse | null;
   selectedPortfolio: "current" | "weights" | "market";
   riskProfile: string;
+  /** When true, render only the summary content (no Card wrapper) for embedding in another card */
+  noCard?: boolean;
 }) => {
   if (!tripleOptimizationResults) return null;
 
@@ -222,13 +228,8 @@ export const PerformanceSummaryCard = ({
   const selectedRisk = selected?.risk ?? 0;
   const isCompliant = selectedRisk <= maxRisk;
 
-  return (
-    <Card className="w-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Performance Summary</CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+  const content = (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
           <div className="p-4 rounded-lg bg-muted/50 border border-border flex-1 min-w-0">
             <div className="text-sm font-medium text-muted-foreground mb-2">
               Current → {selectedLabel}
@@ -298,7 +299,15 @@ export const PerformanceSummaryCard = ({
             </div>
           </div>
         </div>
-      </CardContent>
+  );
+
+  if (noCard) return content;
+  return (
+    <Card className="w-full">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">Performance Summary</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">{content}</CardContent>
     </Card>
   );
 };
@@ -777,11 +786,6 @@ export const MonteCarloCard = ({
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Same definitions as in the Example below: 5th = worst 5% of
-              outcomes, 50th = median, 95th = best 5%. Expand &quot;How to read
-              this&quot; for the 500,000 SEK example for each portfolio.
-            </p>
           </>
         ) : (
           <div className="grid grid-cols-3 gap-4">
@@ -829,6 +833,138 @@ export const MonteCarloCard = ({
             </div>
           </div>
         )}
+
+        {/* Return Scenarios + explanation: consolidated above chart for better demo */}
+        <div className="rounded-lg border border-border bg-muted/20 dark:bg-muted/10 p-4 space-y-3">
+          <div className="text-sm font-medium text-foreground">
+            Return Scenarios
+          </div>
+          <p className="text-xs text-muted-foreground">
+            5th = worst 5% of outcomes, 50th = median, 95th = best 5%. Click a
+            percentile below to show it for all portfolio distributions in the
+            chart. Expand &quot;How to read this&quot; for the 500,000 SEK
+            example for each portfolio.
+          </p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {(
+              [
+                { key: "p5" as const, label: "5th", color: "#ef4444" },
+                { key: "p25" as const, label: "25th", color: "#f59e0b" },
+                { key: "p50" as const, label: "50th", color: "#3b82f6" },
+                { key: "p75" as const, label: "75th", color: "#22c55e" },
+                { key: "p95" as const, label: "95th", color: "#10b981" },
+              ] as const
+            ).map((p) => {
+              const isSelected = selectedReturnScenario === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() =>
+                    setSelectedReturnScenario(isSelected ? null : p.key)
+                  }
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
+                    isSelected
+                      ? "border-blue-400 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-950/40 text-foreground"
+                      : "border-border bg-muted/50 text-muted-foreground hover:bg-muted opacity-70 hover:opacity-100"
+                  }`}
+                  title={
+                    isSelected
+                      ? `Hide ${p.label} percentile`
+                      : `Show ${p.label} percentile for all portfolios`
+                  }
+                >
+                  <div
+                    className="w-3 h-0.5 rounded-full"
+                    style={{
+                      backgroundColor: p.color,
+                      opacity: isSelected ? 1 : 0.5,
+                    }}
+                  />
+                  <span className="font-medium">{p.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {selectedReturnScenario &&
+            (() => {
+              const scenarioKey = selectedReturnScenario as
+                | "p5"
+                | "p25"
+                | "p50"
+                | "p75"
+                | "p95";
+              if (isTriple) {
+                const parts: Array<{
+                  label: string;
+                  value: number;
+                  color: string;
+                }> = [];
+                if (returnScenarioVisibility.current) {
+                  const v =
+                    tripleMonteCarlo.current?.percentiles?.[scenarioKey];
+                  if (v !== undefined)
+                    parts.push({
+                      label: "Current",
+                      value: v,
+                      color: "#ef4444",
+                    });
+                }
+                if (returnScenarioVisibility.weights) {
+                  const v =
+                    tripleMonteCarlo.weights?.percentiles?.[scenarioKey];
+                  if (v !== undefined)
+                    parts.push({
+                      label: "Weights-Opt",
+                      value: v,
+                      color: "#3b82f6",
+                    });
+                }
+                if (
+                  returnScenarioVisibility.market &&
+                  tripleMonteCarlo.market
+                ) {
+                  const v = tripleMonteCarlo.market?.percentiles?.[scenarioKey];
+                  if (v !== undefined)
+                    parts.push({
+                      label: "Market-Opt",
+                      value: v,
+                      color: "#22c55e",
+                    });
+                }
+                if (parts.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-3 justify-center text-xs pt-2 border-t border-border/50">
+                    {parts.map(({ label, value, color }) => (
+                      <span key={label} className="flex items-center gap-1.5">
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-muted-foreground">{label}:</span>
+                        <span className="font-medium">
+                          {(value * 100).toFixed(1)}%
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                );
+              }
+              const v = selectedMonteCarlo.percentiles?.[scenarioKey];
+              if (v === undefined) return null;
+              return (
+                <div className="flex flex-wrap gap-3 justify-center text-xs pt-2 border-t border-border/50">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: selectedStroke }}
+                    />
+                    <span className="font-medium">{(v * 100).toFixed(1)}%</span>
+                  </span>
+                </div>
+              );
+            })()}
+        </div>
 
         <div className="space-y-2">
           <div className="text-sm font-medium text-muted-foreground">
@@ -895,10 +1031,53 @@ export const MonteCarloCard = ({
                   }}
                 />
                 <RechartsTooltip
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, ""]}
-                  labelFormatter={(label: number) =>
-                    `Return: ${Number(label).toFixed(1)}%`
-                  }
+                  {...getRechartsTooltipProps(theme)}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const returnLabel =
+                      typeof label === "number"
+                        ? `Return: ${Number(label).toFixed(1)}%`
+                        : `Return: ${label}%`;
+                    const nameToColor: Record<string, string> = {
+                      "Current Portfolio": "#ef4444",
+                      "Weights-Optimized": "#3b82f6",
+                      "Market-Optimized": "#22c55e",
+                    };
+                    return (
+                      <div className="rounded-lg border border-border bg-popover text-popover-foreground shadow-md p-3 text-xs min-w-[180px]">
+                        <p className="font-semibold border-b border-border pb-2 mb-2">
+                          {returnLabel}
+                        </p>
+                        <div className="space-y-1.5">
+                          {payload.map(
+                            (entry) =>
+                              entry.value != null && (
+                                <div
+                                  key={entry.name}
+                                  className="flex items-center gap-2"
+                                >
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{
+                                      backgroundColor:
+                                        nameToColor[entry.name as string] ??
+                                        entry.color ??
+                                        "#888",
+                                    }}
+                                  />
+                                  <span className="text-muted-foreground truncate">
+                                    {entry.name}
+                                  </span>
+                                  <span className="font-medium ml-auto">
+                                    {Number(entry.value).toFixed(1)}%
+                                  </span>
+                                </div>
+                              ),
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }}
                 />
                 <Legend verticalAlign="top" height={36} />
                 {isTriple &&
@@ -912,6 +1091,7 @@ export const MonteCarloCard = ({
                       stroke="#ef4444"
                       strokeWidth={2}
                       fill="url(#fa-colorGradient-red)"
+                      activeDot={false}
                     />
                   )}
                 {isTriple &&
@@ -925,6 +1105,7 @@ export const MonteCarloCard = ({
                       stroke="#3b82f6"
                       strokeWidth={2}
                       fill="url(#fa-colorGradient-blue)"
+                      activeDot={false}
                     />
                   )}
                 {isTriple &&
@@ -938,6 +1119,7 @@ export const MonteCarloCard = ({
                       stroke="#22c55e"
                       strokeWidth={2}
                       fill="url(#fa-colorGradient-green)"
+                      activeDot={false}
                     />
                   )}
                 {!isTriple && selectedMonteCarlo.histogram_data && (
@@ -955,6 +1137,7 @@ export const MonteCarloCard = ({
                           ? "url(#fa-colorGradient-blue)"
                           : "url(#fa-colorGradient-green)"
                     }
+                    activeDot={false}
                   />
                 )}
                 {selectedReturnScenario &&
@@ -1237,132 +1420,6 @@ export const MonteCarloCard = ({
             )}
           </div>
         )}
-
-        {/* Return Scenarios - same standard as Analysis tab: compact percentile toggles */}
-        <div className="space-y-3">
-          <div className="text-sm font-medium text-muted-foreground">
-            Return Scenarios
-          </div>
-          <div className="text-xs text-muted-foreground mb-2">
-            Click a percentile to show it for all portfolio distributions in the
-            chart
-          </div>
-          <div className="flex flex-wrap gap-2 justify-center py-2 border rounded-lg bg-muted/30 px-3">
-            {(
-              [
-                { key: "p5" as const, label: "5th", color: "#ef4444" },
-                { key: "p25" as const, label: "25th", color: "#f59e0b" },
-                { key: "p50" as const, label: "50th", color: "#3b82f6" },
-                { key: "p75" as const, label: "75th", color: "#22c55e" },
-                { key: "p95" as const, label: "95th", color: "#10b981" },
-              ] as const
-            ).map((p) => {
-              const isSelected = selectedReturnScenario === p.key;
-              return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() =>
-                    setSelectedReturnScenario(isSelected ? null : p.key)
-                  }
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs transition-all ${
-                    isSelected
-                      ? "border-blue-400 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-950/40 text-foreground"
-                      : "border-border bg-muted/50 text-muted-foreground hover:bg-muted opacity-70 hover:opacity-100"
-                  }`}
-                  title={
-                    isSelected
-                      ? `Hide ${p.label} percentile`
-                      : `Show ${p.label} percentile for all portfolios`
-                  }
-                >
-                  <div
-                    className="w-3 h-0.5"
-                    style={{
-                      backgroundColor: p.color,
-                      opacity: isSelected ? 1 : 0.5,
-                    }}
-                  />
-                  <span className="font-medium">{p.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {selectedReturnScenario &&
-            (() => {
-              const scenarioKey = selectedReturnScenario as
-                | "p5"
-                | "p25"
-                | "p50"
-                | "p75"
-                | "p95";
-              if (isTriple) {
-                const parts: Array<{
-                  label: string;
-                  value: number;
-                  color: string;
-                }> = [];
-                if (returnScenarioVisibility.current) {
-                  const v =
-                    tripleMonteCarlo.current?.percentiles?.[scenarioKey];
-                  if (v !== undefined)
-                    parts.push({
-                      label: "Current",
-                      value: v,
-                      color: "#ef4444",
-                    });
-                }
-                if (returnScenarioVisibility.weights) {
-                  const v =
-                    tripleMonteCarlo.weights?.percentiles?.[scenarioKey];
-                  if (v !== undefined)
-                    parts.push({
-                      label: "Weights-Opt",
-                      value: v,
-                      color: "#3b82f6",
-                    });
-                }
-                if (
-                  returnScenarioVisibility.market &&
-                  tripleMonteCarlo.market
-                ) {
-                  const v = tripleMonteCarlo.market?.percentiles?.[scenarioKey];
-                  if (v !== undefined)
-                    parts.push({
-                      label: "Market-Opt",
-                      value: v,
-                      color: "#22c55e",
-                    });
-                }
-                if (parts.length === 0) return null;
-                return (
-                  <div className="flex flex-wrap gap-3 justify-center text-xs mt-2 py-2 border-t border-border/50">
-                    {parts.map(({ label, value, color }) => (
-                      <span key={label} className="flex items-center gap-1.5">
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: color }}
-                        />
-                        <span className="text-muted-foreground">{label}:</span>
-                        <span className="font-semibold" style={{ color }}>
-                          {(value * 100).toFixed(1)}%
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                );
-              }
-              const v = selectedMonteCarlo.percentiles?.[scenarioKey];
-              if (v === undefined) return null;
-              return (
-                <div className="flex justify-center text-xs mt-2 py-2 border-t border-border/50">
-                  <span className="font-semibold text-muted-foreground">
-                    {(v * 100).toFixed(1)}%
-                  </span>
-                </div>
-              );
-            })()}
-        </div>
 
         <div className="space-y-3">
           <div className="text-sm font-medium text-muted-foreground flex items-center gap-1">

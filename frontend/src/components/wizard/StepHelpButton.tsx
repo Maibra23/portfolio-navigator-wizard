@@ -61,8 +61,12 @@ const STEP_HELP: Record<
   finalize: {
     title: "Finalize Portfolio",
     points: [
-      "Review tax impact (Swedish ISK/KF/AF) and get a summary you can export.",
+      "Review Swedish tax impact (ISK, KF, AF) and get a summary you can export.",
       "Use the tabs to compare account types and see recommendations.",
+      "ISK (Investeringssparkonto): schablonbeskattning — tax on capital value, not on actual gains.",
+      "KF (Kapitalförsäkring): same tax as ISK, with life-insurance and estate-planning benefits.",
+      "AF (Aktie- och Fondkonto): 30% tax on realized gains and dividends.",
+      "The glossary includes ISK, KF, AF and other terms.",
     ],
   },
   "thank-you": {

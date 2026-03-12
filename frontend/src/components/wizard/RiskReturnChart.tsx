@@ -9,13 +9,16 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  TooltipProps,
 } from "recharts";
+import { ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Plus, Minus, RotateCcw } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface Asset {
@@ -35,17 +38,6 @@ interface EfficientFrontierPoint {
   risk: number;
   sharpe_ratio: number;
   weights: number[];
-}
-
-interface RiskReturnAnalysis {
-  portfolio_metrics: PortfolioMetrics;
-  asset_metrics: Record<
-    string,
-    { return: number; risk: number; sharpe_ratio: number }
-  >;
-  efficient_frontier: EfficientFrontierPoint[];
-  selected_stocks: Asset[];
-  capital: number;
 }
 
 interface RiskReturnChartProps {
@@ -117,8 +109,73 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
     ...currentPortfolioData,
   ];
 
+  // Compute domain from data and apply zoom (zoom 1 = tight fit, zoom 0.5 = 2x wider)
+  const riskValues = allData.map((d) => d.risk).filter((v) => typeof v === "number" && isFinite(v));
+  const returnValues = allData.map((d) => d.return).filter((v) => typeof v === "number" && isFinite(v));
+  const riskMin = riskValues.length ? Math.min(...riskValues) : 0;
+  const riskMax = riskValues.length ? Math.max(...riskValues) : 0.5;
+  const returnMin = returnValues.length ? Math.min(...returnValues) : 0;
+  const returnMax = returnValues.length ? Math.max(...returnValues) : 0.2;
+  const riskRange = Math.max(riskMax - riskMin, 0.01);
+  const returnRange = Math.max(returnMax - returnMin, 0.01);
+  const riskCenter = (riskMin + riskMax) / 2;
+  const returnCenter = (returnMin + returnMax) / 2;
+  const zoomedRiskDomain = [riskCenter - riskRange / (2 * zoom), riskCenter + riskRange / (2 * zoom)];
+  const zoomedReturnDomain = [returnCenter - returnRange / (2 * zoom), returnCenter + returnRange / (2 * zoom)];
+
   const formatPercentage = (value: number) => `${(value * 100).toFixed(2)}%`;
-  const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
+
+  // Custom tooltip that shows only the hovered point (fixes "two separate points" issue)
+  const CustomTooltip = ({
+    active,
+    payload,
+  }: TooltipProps<ValueType, NameType>) => {
+    if (!active || !payload || payload.length === 0) return null;
+
+    // Get the first entry - this is the point being hovered
+    const entry = payload[0];
+    const data = entry?.payload;
+    if (!data) return null;
+
+    const pointType = data.type;
+    const pointName = data.name;
+    const riskValue = data.risk;
+    const returnValue = data.return;
+
+    // Get appropriate color based on point type
+    const getTypeColor = () => {
+      switch (pointType) {
+        case "frontier":
+          return "#60a5fa";
+        case "optimal":
+          return "#fb923c";
+        case "current":
+          return "#f87171";
+        case "asset":
+          return "#4ade80";
+        default:
+          return chartTheme.text.primary;
+      }
+    };
+
+    return (
+      <div className="space-y-0.5" style={{ maxWidth: "160px" }}>
+        <p className="font-semibold text-xs" style={{ color: getTypeColor() }}>
+          {pointName}
+        </p>
+        <div className="space-y-0.5 text-[10px]">
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">Expected Return:</span>
+            <span className="font-medium">{formatPercentage(returnValue)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-muted-foreground">Risk:</span>
+            <span className="font-medium">{formatPercentage(riskValue)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const getPerformanceColor = (sharpeRatio: number) => {
     if (sharpeRatio >= 1.0) return "bg-green-500 dark:bg-green-400";
@@ -185,6 +242,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                 <XAxis
                   dataKey="risk"
                   name="Risk"
+                  domain={zoomedRiskDomain}
                   tickFormatter={formatPercentage}
                   label={{
                     value: "Risk (Volatility)",
@@ -195,6 +253,7 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                 <YAxis
                   dataKey="return"
                   name="Return"
+                  domain={zoomedReturnDomain}
                   tickFormatter={formatPercentage}
                   label={{
                     value: "Expected Return",
@@ -203,11 +262,8 @@ export const RiskReturnChart: React.FC<RiskReturnChartProps> = ({
                   }}
                 />
                 <Tooltip
-                  formatter={(value: number, name: string) => [
-                    formatPercentage(value),
-                    name === "return" ? "Expected Return" : "Risk",
-                  ]}
-                  labelFormatter={(label) => `Portfolio: ${label}`}
+                  content={<CustomTooltip />}
+                  {...getRechartsTooltipProps(theme)}
                 />
                 <Legend />
 

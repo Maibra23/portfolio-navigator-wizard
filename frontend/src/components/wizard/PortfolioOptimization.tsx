@@ -88,6 +88,7 @@ import {
   getPortfolioColors,
   getVisualizationPalette,
 } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { Skeleton } from "@/components/ui/skeleton";
 import { colors, bgColors, borderColors, getValueColor } from "@/utils/semanticColors";
 
@@ -453,6 +454,8 @@ export const PortfolioOptimization = ({
     string | null
   >(null);
   const [eligibleTickers, setEligibleTickers] = useState<EligibleTicker[]>([]);
+  /** Tickers for Stock Universe chart only (relaxed criteria, almost all). Optimization uses eligibleTickers. */
+  const [stockUniverseTickers, setStockUniverseTickers] = useState<EligibleTicker[]>([]);
   const [currentPortfolio, setCurrentPortfolio] = useState<
     PortfolioAllocation[]
   >(Array.isArray(selectedStocks) ? selectedStocks : []);
@@ -500,11 +503,11 @@ export const PortfolioOptimization = ({
   const [isEfficientFrontierSelecting, setIsEfficientFrontierSelecting] =
     useState(false);
 
-  // Legacy zoom level (kept for backward compatibility with buttons) - default 0.5 for 50% zoom out
+  // Zoom level: 1 = default (tight fit), < 1 = zoom out (wider), > 1 = zoom in (tighter)
   const [eligibleTickersZoomLevel, setEligibleTickersZoomLevel] =
-    useState<number>(0.5);
+    useState<number>(1);
   const [eligibleTickersOriginalDomain, setEligibleTickersOriginalDomain] =
-    useState<{ y: [number, number] } | null>(null);
+    useState<{ x: [number, number]; y: [number, number] } | null>(null);
   const [efficientFrontierZoomLevel, setEfficientFrontierZoomLevel] =
     useState<number>(1);
   const [efficientFrontierOriginalDomain, setEfficientFrontierOriginalDomain] =
@@ -680,128 +683,17 @@ export const PortfolioOptimization = ({
     return result;
   }, [currentPortfolio, eligibleTickers, portfolioTickersMetrics]);
 
-  // Helper function to apply jitter to overlapping points
-  const applyJitterToPoints = useCallback(
-    (
-      points: any[],
-      overlapThreshold: number = 0.01,
-      offsetMagnitude: number = 0.005,
-    ) => {
-      if (!points || points.length === 0) return points;
+  // Portfolio tickers for scatter: no jitter — overlapping points stay stacked and are allowed
+  const portfolioTickersDataForScatter = useMemo(() => {
+    return portfolioTickersData ?? [];
+  }, [portfolioTickersData]);
 
-      const processedIndices = new Set<number>();
-      const result = [...points];
+  // Stock Universe chart scatter: use universe tickers (almost all), not strict eligible
+  const eligibleTickersFiltered = useMemo(() => {
+    const source = stockUniverseTickers?.length ? stockUniverseTickers : eligibleTickers;
+    if (!source || source.length === 0) return [];
 
-      points.forEach((point, index) => {
-        if (processedIndices.has(index)) return;
-
-        // Find all points that overlap with this one
-        const overlappingIndices = [index];
-        points.forEach((other, otherIndex) => {
-          if (index === otherIndex || processedIndices.has(otherIndex)) return;
-          const volDiff = Math.abs(
-            (point.volatility || 0) - (other.volatility || 0),
-          );
-          const retDiff = Math.abs(
-            (point.expected_return || 0) - (other.expected_return || 0),
-          );
-          if (volDiff < overlapThreshold && retDiff < overlapThreshold) {
-            overlappingIndices.push(otherIndex);
-          }
-        });
-
-        // Mark all overlapping indices as processed
-        overlappingIndices.forEach((idx) => processedIndices.add(idx));
-
-        // If there are overlaps, distribute points in a circle pattern
-        if (overlappingIndices.length > 1) {
-          overlappingIndices.forEach((idx, i) => {
-            const angle = (i * (2 * Math.PI)) / overlappingIndices.length;
-            const offsetDistance =
-              offsetMagnitude * Math.max(1, overlappingIndices.length - 1);
-            result[idx] = {
-              ...result[idx],
-              volatility:
-                (result[idx].volatility || 0) +
-                Math.cos(angle) * offsetDistance,
-              expected_return:
-                (result[idx].expected_return || 0) +
-                Math.sin(angle) * offsetDistance,
-            };
-          });
-        }
-      });
-
-      return result;
-    },
-    [],
-  );
-
-  // Helper function to apply jitter to efficient frontier portfolio points (Current, Weights, Market)
-  const applyJitterToPortfolioPoints = useCallback(
-    (
-      points: Array<{ risk: number; return: number; [key: string]: any }>,
-      overlapThreshold: number = 0.005,
-      offsetMagnitude: number = 0.003,
-    ) => {
-      if (!points || points.length === 0) return points;
-
-      const processedIndices = new Set<number>();
-      const result = points.map((p) => ({ ...p }));
-
-      points.forEach((point, index) => {
-        if (processedIndices.has(index)) return;
-
-        // Find all points that overlap with this one
-        const overlappingIndices = [index];
-        points.forEach((other, otherIndex) => {
-          if (index === otherIndex || processedIndices.has(otherIndex)) return;
-          const riskDiff = Math.abs((point.risk || 0) - (other.risk || 0));
-          const returnDiff = Math.abs(
-            (point.return || 0) - (other.return || 0),
-          );
-          if (riskDiff < overlapThreshold && returnDiff < overlapThreshold) {
-            overlappingIndices.push(otherIndex);
-          }
-        });
-
-        // Mark all overlapping indices as processed
-        overlappingIndices.forEach((idx) => processedIndices.add(idx));
-
-        // If there are overlaps, distribute points in a circle pattern
-        if (overlappingIndices.length > 1) {
-          overlappingIndices.forEach((idx, i) => {
-            const angle = (i * (2 * Math.PI)) / overlappingIndices.length;
-            const offsetDistance =
-              offsetMagnitude * Math.max(1, overlappingIndices.length - 1);
-            result[idx] = {
-              ...result[idx],
-              risk: (result[idx].risk || 0) + Math.cos(angle) * offsetDistance,
-              return:
-                (result[idx].return || 0) + Math.sin(angle) * offsetDistance,
-            };
-          });
-        }
-      });
-
-      return result;
-    },
-    [],
-  );
-
-  // Process portfolio tickers to handle overlapping points by applying small offsets
-  const portfolioTickersDataWithOffsets = useMemo(() => {
-    if (!portfolioTickersData || portfolioTickersData.length === 0) {
-      return [];
-    }
-    return applyJitterToPoints(portfolioTickersData, 0.01, 0.005);
-  }, [portfolioTickersData, applyJitterToPoints]);
-
-  // Process eligible tickers to handle overlapping points
-  const eligibleTickersWithOffsets = useMemo(() => {
-    if (!eligibleTickers || eligibleTickers.length === 0) return [];
-
-    const filtered = eligibleTickers
+    return source
       .filter((t) => {
         if (!t || !t.ticker) return false;
         if (!currentPortfolio || !Array.isArray(currentPortfolio)) return true;
@@ -815,7 +707,7 @@ export const PortfolioOptimization = ({
       .filter((t) => {
         const vol = t?.volatility ?? 0;
         const ret = t?.expected_return ?? 0;
-        return vol >= 0 && vol <= 1.1 && ret > 0 && ret <= 1.0;
+        return vol >= 0 && vol <= 2.0 && ret >= -1.05 && ret <= 1.05;
       })
       .map((t) => ({
         volatility: t.volatility || 0,
@@ -825,12 +717,10 @@ export const PortfolioOptimization = ({
         sector: t.sector,
         isSelected: false,
       }));
+  }, [stockUniverseTickers, eligibleTickers, currentPortfolio]);
 
-    return applyJitterToPoints(filtered, 0.008, 0.003); // Smaller threshold and offset for eligible tickers
-  }, [eligibleTickers, currentPortfolio, applyJitterToPoints]);
-
-  // Collect and apply jitter to portfolio points (Current, Weights-Optimized, Market-Optimized) for efficient frontier chart
-  const portfolioPointsWithJitter = useMemo(() => {
+  // Portfolio points for efficient frontier (Current, Weights-Optimized, Market-Optimized) — no jitter, overlapping allowed
+  const portfolioPoints = useMemo(() => {
     const points: Array<{
       risk: number;
       return: number;
@@ -899,9 +789,9 @@ export const PortfolioOptimization = ({
       });
     }
 
-    // Apply jitter to overlapping points
-    return applyJitterToPortfolioPoints(points, 0.005, 0.003);
-  }, [tripleOptimizationResults, mvoResults, applyJitterToPortfolioPoints]);
+    // No jitter — overlapping portfolio points allowed (e.g. current vs optimized at same spot)
+    return points;
+  }, [tripleOptimizationResults, mvoResults]);
 
   // Dynamic metrics for Efficient Frontier educational copy (theme-aware collapsible)
   const efficientFrontierExplanationMetrics = useMemo(() => {
@@ -970,46 +860,32 @@ export const PortfolioOptimization = ({
           volatilities.push(vol);
           portfolioVols.push(vol);
         }
-        if (isFinite(ret) && ret > 0) {
+        if (isFinite(ret)) {
           returns.push(ret);
           portfolioRets.push(ret);
         }
       };
 
-      // Include eligible tickers
-      if (eligibleTickers && eligibleTickers.length > 0) {
-        eligibleTickers.forEach((t) => {
+      const chartTickers = stockUniverseTickers?.length ? stockUniverseTickers : eligibleTickers;
+      if (chartTickers && chartTickers.length > 0) {
+        chartTickers.forEach((t) => {
           const vol = typeof t?.volatility === "number" ? t.volatility : null;
           const ret =
             typeof t?.expected_return === "number" ? t.expected_return : null;
-          if (
-            vol !== null &&
-            !isNaN(vol) &&
-            isFinite(vol) &&
-            vol >= 0
-          ) {
+          if (vol !== null && !isNaN(vol) && isFinite(vol) && vol >= 0) {
             volatilities.push(vol);
           }
-          if (
-            ret !== null &&
-            !isNaN(ret) &&
-            isFinite(ret) &&
-            ret > 0
-          ) {
+          if (ret !== null && !isNaN(ret) && isFinite(ret)) {
             returns.push(ret);
           }
         });
       }
 
-      // Current portfolio metrics (must be in domain)
-      if (
-        currentMetrics &&
-        typeof currentMetrics.risk === "number" &&
-        typeof currentMetrics.expectedReturn === "number" &&
-        isFinite(currentMetrics.risk) &&
-        isFinite(currentMetrics.expectedReturn) &&
-        currentMetrics.expectedReturn > 0
-      ) {
+      if (currentMetrics &&
+          typeof currentMetrics.risk === "number" &&
+          typeof currentMetrics.expectedReturn === "number" &&
+          isFinite(currentMetrics.risk) &&
+          isFinite(currentMetrics.expectedReturn)) {
         addPortfolio(currentMetrics.risk, currentMetrics.expectedReturn);
       }
 
@@ -1063,14 +939,22 @@ export const PortfolioOptimization = ({
       if (volRange <= 0 || retRange <= 0) return null;
 
       const padding = 0.12;
-      const RISK_AXIS_CAP = 1.5; // 150% - max X axis; domain remains dynamic from data
-      const maxX = Math.min(maxVol + volRange * padding, RISK_AXIS_CAP);
-      const RETURN_AXIS_CAP = 3.0; // 300% - avoid misleading users with unrealistic expectations
+      const RISK_AXIS_CAP = 1.5; // absolute cap for X axis
+      // X-axis: extend to 100–120% of data scale (maxVol is 100%, give up to 120% depending on range)
+      const maxX = Math.min(
+        Math.max(maxVol * 1.2, maxVol + volRange * 0.1),
+        RISK_AXIS_CAP,
+      );
+      const RETURN_AXIS_CAP = 1.05; // 105%
+      const RETURN_AXIS_FLOOR = -0.05; // -5% — limit negative Y range
+      const minY = Math.max(
+        minRet - retRange * padding,
+        RETURN_AXIS_FLOOR,
+      );
       const maxY = Math.min(
-        Math.max(maxRet + retRange * padding, 0.01),
+        Math.max(maxRet + retRange * padding, minY + 0.01),
         RETURN_AXIS_CAP,
       );
-      const minY = Math.max(minRet - retRange * padding, 0.01);
 
       const domain = {
         x: [0, maxX] as [number, number],
@@ -1082,7 +966,34 @@ export const PortfolioOptimization = ({
       console.error("Error calculating eligibleTickersDomain:", error);
       return null;
     }
-  }, [eligibleTickers, currentMetrics, portfolioTickersData]);
+  }, [stockUniverseTickers, eligibleTickers, currentMetrics, portfolioTickersData]);
+
+  const STOCK_UNIVERSE_RETURN_FLOOR = -0.05; // -5% — limit negative Y range
+  const STOCK_UNIVERSE_RETURN_CAP = 1.05;
+  // Effective Stock Universe domain: apply button zoom (level 1 = base, <1 = zoom out, >1 = zoom in); Y-axis linear to support negative returns
+  const effectiveEligibleTickersDomain = useMemo(() => {
+    const base = eligibleTickersOriginalDomain || eligibleTickersDomain;
+    if (!base?.x?.length || !base?.y?.length || eligibleTickersZoomLevel === 1) {
+      return eligibleTickersDomain;
+    }
+    const [xMin, xMax] = base.x;
+    const [yMin, yMax] = base.y;
+    const xCenter = (xMin + xMax) / 2;
+    const xRange = Math.max(xMax - xMin, 0.01);
+    const xEffectiveRange = xRange / eligibleTickersZoomLevel;
+    const xDomain: [number, number] = [
+      Math.max(0, xCenter - xEffectiveRange / 2),
+      Math.min(1.5, xCenter + xEffectiveRange / 2),
+    ];
+    const yCenter = (yMin + yMax) / 2;
+    const yRange = Math.max(yMax - yMin, 0.01);
+    const yEffectiveRange = yRange / eligibleTickersZoomLevel;
+    const yDomain: [number, number] = [
+      Math.max(STOCK_UNIVERSE_RETURN_FLOOR, yCenter - yEffectiveRange / 2),
+      Math.min(STOCK_UNIVERSE_RETURN_CAP, yCenter + yEffectiveRange / 2),
+    ];
+    return { x: xDomain, y: yDomain };
+  }, [eligibleTickersDomain, eligibleTickersOriginalDomain, eligibleTickersZoomLevel]);
 
   // Check for missing portfolio tickers and show warning (fallback fetch disabled)
   useEffect(() => {
@@ -1233,7 +1144,7 @@ export const PortfolioOptimization = ({
     };
 
     checkMissingPortfolioTickers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [currentPortfolio, eligibleTickers, portfolioTickersMetrics]);
 
   const efficientFrontierDomain = useMemo(() => {
@@ -1646,6 +1557,13 @@ export const PortfolioOptimization = ({
         }
       }
 
+      // Clamp return (Y) to ±105% to avoid unrealistic scale
+      const RETURN_AXIS_CAP = 1.05;
+      const RETURN_AXIS_FLOOR = -1.05;
+      yMin = Math.max(yMin, RETURN_AXIS_FLOOR);
+      yMax = Math.min(yMax, RETURN_AXIS_CAP);
+      if (yMax <= yMin) yMax = yMin + 0.01;
+
       const domain = {
         x: [xMin, xMax] as [number, number],
         y: [yMin, yMax] as [number, number],
@@ -1671,29 +1589,19 @@ export const PortfolioOptimization = ({
 
   // Zoom functions for eligible tickers
   const zoomInEligibleTickers = useCallback(() => {
-    setEligibleTickersZoomLevel((prev) => {
-      const newLevel = Math.min(prev * 1.5, 10);
-      console.log("[PortfolioOptimization] Zoom in:", {
-        prev,
-        newLevel,
-        originalDomain: eligibleTickersOriginalDomain,
-      });
-      return newLevel;
-    });
-  }, [eligibleTickersOriginalDomain]);
+    setEligibleTickersZoomLevel((prev) => Math.min(prev * 1.5, 10));
+  }, []);
 
   const zoomOutEligibleTickers = useCallback(() => {
     setEligibleTickersZoomLevel((prev) => {
-      // Default is 0.5, allow only one zoom out to 0.333 (0.5 / 1.5)
+      // Default is 1; allow zoom out to 0.5 (one step) or 0.333 (two steps)
       const newLevel = Math.max(prev / 1.5, 0.333);
-      console.log("[PortfolioOptimization] Zoom out:", { prev, newLevel });
       return newLevel;
     });
   }, []);
 
   const resetEligibleTickersZoom = useCallback(() => {
-    console.log("[PortfolioOptimization] Reset zoom to default (0.5)");
-    setEligibleTickersZoomLevel(0.5);
+    setEligibleTickersZoomLevel(1);
   }, []);
 
   // Zoom functions for efficient frontier
@@ -2605,28 +2513,32 @@ export const PortfolioOptimization = ({
   // Lock the original domain once set, only reset if data fundamentally changes
   useEffect(() => {
     if (
+      eligibleTickersDomain?.x &&
       eligibleTickersDomain?.y &&
+      eligibleTickersDomain.x[0] !== undefined &&
+      eligibleTickersDomain.x[1] !== undefined &&
       eligibleTickersDomain.y[0] !== undefined &&
       eligibleTickersDomain.y[1] !== undefined
     ) {
       setEligibleTickersOriginalDomain((prev) => {
-        // Only set if not already set, or if the domain changed significantly (more than 10% difference)
-        // This prevents resetting zoom on minor data fluctuations
         if (!prev) {
-          // First time - store the domain
-          return { y: eligibleTickersDomain.y };
-        } else {
-          // Domain already set - only update if changed significantly (more than 10%)
-          const percentChange =
-            Math.abs(prev.y[1] - eligibleTickersDomain.y[1]) / prev.y[1];
-          if (percentChange > 0.1) {
-            // Significant change - reset zoom and update domain
-            setEligibleTickersZoomLevel(1);
-            return { y: eligibleTickersDomain.y };
-          }
-          // Minor change - keep original domain for consistent zoom
-          return prev;
+          return {
+            x: eligibleTickersDomain!.x!,
+            y: eligibleTickersDomain!.y!,
+          };
         }
+        const percentChangeY =
+          Math.abs(prev.y[1] - eligibleTickersDomain.y[1]) / prev.y[1];
+        const percentChangeX =
+          Math.abs(prev.x[1] - eligibleTickersDomain.x[1]) / (prev.x[1] || 1);
+        if (percentChangeY > 0.1 || percentChangeX > 0.1) {
+          setEligibleTickersZoomLevel(1);
+          return {
+            x: eligibleTickersDomain!.x!,
+            y: eligibleTickersDomain!.y!,
+          };
+        }
+        return prev;
       });
     }
   }, [eligibleTickersDomain]);
@@ -2658,94 +2570,117 @@ export const PortfolioOptimization = ({
     }
   }, [efficientFrontierDomain]);
 
-  // Fetch eligible tickers (no risk profile filter) for Stock Universe visualization
-  useEffect(() => {
-    const fetchEligibleTickers = async () => {
-      setIsLoadingEligibleTickers(true);
-      setError(null);
-
-      try {
-        // Fetch eligible tickers without risk profile filtering
-        // Include tickers with negative returns
-        const params = new URLSearchParams({
-          min_data_points: "12",
-          filter_negative_returns: "false", // Include tickers with negative returns
-          per_page: "700", // Increased to show more of the universe while keeping performance reasonable
-          page: "1",
+  // Fetch eligible tickers (strict, for optimization) and universe tickers (relaxed, for Stock Universe chart)
+  // Run on mount and when optimization tab is active with no data (retry after navigate back)
+  const fetchEligibleAndUniverseTickers = useCallback(() => {
+    const formatTickers = (tickers: any[], strictEligible: boolean): EligibleTicker[] => {
+      if (!Array.isArray(tickers) || tickers.length === 0) return [];
+      return tickers
+        .map((t: any) => {
+          const expectedReturn =
+            typeof t.expected_return === "number"
+              ? t.expected_return
+              : typeof t.expectedReturn === "number"
+                ? t.expectedReturn
+                : 0;
+          const volatility =
+            typeof t.volatility === "number"
+              ? t.volatility
+              : typeof t.risk === "number"
+                ? t.risk
+                : 0;
+          return {
+            ticker: t.ticker || t.symbol,
+            expected_return: expectedReturn,
+            volatility,
+            sector: t.sector || "Unknown",
+            company_name: t.company_name || t.ticker || t.symbol,
+          } as EligibleTicker;
+        })
+        .filter((t: EligibleTicker) => {
+          const isETF =
+            t.sector?.toLowerCase().includes("etf") ||
+            t.company_name?.toLowerCase().includes("etf") ||
+            t.company_name?.toLowerCase().includes("exchange traded fund") ||
+            t.sector === "Diversified ETF" ||
+            t.sector === "Technology ETF" ||
+            t.sector === "Fixed Income ETF";
+          const hasUnknownSector =
+            !t.sector || t.sector.toLowerCase() === "unknown";
+          if (!(typeof t.expected_return === "number" && typeof t.volatility === "number" && t.volatility > 0)) return false;
+          if (strictEligible) {
+            return t.volatility <= 1.4 && !isETF && !hasUnknownSector;
+          }
+          // Universe display: only filter ETFs; allow unknown sectors and wider volatility
+          return !isETF && t.volatility <= 2.0;
         });
-
-        const response = await fetch(
-          API_ENDPOINTS.ELIGIBLE_TICKERS(params.toString()),
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch eligible tickers: ${response.statusText}`,
-          );
-        }
-
-        const data = await response.json();
-        const tickers = data.eligible_tickers || [];
-
-        // Transform to our format
-        const formattedTickers: EligibleTicker[] = tickers
-          .map((t: any) => {
-            const expectedReturn =
-              typeof t.expected_return === "number"
-                ? t.expected_return
-                : typeof t.expectedReturn === "number"
-                  ? t.expectedReturn
-                  : 0;
-            const volatility =
-              typeof t.volatility === "number"
-                ? t.volatility
-                : typeof t.risk === "number"
-                  ? t.risk
-                  : 0;
-
-            return {
-              ticker: t.ticker || t.symbol,
-              expected_return: expectedReturn,
-              volatility,
-              sector: t.sector || "Unknown",
-              company_name: t.company_name || t.ticker || t.symbol,
-            } as EligibleTicker;
-          })
-          .filter((t: EligibleTicker) => {
-            // Include tickers with negative returns (filter_negative_returns=false)
-            // Frontend filters: volatility > 0 and <= 140%, filter out ETFs and Unknown sectors
-            const isETF =
-              t.sector?.toLowerCase().includes("etf") ||
-              t.company_name?.toLowerCase().includes("etf") ||
-              t.company_name?.toLowerCase().includes("exchange traded fund") ||
-              t.sector === "Diversified ETF" ||
-              t.sector === "Technology ETF" ||
-              t.sector === "Fixed Income ETF";
-            const hasUnknownSector =
-              !t.sector || t.sector.toLowerCase() === "unknown";
-
-            // Allow negative returns, just check that expected_return is a number
-            return (
-              typeof t.expected_return === "number" &&
-              typeof t.volatility === "number" &&
-              t.volatility > 0 &&
-              t.volatility <= 1.4 &&
-              !isETF &&
-              !hasUnknownSector
-            );
-          });
-
-        setEligibleTickers(formattedTickers);
-      } catch (err) {
-        console.error("Error fetching eligible tickers:", err);
-        setError("Failed to load eligible tickers. Please try again.");
-      } finally {
-        setIsLoadingEligibleTickers(false);
-      }
     };
 
-    fetchEligibleTickers();
+    setIsLoadingEligibleTickers(true);
+    setError(null);
+
+    const eligibleParams = new URLSearchParams({
+      min_data_points: "12",
+      filter_negative_returns: "false",
+      per_page: "2500",
+      page: "1",
+      sort_by: "ticker",
+    });
+    const universeParams = new URLSearchParams({
+      for_universe_display: "true",
+      per_page: "3000",
+      page: "1",
+      sort_by: "ticker",
+    });
+
+    Promise.allSettled([
+      fetch(API_ENDPOINTS.ELIGIBLE_TICKERS(eligibleParams.toString())).then(async (res) => {
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        return formatTickers(data.eligible_tickers || [], true);
+      }),
+      fetch(API_ENDPOINTS.ELIGIBLE_TICKERS(universeParams.toString())).then(async (res) => {
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        return formatTickers(data.eligible_tickers || [], false);
+      }),
+    ]).then(([eligibleResult, universeResult]) => {
+      const eligible = eligibleResult.status === "fulfilled" ? eligibleResult.value : [];
+      const universe = universeResult.status === "fulfilled" ? universeResult.value : [];
+      if (eligible.length > 0) setEligibleTickers(eligible);
+      if (universe.length > 0) setStockUniverseTickers(universe);
+      if (eligible.length === 0 && universe.length === 0) {
+        const err = eligibleResult.status === "rejected" ? eligibleResult.reason : universeResult.status === "rejected" ? universeResult.reason : null;
+        console.error("Error fetching tickers:", err);
+        setError("Failed to load chart data. Use Refresh to try again.");
+      }
+    }).finally(() => {
+      setIsLoadingEligibleTickers(false);
+    });
   }, []);
+
+  useEffect(() => {
+    fetchEligibleAndUniverseTickers();
+  }, [fetchEligibleAndUniverseTickers]);
+
+  // When user is on optimization tab and chart has no data (and not loading), retry fetch once (e.g. after navigating back)
+  const hasAttemptedRefetch = useRef(false);
+  useEffect(() => {
+    if (
+      activeTab !== "optimization" ||
+      isLoadingEligibleTickers ||
+      (eligibleTickersFiltered?.length ?? 0) > 0
+    ) {
+      if ((eligibleTickersFiltered?.length ?? 0) > 0) hasAttemptedRefetch.current = false;
+      return;
+    }
+    if (hasAttemptedRefetch.current) return;
+    hasAttemptedRefetch.current = true;
+    const t = setTimeout(() => {
+      fetchEligibleAndUniverseTickers();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [activeTab, isLoadingEligibleTickers, eligibleTickersFiltered?.length, fetchEligibleAndUniverseTickers]);
 
   // Generate efficient frontier points
   const generateEfficientFrontier = () => {
@@ -3496,77 +3431,10 @@ export const PortfolioOptimization = ({
                     </p>
                   </div>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setIsLoadingEligibleTickers(true);
-                      setError(null);
-                      // Re-fetch eligible tickers
-                      const fetchEligibleTickers = async () => {
-                        try {
-                          const params = new URLSearchParams({
-                            min_data_points: "12",
-                            filter_negative_returns: "true",
-                            per_page: "700",
-                            page: "1",
-                          });
-                          const response = await fetch(
-                            API_ENDPOINTS.ELIGIBLE_TICKERS(params.toString()),
-                          );
-                          if (!response.ok)
-                            throw new Error(
-                              `Failed to fetch: ${response.statusText}`,
-                            );
-                          const data = await response.json();
-                          const tickers = data.eligible_tickers || [];
-                          const formattedTickers: EligibleTicker[] = tickers
-                            .map((t: any) => {
-                              const expectedReturn =
-                                typeof t.expected_return === "number"
-                                  ? t.expected_return
-                                  : typeof t.expectedReturn === "number"
-                                    ? t.expectedReturn
-                                    : 0;
-                              const volatility =
-                                typeof t.volatility === "number"
-                                  ? t.volatility
-                                  : typeof t.risk === "number"
-                                    ? t.risk
-                                    : 0;
-
-                              return {
-                                ticker: t.ticker || t.symbol,
-                                expected_return: expectedReturn,
-                                volatility,
-                                sector: t.sector,
-                                company_name: t.company_name,
-                              } as EligibleTicker;
-                            })
-                            .filter((t: EligibleTicker) => {
-                              // Filter: positive returns, volatility > 0 and <= 140%
-                              return (
-                                typeof t.expected_return === "number" &&
-                                t.expected_return >= 0 &&
-                                typeof t.volatility === "number" &&
-                                t.volatility > 0 &&
-                                t.volatility <= 1.4
-                              );
-                            });
-                          setEligibleTickers(formattedTickers);
-                        } catch (err) {
-                          console.error(
-                            "Error fetching eligible tickers:",
-                            err,
-                          );
-                          setError(
-                            "Failed to load eligible tickers. Please try again.",
-                          );
-                        } finally {
-                          setIsLoadingEligibleTickers(false);
-                        }
-                      };
-                      fetchEligibleTickers();
-                    }}
+                    onClick={() => fetchEligibleAndUniverseTickers()}
                     disabled={isLoadingEligibleTickers}
                     style={{
                       borderColor: chartTheme.border,
@@ -3635,7 +3503,7 @@ export const PortfolioOptimization = ({
                         >
                           <ZoomOut className="h-3.5 w-3.5" />
                         </Button>
-                        {(eligibleTickersZoomLevel !== 0.5 ||
+                        {(eligibleTickersZoomLevel !== 1 ||
                           eligibleTickersCurrentDomain) && (
                           <Button
                             variant="outline"
@@ -3683,9 +3551,9 @@ export const PortfolioOptimization = ({
                           <Skeleton className="h-9 w-24" />
                         </div>
                       </div>
-                    ) : eligibleTickers &&
-                      Array.isArray(eligibleTickers) &&
-                      eligibleTickers.length > 0 ? (
+                    ) : eligibleTickersFiltered &&
+                      Array.isArray(eligibleTickersFiltered) &&
+                      eligibleTickersFiltered.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart
                           margin={{ top: 16, right: 24, bottom: 52, left: 44 }}
@@ -3720,6 +3588,7 @@ export const PortfolioOptimization = ({
                             }}
                             domain={
                               eligibleTickersCurrentDomain?.x ||
+                              effectiveEligibleTickersDomain?.x ||
                               eligibleTickersDomain?.x || [0, "dataMax"]
                             }
                             allowDataOverflow={true}
@@ -3735,14 +3604,9 @@ export const PortfolioOptimization = ({
                           />
                           <YAxis
                             type="number"
-                            scale="log"
                             dataKey="expected_return"
                             name="Return"
-                            tickFormatter={(value) => {
-                              // Only show positive or zero values - hide negative labels
-                              if (value < 0) return "";
-                              return `${(value * 100).toFixed(1)}%`;
-                            }}
+                            tickFormatter={(value) => `${(value * 100).toFixed(1)}%`}
                             axisLine={{ stroke: chartTheme.axes.line }}
                             tickLine={{ stroke: "transparent" }}
                             tick={{
@@ -3754,30 +3618,12 @@ export const PortfolioOptimization = ({
                             allowDataOverflow={true}
                             domain={
                               eligibleTickersCurrentDomain?.y
-                                ? [
-                                    Math.max(
-                                      0.01,
-                                      eligibleTickersCurrentDomain.y[0],
-                                    ),
-                                    eligibleTickersCurrentDomain.y[1],
-                                  ]
-                                : eligibleTickersZoomLevel > 1 &&
-                                    eligibleTickersOriginalDomain?.y
-                                  ? [
-                                      Math.max(
-                                        0.01,
-                                        eligibleTickersOriginalDomain.y[0] /
-                                          eligibleTickersZoomLevel,
-                                      ),
-                                      Math.max(
-                                        0.01,
-                                        eligibleTickersOriginalDomain.y[1] /
-                                          eligibleTickersZoomLevel,
-                                      ),
-                                    ]
+                                ? eligibleTickersCurrentDomain.y
+                                : effectiveEligibleTickersDomain?.y
+                                  ? effectiveEligibleTickersDomain.y
                                   : eligibleTickersDomain?.y
                                     ? eligibleTickersDomain.y
-                                    : [0.01, "dataMax"] // Default to dynamic range (log-safe)
+                                    : [STOCK_UNIVERSE_RETURN_FLOOR, STOCK_UNIVERSE_RETURN_CAP]
                             }
                             label={{
                               value: "Return",
@@ -3790,16 +3636,12 @@ export const PortfolioOptimization = ({
                             }}
                           />
                           <RechartsTooltip
-                            cursor={
-                              !isEligibleTickersSelecting
-                                ? { strokeDasharray: "3 3" }
-                                : false
-                            }
+                            {...getRechartsTooltipProps(theme)}
+                            {...(isEligibleTickersSelecting ? { cursor: false } : {})}
                             content={({
                               active,
                               payload,
                             }: TooltipProps<ValueType, NameType>) => {
-                              // Don't show tooltip during selection
                               if (isEligibleTickersSelecting) return null;
                               if (
                                 active &&
@@ -3811,67 +3653,28 @@ export const PortfolioOptimization = ({
                                   .payload as EligibleTicker & {
                                   isSelected?: boolean;
                                 };
-                                // Safety check for required properties
                                 if (!data.ticker) return null;
                                 return (
-                                  <div
-                                    className="rounded-xl border p-3 shadow-sm max-w-xs"
-                                    style={{
-                                      background: chartTheme.cardBackground,
-                                      borderColor: chartTheme.border,
-                                    }}
-                                  >
-                                    <p
-                                      className="font-semibold"
-                                      style={{ color: chartTheme.text.primary }}
-                                    >
+                                  <div className="space-y-0.5">
+                                    <p className="font-semibold text-xs truncate" style={{ color: chartTheme.text.primary }}>
                                       {data.ticker}
                                     </p>
                                     {data.company_name && (
-                                      <p
-                                        className="text-sm mt-1"
-                                        style={{
-                                          color: chartTheme.text.secondary,
-                                        }}
-                                      >
+                                      <p className="truncate opacity-80" style={{ color: chartTheme.text.secondary }}>
                                         {data.company_name}
                                       </p>
                                     )}
-                                    <div
-                                      className="mt-2 space-y-1 text-sm"
-                                      style={{ color: chartTheme.text.primary }}
-                                    >
-                                      <p>
-                                        Return:{" "}
-                                        <span className="font-medium">
-                                          {formatPercent(data.expected_return)}
-                                        </span>
+                                    <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                                      Return {formatPercent(data.expected_return)} · Risk {formatPercent(data.volatility)}
+                                    </p>
+                                    {data.sector && (
+                                      <p className="text-[10px] opacity-75" style={{ color: chartTheme.text.secondary }}>
+                                        {data.sector}
                                       </p>
-                                      <p>
-                                        Risk:{" "}
-                                        <span className="font-medium">
-                                          {formatPercent(data.volatility)}
-                                        </span>
-                                      </p>
-                                      {data.sector && (
-                                        <p
-                                          className="text-xs mt-1"
-                                          style={{
-                                            color: chartTheme.text.secondary,
-                                          }}
-                                        >
-                                          Sector: {data.sector}
-                                        </p>
-                                      )}
-                                      {data.isSelected && (
-                                        <p
-                                          className="text-xs mt-1 font-medium"
-                                          style={{ color: "#2563eb" }}
-                                        >
-                                          ✓ In Your Portfolio
-                                        </p>
-                                      )}
-                                    </div>
+                                    )}
+                                    {data.isSelected && (
+                                      <p className="text-[10px] font-medium" style={{ color: "#2563eb" }}>✓ In portfolio</p>
+                                    )}
                                   </div>
                                 );
                               }
@@ -3885,10 +3688,10 @@ export const PortfolioOptimization = ({
                               color: chartTheme.text.secondary,
                             }}
                           />
-                          {/* All eligible tickers (gray dots) with jitter for overlapping points */}
+                          {/* All eligible tickers (gray dots); overlapping allowed */}
                           <Scatter
                             name="Eligible Tickers"
-                            data={eligibleTickersWithOffsets}
+                            data={eligibleTickersFiltered}
                             fill="#94a3b8"
                             fillOpacity={0.6}
                             shape={(props) => {
@@ -3909,10 +3712,10 @@ export const PortfolioOptimization = ({
                           />
 
                           {/* Selected portfolio tickers (highlighted with different colors per ticker) */}
-                          {portfolioTickersDataWithOffsets.length > 0 && (
+                          {portfolioTickersDataForScatter.length > 0 && (
                             <Scatter
                               name="Your Portfolio"
-                              data={portfolioTickersDataWithOffsets.filter(
+                              data={portfolioTickersDataForScatter.filter(
                                 (t) => {
                                   // Show all portfolio tickers; domain expands to fit (no upper cap)
                                   return (
@@ -3988,13 +3791,25 @@ export const PortfolioOptimization = ({
                       </ResponsiveContainer>
                     ) : (
                       <div
-                        className="flex h-full items-center justify-center text-sm"
+                        className="flex h-full flex-col items-center justify-center gap-4 p-6 text-sm"
                         style={{ color: chartTheme.text.secondary }}
                       >
                         <div className="text-center">
                           <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>No eligible tickers available</p>
+                          <p className="font-medium">No chart data</p>
+                          <p className="mt-1 text-xs max-w-sm">
+                            {error || "Data may still be loading or the request failed."}
+                          </p>
                         </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { hasAttemptedRefetch.current = false; fetchEligibleAndUniverseTickers(); }}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Refresh chart
+                        </Button>
                       </div>
                     )}
                   </CardContent>
@@ -4591,16 +4406,12 @@ export const PortfolioOptimization = ({
                             }}
                           />
                           <RechartsTooltip
-                            cursor={
-                              !isEfficientFrontierSelecting
-                                ? { strokeDasharray: "3 3" }
-                                : false
-                            }
+                            {...getRechartsTooltipProps(theme)}
+                            {...(isEfficientFrontierSelecting ? { cursor: false } : {})}
                             content={({
                               active,
                               payload,
                             }: TooltipProps<ValueType, NameType>) => {
-                              // Don't show tooltip during selection
                               if (isEfficientFrontierSelecting) return null;
                               // Only show tooltip on hover (active must be true) - this is critical
                               if (!active) return null;
@@ -4693,84 +4504,22 @@ export const PortfolioOptimization = ({
                                   return null;
 
                                 return (
-                                  <div
-                                    className="rounded-lg border p-2 shadow-md max-w-xs"
-                                    style={{
-                                      background: chartTheme.cardBackground,
-                                      borderColor: "#64748b",
-                                    }}
-                                  >
-                                    <p
-                                      className="font-semibold text-sm"
-                                      style={{ color: "#64748b" }}
-                                    >
-                                      Efficient Frontier
+                                  <div className="space-y-0.5">
+                                    <p className="font-semibold text-xs" style={{ color: "#64748b" }}>Efficient Frontier</p>
+                                    <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>Max return for risk level</p>
+                                    <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                                      Return {formatPercent(data.return)} · Risk {formatPercent(data.risk)}
+                                      {data.sharpe_ratio != null && typeof data.sharpe_ratio === "number" && isFinite(data.sharpe_ratio) && ` · Sharpe ${data.sharpe_ratio.toFixed(2)}`}
                                     </p>
-                                    <p
-                                      className="text-xs mt-1"
-                                      style={{
-                                        color: chartTheme.text.secondary,
-                                      }}
-                                    >
-                                      Optimal portfolios offering maximum return
-                                      for given risk levels.
-                                    </p>
-                                    <div
-                                      className="mt-2 space-y-1 text-xs"
-                                      style={{ color: chartTheme.text.primary }}
-                                    >
-                                      <p>
-                                        Return:{" "}
-                                        <span className="font-medium">
-                                          {formatPercent(data.return)}
-                                        </span>
-                                      </p>
-                                      <p>
-                                        Risk:{" "}
-                                        <span className="font-medium">
-                                          {formatPercent(data.risk)}
-                                        </span>
-                                      </p>
-                                      {data.sharpe_ratio != null &&
-                                        typeof data.sharpe_ratio === "number" &&
-                                        isFinite(data.sharpe_ratio) && (
-                                          <p>
-                                            Sharpe:{" "}
-                                            <span className="font-medium">
-                                              {data.sharpe_ratio.toFixed(2)}
-                                            </span>
-                                          </p>
-                                        )}
-                                    </div>
                                   </div>
                                 );
                               }
 
                               if (isCML) {
                                 return (
-                                  <div
-                                    className="rounded-lg border p-2 shadow-md max-w-xs"
-                                    style={{
-                                      background: chartTheme.cardBackground,
-                                      borderColor: "#9333ea",
-                                    }}
-                                  >
-                                    <p
-                                      className="font-semibold text-sm"
-                                      style={{ color: "#9333ea" }}
-                                    >
-                                      Capital Market Line (CML)
-                                    </p>
-                                    <p
-                                      className="text-xs mt-1"
-                                      style={{
-                                        color: chartTheme.text.secondary,
-                                      }}
-                                    >
-                                      Optimal risk-return combinations combining
-                                      risk-free assets with the market
-                                      portfolio.
-                                    </p>
+                                  <div className="space-y-0.5">
+                                    <p className="font-semibold text-xs" style={{ color: "#9333ea" }}>Capital Market Line</p>
+                                    <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>Risk-free + market portfolio</p>
                                   </div>
                                 );
                               }
@@ -4788,46 +4537,12 @@ export const PortfolioOptimization = ({
                                   return null;
 
                                 return (
-                                  <div
-                                    className="rounded-lg border p-2 shadow-md max-w-xs"
-                                    style={{
-                                      background: chartTheme.cardBackground,
-                                      borderColor: "#94a3b8",
-                                    }}
-                                  >
-                                    <p
-                                      className="font-semibold text-sm"
-                                      style={{ color: "#94a3b8" }}
-                                    >
-                                      Inefficient Frontier
+                                  <div className="space-y-0.5">
+                                    <p className="font-semibold text-xs" style={{ color: "#94a3b8" }}>Inefficient Frontier</p>
+                                    <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>Min return for risk level</p>
+                                    <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                                      Return {formatPercent(data.return)} · Risk {formatPercent(data.risk)}
                                     </p>
-                                    <p
-                                      className="text-xs mt-1"
-                                      style={{
-                                        color: chartTheme.text.secondary,
-                                      }}
-                                    >
-                                      Portfolios with minimum return for given
-                                      risk levels (lower branch of the
-                                      hyperbola).
-                                    </p>
-                                    <div
-                                      className="mt-2 space-y-1 text-xs"
-                                      style={{ color: chartTheme.text.primary }}
-                                    >
-                                      <p>
-                                        Return:{" "}
-                                        <span className="font-medium">
-                                          {formatPercent(data.return)}
-                                        </span>
-                                      </p>
-                                      <p>
-                                        Risk:{" "}
-                                        <span className="font-medium">
-                                          {formatPercent(data.risk)}
-                                        </span>
-                                      </p>
-                                    </div>
                                   </div>
                                 );
                               }
@@ -4852,156 +4567,28 @@ export const PortfolioOptimization = ({
                                 data.type !== "random" &&
                                 currentPortfolioMetrics;
 
+                              const label =
+                                data.type === "current"
+                                  ? "Current"
+                                  : data.type === "weights_optimized"
+                                    ? "Weights-Opt"
+                                    : data.type === "market_optimized"
+                                      ? "Market-Opt"
+                                      : data.type === "optimized"
+                                        ? "Optimized"
+                                        : "Portfolio";
                               return (
-                                <div
-                                  className="rounded-xl border p-3 shadow-lg max-w-xs"
-                                  style={{
-                                    background: chartTheme.cardBackground,
-                                    borderColor: chartTheme.border,
-                                  }}
-                                >
-                                  <p
-                                    className="font-bold text-sm pb-2 mb-2 border-b"
-                                    style={{
-                                      color: chartTheme.text.primary,
-                                      borderColor: chartTheme.border,
-                                    }}
-                                  >
-                                    {data.type === "current"
-                                      ? "Current Portfolio"
-                                      : data.type === "weights_optimized"
-                                        ? "Weights-Optimized Portfolio"
-                                        : data.type === "market_optimized"
-                                          ? "Market-Optimized Portfolio"
-                                          : data.type === "optimized"
-                                            ? "Optimized Portfolio"
-                                            : data.type === "frontier"
-                                              ? "Efficient Frontier"
-                                              : "Random Portfolio"}
+                                <div className="space-y-0.5">
+                                  <p className="font-semibold text-xs" style={{ color: chartTheme.text.primary }}>{label}</p>
+                                  <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+                                    Return {formatPercent(data.return)} · Risk {formatPercent(data.risk)}
+                                    {data.sharpe_ratio != null && typeof data.sharpe_ratio === "number" && isFinite(data.sharpe_ratio) && ` · Sharpe ${data.sharpe_ratio.toFixed(2)}`}
                                   </p>
-                                  <div className="space-y-1.5 text-xs">
-                                    <div className="flex justify-between">
-                                      <span
-                                        style={{
-                                          color: chartTheme.text.secondary,
-                                        }}
-                                      >
-                                        Return (μ):
-                                      </span>
-                                      <span
-                                        className="font-semibold"
-                                        style={{
-                                          color: chartTheme.text.primary,
-                                        }}
-                                      >
-                                        {formatPercent(data.return)}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span
-                                        style={{
-                                          color: chartTheme.text.secondary,
-                                        }}
-                                      >
-                                        Risk (σ):
-                                      </span>
-                                      <span
-                                        className="font-semibold"
-                                        style={{
-                                          color: chartTheme.text.primary,
-                                        }}
-                                      >
-                                        {formatPercent(data.risk)}
-                                      </span>
-                                    </div>
-                                    {data.sharpe_ratio != null &&
-                                      typeof data.sharpe_ratio === "number" &&
-                                      isFinite(data.sharpe_ratio) && (
-                                        <div className="flex justify-between">
-                                          <span
-                                            style={{
-                                              color: chartTheme.text.secondary,
-                                            }}
-                                          >
-                                            Sharpe Ratio:
-                                          </span>
-                                          <span
-                                            className="font-semibold"
-                                            style={{
-                                              color: chartTheme.text.primary,
-                                            }}
-                                          >
-                                            {data.sharpe_ratio.toFixed(3)}
-                                          </span>
-                                        </div>
-                                      )}
-                                  </div>
-
-                                  {/* Comparison to current portfolio */}
-                                  {showComparison &&
-                                    currentPortfolioMetrics && (
-                                      <div
-                                        className="mt-3 pt-2 border-t"
-                                        style={{
-                                          borderColor: chartTheme.border,
-                                        }}
-                                      >
-                                        <div
-                                          className="text-xs font-semibold mb-1.5"
-                                          style={{
-                                            color: chartTheme.text.secondary,
-                                          }}
-                                        >
-                                          vs Current Portfolio:
-                                        </div>
-                                        <div className="space-y-1 text-xs">
-                                          <div className="flex justify-between">
-                                            <span
-                                              style={{
-                                                color:
-                                                  chartTheme.text.secondary,
-                                              }}
-                                            >
-                                              Δ Return:
-                                            </span>
-                                            <span
-                                              className={`font-semibold ${data.return > currentPortfolioMetrics.expected_return ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
-                                            >
-                                              {data.return >
-                                              currentPortfolioMetrics.expected_return
-                                                ? "+"
-                                                : ""}
-                                              {formatPercent(
-                                                data.return -
-                                                  currentPortfolioMetrics.expected_return,
-                                              )}
-                                            </span>
-                                          </div>
-                                          <div className="flex justify-between">
-                                            <span
-                                              style={{
-                                                color:
-                                                  chartTheme.text.secondary,
-                                              }}
-                                            >
-                                              Δ Risk:
-                                            </span>
-                                            <span
-                                              className={`font-semibold ${data.risk < currentPortfolioMetrics.risk ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
-                                            >
-                                              {data.risk <
-                                              currentPortfolioMetrics.risk
-                                                ? ""
-                                                : "+"}
-                                              {formatPercent(
-                                                data.risk -
-                                                  currentPortfolioMetrics.risk,
-                                              )}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
+                                  {showComparison && currentPortfolioMetrics && (
+                                    <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>
+                                      vs Current: ΔRet {data.return >= currentPortfolioMetrics.expected_return ? "+" : ""}{formatPercent(data.return - currentPortfolioMetrics.expected_return)} · ΔRisk {data.risk < currentPortfolioMetrics.risk ? "" : "+"}{formatPercent(data.risk - currentPortfolioMetrics.risk)}
+                                    </p>
+                                  )}
                                 </div>
                               );
                             }}
@@ -5099,7 +4686,7 @@ export const PortfolioOptimization = ({
                           {visibleSeries.inefficientFrontier &&
                             inefficientFrontier.length > 0 &&
                             (() => {
-                              // Sort inefficient frontier by risk
+                              // Sort inefficient frontier by risk (low to high)
                               const sortedInefficient = [...inefficientFrontier]
                                 .sort((a, b) => {
                                   const riskA = a.risk ?? 0;
@@ -5116,16 +4703,36 @@ export const PortfolioOptimization = ({
                                     isFinite(p.return),
                                 );
 
-                              // Show full inefficient frontier - domain already calculated to include all points
-                              return sortedInefficient.length > 0 ? (
+                              // Connect to efficient frontier at min-variance point so the two branches meet
+                              const sortedEfficient = [...efficientFrontier]
+                                .sort((a, b) => (a.risk ?? 0) - (b.risk ?? 0))
+                                .filter(
+                                  (p) =>
+                                    p.risk != null &&
+                                    typeof p.risk === "number" &&
+                                    isFinite(p.risk) &&
+                                    p.return != null &&
+                                    typeof p.return === "number" &&
+                                    isFinite(p.return),
+                                );
+                              const minVarPoint = sortedEfficient[0];
+                              const connectedInefficient =
+                                minVarPoint && sortedInefficient.length > 0
+                                  ? [
+                                      { ...minVarPoint, type: "inefficient_frontier" as const },
+                                      ...sortedInefficient.slice(1).map((p) => ({ ...p, type: "inefficient_frontier" as const })),
+                                    ]
+                                  : sortedInefficient.map((point) => ({
+                                      ...point,
+                                      type: "inefficient_frontier" as const,
+                                    }));
+
+                              return connectedInefficient.length > 0 ? (
                                 <Line
                                   name="Inefficient Frontier"
                                   type="monotone"
                                   dataKey="return"
-                                  data={sortedInefficient.map((point) => ({
-                                    ...point,
-                                    type: "inefficient_frontier" as const,
-                                  }))}
+                                  data={connectedInefficient}
                                   stroke="#64748b"
                                   strokeWidth={2.5}
                                   strokeDasharray="6 4"
@@ -5260,13 +4867,13 @@ export const PortfolioOptimization = ({
 
                           {/* Weights-Optimized Portfolio - diamond shape */}
                           {visibleSeries.weightsOptimized &&
-                            portfolioPointsWithJitter.find(
+                            portfolioPoints.find(
                               (p) => p.type === "weights_optimized",
                             ) && (
                               <Scatter
                                 name="Weights-Optimized Portfolio"
                                 data={[
-                                  portfolioPointsWithJitter.find(
+                                  portfolioPoints.find(
                                     (p) => p.type === "weights_optimized",
                                   )!,
                                 ]}
@@ -5305,13 +4912,13 @@ export const PortfolioOptimization = ({
 
                           {/* Market-Optimized Portfolio - star shape */}
                           {visibleSeries.marketOptimized &&
-                            portfolioPointsWithJitter.find(
+                            portfolioPoints.find(
                               (p) => p.type === "market_optimized",
                             ) && (
                               <Scatter
                                 name="Market-Optimized Portfolio"
                                 data={[
-                                  portfolioPointsWithJitter.find(
+                                  portfolioPoints.find(
                                     (p) => p.type === "market_optimized",
                                   )!,
                                 ]}
@@ -5355,13 +4962,13 @@ export const PortfolioOptimization = ({
 
                           {/* Legacy: Optimized Portfolio (for backward compatibility) */}
                           {!tripleOptimizationResults &&
-                            portfolioPointsWithJitter.find(
+                            portfolioPoints.find(
                               (p) => p.type === "optimized",
                             ) && (
                               <Scatter
                                 name="Optimized Portfolio"
                                 data={[
-                                  portfolioPointsWithJitter.find(
+                                  portfolioPoints.find(
                                     (p) => p.type === "optimized",
                                   )!,
                                 ]}
@@ -7787,23 +7394,19 @@ export const PortfolioOptimization = ({
                                 <ResponsiveContainer width="100%" height="100%">
                                   {(() => {
                                     // Calculate domain from all visible portfolios
-                                    let allData: Array<{ return_pct: number }> =
-                                      [];
-
+                                    let allData: Array<{ return_pct: number }> = [];
                                     if (tripleOptimizationResults) {
-                                      const tripleMonteCarlo =
-                                        monteCarloData as {
-                                          current: MonteCarloResult;
-                                          weights: MonteCarloResult;
-                                          market?: MonteCarloResult | null;
-                                        };
+                                      const tripleMonteCarlo = monteCarloData as {
+                                        current: MonteCarloResult;
+                                        weights: MonteCarloResult;
+                                        market?: MonteCarloResult | null;
+                                      };
                                       if (
                                         returnScenarioVisibility.current &&
                                         tripleMonteCarlo.current.histogram_data
                                       ) {
                                         allData = allData.concat(
-                                          tripleMonteCarlo.current
-                                            .histogram_data,
+                                          tripleMonteCarlo.current.histogram_data,
                                         );
                                       }
                                       if (
@@ -7811,8 +7414,7 @@ export const PortfolioOptimization = ({
                                         tripleMonteCarlo.weights.histogram_data
                                       ) {
                                         allData = allData.concat(
-                                          tripleMonteCarlo.weights
-                                            .histogram_data,
+                                          tripleMonteCarlo.weights.histogram_data,
                                         );
                                       }
                                       if (
@@ -7820,15 +7422,13 @@ export const PortfolioOptimization = ({
                                         tripleMonteCarlo.market?.histogram_data
                                       ) {
                                         allData = allData.concat(
-                                          tripleMonteCarlo.market
-                                            .histogram_data,
+                                          tripleMonteCarlo.market.histogram_data,
                                         );
                                       }
                                     } else {
                                       allData =
                                         selectedMonteCarlo.histogram_data || [];
                                     }
-
                                     const minReturn =
                                       allData.length > 0
                                         ? Math.min(
@@ -7909,7 +7509,7 @@ export const PortfolioOptimization = ({
                                         </defs>
                                         <CartesianGrid
                                           strokeDasharray="3 3"
-                                          stroke={chartTheme.grid}
+                                          stroke="#e5e7eb"
                                         />
                                         <XAxis
                                           dataKey="return_pct"
@@ -7932,7 +7532,7 @@ export const PortfolioOptimization = ({
                                             `${value.toFixed(0)}%`
                                           }
                                           label={{
-                                            value: "Frequency (%)",
+                                            value: "Probability Density",
                                             angle: -90,
                                             position: "insideLeft",
                                             offset: 5,
@@ -7943,7 +7543,10 @@ export const PortfolioOptimization = ({
                                           formatter={(
                                             value: number,
                                             name: string,
-                                          ) => [`${value.toFixed(1)}%`, name]}
+                                          ) => [
+                                            `${value.toFixed(1)}%`,
+                                            name,
+                                          ]}
                                           labelFormatter={(label) =>
                                             `Return: ${Number(label).toFixed(1)}%`
                                           }
@@ -7975,6 +7578,7 @@ export const PortfolioOptimization = ({
                                                 stroke="#ef4444"
                                                 strokeWidth={2}
                                                 fill="url(#colorGradient-red)"
+                                                activeDot={false}
                                               />
                                             );
                                           })()}
@@ -8001,6 +7605,7 @@ export const PortfolioOptimization = ({
                                                 stroke="#3b82f6"
                                                 strokeWidth={2}
                                                 fill="url(#colorGradient-blue)"
+                                                activeDot={false}
                                               />
                                             );
                                           })()}
@@ -8029,6 +7634,7 @@ export const PortfolioOptimization = ({
                                                 stroke="#22c55e"
                                                 strokeWidth={2}
                                                 fill="url(#colorGradient-green)"
+                                                activeDot={false}
                                               />
                                             );
                                           })()}
@@ -8045,6 +7651,7 @@ export const PortfolioOptimization = ({
                                             stroke={selectedStroke}
                                             strokeWidth={2}
                                             fill={`url(#colorGradient-${selectedColor})`}
+                                            activeDot={false}
                                           />
                                         )}
 
@@ -8058,8 +7665,7 @@ export const PortfolioOptimization = ({
                                                 | "p50"
                                                 | "p75"
                                                 | "p95";
-                                            const highlights: JSX.Element[] =
-                                              [];
+                                            const highlights: JSX.Element[] = [];
 
                                             if (tripleOptimizationResults) {
                                               const tripleMonteCarlo =
@@ -8069,7 +7675,6 @@ export const PortfolioOptimization = ({
                                                   market?: MonteCarloResult | null;
                                                 };
 
-                                              // Highlight Current Portfolio percentile
                                               if (
                                                 returnScenarioVisibility.current &&
                                                 tripleMonteCarlo.current
@@ -8092,7 +7697,6 @@ export const PortfolioOptimization = ({
                                                 );
                                               }
 
-                                              // Highlight Weights-Optimized Portfolio percentile
                                               if (
                                                 returnScenarioVisibility.weights &&
                                                 tripleMonteCarlo.weights
@@ -8115,7 +7719,6 @@ export const PortfolioOptimization = ({
                                                 );
                                               }
 
-                                              // Highlight Market-Optimized Portfolio percentile
                                               if (
                                                 returnScenarioVisibility.market &&
                                                 tripleMonteCarlo.market
@@ -8138,10 +7741,8 @@ export const PortfolioOptimization = ({
                                                 );
                                               }
                                             } else {
-                                              // Single portfolio highlight
                                               if (
-                                                selectedMonteCarlo
-                                                  .percentiles?.[
+                                                selectedMonteCarlo.percentiles?.[
                                                   scenarioKey
                                                 ] !== undefined
                                               ) {

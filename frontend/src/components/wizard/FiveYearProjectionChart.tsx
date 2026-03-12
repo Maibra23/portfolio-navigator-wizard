@@ -35,7 +35,8 @@ import {
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useTheme } from "@/hooks/useTheme";
-import { getChartTheme } from "@/utils/chartThemes";
+import { getChartTheme, getVisualizationPalette } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 import { DataSourceAttribution } from "./DataSourceAttribution";
 import {
@@ -122,6 +123,10 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
 }) => {
   const { theme } = useTheme();
   const chartTheme = getChartTheme(theme);
+  const palette = getVisualizationPalette(theme);
+  const optimisticColor = palette[0];
+  const medianColor = palette[2];
+  const pessimisticColor = palette[1];
   const [data, setData] = useState<ProjectionDataPoint[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -329,7 +334,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
   // Get selected shock scenario details
   const activeShock = shockScenarios.find((s) => s.id === selectedShock);
 
-  // Custom tooltip with detailed breakdown
+  // Custom tooltip with detailed breakdown (compact)
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload || payload.length === 0) return null;
 
@@ -337,43 +342,29 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
     const yearLabel = point?.time !== undefined ? `Year ${point.time.toFixed(1)}` : `Year ${label}`;
 
     return (
-      <div className="bg-popover text-popover-foreground border border-border rounded-lg shadow-lg p-4 space-y-2 max-w-xs">
-        <p className="font-semibold text-sm border-b pb-2">{yearLabel}</p>
-
-        {/* Confidence bands info */}
+      <div className="space-y-0.5" style={{ maxWidth: "160px" }}>
+        <p className="font-semibold text-xs">{yearLabel}</p>
         {point?.p95 !== undefined && (
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-green-600 dark:text-green-400">95th percentile:</span>
-              <span className="font-medium">{formatSEK(point.p95)} SEK</span>
+          <div className="space-y-0.5 text-[10px]">
+            <div className="flex justify-between gap-2">
+              <span style={{ color: optimisticColor }}>95th:</span>
+              <span className="font-medium">{formatSEK(point.p95)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-green-500">75th percentile:</span>
-              <span className="font-medium">{formatSEK(point.optimistic)} SEK</span>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: medianColor }}>Median:</span>
+              <span>{formatSEK(point.base)}</span>
             </div>
-            <div className="flex justify-between font-semibold">
-              <span className="text-blue-600 dark:text-blue-400">Median (50th):</span>
-              <span>{formatSEK(point.base)} SEK</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-orange-500">25th percentile:</span>
-              <span className="font-medium">{formatSEK(point.pessimistic)} SEK</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-red-600 dark:text-red-400">5th percentile:</span>
-              <span className="font-medium">{formatSEK(point.p5!)} SEK</span>
+            <div className="flex justify-between gap-2">
+              <span style={{ color: pessimisticColor }}>5th:</span>
+              <span className="font-medium">{formatSEK(point.p5!)}</span>
             </div>
           </div>
         )}
-
-        {/* Growth from initial */}
-        <div className="border-t pt-2 mt-2">
-          <p className="text-xs text-muted-foreground">
-            Growth from initial:{" "}
-            <span className={totalGrowthBase >= 0 ? "text-green-600" : "text-red-600"}>
-              {((point.base / initialValue - 1) * 100).toFixed(1)}%
-            </span>
-          </p>
+        <div className="border-t border-border pt-1 mt-1 text-[10px] text-muted-foreground">
+          Growth:{" "}
+          <span style={{ color: totalGrowthBase >= 0 ? optimisticColor : pessimisticColor }}>
+            {((point.base / initialValue - 1) * 100).toFixed(1)}%
+          </span>
         </div>
       </div>
     );
@@ -591,12 +582,12 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                       style: { fontSize: 11 },
                     }}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomTooltip />} {...getRechartsTooltipProps(theme)} />
 
                   {/* Reference line for initial capital */}
                   <ReferenceLine
                     y={capital}
-                    stroke="#666"
+                    stroke={chartTheme.axes.line}
                     strokeDasharray="3 3"
                     label={{ value: "Initial", position: "right", fontSize: 10 }}
                   />
@@ -613,7 +604,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                     type="monotone"
                     dataKey={(d: ProjectionDataPoint) => (d.p95 ?? 0) - (d.p5 ?? 0)}
                     stackId="band90"
-                    fill="#3b82f6"
+                    fill={medianColor}
                     fillOpacity={0.08}
                     stroke="none"
                     name="90% range"
@@ -631,7 +622,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                     type="monotone"
                     dataKey={(d: ProjectionDataPoint) => (d.p90 ?? 0) - (d.p10 ?? 0)}
                     stackId="band80"
-                    fill="#3b82f6"
+                    fill={medianColor}
                     fillOpacity={0.12}
                     stroke="none"
                     name="80% range"
@@ -649,7 +640,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                     type="monotone"
                     dataKey={(d: ProjectionDataPoint) => d.optimistic - d.pessimistic}
                     stackId="band50"
-                    fill="#3b82f6"
+                    fill={medianColor}
                     fillOpacity={0.2}
                     stroke="none"
                     name="50% range"
@@ -660,7 +651,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                     type="monotone"
                     dataKey="base"
                     name="Median"
-                    stroke="#3b82f6"
+                    stroke={medianColor}
                     strokeWidth={2.5}
                     dot={false}
                   />
@@ -700,13 +691,13 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                       style: { fontSize: 11 },
                     }}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomTooltip />} {...getRechartsTooltipProps(theme)} />
                   <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }} />
                   <Line
                     type="monotone"
                     dataKey="optimistic"
                     name="Optimistic"
-                    stroke="#22c55e"
+                    stroke={optimisticColor}
                     strokeWidth={2.5}
                     dot={false}
                   />
@@ -714,7 +705,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                     type="monotone"
                     dataKey="base"
                     name="Base"
-                    stroke="#3b82f6"
+                    stroke={medianColor}
                     strokeWidth={3}
                     dot={false}
                   />
@@ -722,7 +713,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                     type="monotone"
                     dataKey="pessimistic"
                     name="Pessimistic"
-                    stroke="#ef4444"
+                    stroke={pessimisticColor}
                     strokeWidth={2.5}
                     dot={false}
                   />
@@ -742,7 +733,7 @@ export const FiveYearProjectionChart: React.FC<FiveYearProjectionChartProps> = (
                   outcomes.
                 </p>
                 <p>
-                  <strong>How to read:</strong> The solid blue line is the median (50%
+                  <strong>How to read:</strong> The solid line is the median (50%
                   chance of being above or below). There's a 90% chance your portfolio
                   will end up within the lightest band, and 50% chance within the darkest.
                 </p>

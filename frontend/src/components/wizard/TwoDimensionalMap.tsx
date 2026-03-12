@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface TwoDimensionalMapProps {
@@ -195,15 +196,15 @@ export const TwoDimensionalMap: React.FC<TwoDimensionalMapProps> = ({
               }}
             />
             <Tooltip
-              cursor={{ strokeDasharray: "3 3", stroke: "#60a5fa" }}
+              {...getRechartsTooltipProps(theme)}
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
                 const point = payload[0].payload;
                 return (
-                  <div className="rounded-lg border-2 border-border bg-popover text-popover-foreground p-2.5 shadow-lg text-xs">
-                    <div className="font-bold mb-1">Your Position</div>
-                    <div>Analytical: {Math.round(point.x)}</div>
-                    <div>Emotional: {Math.round(point.y)}</div>
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-xs">Your Position</div>
+                    <div className="text-[10px]">Analytical: {Math.round(point.x)}</div>
+                    <div className="text-[10px]">Emotional: {Math.round(point.y)}</div>
                   </div>
                 );
               }}

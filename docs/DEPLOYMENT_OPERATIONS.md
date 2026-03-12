@@ -1509,6 +1509,21 @@ git push origin main
 
 ### Troubleshooting
 
+**Local: `make full-dev` shows `[postcss] ETIMEDOUT: connection timed out, read`**
+
+This happens when Vite runs PostCSS (Tailwind/Autoprefixer) on CSS and a read times out. Common causes:
+
+- **OneDrive (or other sync)** – The repo is under OneDrive; syncing can make file reads slow and trigger timeouts.
+- **Transient I/O** – First run after opening the project can be slow.
+
+What to do:
+
+1. **Retry** – Run `make full-dev` again; it often succeeds the second time.
+2. **Use a non-synced copy** – Clone or copy the repo to a folder outside OneDrive (e.g. `~/dev/portfolio-navigator-wizard`) and run `make full-dev` from there.
+3. **Pause sync** – Temporarily pause OneDrive sync for the project folder, then run `make full-dev`.
+
+The app uses a local `browserslist` in `frontend/package.json`, so Autoprefixer does not need the network. The timeout is usually from slow or locked file reads, not from a missing network call. If the script still prints "Both servers are ready!", the frontend may be up; try opening http://localhost:8080 and refresh if the first load fails.
+
 **Deploy fails with build error:**
 ```bash
 # Check build logs in detail
