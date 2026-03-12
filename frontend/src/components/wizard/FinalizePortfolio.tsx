@@ -1071,6 +1071,49 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
             </Card>
           </div>
 
+          {/* Not sure where to start? — collapsible guidance */}
+          <Collapsible className="group animate-in fade-in duration-300">
+            <Card className="border-border/60 shadow-sm overflow-hidden">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/30 transition-colors rounded-lg"
+                  aria-expanded="false"
+                >
+                  <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <Info className="h-4 w-4 text-primary" />
+                    Not sure where to start?
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0 pb-4 px-4">
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li className="flex gap-2">
+                      <span className="text-primary font-medium">•</span>
+                      <span>
+                        Try searching by company name (e.g. Apple, Volvo, Microsoft) or ticker (AAPL, MSFT).
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-primary font-medium">•</span>
+                      <span>
+                        Pick 3–4 stocks from different sectors to diversify.
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-primary font-medium">•</span>
+                      <span>
+                        You can also go back to the Stock Selection step and choose a ready-made portfolio, then customize it here.
+                      </span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
+
           {/* Portfolio Builder Component */}
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100">
             <PortfolioBuilder
@@ -1143,127 +1186,126 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
           </div>
         </TabsContent>
 
-        {/* Tab 2: Optimize */}
+        {/* Tab 2: Optimize - single consolidated card */}
         <TabsContent value="optimize" className="space-y-4 mt-3">
-          {/* Header Card with animation */}
           <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-            <Card className="bg-gradient-to-br from-blue-500/5 via-background to-background border-blue-500/20">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <BarChart3 className="h-5 w-5 text-blue-600" />
+            <Card className="overflow-hidden bg-gradient-to-br from-blue-500/5 via-background to-background border-blue-500/20 shadow-sm">
+              {/* Header: title + subtitle */}
+              <CardHeader className="pb-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10 dark:bg-blue-500/20 shrink-0">
+                    <BarChart3 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   </div>
-                  Portfolio Optimization
-                </CardTitle>
-                <p className="text-sm text-muted-foreground pl-11">
-                  Optimize your portfolio allocation to maximize risk-adjusted
-                  returns
-                </p>
-              </CardHeader>
-            </Card>
-          </div>
-
-          {/* Current Portfolio Summary Card with animation */}
-          <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-100">
-            <Card className="border-border/60 shadow-sm">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-md bg-emerald-500/10">
-                    <ClipboardList className="h-4 w-4 text-emerald-600" />
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg text-foreground">
+                      Portfolio Optimization
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Optimize your portfolio allocation to maximize risk-adjusted
+                      returns
+                    </p>
                   </div>
-                  <CardTitle className="text-base">
-                    Current Portfolio Summary
-                  </CardTitle>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 pl-8">
-                  {state.constructedPortfolio.length} assets selected
-                </p>
               </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                {state.constructedPortfolio &&
-                state.constructedPortfolio.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-2">
-                    {state.constructedPortfolio.map((stock, index) => (
-                      <div
-                        key={stock.symbol}
-                        className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-medium text-blue-600">
-                              {index + 1}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-medium text-sm">
-                              {stock.symbol}
+
+              {/* Current portfolio summary - same card, clear section */}
+              <CardContent className="space-y-4 pt-0">
+                <div className="rounded-lg border border-border/60 bg-card/50 dark:bg-card/30 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Current Portfolio Summary
+                    </h3>
+                    <span className="text-xs text-muted-foreground">
+                      {state.constructedPortfolio.length} assets selected
+                    </span>
+                  </div>
+
+                  {state.constructedPortfolio &&
+                  state.constructedPortfolio.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-2">
+                      {state.constructedPortfolio.map((stock, index) => (
+                        <div
+                          key={stock.symbol}
+                          className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30 dark:bg-muted/20 border-border/50"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                                {index + 1}
+                              </span>
                             </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {stock.name || "Stock"}
+                            <div className="min-w-0">
+                              <div className="font-medium text-sm">
+                                {stock.symbol}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {stock.name || "Stock"}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="font-semibold text-sm">
+                              {Number((stock.allocation || 0).toFixed(2))}%
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {capital
+                                ? (
+                                    (stock.allocation / 100) *
+                                    capital
+                                  ).toLocaleString("sv-SE", {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 2,
+                                  })
+                                : "0"}{" "}
+                              SEK
                             </div>
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="font-semibold text-sm">
-                            {Number((stock.allocation || 0).toFixed(2))}%
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {capital
-                              ? (
-                                  (stock.allocation / 100) *
-                                  capital
-                                ).toLocaleString("sv-SE", {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 2,
-                                })
-                              : "0"}{" "}
-                            SEK
-                          </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-muted-foreground rounded-lg border border-dashed border-border/60">
+                      <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No portfolio selected</p>
+                    </div>
+                  )}
+
+                  {displayMetrics && (
+                    <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border/50">
+                      <div className="text-center p-3 bg-muted/50 dark:bg-muted/30 rounded-lg border border-border/50">
+                        <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
+                          {formatPercent(displayMetrics.expectedReturn)}
+                        </div>
+                        <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          Expected Return
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground">
-                    <Info className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No portfolio selected</p>
-                  </div>
-                )}
+                      <div className="text-center p-3 bg-muted/50 dark:bg-muted/30 rounded-lg border border-border/50">
+                        <div className="text-xl font-bold text-amber-700 dark:text-amber-300">
+                          {formatPercent(displayMetrics.risk)}
+                        </div>
+                        <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                          Risk Level
+                        </div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 dark:bg-muted/30 rounded-lg border border-border/50">
+                        <div className="text-xl font-bold text-purple-700 dark:text-purple-300">
+                          {formatPercent(displayMetrics.diversificationScore)}
+                        </div>
+                        <div className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
+                          Diversification
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-                {displayMetrics && (
-                  <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-                    <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                      <div className="text-xl font-bold text-emerald-700">
-                        {formatPercent(displayMetrics.expectedReturn)}
-                      </div>
-                      <div className="text-xs text-emerald-600 mt-0.5">
-                        Expected Return
-                      </div>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                      <div className="text-xl font-bold text-amber-700">
-                        {formatPercent(displayMetrics.risk)}
-                      </div>
-                      <div className="text-xs text-amber-600 mt-0.5">
-                        Risk Level
-                      </div>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg border border-border">
-                      <div className="text-xl font-bold text-purple-700">
-                        {formatPercent(displayMetrics.diversificationScore)}
-                      </div>
-                      <div className="text-xs text-purple-600 mt-0.5">
-                        Diversification
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Continue to Final Analysis (enabled when user can navigate to analysis) */}
+                {/* Continue to Final Analysis */}
                 <Button
                   onClick={() => handleTabChange("analysis")}
                   disabled={!canNavigateToTab("analysis", state, activeTab)}
-                  className="w-full mt-4 bg-primary hover:bg-primary/90"
+                  className="w-full bg-primary hover:bg-primary/90"
                   size="lg"
                 >
                   Continue to Final Analysis
@@ -1584,25 +1626,7 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
         {/* Tab 3: Final Analysis */}
         <TabsContent value="analysis" className="space-y-4 mt-3">
-          {/* Header Card with animation */}
-          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-            <Card className="bg-gradient-to-br from-purple-500/5 via-background to-background border-purple-500/20">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                    <Shield className="h-5 w-5 text-purple-600" />
-                  </div>
-                  Final Analysis
-                </CardTitle>
-                <p className="text-sm text-muted-foreground pl-11">
-                  Comprehensive analysis of your portfolio performance and risk
-                  metrics
-                </p>
-              </CardHeader>
-            </Card>
-          </div>
-
-          {/* Performance Summary, Quality Score, Monte Carlo from optimization (when available) */}
+          {/* Consolidated: Final Analysis header + Performance Summary in one card */}
           {state.optimizedPortfolio?.comparison &&
             (() => {
               const triple = state.optimizedPortfolio;
@@ -1610,13 +1634,38 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
               const isTriple = Boolean(triple.market_optimized_portfolio);
               return (
                 <div className="space-y-4">
-                  {/* Performance Summary with animation */}
-                  <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-100">
-                    <PerformanceSummaryCard
-                      tripleOptimizationResults={triple}
-                      selectedPortfolio={selectedPortfolio}
-                      riskProfile={riskProfile}
-                    />
+                  <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                    <Card className="overflow-hidden bg-gradient-to-br from-purple-500/5 via-background to-background border-purple-500/20 shadow-sm">
+                      <CardHeader className="pb-4">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-lg bg-purple-500/10 dark:bg-purple-500/20 shrink-0">
+                            <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                          </div>
+                          <div className="min-w-0">
+                            <CardTitle className="text-lg text-foreground">
+                              Final Analysis
+                            </CardTitle>
+                            <p className="text-sm text-muted-foreground mt-0.5">
+                              Comprehensive analysis of your portfolio
+                              performance and risk metrics
+                            </p>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="rounded-lg border border-border/60 bg-card/50 dark:bg-card/30 p-4">
+                          <h3 className="text-base font-semibold text-foreground mb-3">
+                            Performance Summary
+                          </h3>
+                          <PerformanceSummaryCard
+                            tripleOptimizationResults={triple}
+                            selectedPortfolio={selectedPortfolio}
+                            riskProfile={riskProfile}
+                            noCard
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
 
                   {/* Quality Score with animation */}
@@ -1795,48 +1844,50 @@ export const FinalizePortfolio: React.FC<FinalizePortfolioProps> = ({
 
         {/* Tab 4: Tax, Cost & Summary */}
         <TabsContent value="tax-cost" className="space-y-4 mt-3">
-          {/* Header Card with animation - ref for scroll-into-view when landing */}
+          {/* Consolidated: Tax & Cost header + Learn Swedish Taxation in one card */}
           <div
             ref={taxCostContentRef}
             className="animate-in fade-in slide-in-from-top-2 duration-300"
           >
-            <Card className="bg-gradient-to-br from-amber-500/5 via-background to-background border-amber-500/20">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-amber-500/10">
-                    <Calculator className="h-5 w-5 text-amber-600" />
+            <Card className="overflow-hidden bg-gradient-to-br from-amber-500/5 via-background to-background border-amber-500/20 shadow-sm">
+              <CardHeader className="pb-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 shrink-0">
+                    <Calculator className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
-                  Tax & Cost Summary
-                </CardTitle>
-                <p className="text-sm text-muted-foreground pl-11">
-                  Configure tax settings and review your portfolio costs
-                </p>
+                  <div className="min-w-0">
+                    <CardTitle className="text-lg text-foreground">
+                      Tax & Cost Summary
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Configure tax settings and review your portfolio costs
+                    </p>
+                  </div>
+                </div>
               </CardHeader>
+              <CardContent className="pt-0">
+                <Collapsible className="rounded-lg border border-border bg-muted/20 dark:bg-muted/10">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
+                    >
+                      <span className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        Learn: Swedish Investment Taxation (ISK/KF vs AF)
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <TaxEducationPanel
+                      initialCapital={capital}
+                      initialTaxYear={state.taxSettings.taxYear}
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardContent>
             </Card>
-          </div>
-
-          {/* Swedish Investment Taxation — hidden until user opens it */}
-          <div className="animate-in fade-in slide-in-from-left-2 duration-500 delay-100">
-            <Collapsible className="rounded-lg border border-border bg-muted/30 shadow-sm">
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium hover:bg-muted/50 rounded-lg transition-colors group"
-                >
-                  <span className="flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-blue-600" />
-                    Learn: Swedish Investment Taxation (ISK/KF vs AF)
-                  </span>
-                  <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <TaxEducationPanel
-                  initialCapital={capital}
-                  initialTaxYear={state.taxSettings.taxYear}
-                />
-              </CollapsibleContent>
-            </Collapsible>
           </div>
 
           {/* Tax settings: account type, comparison, and optional what-if */}

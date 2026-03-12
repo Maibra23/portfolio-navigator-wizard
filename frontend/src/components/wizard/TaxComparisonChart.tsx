@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme, getVisualizationPalette } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 
 interface TaxComparisonChartProps {
@@ -185,21 +186,17 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
       ? potentialSavings - lowestTax
       : 0;
 
-  // Custom tooltip
+  // Custom tooltip (compact)
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload || payload.length === 0) return null;
 
     const data = payload[0].payload;
     return (
-      <div className="bg-popover text-popover-foreground border border-border rounded-lg shadow-lg p-3 space-y-1">
-        <p className="font-semibold text-sm">{data.displayName}</p>
-        <p className="text-xs text-muted-foreground">Annual Tax</p>
-        <p className="font-bold text-destructive">
-          {data.annualTax.toLocaleString("sv-SE", { maximumFractionDigits: 0 })}{" "}
-          SEK
+      <div className="space-y-0.5">
+        <p className="font-semibold text-xs">{data.displayName}</p>
+        <p className="text-[10px] text-muted-foreground">
+          {data.annualTax.toLocaleString("sv-SE", { maximumFractionDigits: 0 })} SEK · {data.effectiveRate.toFixed(2)}%
         </p>
-        <p className="text-xs text-muted-foreground mt-1">Effective Rate</p>
-        <p className="font-semibold">{data.effectiveRate.toFixed(2)}%</p>
       </div>
     );
   };
@@ -264,7 +261,7 @@ export const TaxComparisonChart: React.FC<TaxComparisonChartProps> = ({
                 style: { fontSize: 11 },
               }}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip />} {...getRechartsTooltipProps(theme)} />
             <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
             <Bar
               dataKey="annualTax"

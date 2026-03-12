@@ -35,10 +35,10 @@ export const getChartTheme = (theme: ThemeType) => {
         subtle: 'rgba(255, 255, 255, 0.4)',
       },
 
-      // Tooltip styling
+      // Tooltip styling (high visibility, theme-proof)
       tooltip: {
-        background: '#1a1b21',
-        border: 'rgba(255, 255, 255, 0.15)',
+        background: '#1e2028',
+        border: 'rgba(255, 255, 255, 0.25)',
         text: '#ffffff',
       },
     };
@@ -68,11 +68,11 @@ export const getChartTheme = (theme: ThemeType) => {
       subtle: 'rgba(0, 0, 0, 0.4)',
     },
 
-    // Tooltip styling
+    // Tooltip styling (high visibility, theme-proof)
     tooltip: {
       background: '#ffffff',
-      border: 'rgba(0, 0, 0, 0.15)',
-      text: '#000000',
+      border: 'rgba(0, 0, 0, 0.2)',
+      text: '#111827',
     },
   };
 };

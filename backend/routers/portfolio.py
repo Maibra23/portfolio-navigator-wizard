@@ -1172,8 +1172,8 @@ def _compute_eligible_tickers_internal(
                     batch_filtered_stats['insufficient_data'] += 1
                     continue
                 
-                # Validate price data quality
-                if not _validate_price_data_optimization(prices, ticker):
+                # Validate price data quality (use batch min_data_points for universe display)
+                if not _validate_price_data_optimization(prices, ticker, min_points=min_data_points):
                     batch_filtered_stats['data_quality'] += 1
                     continue
                 
@@ -1197,7 +1197,7 @@ def _compute_eligible_tickers_internal(
                 
                 # Calculate if needed
                 if expected_return is None or volatility is None:
-                    calculated_metrics = _calculate_metrics_safely_optimization(prices, ticker)
+                    calculated_metrics = _calculate_metrics_safely_optimization(prices, ticker, min_points=min_data_points)
                     if calculated_metrics is None:
                         batch_filtered_stats['missing_metrics'] += 1
                         continue
@@ -1475,13 +1475,13 @@ def _compute_eligible_tickers_internal(
     return eligible_tickers, filtered_stats
 
 # Helper functions for data validation and metrics calculation
-def _validate_price_data_optimization(prices: pd.Series, ticker: str) -> bool:
-    """Validate price data quality before calculation (for optimization)"""
+def _validate_price_data_optimization(prices: pd.Series, ticker: str, min_points: int = 12) -> bool:
+    """Validate price data quality before calculation (for optimization). min_points allows relaxed check for universe display."""
     if prices is None or prices.empty:
         return False
     
     # Check minimum data points
-    if len(prices) < 12:
+    if len(prices) < min_points:
         return False
     
     # Check for zeros or negative prices
@@ -1534,11 +1534,11 @@ def _validate_calculated_metrics_optimization(expected_return: float, volatility
     
     return True
 
-def _calculate_metrics_safely_optimization(prices: pd.Series, ticker: str) -> Optional[Dict[str, float]]:
-    """Calculate metrics with proper error handling and validation (for optimization)"""
+def _calculate_metrics_safely_optimization(prices: pd.Series, ticker: str, min_points: int = 12) -> Optional[Dict[str, float]]:
+    """Calculate metrics with proper error handling and validation (for optimization). min_points for universe display."""
     try:
         # Validate price data first
-        if not _validate_price_data_optimization(prices, ticker):
+        if not _validate_price_data_optimization(prices, ticker, min_points=min_points):
             return None
         
         # Calculate returns
@@ -1635,12 +1635,21 @@ def _get_eligible_tickers_internal(
                     try:
                         cached_result = json.loads(cached_data.decode())
                         logger.info(f"✅ Cache hit for eligible tickers")
-                        # Apply pagination to cached result
-                        total = len(cached_result.get('eligible_tickers', []))
+                        full_list = cached_result.get('eligible_tickers', [])
+                        # Re-sort by requested sort_by so cache works for all sort orders (e.g. Stock Universe needs ticker order, not return order)
+                        if full_list and sort_by:
+                            if sort_by == 'return':
+                                full_list = sorted(full_list, key=lambda x: x.get('expected_return') or 0, reverse=True)
+                            elif sort_by == 'volatility':
+                                full_list = sorted(full_list, key=lambda x: x.get('volatility') or 0)
+                            elif sort_by == 'sector':
+                                full_list = sorted(full_list, key=lambda x: (x.get('sector') or ''))
+                            else:  # 'ticker' or default
+                                full_list = sorted(full_list, key=lambda x: (x.get('ticker') or ''))
+                        total = len(full_list)
                         start_idx = (page - 1) * per_page
                         end_idx = start_idx + per_page
-                        paginated_tickers = cached_result['eligible_tickers'][start_idx:end_idx]
-                        
+                        paginated_tickers = full_list[start_idx:end_idx]
                         return {
                             "eligible_tickers": paginated_tickers,
                             "pagination": {
@@ -1648,7 +1657,7 @@ def _get_eligible_tickers_internal(
                                 "page": page,
                                 "per_page": per_page,
                                 "has_more": end_idx < total,
-                                "total_pages": (total + per_page - 1) // per_page
+                                "total_pages": (total + per_page - 1) // per_page if per_page else 0
                             },
                             "summary": cached_result.get('summary', {}),
                             "processing_time_seconds": 0.0
@@ -1809,20 +1818,30 @@ def get_eligible_tickers_for_optimization(
     exclude_tickers: Optional[str] = Query(None, description="Optional: Comma-separated list of tickers to exclude"),
     use_cache: bool = Query(True, description="Use cached eligible list if available"),
     page: int = Query(1, ge=1, description="Page number for pagination"),
-    per_page: int = Query(100, ge=1, le=1000, description="Items per page"),
-    sort_by: str = Query('ticker', description="Sort by: 'ticker', 'return', 'volatility', 'sector'")
+    per_page: int = Query(100, ge=1, le=3000, description="Items per page"),
+    sort_by: str = Query('ticker', description="Sort by: 'ticker', 'return', 'volatility', 'sector'"),
+    for_universe_display: bool = Query(False, description="If true, return relaxed universe for Stock Universe chart only (not for optimization)")
 ):
     """
     Get all eligible tickers for optimization (no risk profile filtering)
     
     Returns all tickers that meet data quality and filtering criteria.
     The optimizer will apply risk profile constraints later.
+    When for_universe_display=true, uses relaxed criteria (min 6 data points, include negatives, wider volatility) to show almost all tickers in the Stock Universe chart; eligible list for optimization is unchanged.
     """
+    if for_universe_display:
+        effective_min_data_points = 6
+        effective_filter_negative_returns = False
+        effective_max_volatility = 20.0
+    else:
+        effective_min_data_points = min_data_points
+        effective_filter_negative_returns = filter_negative_returns
+        effective_max_volatility = max_volatility
     return _get_eligible_tickers_internal(
-        min_data_points=min_data_points,
-        filter_negative_returns=filter_negative_returns,
+        min_data_points=effective_min_data_points,
+        filter_negative_returns=effective_filter_negative_returns,
         min_volatility=min_volatility,
-        max_volatility=max_volatility,
+        max_volatility=effective_max_volatility,
         min_return=min_return,
         max_return=max_return,
         sectors=sectors,

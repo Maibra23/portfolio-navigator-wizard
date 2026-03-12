@@ -94,6 +94,26 @@ export const FINANCE_GLOSSARY: Record<string, { title: string; description: stri
     description:
       "How long it typically took (or might take) for your portfolio to bounce back to its previous peak after a drop.",
   },
+  isk: {
+    title: "ISK (Investeringssparkonto)",
+    description:
+      "Investment savings account. Taxed with schablonbeskattning: a fixed tax on the account's capital value (using a statutory rate, schablonränta), not on actual gains. Simple and predictable; no need to track individual transactions.",
+  },
+  kf: {
+    title: "KF (Kapitalförsäkring)",
+    description:
+      "Capital insurance. Taxed the same way as ISK (schablonbeskattning). Difference: life insurance wrapper — beneficiaries can receive the portfolio outside the estate. Suited for inheritance and estate planning.",
+  },
+  af: {
+    title: "AF (Aktie- och Fondkonto)",
+    description:
+      "Stock and fund account. Traditional capital gains tax: 30% on realized gains (when you sell) and on dividends. No tax on unrealized gains. Requires transaction tracking; good for buy-and-hold with few trades.",
+  },
+  schablonbeskattning: {
+    title: "Schablonbeskattning",
+    description:
+      "(Swedish) Standard or imputed tax on capital. Used for ISK and KF: tax is calculated from the account's capital value and a statutory rate (schablonränta), not from actual gains. Part of the capital may be tax-free (frikort).",
+  },
 };
 
 export type FinanceGlossaryKey = keyof typeof FINANCE_GLOSSARY;

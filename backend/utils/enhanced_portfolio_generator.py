@@ -250,12 +250,13 @@ class EnhancedPortfolioGenerator:
             ]
         }
     
-    def generate_portfolio_bucket(self, risk_profile: str, use_parallel: bool = True) -> List[Dict]:
+    def generate_portfolio_bucket(self, risk_profile: str, use_parallel: bool = True, store_to_redis: bool = True) -> List[Dict]:
         """Generate 9 unique portfolios for a specific risk profile with ticker exclusion
         
         Args:
             risk_profile: Risk profile to generate portfolios for
             use_parallel: If True, use parallel generation (3-4x faster)
+            store_to_redis: If True, store bucket and top pick in Redis; if False, return in-memory only (e.g. for testing).
         """
         import time
         start_time = time.time()
@@ -295,26 +296,28 @@ class EnhancedPortfolioGenerator:
             portfolios = self._generate_portfolios_with_ticker_exclusion(risk_profile, stock_selector, available_stocks)
             
             # Precompute and store overlap matrix for session-level diversity
-            try:
-                self._compute_and_store_overlap_matrix(portfolios, risk_profile)
-            except Exception as e:
-                logger.debug(f"Overlap matrix computation skipped: {e}")
+            if store_to_redis:
+                try:
+                    self._compute_and_store_overlap_matrix(portfolios, risk_profile)
+                except Exception as e:
+                    logger.debug(f"Overlap matrix computation skipped: {e}")
             
             total_time = time.time() - start_time
             logger.info(f"✅ Successfully generated {len(portfolios)} unique portfolios for {risk_profile} in {total_time:.2f}s")
             logger.info(f"📊 Performance: {total_time/len(portfolios):.3f}s per portfolio (with ticker exclusion)")
 
-            # Store portfolios in Redis using the standard format
-            try:
-                from .redis_portfolio_manager import RedisPortfolioManager
-                portfolio_manager = RedisPortfolioManager(self.redis_client)
-                storage_success = portfolio_manager.store_portfolio_bucket(risk_profile, portfolios)
-                if storage_success:
-                    logger.info(f"✅ Successfully stored {len(portfolios)} portfolios for {risk_profile} in Redis")
-                else:
-                    logger.warning(f"⚠️ Failed to store portfolios for {risk_profile} in Redis")
-            except Exception as e:
-                logger.error(f"❌ Error storing portfolios for {risk_profile}: {e}")
+            # Store portfolios in Redis using the standard format (optional, skip for test runs)
+            if store_to_redis:
+                try:
+                    from .redis_portfolio_manager import RedisPortfolioManager
+                    portfolio_manager = RedisPortfolioManager(self.redis_client)
+                    storage_success = portfolio_manager.store_portfolio_bucket(risk_profile, portfolios)
+                    if storage_success:
+                        logger.info(f"✅ Successfully stored {len(portfolios)} portfolios for {risk_profile} in Redis")
+                    else:
+                        logger.warning(f"⚠️ Failed to store portfolios for {risk_profile} in Redis")
+                except Exception as e:
+                    logger.error(f"❌ Error storing portfolios for {risk_profile}: {e}")
 
             # Calculate and log generation statistics
             compliant_count = sum(1 for p in portfolios if p.get('quality_status') == 'COMPLIANT')
@@ -330,14 +333,15 @@ class EnhancedPortfolioGenerator:
             )
             
             # Store Top Pick for quick retrieval by API (expectedReturn-based)
-            try:
-                def _score(p):
-                    return float(p.get('expectedReturn', 0.0))
-                top = max(portfolios, key=_score)
-                cache_key = f"portfolio:top_pick:{risk_profile}"
-                self.redis_client.setex(cache_key, self.PORTFOLIO_TTL_DAYS * 24 * 3600, json.dumps(top))
-            except Exception as e:
-                logger.debug(f"Top pick store skipped: {e}")
+            if store_to_redis:
+                try:
+                    def _score(p):
+                        return float(p.get('expectedReturn', 0.0))
+                    top = max(portfolios, key=_score)
+                    cache_key = f"portfolio:top_pick:{risk_profile}"
+                    self.redis_client.setex(cache_key, self.PORTFOLIO_TTL_DAYS * 24 * 3600, json.dumps(top))
+                except Exception as e:
+                    logger.debug(f"Top pick store skipped: {e}")
                 
             return portfolios
         

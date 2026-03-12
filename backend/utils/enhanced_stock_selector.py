@@ -582,10 +582,17 @@ class EnhancedStockSelector(PortfolioStockSelector):
                 seed_value = int(time.time() * 1000000) + (portfolio_index * 12345) + num_stocks * 789
                 random.seed(seed_value)
             
-            # Select random template from expanded pool
+            # Select random template from expanded pool; prefer non-equal-weight to reduce 33/25% clustering
             templates = ALLOCATION_TEMPLATES.get(num_stocks, [])
             if templates:
-                weights = list(random.choice(templates))
+                equal_weight_pct = 100.0 / num_stocks
+                band = 3.0  # treat as equal-weight if each weight within ±3% of 100/n
+                non_equal = [
+                    t for t in templates
+                    if not all(equal_weight_pct - band <= w <= equal_weight_pct + band for w in t)
+                ]
+                pool = non_equal if non_equal else templates
+                weights = list(random.choice(pool))
             else:
                 # Fallback to equal weight if no templates available
                 base_weight = 100.0 / num_stocks

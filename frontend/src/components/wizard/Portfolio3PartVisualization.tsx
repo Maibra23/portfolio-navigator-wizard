@@ -31,6 +31,7 @@ import {
   getVisualizationPalette,
   getPortfolioColors,
 } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import { getAdminKeyHeaders } from "@/config/api";
 import { LandscapeHint } from "@/components/ui/landscape-hint";
 
@@ -1231,40 +1232,16 @@ export const Portfolio3PartVisualization: React.FC<
       if (!point || point.symbol !== hoveredSymbol) return null;
 
       return (
-        <div
-          className="rounded-xl border p-3 shadow-sm max-w-xs"
-          style={{
-            background: chartTheme.cardBackground,
-            borderColor: chartTheme.border,
-          }}
-        >
-          <p
-            className="font-semibold"
-            style={{ color: chartTheme.text.primary }}
-          >
+        <div className="space-y-0.5">
+          <p className="font-semibold text-xs" style={{ color: chartTheme.text.primary }}>
             {point.symbol}
           </p>
-          <p
-            className="text-sm mt-1"
-            style={{ color: chartTheme.text.secondary }}
-          >
+          <p className="text-[10px] opacity-80" style={{ color: chartTheme.text.secondary }}>
             {point.portfolioLabel}
           </p>
-          <div
-            className="mt-2 space-y-1 text-sm"
-            style={{ color: chartTheme.text.primary }}
-          >
-            <p>
-              Return:{" "}
-              <span className="font-medium">
-                {formatPercent(point.annualReturn)}
-              </span>
-            </p>
-            <p>
-              Risk:{" "}
-              <span className="font-medium">{formatPercent(point.risk)}</span>
-            </p>
-          </div>
+          <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+            Return {formatPercent(point.annualReturn)} · Risk {formatPercent(point.risk)}
+          </p>
         </div>
       );
     },
@@ -1279,54 +1256,27 @@ export const Portfolio3PartVisualization: React.FC<
       if (!sectorItem) return null;
 
       return (
-        <div
-          className="rounded-xl border p-3 shadow-sm max-w-xs"
-          style={{
-            background: chartTheme.cardBackground,
-            borderColor: chartTheme.border,
-          }}
-        >
-          <p
-            className="font-semibold"
-            style={{ color: chartTheme.text.primary }}
-          >
+        <div className="space-y-0.5">
+          <p className="font-semibold text-xs" style={{ color: chartTheme.text.primary }}>
             {sectorItem.sector}
           </p>
-          <div
-            className="mt-2 space-y-1 text-sm"
-            style={{ color: chartTheme.text.primary }}
-          >
-            <p>
-              Total Allocation:{" "}
-              <span className="font-medium">
-                {sectorItem.percent.toFixed(2)}%
-              </span>
-            </p>
-            {sectorItem.stockAllocations &&
-              sectorItem.stockAllocations.length > 0 && (
-                <div
-                  className="mt-2 pt-2 border-t"
-                  style={{ borderColor: chartTheme.border }}
-                >
-                  <p
-                    className="text-xs font-semibold mb-1"
-                    style={{ color: chartTheme.text.secondary }}
-                  >
-                    Stock Allocations:
+          <p className="text-[10px]" style={{ color: chartTheme.text.primary }}>
+            Total: {sectorItem.percent.toFixed(2)}%
+          </p>
+          {sectorItem.stockAllocations &&
+            sectorItem.stockAllocations.length > 0 && (
+              <div className="space-y-0.5 pt-1 border-t" style={{ borderColor: chartTheme.border }}>
+                {sectorItem.stockAllocations.slice(0, 5).map((stock, idx) => (
+                  <p key={idx} className="text-[10px] flex justify-between gap-2">
+                    <span>{stock.symbol}:</span>
+                    <span className="font-medium">{stock.allocation.toFixed(2)}%</span>
                   </p>
-                  <div className="space-y-0.5">
-                    {sectorItem.stockAllocations.map((stock, idx) => (
-                      <p key={idx} className="text-xs flex justify-between">
-                        <span>{stock.symbol}:</span>
-                        <span className="font-medium ml-2">
-                          {stock.allocation.toFixed(2)}%
-                        </span>
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-          </div>
+                ))}
+                {sectorItem.stockAllocations.length > 5 && (
+                  <p className="text-[10px] opacity-80">+{sectorItem.stockAllocations.length - 5} more</p>
+                )}
+              </div>
+            )}
         </div>
       );
     },
@@ -1634,7 +1584,7 @@ export const Portfolio3PartVisualization: React.FC<
                       }}
                     />
                     <RechartsTooltip
-                      cursor={{ strokeDasharray: "3 3" }}
+                      {...getRechartsTooltipProps(theme)}
                       content={renderScatterTooltip}
                       isAnimationActive={true}
                       animationDuration={1200}
@@ -1865,7 +1815,7 @@ export const Portfolio3PartVisualization: React.FC<
                       }}
                     />
                     <RechartsTooltip
-                      cursor={{ strokeDasharray: "3 3" }}
+                      {...getRechartsTooltipProps(theme)}
                       content={renderScatterTooltip}
                       isAnimationActive={true}
                       animationDuration={1200}
@@ -2255,7 +2205,7 @@ export const Portfolio3PartVisualization: React.FC<
                           );
                         })}
                       </Pie>
-                      <PieTooltip content={renderPieTooltip} />
+                      <PieTooltip content={renderPieTooltip} {...getRechartsTooltipProps(theme)} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : isDataReady && !isLoading ? (
@@ -2505,7 +2455,7 @@ export const Portfolio3PartVisualization: React.FC<
                           );
                         })}
                       </Pie>
-                      <PieTooltip content={renderPieTooltip} />
+                      <PieTooltip content={renderPieTooltip} {...getRechartsTooltipProps(theme)} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : isDataReady && !isLoading ? (

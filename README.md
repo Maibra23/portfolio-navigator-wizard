@@ -79,7 +79,7 @@ make dev
 
 The frontend is at **http://localhost:8080** and the API at **http://localhost:8000**.
 
-**Troubleshooting:** If the backend fails to start, run `make check-redis`. If a port is in use, stop other processes on 8000/8080 or use `make stop` then `make dev`. More detail: [docs/DEPLOYMENT_OPERATIONS.md](docs/DEPLOYMENT_OPERATIONS.md).
+**Troubleshooting:** If the backend fails to start, run `make check-redis`. If a port is in use, stop other processes on 8000/8080 or use `make stop` then `make dev`. If you see `[vite] Pre-transform error: [postcss] ETIMEDOUT: connection timed out, read` when running `make full-dev` or `make dev`, it is often transient (e.g. OneDrive sync or a slow read). Retry the command; the project uses a local `browserslist` in `frontend/package.json` so autoprefixer does not need the network. If it persists, run the frontend from a local non-synced copy of the repo. More detail: [docs/DEPLOYMENT_OPERATIONS.md](docs/DEPLOYMENT_OPERATIONS.md).
 
 ## Usage
 

@@ -19,6 +19,8 @@ import { Button } from '../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
+import { getRechartsTooltipProps } from '@/utils/rechartsTooltipConfig';
 import { LandscapeHint } from '@/components/ui/landscape-hint';
 
 interface Sector {
@@ -66,6 +68,7 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
   sectorDistribution,
   totalAssets,
 }) => {
+  const { theme } = useTheme();
   const [viewMode, setViewMode] = useState<'pie' | 'bar'>('pie');
   const [sortBy, setSortBy] = useState<'allocation' | 'return' | 'risk' | 'sharpe'>('allocation');
 
@@ -131,13 +134,11 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-popover text-popover-foreground p-3 border border-border rounded-lg shadow-lg">
-          <p className="font-semibold">{label}</p>
-          <p>Allocation: {formatPercentage(data.allocation)}</p>
-          <p>Return: {formatPercentage(data.return)}</p>
-          <p>Risk: {formatPercentage(data.risk)}</p>
-          <p>Sharpe: {formatNumber(data.sharpe)}</p>
-          <p>Tickers: {data.tickerCount}</p>
+        <div className="space-y-0.5">
+          <p className="font-semibold text-xs">{label}</p>
+          <p className="text-[10px]">Allocation: {formatPercentage(data.allocation)}</p>
+          <p className="text-[10px]">Return: {formatPercentage(data.return)} · Risk: {formatPercentage(data.risk)}</p>
+          <p className="text-[10px]">Sharpe: {formatNumber(data.sharpe)} · Tickers: {data.tickerCount}</p>
         </div>
       );
     }
@@ -194,14 +195,14 @@ const SectorDistributionChart: React.FC<SectorDistributionChartProps> = ({
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomTooltip />} {...getRechartsTooltipProps(theme)} />
                 </PieChart>
               ) : (
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
                   <YAxis tickFormatter={formatPercentage} />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomTooltip />} {...getRechartsTooltipProps(theme)} />
                   <Bar dataKey="allocation" fill="#8884d8" />
                 </BarChart>
               )}

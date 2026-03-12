@@ -27,6 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTheme } from "@/hooks/useTheme";
 import { getChartTheme } from "@/utils/chartThemes";
+import { getRechartsTooltipProps } from "@/utils/rechartsTooltipConfig";
 import {
   Collapsible,
   CollapsibleContent,
@@ -1324,6 +1325,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                             width={70}
                                           />
                                           <Tooltip
+                                            {...getRechartsTooltipProps(theme)}
                                             formatter={(
                                               value: number,
                                               name: string,
@@ -1835,6 +1837,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         }
                                       />
                                       <Tooltip
+                                        {...getRechartsTooltipProps(theme)}
                                         formatter={(value: number) => [
                                           `${value.toFixed(1)}%`,
                                           "Return",
@@ -2670,6 +2673,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                             width={70}
                                           />
                                           <Tooltip
+                                            {...getRechartsTooltipProps(theme)}
                                             formatter={(
                                               value: number,
                                               name: string,
@@ -3144,6 +3148,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         }
                                       />
                                       <Tooltip
+                                        {...getRechartsTooltipProps(theme)}
                                         formatter={(value: number) => [
                                           `${value.toFixed(1)}%`,
                                           "Return",
@@ -3562,6 +3567,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                       }}
                                     />
                                     <Tooltip
+                                      {...getRechartsTooltipProps(theme)}
                                       formatter={(value: number) => [
                                         `${value.toFixed(1)}%`,
                                         "Frequency",
@@ -4006,6 +4012,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                   width={70}
                                 />
                                 <Tooltip
+                                  {...getRechartsTooltipProps(theme)}
                                   content={({ active, payload, label }) => {
                                     if (!active || !payload || !payload.length)
                                       return null;
@@ -4806,6 +4813,7 @@ export const StressTest: React.FC<StressTestProps> = ({
                                         }}
                                       />
                                       <Tooltip
+                                        {...getRechartsTooltipProps(theme)}
                                         formatter={(value: number) => [
                                           `${value.toFixed(1)}%`,
                                           "Frequency",

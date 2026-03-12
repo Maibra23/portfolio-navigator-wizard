@@ -153,27 +153,70 @@ class DynamicWeightingSystem:
                 return optimal_weights, optimization_results
             else:
                 logger.warning(f"Optimization did not converge: {result.message}")
-                equal_weights = [1.0 / n_stocks] * n_stocks
-                portfolio_return, portfolio_risk = portfolio_metrics(equal_weights)
+                # Use return-proportional heuristic instead of 1/N to avoid generic equal-weight portfolios
+                fallback_weights = self._return_proportional_fallback_weights(stocks, target_return)
+                portfolio_return, portfolio_risk = portfolio_metrics(fallback_weights)
 
-                return equal_weights, {
+                return fallback_weights, {
                     'success': False,
                     'portfolio_return': portfolio_return,
                     'portfolio_risk': portfolio_risk,
                     'return_deviation': abs(portfolio_return - target_return),
-                    'message': f'Optimization failed, using equal weights: {result.message}'
+                    'message': f'Optimization failed, using return-proportional weights: {result.message}'
                 }
 
         except Exception as e:
             logger.error(f"Dynamic weighting calculation failed: {e}")
-            equal_weights = [1.0 / len(stocks)] * len(stocks)
-            return equal_weights, {
+            fallback_weights = self._return_proportional_fallback_weights(stocks, target_return)
+            return fallback_weights, {
                 'success': False,
                 'portfolio_return': 0.10,
                 'portfolio_risk': 0.15,
                 'return_deviation': abs(0.10 - target_return),
                 'message': f'Calculation error: {str(e)}'
             }
+
+    def _return_proportional_fallback_weights(
+        self, stocks: List[Dict], target_return: float
+    ) -> List[float]:
+        """
+        When optimization fails, use return-proportional weights (bounded) instead of 1/N
+        so portfolios are differentiated rather than equal-weight.
+        """
+        n = len(stocks)
+        if n < 1:
+            return []
+        if n == 1:
+            return [1.0]
+        raw_returns = np.array([max(1e-6, s.get('return', 0.10)) for s in stocks])
+        r_min = raw_returns.min()
+        scores = raw_returns - r_min + 1e-6
+        w = scores / scores.sum()
+        # Clip and renormalize until stable so result stays in [min_weight, max_weight]
+        for _ in range(20):
+            w = np.clip(w, self.min_weight, self.max_weight)
+            s = w.sum()
+            if abs(s - 1.0) < 1e-9:
+                break
+            w = w / s
+        w = np.clip(w, self.min_weight, self.max_weight)
+        s = float(w.sum())
+        if s <= 0:
+            return ([1.0 / n] * n)
+        # Fix weights at max, scale the rest so total = 1 (avoids float pushing any weight > max)
+        at_max = w >= self.max_weight - 1e-9
+        k = int(np.sum(at_max))
+        rest_target = 1.0 - k * self.max_weight
+        rest_mask = ~at_max
+        if rest_target <= 0 or np.sum(rest_mask) == 0:
+            return ([1.0 / n] * n)
+        rest_sum = float(np.sum(w[rest_mask]))
+        if rest_sum > 1e-9:
+            out = np.empty(n)
+            out[at_max] = self.max_weight
+            out[rest_mask] = w[rest_mask] * (rest_target / rest_sum)
+            w = out
+        return w.tolist()
 
     def _estimate_correlation_matrix(self, n_stocks: int, stocks: List[Dict]) -> np.ndarray:
         """
